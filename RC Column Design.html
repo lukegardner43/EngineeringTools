@@ -1,0 +1,1542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RC Column Design — M–N Interaction & Slenderness</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+:root{
+  --bg:#0e0f11; --surf:#16181c; --surf2:#1e2128; --bdr:#2a2d35;
+  --grn:#4fffb0; --cyn:#3dd6f5; --red:#ff6b6b; --amb:#ffb347; --pur:#c084fc;
+  --txt:#e8eaf0; --mut:#6b7280;
+  --mono:'IBM Plex Mono',monospace; --sans:'IBM Plex Sans',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--sans);background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-direction:column;}
+
+header{padding:12px 24px;border-bottom:1px solid var(--bdr);display:flex;align-items:baseline;gap:14px;flex-shrink:0;}
+header h1{font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--grn);font-family:var(--mono);}
+header span{font-size:10px;color:var(--mut);font-family:var(--mono);}
+
+.layout{display:grid;grid-template-columns:270px 1fr 280px;height:calc(100vh - 45px);overflow:hidden;}
+
+/* ── INPUT PANEL ──────────────────────── */
+.inp{border-right:1px solid var(--bdr);padding:14px;overflow-y:auto;display:flex;flex-direction:column;gap:0;}
+.tabs{display:flex;border:1px solid var(--bdr);border-radius:5px;overflow:hidden;margin-bottom:14px;}
+.tabs button{flex:1;padding:6px;background:none;border:none;color:var(--mut);font-family:var(--mono);font-size:10px;cursor:pointer;letter-spacing:1px;text-transform:uppercase;transition:all .15s;}
+.tabs button.on{background:var(--grn);color:#000;font-weight:600;}
+.sf{display:none;}.sf.on{display:block;}
+.grp{margin-bottom:12px;}
+.gl{font-size:9px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--mut);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--bdr);font-family:var(--mono);}
+.f{display:flex;align-items:center;gap:5px;margin-bottom:6px;}
+.f label{font-size:11px;color:var(--mut);font-family:var(--mono);min-width:82px;flex-shrink:0;}
+.f input,.f select{flex:1;background:var(--surf2);border:1px solid var(--bdr);border-radius:4px;color:var(--txt);font-family:var(--mono);font-size:11px;padding:5px 7px;outline:none;}
+.f input:focus,.f select:focus{border-color:var(--grn);}
+.f .u{font-size:10px;color:var(--mut);font-family:var(--mono);min-width:24px;text-align:right;}
+.note{font-size:9px;color:var(--mut);font-family:var(--mono);line-height:1.6;margin:4px 0 8px;}
+.bgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.bc{background:var(--surf2);border:1px solid var(--bdr);border-radius:5px;padding:8px;}
+.bc h4{font-size:9px;font-family:var(--mono);color:var(--mut);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
+.bc .f label{min-width:40px;}
+.viz{margin-top:10px;background:var(--surf2);border:1px solid var(--bdr);border-radius:5px;padding:8px;text-align:center;}
+.divider{border:none;border-top:1px solid var(--bdr);margin:12px 0;}
+.tog-wrap{display:flex;border:1px solid var(--bdr);border-radius:4px;overflow:hidden;flex:1;}
+.tog-wrap button{flex:1;padding:5px;background:none;border:none;color:var(--mut);font-family:var(--mono);font-size:10px;cursor:pointer;letter-spacing:1px;text-transform:uppercase;transition:all .15s;}
+.tog-wrap button.on{background:var(--cyn);color:#000;font-weight:600;}
+.calctns{display:flex;gap:6px;flex-direction:column;margin-top:12px;}
+.btn{width:100%;padding:9px;border:none;border-radius:5px;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:opacity .15s;}
+.btn:hover{opacity:.85;}
+.btn.pri{background:var(--grn);color:#000;}
+.btn.chk{background:var(--cyn);color:#000;}
+.btn.sec{background:none;border:1px solid var(--bdr);color:var(--mut);}
+.btn.sec:hover{border-color:var(--grn);color:var(--grn);}
+
+/* ── CHART PANEL ──────────────────────── */
+.chart-pane{padding:16px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;}
+.cw{position:relative;background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:14px;height:520px;flex-shrink:0;}
+.cw-inner{position:relative;height:440px;width:100%;}
+.ct{font-size:10px;font-family:var(--mono);color:var(--mut);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;}
+.legend{display:flex;gap:14px;flex-wrap:wrap;min-height:14px;}
+.leg-item{display:flex;align-items:center;gap:5px;font-size:10px;font-family:var(--mono);color:var(--mut);}
+.leg-dot{width:7px;height:7px;border-radius:50%;}
+
+/* ── RESULTS PANEL ────────────────────── */
+.res{border-left:1px solid var(--bdr);padding:14px;overflow-y:auto;}
+.rh{font-size:9px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--mut);margin:0 0 8px;font-family:var(--mono);}
+.kvg{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;}
+.kv{background:var(--surf2);border:1px solid var(--bdr);border-radius:5px;padding:8px;}
+.kv.hi{border-color:var(--cyn);}
+.kv.warn{border-color:var(--amb);}
+.kv-l{font-size:9px;font-family:var(--mono);color:var(--mut);letter-spacing:1px;text-transform:uppercase;margin-bottom:2px;}
+.kv-v{font-size:16px;font-family:var(--mono);font-weight:600;color:var(--grn);}
+.kv.hi .kv-v{color:var(--cyn);} .kv.warn .kv-v{color:var(--amb);}
+.kv-u{font-size:9px;color:var(--mut);font-family:var(--mono);}
+.prop-box{background:var(--surf2);border:1px solid var(--bdr);border-radius:5px;padding:9px;margin-bottom:12px;font-family:var(--mono);font-size:10px;line-height:1.8;color:var(--mut);}
+.prop-box .v{color:var(--txt);} .prop-box .a{color:var(--grn);}
+
+/* slenderness results */
+.slen-block{background:var(--surf2);border:1px solid var(--bdr);border-radius:5px;padding:10px;margin-bottom:10px;}
+.slen-row{display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;border-bottom:1px solid var(--bdr);font-family:var(--mono);font-size:10px;}
+.slen-row:last-child{border:none;}
+.slen-row .sl{color:var(--mut);}
+.slen-row .sv{color:var(--txt);font-weight:500;}
+.slen-row.hi .sv{color:var(--cyn);}
+.slen-row.hot .sv{color:var(--amb);}
+.slen-row.grn .sv{color:var(--grn);}
+.badge{text-align:center;padding:6px;border-radius:4px;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin:8px 0;}
+.badge.short{background:rgba(79,255,176,.12);border:1px solid var(--grn);color:var(--grn);}
+.badge.slender{background:rgba(255,179,71,.12);border:1px solid var(--amb);color:var(--amb);}
+.badge.pass{background:rgba(79,255,176,.12);border:1px solid var(--grn);color:var(--grn);}
+.badge.fail{background:rgba(255,107,107,.12);border:1px solid var(--red);color:var(--red);}
+
+.tb{margin-top:4px;}
+.tb h4{font-size:9px;font-family:var(--mono);letter-spacing:2px;text-transform:uppercase;color:var(--mut);margin-bottom:6px;}
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:10px;}
+th{text-align:right;padding:4px 4px;color:var(--mut);border-bottom:1px solid var(--bdr);font-weight:400;}
+th:first-child{text-align:left;}
+td{text-align:right;padding:4px 4px;border-bottom:1px solid var(--bdr);color:var(--txt);}
+td:first-child{text-align:left;color:var(--mut);}
+tr.kr td{color:var(--grn);} tr.bal td{color:var(--cyn);}
+</style>
+</head>
+<body>
+<header>
+  <h1>RC Column Design — M–N Interaction & Slenderness</h1>
+  <span>BS EN 1992-1-1 · Mosley §4.8 §9.2 §9.7 · Nominal curvature method · Standalone</span>
+</header>
+
+<div class="layout">
+
+<!-- ══ INPUT PANEL ════════════════════════════════════════════ -->
+<div class="inp">
+
+  <div class="tabs">
+    <button class="on" id="t-rect" onclick="setTab('rect')">Rectangular</button>
+    <button id="t-circ" onclick="setTab('circ')">Circular</button>
+  </div>
+
+  <!-- RECTANGULAR -->
+  <div class="sf on" id="f-rect">
+    <div class="grp">
+      <div class="gl">Geometry</div>
+      <div class="f"><label>Width b</label><input type="number" id="rb" value="200" min="100" step="25"><span class="u">mm</span></div>
+      <div class="f"><label>Depth h</label><input type="number" id="rh" value="450" min="100" step="25"><span class="u">mm</span></div>
+    </div>
+    <div class="grp">
+      <div class="gl">Materials</div>
+      <div class="f"><label>Concrete</label>
+        <select id="rfck">
+          <option value="20">C20/25</option><option value="25">C25/30</option>
+          <option value="30" selected>C30/37</option><option value="35">C35/45</option>
+          <option value="40">C40/50</option><option value="50">C50/60</option>
+        </select>
+      </div>
+      <div class="f"><label>Cover c</label><input type="number" id="rcov" value="35" min="20" step="5"><span class="u">mm</span></div>
+      <div class="f"><label>Link dia.</label><input type="number" id="rlink" value="10" min="6" step="2"><span class="u">mm</span></div>
+    </div>
+    <div class="grp">
+      <div class="gl">Bars — bending X–X</div>
+      <p class="note">nX = bars across width (top &amp; bottom). nY = bars up height per side face incl. corners (min 2).</p>
+      <div class="bgrid">
+        <div class="bc">
+          <h4>X direction</h4>
+          <div class="f"><label>nX</label><input type="number" id="rnx" value="2" min="2" step="1"></div>
+          <div class="f"><label>dia.</label>
+            <select id="rdx"><option value="12">Ø12</option><option value="16" selected>Ø16</option><option value="20">Ø20</option><option value="25">Ø25</option><option value="32">Ø32</option></select>
+          </div>
+        </div>
+        <div class="bc">
+          <h4>Y direction</h4>
+          <div class="f"><label>nY</label><input type="number" id="rny" value="4" min="2" step="1"></div>
+          <div class="f"><label>dia.</label>
+            <select id="rdy"><option value="12">Ø12</option><option value="16" selected>Ø16</option><option value="20">Ø20</option><option value="25">Ø25</option><option value="32">Ø32</option></select>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="viz"><canvas id="vr" width="200" height="180"></canvas></div>
+  </div>
+
+  <!-- CIRCULAR -->
+  <div class="sf" id="f-circ">
+    <div class="grp">
+      <div class="gl">Geometry</div>
+      <div class="f"><label>Diameter D</label><input type="number" id="cd" value="400" min="150" step="25"><span class="u">mm</span></div>
+    </div>
+    <div class="grp">
+      <div class="gl">Materials</div>
+      <div class="f"><label>Concrete</label>
+        <select id="cfck"><option value="20">C20/25</option><option value="25">C25/30</option><option value="30" selected>C30/37</option><option value="35">C35/45</option><option value="40">C40/50</option><option value="50">C50/60</option></select>
+      </div>
+      <div class="f"><label>Cover c</label><input type="number" id="ccov" value="35" min="20" step="5"><span class="u">mm</span></div>
+      <div class="f"><label>Link dia.</label><input type="number" id="clink" value="8" min="6" step="2"><span class="u">mm</span></div>
+    </div>
+    <div class="grp">
+      <div class="gl">Reinforcement</div>
+      <div class="f"><label>No. bars</label><input type="number" id="cnb" value="8" min="4" step="1"></div>
+      <div class="f"><label>Bar dia.</label>
+        <select id="cdb"><option value="12">Ø12</option><option value="16">Ø16</option><option value="20" selected>Ø20</option><option value="25">Ø25</option><option value="32">Ø32</option></select>
+      </div>
+    </div>
+    <div class="viz"><canvas id="vc" width="200" height="180"></canvas></div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- LOADS -->
+  <div class="grp">
+    <div class="gl">Applied Design Loads (ULS)</div>
+    <div class="f"><label>NEd</label><input type="number" id="ned" value="770" step="50"><span class="u">kN</span></div>
+    <div style="font-size:9px;color:var(--cyn);font-family:var(--mono);letter-spacing:1px;text-transform:uppercase;margin:6px 0 4px;">X–X axis (bending about X–X)</div>
+    <div class="f"><label>Mtop x-x</label><input type="number" id="mtop" value="30" step="1"><span class="u">kNm</span></div>
+    <div class="f"><label>Mbot x-x</label><input type="number" id="mbot" value="-30" step="1"><span class="u">kNm</span></div>
+    <div style="font-size:9px;color:var(--amb);font-family:var(--mono);letter-spacing:1px;text-transform:uppercase;margin:6px 0 4px;">Y–Y axis (bending about Y–Y) — 0 if uniaxial</div>
+    <div class="f"><label>Mtop y-y</label><input type="number" id="mtopy" value="45" step="1"><span class="u">kNm</span></div>
+    <div class="f"><label>Mbot y-y</label><input type="number" id="mboty" value="-45" step="1"><span class="u">kNm</span></div>
+    <p class="note">Frame analysis 1st-order end moments (signed). Double curvature → opposite signs. M01/M02, imperfections and biaxial check computed automatically.</p>
+    <div style="font-size:9px;color:var(--mut);font-family:var(--mono);letter-spacing:1px;text-transform:uppercase;margin:6px 0 3px;">Fire design (BS EN 1992-1-2 Method A)</div>
+    <div class="f">
+      <label>μfi</label>
+      <input type="number" id="mufi" value="0.7" min="0.1" max="1.0" step="0.05">
+      <span class="u">—</span>
+    </div>
+    <p class="note">μfi = load reduction factor. Use 0.7 (conservative) or NEd,fi/NRd to refine.</p>
+  </div>
+
+  <!-- COLUMN HEIGHT & END CONDITIONS -->
+  <div class="grp">
+    <div class="gl">Column Height &amp; End Conditions (EC2 §5.8.3.2)</div>
+    <div class="f"><label>Clear height l</label><input type="number" id="clen" value="4400" step="100"><span class="u">mm</span></div>
+    <div class="f"><label>Structure</label>
+      <div class="tog-wrap" id="togBrace">
+        <button class="on" onclick="setBraced(true)">Braced</button>
+        <button onclick="setBraced(false)">Unbraced</button>
+      </div>
+    </div>
+    <div style="font-size:9px;color:var(--cyn);font-family:var(--mono);letter-spacing:1px;text-transform:uppercase;margin:4px 0 3px;">X–X axis end flexibility (k = EI_col/l ÷ Σ2EI_beam/l)</div>
+    <div class="f"><label>k₁ top x-x</label><input type="number" id="ktop"  value="0.15" min="0.1" step="0.05"><span class="u">≥0.1</span></div>
+    <div class="f"><label>k₂ bot x-x</label><input type="number" id="kbot"  value="0.15" min="0.1" step="0.05"><span class="u">≥0.1</span></div>
+    <div style="font-size:9px;color:var(--amb);font-family:var(--mono);letter-spacing:1px;text-transform:uppercase;margin:6px 0 3px;">Y–Y axis end flexibility</div>
+    <div class="f"><label>k₁ top y-y</label><input type="number" id="ktopy" value="0.10" min="0.1" step="0.05"><span class="u">≥0.1</span></div>
+    <div class="f"><label>k₂ bot y-y</label><input type="number" id="kboty" value="0.10" min="0.1" step="0.05"><span class="u">≥0.1</span></div>
+    <p class="note">Typical values: fixed base k≈0.1, beam/column joint k=EIc/lc ÷ Σ(2EIb/lb), pin k→∞ (use 10). PD 6687: k≥0.1.</p>
+    <div class="f"><label>φef (creep)</label><input type="number" id="phief" value="0" min="0" max="3" step="0.1"><span class="u">—</span></div>
+  </div>
+
+  <div class="calctns">
+    <button class="btn pri" onclick="calculate()">M–N Diagram</button>
+    <button class="btn chk" onclick="checkDesign()">Check Design ↗</button>
+    <button class="btn sec" onclick="generateReport()">Print Report ↗</button>
+    <button class="btn sec" onclick="clearAll()">Clear</button>
+  </div>
+
+</div>
+
+<!-- ══ CHART PANEL ════════════════════════════════════════════ -->
+<div class="chart-pane">
+  <div class="cw">
+    <div class="ct">M–N Interaction Diagram — ULS Capacity Envelope</div>
+    <div class="cw-inner"><canvas id="mnc"></canvas></div>
+  </div>
+  <div class="legend" id="legend"></div>
+</div>
+
+<!-- ══ RESULTS PANEL ══════════════════════════════════════════ -->
+<div class="res">
+
+  <p class="rh">Capacity Summary</p>
+  <div class="kvg">
+    <div class="kv"><div class="kv-l">N₀</div><div class="kv-v" id="kN0">—</div><div class="kv-u">kN pure comp.</div></div>
+    <div class="kv"><div class="kv-l">Nt</div><div class="kv-v" id="kNt">—</div><div class="kv-u">kN pure tens.</div></div>
+    <div class="kv hi"><div class="kv-l">Nbal</div><div class="kv-v" id="kNb">—</div><div class="kv-u">kN balanced</div></div>
+    <div class="kv hi"><div class="kv-l">Mbal</div><div class="kv-v" id="kMb">—</div><div class="kv-u">kN·m balanced</div></div>
+    <div class="kv"><div class="kv-l">Mmax</div><div class="kv-v" id="kMx">—</div><div class="kv-u">kN·m</div></div>
+    <div class="kv"><div class="kv-l">ρ</div><div class="kv-v" id="krho">—</div><div class="kv-u">% reinf. ratio</div></div>
+  </div>
+
+  <div class="prop-box" id="propBox" style="display:none"><pre id="propTxt"></pre></div>
+
+  <!-- SLENDERNESS RESULTS -->
+  <div id="slenSection" style="display:none">
+    <hr class="divider" style="margin:8px 0 12px;">
+    <p class="rh">X–X — Slenderness &amp; Design Moments</p>
+    <div class="slen-block" id="slenEff"></div>
+    <div class="badge" id="slenBadge"></div>
+    <p class="rh" style="margin-top:10px;">X–X — Moment Calculation</p>
+    <div class="slen-block" id="slenMom"></div>
+    <div class="badge" id="designBadge"></div>
+    <div class="badge" id="passBadge"></div>
+  </div>
+
+  <!-- Y-Y SLENDERNESS RESULTS -->
+  <div id="slenSectionYY" style="display:none">
+    <hr class="divider" style="margin:8px 0 12px;">
+    <p class="rh">Y–Y — Slenderness &amp; Design Moments</p>
+    <div class="slen-block" id="slenEffYY"></div>
+    <div class="badge" id="slenBadgeYY"></div>
+    <p class="rh" style="margin-top:10px;">Y–Y — Moment Calculation</p>
+    <div class="slen-block" id="slenMomYY"></div>
+    <div class="badge" id="designBadgeYY"></div>
+    <div class="badge" id="passBadgeYY"></div>
+  </div>
+
+  <!-- BIAXIAL CHECK -->
+  <div id="biaxSection" style="display:none">
+    <hr class="divider" style="margin:8px 0 12px;">
+    <p class="rh">Biaxial Bending Check (EC2 §5.8.9)</p>
+    <div class="slen-block" id="biaxBlock"></div>
+    <div class="badge" id="biaxBadge"></div>
+  </div>
+
+  <!-- FIRE RESISTANCE (Method A) -->
+  <div id="fireSection" style="display:none">
+    <hr class="divider" style="margin:8px 0 12px;">
+    <p class="rh">Fire Resistance — BS EN 1992-1-2 Method A</p>
+    <div class="slen-block" id="fireBlock"></div>
+    <div class="badge" id="fireBadge"></div>
+  </div>
+
+  <div class="tb" id="tblBlock" style="display:none">
+    <h4 style="margin-top:12px;">Key Interaction Points</h4>
+    <table><thead><tr><th>Point</th><th>x mm</th><th>N kN</th><th>M kN·m</th></tr></thead>
+    <tbody id="tbl"></tbody></table>
+  </div>
+
+</div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// EC2 / MOSLEY CONSTANTS
+// §3.1.7 rectangular stress block: s=0.8x, σ=0.567fck (γc=1.5, αcc=0.85)
+// §4.8  strain compatibility: εcu=0.0035 (Case A), 0.00175 at h/2 (Case B)
+// §9.7  nominal curvature: εyd=fyd/Es, 1/r₀=εyd/(0.45d)
+// ════════════════════════════════════════════════════════════
+const ECU  = 0.0035;    // Concrete ultimate strain (top fibre, Case A)
+const E175 = 0.00175;   // Pivot strain at h/2 (Case B — full section compression)
+const EY   = 0.00217;   // Steel yield strain (fyk=500, Es=200000)
+const ES   = 200000;    // N/mm²
+const FYK  = 500;
+const FYD  = FYK / 1.15;        // = 434.8 N/mm²  (γs=1.15)
+const FYD_87 = 0.87 * FYK;      // = 435 N/mm²    (Mosley simplified: 1/1.15 ≈ 0.87)
+
+function fcd(fck){ return 0.567 * fck; }   // design concrete stress [N/mm²]
+
+// Steel stress (signed: +ve = compression)
+function fsteel(eps){
+  if(eps >=  EY) return  FYD;
+  if(eps <= -EY) return -FYD;
+  return ES * eps;
+}
+
+// ════════════════════════════════════════════════════════════
+// RECTANGULAR SECTION — one M–N point
+// Mosley §4.8 Eq 4.35/4.36. Steel stress in compression zone
+// is reduced by fcd to account for concrete displaced by bars
+// (EC2 §6.1, noted in Mosley §4.8 as optional but applied here
+//  to match rigorous software such as Tedds).
+// ════════════════════════════════════════════════════════════
+function rectPt(x, b, h, layers, fc){
+  if(x <= 0){
+    return { N: -FYD * layers.reduce((s,l)=>s+l.A, 0), M: 0 };
+  }
+  const caseB = (0.8*x >= h);
+  const s = caseB ? h : 0.8*x;
+  const Fcc = fc * b * s;
+  const Mcc = caseB ? 0 : Fcc * (h/2 - s/2);
+  let Ns=0, Ms=0;
+  for(const {d,A} of layers){
+    const eps = caseB ? E175*(x-d)/(x-h/2) : ECU*(x-d)/x;
+    // Deduct fcd from net stress of bars in the compression zone (eps > 0)
+    const f = fsteel(eps) - (eps > 0 ? fc : 0);
+    const F = f * A;
+    Ns += F;
+    Ms += F*(h/2 - d);
+  }
+  return { N: Fcc+Ns, M: Math.abs(Mcc+Ms) };
+}
+
+function rectN0(b,h,layers,fc){
+  // Pure compression: EC2 Fig 6.1 limit C — uniform strain εc3 = 0.00175
+  // For Grade 500 steel: σ0 = min(εc3·Es, fyd) = min(350, 434.8) = 350 N/mm²
+  // Net steel force deducts fcd (displaced concrete): σ0 − fcd
+  const sigma0 = Math.min(E175 * ES, FYD);   // = 350 N/mm²
+  const As = layers.reduce((s,l)=>s+l.A, 0);
+  return fc*(b*h - As) + sigma0*As;           // = (Ac−As)·fcd + As·σ0
+}
+
+// ════════════════════════════════════════════════════════════
+// CIRCULAR SECTION — one M–N point
+// Segment: α=arccos((R-s)/R), A_seg=R²(α-sinα cosα)
+// ȳ from top = R - 4R sin³α/(3(2α-sin2α))
+// ════════════════════════════════════════════════════════════
+function circPt(x, R, bars, fc){
+  if(x <= 0){
+    return { N: -FYD*bars.reduce((s,b)=>s+b.A,0), M:0 };
+  }
+  const D=2*R;
+  const caseB=(0.8*x>=D);
+  const s=caseB?D:0.8*x;
+  let Fcc=0, Mcc=0;
+  if(s>=D){
+    Fcc=fc*Math.PI*R*R; Mcc=0;
+  } else if(s>0){
+    const al=Math.acos(Math.max(-1,Math.min(1,(R-s)/R)));
+    const sa=Math.sin(al);
+    const A_seg=R*R*(al - sa*Math.cos(al));
+    const den=2*al-Math.sin(2*al);
+    const yc=den>1e-14 ? R-(4*R/3)*sa*sa*sa/den : 0;
+    Fcc=fc*A_seg; Mcc=Fcc*(R-yc);
+  }
+  let Ns=0, Ms=0;
+  for(const {d,A} of bars){
+    const eps=caseB ? E175*(x-d)/(x-R) : ECU*(x-d)/x;
+    const f=fsteel(eps) - (eps > 0 ? fc : 0);
+    const F=f*A;
+    Ns+=F; Ms+=F*(R-d);
+  }
+  return { N: Fcc+Ns, M: Math.abs(Mcc+Ms) };
+}
+
+function circN0(R,bars,fc){
+  // Pure compression: EC2 Fig 6.1 limit C — uniform strain εc3 = 0.00175
+  const sigma0 = Math.min(E175 * ES, FYD);   // = 350 N/mm²
+  const As = bars.reduce((s,b)=>s+b.A, 0);
+  const Ac = Math.PI * R * R;
+  return fc*(Ac - As) + sigma0*As;
+  // Note: η = 1.0 per EC2 §3.1.7(3) for fck ≤ 50 MPa (η=1.0 is correct)
+}
+
+// ════════════════════════════════════════════════════════════
+// M–N DIAGRAM GENERATOR
+// ════════════════════════════════════════════════════════════
+function ls(a,b,n){ const r=[]; for(let i=0;i<n;i++) r.push(a+(b-a)*i/(n-1)); return r; }
+
+function barArea(d){ return Math.PI*(d/2)**2; }
+
+function tagNearest(pts, xTarget, lbl, xTrans){
+  const cA=pts.filter(p=>isFinite(p.x)&&p.x>0&&p.x<xTrans*0.99);
+  if(!cA.length) return;
+  const best=cA.reduce((a,b)=>Math.abs(b.x-xTarget)<Math.abs(a.x-xTarget)?b:a);
+  if(Math.abs(best.x-xTarget)<xTarget*0.03) best.label=lbl;
+}
+
+function buildPts(ptFn, N0, Nt, h_or_D){
+  const h=h_or_D, xT=h/0.8;
+  let xs=[...ls(1,xT*0.997,50), ...ls(xT*1.003,h*10,20)];
+  xs.sort((a,b)=>a-b);
+  const pts=[];
+  { const{N,M}=ptFn(0); pts.push({label:'Pure tension',x:0,N:N/1e3,M:M/1e6}); }
+  for(const x of xs){
+    const{N,M}=ptFn(x); pts.push({x,N:N/1e3,M:M/1e6});
+  }
+  pts.push({label:'Pure compression',x:Infinity,N:N0/1e3,M:0});
+  return {pts, xT};
+}
+
+function getRectSection(){
+  const b=+V('rb'),h=+V('rh'),fck=+V('rfck'),cov=+V('rcov'),lnk=+V('rlink');
+  const nX=+V('rnx'),dX=+V('rdx'),nY=+V('rny'),dY=+V('rdy');
+  const dc_X=cov+lnk+dX/2, dc_Y=cov+lnk+dY/2;
+  const nY_int=Math.max(0,nY-2);
+  const layers=[];
+  layers.push({d:dc_X,     A:nX*barArea(dX), label:'Top face (comp.)'});
+  layers.push({d:h-dc_X,   A:nX*barArea(dX), label:'Bottom face (tens.)'});
+  for(let i=0;i<nY_int;i++){
+    const d=dc_Y+(i+1)*(h-2*dc_Y)/(nY_int+1);
+    layers.push({d, A:2*barArea(dY), label:`Side bars Y${i+1} ×2`});
+  }
+  const As=layers.reduce((s,l)=>s+l.A,0);
+  const fc=fcd(fck), Ac=b*h;
+  const d_tens=h-dc_X, xbal=d_tens/(1+EY/ECU), xT=h/0.8;
+  const {pts}=buildPts(x=>rectPt(x,b,h,layers,fc), rectN0(b,h,layers,fc), rectPt(0,b,h,layers,fc).N, h);
+  tagNearest(pts,xbal,'Balanced (εs=εy)',xT);
+  tagNearest(pts,d_tens,'x = d (εs=0)',xT);
+  tagNearest(pts,xT*0.98,'x = h/0.8 (transition)',xT);
+  const Mmax=Math.max(...pts.map(p=>p.M));
+  const balPt=pts.find(p=>p.label&&p.label.startsWith('Balanced'))||pts.reduce((a,b)=>b.M>a.M?b:a);
+  return {
+    pts, type:'rect',
+    key:{N0:rectN0(b,h,layers,fc)/1e3,Nt:rectPt(0,b,h,layers,fc).N/1e3,Nbal:balPt.N,Mbal:balPt.M,Mmax,xbal},
+    props:{b,h,fck,fc,As,Ac,rho:As/Ac*100,layers,d_eff:d_tens,d_comp:dc_X,i_gyr:h/Math.sqrt(12)},
+    label:`${b}×${h} C${fck} (${(nX*2+nY_int*2)}T)`
+  };
+}
+
+// Y–Y bending: depth = b (width), width = h (depth). Faces now carry nY bars; intermediate are nX-2.
+function getRectSectionYY(){
+  const b=+V('rb'),h=+V('rh'),fck=+V('rfck'),cov=+V('rcov'),lnk=+V('rlink');
+  const nX=+V('rnx'),dX=+V('rdx'),nY=+V('rny'),dY=+V('rdy');
+
+  const dc_Y = cov + lnk + dY/2;   // depth of Y-face bars from compression face (Y–Y bending depth = b)
+  const dc_X = cov + lnk + dX/2;   // depth of X-face intermediate bars from compression face
+
+  const nX_int = Math.max(0, nX-2); // intermediate bars on each of top/bottom faces
+
+  const layers = [];
+  layers.push({ d: dc_Y,     A: nY*barArea(dY), label:'Left face (comp.)' });
+  layers.push({ d: b-dc_Y,   A: nY*barArea(dY), label:'Right face (tens.)' });
+  for(let i=0; i<nX_int; i++){
+    const d = dc_X + (i+1)*(b-2*dc_X)/(nX_int+1);
+    layers.push({ d, A: 2*barArea(dX), label:`Top/bot int. ${i+1} ×2` });
+  }
+
+  const As   = layers.reduce((s,l)=>s+l.A, 0);
+  const fc   = fcd(fck), Ac = b*h;
+  const d_tens = b - dc_Y;
+  const xbal   = d_tens / (1+EY/ECU);
+  const xT     = b/0.8;
+
+  // For Y–Y: bending depth = b, bending width = h → call rectPt(x, h, b, layers, fc)
+  const {pts} = buildPts(x=>rectPt(x,h,b,layers,fc), rectN0(h,b,layers,fc), rectPt(0,h,b,layers,fc).N, b);
+  tagNearest(pts,xbal,'Balanced (εs=εy)',xT);
+  tagNearest(pts,d_tens,'x = d_YY (εs=0)',xT);
+  const Mmax  = Math.max(...pts.map(p=>p.M));
+  const balPt = pts.find(p=>p.label&&p.label.startsWith('Balanced'))||pts.reduce((a,b)=>b.M>a.M?b:a);
+  return {
+    pts, type:'rect',
+    key:{N0:rectN0(h,b,layers,fc)/1e3,Nt:rectPt(0,h,b,layers,fc).N/1e3,Nbal:balPt.N,Mbal:balPt.M,Mmax,xbal},
+    props:{b,h,fck,fc,As,Ac,rho:As/Ac*100,layers,d_eff:d_tens,d_comp:dc_Y,i_gyr:b/Math.sqrt(12)},
+    label:`${b}×${h} C${fck} Y–Y`
+  };
+}
+
+// ════════════════════════════════════════════════════════════
+// FIRE RESISTANCE — BS EN 1992-1-2 §5.3.2(4) METHOD A
+// Equation (5.7): R = 120 × ((ΣRi)/120)^1.8
+// Valid for braced columns, rectangular/circular, e ≤ 0.15b/h
+// Spreadsheet basis: WSP Method_A.xlsx
+// ════════════════════════════════════════════════════════════
+function computeFireResistance(sec, mufi, storey_m){
+  const isRect = sec.type === 'rect';
+  const{fck, As, Ac, fc} = sec.props;
+  const fyd_fire = FYD;          // fyk/γs
+  const fck_val  = fck;
+  const acc      = 0.85;         // αcc — UK NA value
+
+  // ── Axis distance  a = cover + link + bar/2
+  let a_mm, n_bars;
+  if(isRect){
+    const cov=+V('rcov'), lnk=+V('rlink'), dX=+V('rdx');
+    a_mm   = cov + lnk + dX/2;
+    n_bars = 2*(+V('rnx')) + 2*(Math.max(0,+V('rny')-2));  // total bars
+  } else {
+    const cov=+V('ccov'), lnk=+V('clink'), db=+V('cdb');
+    a_mm   = cov + lnk + db/2;
+    n_bars = +V('cnb');
+  }
+
+  // ── Equivalent width b' (EC2-1-2 §5.3.2 Table 5.2a, from WSP spreadsheet formula)
+  const b = isRect ? sec.props.b : sec.props.D;
+  const h = isRect ? sec.props.h : sec.props.D;
+  let b_eq;
+  if(h < 1.5*b){
+    b_eq = 2*Ac/(b+h);           // harmonic mean (nearly-square)
+  } else {
+    b_eq = 2*1.5*b*b/(2.5*b);    // = 1.2b (elongated section)
+  }
+  const b_prime = Math.min(h, Math.max(b_eq, 200));  // cap and floor
+
+  // ── ω = As·fyd/(Ac·fcd)  (mechanical reinforcement ratio)
+  const omega_fire = As * fyd_fire / (Ac * fc);
+
+  // ── Component Rηfi  (load level contribution)
+  // Full formula: 83 × (1 − μfi·(1+ω)/(0.85/αcc + ω))
+  // With UK NA αcc=0.85: 0.85/αcc = 1.0 → simplifies to 83(1-μfi)
+  const R_etafi = 83 * (1 - mufi*(1+omega_fire)/(0.85/acc + omega_fire));
+
+  // ── Component Ra  (axis distance contribution)
+  const R_a = 1.6 * (a_mm - 30);
+
+  // ── Component Rl  (slenderness / effective length contribution)
+  // lo,fi = 0.5×l  (braced, EC2-1-2 §5.3.2(2) Note 2); l = storey height
+  // Formula uses storey_m/2 as proxy for lo,fi/b normalised; capped at 2.0
+  const lo_fi_norm = Math.max(storey_m / 2, 2.0);  // = max(lo,fi_m, 2m)  [cap]
+  const R_l = 9.6 * (5 - lo_fi_norm);
+
+  // ── Component Rb  (section width contribution)
+  const R_b = 0.09 * b_prime;
+
+  // ── Component Rn  (number of bars bonus)
+  const R_n = (n_bars > 4) ? 12 : 0;
+
+  // ── Total fire resistance (Eq. 5.7)
+  const R_sum = R_etafi + R_a + R_l + R_b + R_n;
+  const R_min = 120 * Math.pow(R_sum / 120, 1.8);
+
+  // ── Minimum standard fire rating achieved
+  const ratings = [240,180,120,90,60,30];
+  const rating  = ratings.find(r => R_min >= r) ?? 0;
+
+  return {
+    a_mm, b_prime, omega_fire, n_bars, storey_m,
+    R_etafi, R_a, R_l, R_b, R_n, R_sum, R_min, rating
+  };
+}
+
+function showFireResults(fr){
+  const rows = [
+    ['Axis distance a = cnom + link + φ/2', `${fr.a_mm.toFixed(0)} mm`],
+    ['Equivalent width b\'', `${fr.b_prime.toFixed(0)} mm`],
+    ['ω = As·fyd/(Ac·fcd)', `${fr.omega_fire.toFixed(3)}`],
+    ['Number of bars n', `${fr.n_bars}`],
+    ['Storey height (for lo,fi = 0.5l)', `${fr.storey_m.toFixed(1)} m`],
+    ['Rηfi — load level', `${fr.R_etafi.toFixed(1)} min`,'hi'],
+    ['Ra — axis distance', `${fr.R_a.toFixed(1)} min`,'hi'],
+    ['Rl — slenderness', `${fr.R_l.toFixed(1)} min`,'hi'],
+    ['Rb — section width', `${fr.R_b.toFixed(1)} min`,'hi'],
+    ['Rn — bar arrangement', `${fr.R_n.toFixed(0)} min`,'hi'],
+    ['R = 120×(ΣRi/120)^1.8', `${fr.R_min.toFixed(1)} min`,'grn'],
+  ];
+  document.getElementById('fireBlock').innerHTML =
+    rows.map(([l,v,cls])=>row(l,v,cls??'')).join('');
+  const badge = document.getElementById('fireBadge');
+  const ratingColors = {240:'#c084fc',180:'#3dd6f5',120:'#4fffb0',90:'#4fffb0',60:'#ffb347',30:'#ff6b6b',0:'#ff6b6b'};
+  badge.className = 'badge';
+  badge.style.cssText = `background:rgba(79,255,176,0.10);border:1px solid ${ratingColors[fr.rating]??'#ff6b6b'};color:${ratingColors[fr.rating]??'#ff6b6b'}`;
+  badge.textContent = fr.rating > 0
+    ? `R = ${fr.R_min.toFixed(0)} min — achieves R${fr.rating} ${fr.R_min >= (fr.rating===240?240:fr.rating+60)&&fr.rating<240?'(consider R'+(fr.rating+60)+')':''}`
+    : `R = ${fr.R_min.toFixed(0)} min — FAILS R30`;
+  document.getElementById('fireSection').style.display = 'block';
+}
+
+// ── Biaxial exponent (EC2 §5.8.9 Table)
+// NEd/NRd:  0.1 → a=1.0 ;  0.7 → a=1.5 ;  ≥1.0 → a=2.0
+function biaxialA(ratio){
+  if(ratio <= 0.1) return 1.0;
+  if(ratio <= 0.7) return 1.0 + 0.5*(ratio-0.1)/(0.7-0.1);
+  if(ratio <= 1.0) return 1.5 + 0.5*(ratio-0.7)/(1.0-0.7);
+  return 2.0;
+}
+
+function getCircSection(){
+  const D=+V('cd'),fck=+V('cfck'),cov=+V('ccov'),lnk=+V('clink'),nb=+V('cnb'),db=+V('cdb');
+  const R=D/2, Rbar=R-cov-lnk-db/2, Ab=barArea(db), fc=fcd(fck);
+  const bars=[];
+  for(let i=0;i<nb;i++){
+    const ang=(2*Math.PI*i)/nb;
+    bars.push({d:R-Rbar*Math.cos(ang),A:Ab});
+  }
+  const As=nb*Ab, Ac=Math.PI*R*R;
+  const d_tens=R+Rbar, xbal=d_tens/(1+EY/ECU), xT=D/0.8;
+  const {pts}=buildPts(x=>circPt(x,R,bars,fc), circN0(R,bars,fc), circPt(0,R,bars,fc).N, D);
+  tagNearest(pts,xbal,'Balanced (εs=εy)',xT);
+  tagNearest(pts,d_tens,'x = d_bottom (εs=0)',xT);
+  const Mmax=Math.max(...pts.map(p=>p.M));
+  const balPt=pts.find(p=>p.label&&p.label.startsWith('Balanced'))||pts.reduce((a,b)=>b.M>a.M?b:a);
+  return {
+    pts, type:'circ',
+    key:{N0:circN0(R,bars,fc)/1e3,Nt:circPt(0,R,bars,fc).N/1e3,Nbal:balPt.N,Mbal:balPt.M,Mmax,xbal},
+    props:{D,R,Rbar,fck,fc,As,Ac,rho:As/Ac*100,bars,d_eff:d_tens,d_comp:R-Rbar,i_gyr:R/2},
+    label:`Ø${D} C${fck} (${nb}T)`
+  };
+}
+
+function V(id){ return document.getElementById(id).value; }
+
+// ════════════════════════════════════════════════════════════
+// EFFECTIVE LENGTH (Mosley Eq 9.2/9.3 = EC2 §5.8.3.2)
+// k = (I/l)_col / (2 × Σ(I/l)_beam) at each end
+// Presets: Fixed k=0.1, Partial k=1.0, Pin k=10
+// Braced: l0 = 0.5l √[(1+k1/(0.45+k1))(1+k2/(0.45+k2))]
+// Unbraced: l0 = l × max{√[1+10k1k2/(k1+k2)], (1+k1/(1+k1))(1+k2/(1+k2))}
+// ════════════════════════════════════════════════════════════
+function effectiveLength(l, braced, k1, k2){
+  if(braced){
+    return 0.5*l*Math.sqrt((1+k1/(0.45+k1))*(1+k2/(0.45+k2)));
+  } else {
+    const a=Math.sqrt(1+10*k1*k2/(k1+k2));
+    const b=(1+k1/(1+k1))*(1+k2/(1+k2));
+    return l*Math.max(a,b);
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// SLENDERNESS CHECK & DESIGN MOMENTS
+// EC2 §5.2, §5.8.3.1, §5.8.8  PD 6687 §2.10
+// Lecture 7 — Concrete Centre webinar (Autumn 2017)
+// ════════════════════════════════════════════════════════════
+function slendernessAndMoments(sec, NEd_kN, Mtop_kNm, Mbot_kNm, l_mm, braced, k1, k2, phief){
+  const {fc, fck, As, Ac, d_eff, i_gyr} = sec.props;
+  const h_or_D = sec.type==='rect' ? sec.props.h : sec.props.D;
+
+  // ── 1. Effective length  EC2 §5.8.3.2
+  const l0 = effectiveLength(l_mm, braced, k1, k2);
+
+  // ── 2. Slenderness  λ = l0/i   (i = h/√12 rect, D/4 circ)
+  const lambda = l0 / i_gyr;
+
+  // ── 3. Axial load parameters
+  const NEd_N = NEd_kN * 1000;
+  const n     = NEd_N / (Ac * fc);          // n = NEd/(Ac·fcd)
+  const omega = As * FYD / (Ac * fc);       // ω = As·fyd/(Ac·fcd)
+
+  // ── 4. Geometric imperfection  EC2 §5.2(7)
+  const ei_mm  = l0 / 400;
+  const eiNEd  = NEd_kN * ei_mm / 1000;  // kNm
+
+  // ── 5. M01 and M02 including imperfections  (PD 6687 / Tedds / EC2 §5.8.8.2)
+  // M02 = max(|Mtop|, |Mbot|) + eiNEd   — always positive
+  // M01 = min(|Mtop|, |Mbot|) + eiNEd   — always positive (unsigned magnitude)
+  // Single curvature (same signs) → rm = +M01/M02
+  // Double curvature (opposite signs) → rm = −M01/M02
+  // This matches EC2 Table 5.1 / PD6687 §2.10 and gives rm=−1 for equal double-curvature.
+  const sameSign    = (Math.sign(Mtop_kNm) === Math.sign(Mbot_kNm)) || Mtop_kNm === 0 || Mbot_kNm === 0;
+  const M02         = Math.max(Math.abs(Mtop_kNm), Math.abs(Mbot_kNm)) + eiNEd;
+  const M01_abs     = Math.min(Math.abs(Mtop_kNm), Math.abs(Mbot_kNm)) + eiNEd;
+  const M01         = sameSign ? +M01_abs : -M01_abs;  // signed for M0e/design calc
+
+  // ── 6. Slenderness limit  λlim = 20·A·B·C/√n  (EC2 §5.8.3.1)
+  // rm = M01/M02 : negative for double curvature → C > 1.7 → larger λlim (favourable)
+  const rm      = (M02 > 0) ? M01/M02 : 0;
+  const A_coeff = 1 / (1 + 0.2*phief);     // default A = 0.7 if φef unknown
+  const B_coeff = Math.sqrt(1 + 2*omega);  // default B = 1.1 if ω unknown
+  const C_coeff = 1.7 - rm;               // C = 1.7−rm ; −ve rm → C > 1.7
+  const lambda_lim = 20 * A_coeff * B_coeff * C_coeff / Math.sqrt(Math.max(0.01, n));
+  const isSlender  = lambda > lambda_lim;
+
+  // ── 7. Minimum eccentricity  e0 = max(h/30, 20mm)  EC2 Cl 6.1(4)
+  const e0_mm  = Math.max(h_or_D / 30, 20);      // mm
+  const M_emin = NEd_kN * e0_mm / 1000;          // kNm
+
+  // ── 8. Equivalent first-order moment at mid-height  (EC2 §5.8.8.2)
+  // M0e = max(0.6·M02 + 0.4·M01 , 0.4·M02)
+  const M0e = Math.max(0.6*M02 + 0.4*M01, 0.4*M02);
+
+  // ── 9. Nominal curvature — second-order moment M2  (EC2 §5.8.8.3)
+  // M2 = NEd·e2    e2 = (1/r)·l0²/c   1/r = Kr·Kφ·(1/r0)   c = π² ≈ 10
+  let Kr=1, Kphi=1, e2=0, M2=0, inv_r0=0;
+
+  if(isSlender){
+    const eyd  = FYD / ES;                     // εyd = fyd/Es ≈ 0.00217
+    inv_r0 = eyd / (0.45 * d_eff);            // 1/r0 [mm⁻¹]
+
+    // Kr = (nu − n) / (nu − nbal) ≤ 1   (EC2 §5.8.8.3 Eq 5.46)
+    const nu   = 1 + omega;                    // nu = 1 + ω
+    const nbal = 0.4;                          // nbal (EC2 §5.8.8.3)
+    Kr = Math.min(1.0, Math.max(0, (nu - n) / (nu - nbal)));
+
+    // Kφ = 1 + β·φef ≥ 1    β = 0.35 + fck/200 − λ/150
+    const beta = 0.35 + fck/200 - lambda/150;
+    Kphi = Math.max(1.0, 1 + beta*phief);
+
+    e2 = Kr * Kphi * inv_r0 * l0*l0 / 10;   // mm
+    M2 = NEd_kN * e2 / 1000;                 // kNm
+  }
+
+  // ── 10. Design moment  MEd  (PD 6687 §2.10 / EC2 §5.8.8.2)
+  // MEd = max{ M02 ; M0e + M2 ; |M01| + 0.5·M2 ; e0·NEd }
+  const cand = {
+    'M02':              M02,
+    'M0e + M2':         M0e + M2,
+    '|M01| + 0.5·M2':  Math.abs(M01) + 0.5*M2,
+    'e₀·NEd (min)':    M_emin
+  };
+  const MEd      = Math.max(...Object.values(cand));
+  const governing = Object.keys(cand).find(k => Math.abs(cand[k] - MEd) < 0.001);
+
+  return {
+    l0, lambda, lambda_lim, isSlender,
+    n, omega, nu:1+omega, nbal:0.4,
+    ei_mm, eiNEd, M01, M01_abs, M02, M0e, rm, sameSign,
+    A_coeff, B_coeff, C_coeff,
+    e0_mm, M_emin,
+    Kr, Kphi, e2, M2, inv_r0,
+    cand, MEd, governing
+  };
+}
+
+// Generic crushing load for any section type
+function rectN0_gen(sec){
+  if(sec.type === 'rect'){
+    return rectN0(sec.props.b, sec.props.h, sec.props.layers, sec.props.fc);
+  } else {
+    return circN0(sec.props.R, sec.props.bars, sec.props.fc);
+  }
+}
+
+// M capacity interpolation (find max M on envelope at given N level)
+function getMcap(NEd_kN, pts){
+  const sorted=[...pts].filter(p=>isFinite(p.N)&&isFinite(p.M)).sort((a,b)=>a.N-b.N);
+  let Mcap=0;
+  for(let i=0;i<sorted.length-1;i++){
+    const p1=sorted[i], p2=sorted[i+1];
+    if(NEd_kN>=Math.min(p1.N,p2.N) && NEd_kN<=Math.max(p1.N,p2.N)){
+      const t=(NEd_kN-p1.N)/(p2.N-p1.N);
+      Mcap=Math.max(Mcap, p1.M+t*(p2.M-p1.M));
+    }
+  }
+  return Mcap;
+}
+
+// ════════════════════════════════════════════════════════════
+// CHART
+// ════════════════════════════════════════════════════════════
+let chart=null, nSeries=0, isBraced=true;
+const PAL=['#4fffb0','#3dd6f5','#ffb347','#ff6b6b','#c084fc','#fb923c'];
+
+function initChart(){
+  chart=new Chart(document.getElementById('mnc').getContext('2d'),{
+    type:'scatter', data:{datasets:[]},
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:{duration:300},
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          backgroundColor:'#16181c',borderColor:'#2a2d35',borderWidth:1,
+          titleColor:'#4fffb0',bodyColor:'#e8eaf0',
+          titleFont:{family:'IBM Plex Mono',size:11},bodyFont:{family:'IBM Plex Mono',size:11},
+          callbacks:{label:c=>{
+            const p=c.raw;
+            const lab=p.lbl?`[${p.lbl}]  `:'';
+            return `${lab}M = ${(+c.parsed.x).toFixed(1)} kN·m   N = ${(+c.parsed.y).toFixed(0)} kN`;
+          }}
+        }
+      },
+      scales:{
+        x:{type:'linear',min:0,
+          title:{display:true,text:'M  (kN·m)',color:'#6b7280',font:{family:'IBM Plex Mono',size:11}},
+          grid:{color:'#1e2128'},ticks:{color:'#6b7280',font:{family:'IBM Plex Mono',size:10}}},
+        y:{
+          title:{display:true,text:'N  (kN)   compression +ve',color:'#6b7280',font:{family:'IBM Plex Mono',size:11}},
+          grid:{color:'#1e2128'},ticks:{color:'#6b7280',font:{family:'IBM Plex Mono',size:10}}}
+      }
+    }
+  });
+}
+
+function addSeries(pts, col, lbl){
+  chart.data.datasets.push({
+    label:lbl, _isMN:true,
+    data:[...pts].sort((a,b)=>a.N-b.N).map(p=>({x:p.M,y:p.N,lbl:p.label})),
+    borderColor:col, pointBackgroundColor:col+'88', pointBorderColor:col,
+    pointRadius:2, pointHoverRadius:5,
+    showLine:true, tension:0.25, fill:false, borderWidth:2
+  });
+  chart.update();
+}
+
+function plotDesignPoint(NEd_kN, MEd_kNm, isSlender, pass){
+  chart.data.datasets=chart.data.datasets.filter(d=>!d._isDPt);
+  const col=pass?'#4fffb0':'#ff6b6b';
+  chart.data.datasets.push({
+    _isDPt:true, label:'Design point',
+    data:[{x:MEd_kNm, y:NEd_kN, lbl:'Design point'}],
+    backgroundColor:col, borderColor:col,
+    pointRadius:8, pointStyle:'crossRot', showLine:false
+  });
+  chart.update();
+}
+
+function clearAll(){
+  chart.data.datasets=[]; chart.update(); nSeries=0;
+  document.getElementById('legend').innerHTML='';
+  document.getElementById('slenSection').style.display='none';
+  document.getElementById('slenSectionYY').style.display='none';
+  document.getElementById('biaxSection').style.display='none';
+  document.getElementById('fireSection').style.display='none';
+  document.getElementById('tblBlock').style.display='none';
+  document.getElementById('propBox').style.display='none';
+  ['kN0','kNt','kNb','kMb','kMx','krho'].forEach(id=>document.getElementById(id).textContent='—');
+}
+
+// ════════════════════════════════════════════════════════════
+// RESULTS DISPLAY
+// ════════════════════════════════════════════════════════════
+function showCapacity(key, props, isRect){
+  document.getElementById('kN0').textContent=key.N0.toFixed(0);
+  document.getElementById('kNt').textContent=key.Nt.toFixed(0);
+  document.getElementById('kNb').textContent=key.Nbal.toFixed(0);
+  document.getElementById('kMb').textContent=key.Mbal.toFixed(1);
+  document.getElementById('kMx').textContent=key.Mmax.toFixed(1);
+  document.getElementById('krho').textContent=props.rho.toFixed(2);
+  let txt='';
+  if(isRect){
+    txt=`b = <span class="v">${props.b}</span> mm   h = <span class="v">${props.h}</span> mm\n`
+       +`fck = <span class="v">${props.fck}</span>   fcd = <span class="a">${props.fc.toFixed(2)}</span> MPa\n`
+       +`fyd = <span class="a">${FYD.toFixed(0)}</span> MPa  (fyk=500, γs=1.15)\n`
+       +`As = <span class="v">${props.As.toFixed(0)}</span> mm²  Ac = <span class="v">${(props.Ac/1e4).toFixed(1)}</span> cm²\n`
+       +`xbal = <span class="a">${key.xbal.toFixed(0)}</span> mm  i = <span class="a">${props.i_gyr.toFixed(1)}</span> mm`;
+  } else {
+    txt=`D = <span class="v">${props.D}</span> mm   R = <span class="v">${props.R}</span> mm\n`
+       +`fck = <span class="v">${props.fck}</span>   fcd = <span class="a">${props.fc.toFixed(2)}</span> MPa\n`
+       +`fyd = <span class="a">${FYD.toFixed(0)}</span> MPa\n`
+       +`As = <span class="v">${props.As.toFixed(0)}</span> mm²   ρ = <span class="a">${props.rho.toFixed(2)}</span>%\n`
+       +`xbal = <span class="a">${key.xbal.toFixed(0)}</span> mm  i = <span class="a">${props.i_gyr.toFixed(1)}</span> mm`;
+  }
+  document.getElementById('propTxt').innerHTML=txt;
+  document.getElementById('propBox').style.display='block';
+}
+
+function row(label, val, cls=''){
+  return `<div class="slen-row ${cls}"><span class="sl">${label}</span><span class="sv">${val}</span></div>`;
+}
+
+function showSlenderness(r, NEd, MEd, pass, i_gyr,
+  idEff, idBadge, idMom, idDesign, idPass, idSection){
+  // ── Slenderness block
+  const isYY = (idEff === 'slenEffYY');
+  const Mtop_disp = isYY ? (+V('mtopy')).toFixed(1) : (+V('mtop')).toFixed(1);
+  const Mbot_disp = isYY ? (+V('mboty')).toFixed(1) : (+V('mbot')).toFixed(1);
+  const axis = isYY ? 'Y–Y' : 'X–X';
+  const k1_disp = isYY ? (+V('ktopy')).toFixed(2) : (+V('ktop')).toFixed(2);
+  const k2_disp = isYY ? (+V('kboty')).toFixed(2) : (+V('kbot')).toFixed(2);
+
+  document.getElementById(idEff).innerHTML =
+    row(`Clear height l`, `${(+V('clen')).toFixed(0)} mm`)+
+    row('End conditions k₁ / k₂', `${k1_disp} / ${k2_disp}`)+
+    row('Effective length l₀', `${r.l0.toFixed(0)} mm`)+
+    row(`Radius of gyration i (${axis})`, `${i_gyr.toFixed(1)} mm`)+
+    row('Slenderness λ = l₀/i', `${r.lambda.toFixed(1)}`,'hi')+
+    row('n = NEd/(Ac·fcd)', `${r.n.toFixed(3)}`)+
+    row('ω = As·fyd/(Ac·fcd)', `${r.omega.toFixed(3)}`)+
+    row('rm = M01/M02', `${r.rm.toFixed(3)}`)+
+    row('A = 1/(1+0.2φef)', `${r.A_coeff.toFixed(3)}`)+
+    row('B = √(1+2ω)', `${r.B_coeff.toFixed(3)}`)+
+    row('C = 1.7 − rm', `${r.C_coeff.toFixed(3)}`)+
+    row('λlim = 20·A·B·C/√n', `${r.lambda_lim.toFixed(1)}`,'hi');
+
+  document.getElementById(idBadge).className=`badge ${r.isSlender?'slender':'short'}`;
+  document.getElementById(idBadge).textContent=r.isSlender
+    ?`SLENDER — λ=${r.lambda.toFixed(1)} > λlim=${r.lambda_lim.toFixed(1)} — 2nd order required`
+    :`SHORT — λ=${r.lambda.toFixed(1)} ≤ λlim=${r.lambda_lim.toFixed(1)} — 2nd order negligible`;
+
+  // ── First-order moments block
+  let momHtml =
+    row(`Mtop ${axis} (frame analysis)`, `${Mtop_disp} kNm`)+
+    row(`Mbot ${axis} (frame analysis)`, `${Mbot_disp} kNm`)+
+    row('ei = l₀/400', `${r.ei_mm.toFixed(1)} mm`)+
+    row('eiNEd (imperfection moment)', `${r.eiNEd.toFixed(1)} kNm`)+
+    row('M02 = max(|Mtop|,|Mbot|) + eiNEd', `${r.M02.toFixed(1)} kNm`, 'hi')+
+    row(`M01 = min(|Mtop|,|Mbot|) + eiNEd ${r.sameSign?'(single curv.)':'(double curv., −ve)'}`, `${r.M01.toFixed(1)} kNm`)+
+    row('M0e = max(0.6M02+0.4M01, 0.4M02)', `${r.M0e.toFixed(1)} kNm`)+
+    row('e₀ = max(h/30, 20mm)', `${r.e0_mm.toFixed(1)} mm`)+
+    row('e₀·NEd (minimum moment)', `${r.M_emin.toFixed(1)} kNm`);
+
+  if(r.isSlender){
+    momHtml +=
+      row('1/r₀ = εyd/(0.45d)', `${(r.inv_r0*1e6).toFixed(3)} ×10⁻⁶ mm⁻¹`)+
+      row('nu = 1 + ω', `${r.nu.toFixed(3)}`)+
+      row('nbal = 0.4', `0.400`)+
+      row('Kr = (nu−n)/(nu−nbal)', `${r.Kr.toFixed(3)}`,'hot')+
+      row('Kφ = max(1, 1+β·φef)', `${r.Kphi.toFixed(3)}`,'hot')+
+      row('e₂ = Kr·Kφ·(1/r₀)·l₀²/10', `${r.e2.toFixed(1)} mm`,'hot')+
+      row('M2 = NEd·e₂', `${r.M2.toFixed(1)} kNm`,'hot');
+  } else {
+    momHtml += row('M2 (2nd order)', `0 kNm — column is short`);
+  }
+
+  momHtml += `<div style="margin-top:8px;font-size:9px;font-family:var(--mono);color:var(--mut);letter-spacing:1px;text-transform:uppercase;padding-top:6px;border-top:1px solid var(--bdr)">MEd = max of:</div>`;
+  Object.entries(r.cand).forEach(([k,v])=>{
+    const isGov = Math.abs(v - r.MEd) < 0.001;
+    momHtml += row(k, `${v.toFixed(1)} kNm`, isGov?'grn':'');
+  });
+
+  document.getElementById(idMom).innerHTML=momHtml;
+
+  document.getElementById(idDesign).style.cssText='background:rgba(61,214,245,0.12);border:1px solid #3dd6f5;color:#3dd6f5';
+  document.getElementById(idDesign).className='badge';
+  document.getElementById(idDesign).textContent=`MEd (${axis}) = ${r.MEd.toFixed(1)} kNm  (governs: ${r.governing})`;
+
+  document.getElementById(idPass).className=`badge ${pass?'pass':'fail'}`;
+  document.getElementById(idPass).textContent=pass
+    ?`✓ ${axis} PASS — design point inside M–N envelope`
+    :`✗ ${axis} FAIL — design point outside M–N envelope`;
+
+  document.getElementById(idSection).style.display='block';
+}
+
+function showTable(pts){
+  const tbl=document.getElementById('tbl'); tbl.innerHTML='';
+  pts.filter(p=>p.label).forEach(p=>{
+    const tr=document.createElement('tr');
+    const isBal=p.label.startsWith('Balanced');
+    const isEnd=p.label==='Pure compression'||p.label==='Pure tension';
+    tr.className=isEnd?'kr':isBal?'bal':'';
+    tr.innerHTML=`<td>${p.label}</td><td>${isFinite(p.x)?p.x.toFixed(0):'∞'}</td><td>${p.N.toFixed(0)}</td><td>${p.M.toFixed(1)}</td>`;
+    tbl.appendChild(tr);
+  });
+  document.getElementById('tblBlock').style.display='block';
+}
+
+// ════════════════════════════════════════════════════════════
+// MAIN ACTIONS
+// ════════════════════════════════════════════════════════════
+function calculate(){
+  const isRect=currentTab==='rect';
+  const sec=isRect?getRectSection():getCircSection();
+  const {rho}=sec.props;
+  if(rho<0.2||rho>8){
+    if(!confirm(`ρ = ${rho.toFixed(2)}% is ${rho<0.2?'below EC2 minimum 0.2%':'above EC2 maximum 8%'}. Continue?`)) return;
+  }
+  const col=PAL[nSeries%PAL.length]; nSeries++;
+  addSeries(sec.pts, col, sec.label);
+  showCapacity(sec.key, sec.props, isRect);
+  showTable(sec.pts);
+  const leg=document.createElement('div'); leg.className='leg-item';
+  leg.innerHTML=`<div class="leg-dot" style="background:${col}"></div><span>${sec.label}</span>`;
+  document.getElementById('legend').appendChild(leg);
+}
+
+function checkDesign(){
+  const isRect = currentTab==='rect';
+  const sec    = isRect ? getRectSection() : getCircSection();
+  const NEd    = +V('ned');
+  const Mtop   = +V('mtop'),  Mbot  = +V('mbot');
+  const MtopY  = +V('mtopy'), MbotY = +V('mboty');
+  const l=+V('clen'), phief=+V('phief');
+  const k1xx=Math.max(0.1,+V('ktop')),  k2xx=Math.max(0.1,+V('kbot'));
+  const k1yy=Math.max(0.1,+V('ktopy')), k2yy=Math.max(0.1,+V('kboty'));
+  const biaxial = (MtopY !== 0 || MbotY !== 0);
+
+  if(NEd <= 0){ alert('NEd must be positive.'); return; }
+
+  // ── Always show / refresh the X–X M-N diagram
+  chart.data.datasets = chart.data.datasets.filter(d=>d._isDPt);  // keep design point, redo curves
+  nSeries = 0;
+  document.getElementById('legend').innerHTML = '';
+
+  // X–X curve
+  const colXX = PAL[nSeries%PAL.length]; nSeries++;
+  addSeries(sec.pts, colXX, sec.label + ' X–X');
+  showCapacity(sec.key, sec.props, isRect);
+  showTable(sec.pts);
+  let leg = document.createElement('div'); leg.className='leg-item';
+  leg.innerHTML = `<div class="leg-dot" style="background:${colXX}"></div><span>${sec.label} X–X</span>`;
+  document.getElementById('legend').appendChild(leg);
+
+  // ── Y–Y M-N diagram (rectangular only; circular is same as X–X)
+  let secYY = isRect ? getRectSectionYY() : sec;
+  if(biaxial || isRect){
+    const colYY = PAL[nSeries%PAL.length]; nSeries++;
+    addSeries(secYY.pts, colYY, secYY.label + ' Y–Y');
+    leg = document.createElement('div'); leg.className='leg-item';
+    leg.innerHTML = `<div class="leg-dot" style="background:${colYY}"></div><span>${secYY.label} Y–Y</span>`;
+    document.getElementById('legend').appendChild(leg);
+  }
+
+  // ── X–X slenderness & design moment
+  const rx = slendernessAndMoments(sec,   NEd, Mtop,  Mbot,  l, isBraced, k1xx, k2xx, phief);
+  const McapXX = getMcap(NEd, sec.pts);
+  const passXX = rx.MEd <= McapXX;
+
+  // ── Y–Y slenderness & design moment
+  const ry = slendernessAndMoments(secYY, NEd, MtopY, MbotY, l, isBraced, k1yy, k2yy, phief);
+  const McapYY = getMcap(NEd, secYY.pts);
+  const passYY = ry.MEd <= McapYY;
+
+  // ── Plot design points
+  chart.data.datasets = chart.data.datasets.filter(d=>!d._isDPt);
+  // X–X point (on the X–X curve: x=MEd_xx, y=NEd)
+  chart.data.datasets.push({
+    _isDPt:true, label:'Design pt X–X',
+    data:[{x:rx.MEd, y:NEd, lbl:'NEd/MEd X–X'}],
+    backgroundColor: passXX?'#4fffb0':'#ff6b6b',
+    borderColor:     passXX?'#4fffb0':'#ff6b6b',
+    pointRadius:9, pointStyle:'crossRot', showLine:false
+  });
+  if(biaxial){
+    chart.data.datasets.push({
+      _isDPt:true, label:'Design pt Y–Y',
+      data:[{x:ry.MEd, y:NEd, lbl:'NEd/MEd Y–Y'}],
+      backgroundColor: passYY?'#ffb347':'#ff6b6b',
+      borderColor:     passYY?'#ffb347':'#ff6b6b',
+      pointRadius:9, pointStyle:'crossRot', showLine:false
+    });
+  }
+  chart.update();
+
+  // ── Display X–X results
+  showSlenderness(rx, NEd, rx.MEd, passXX, sec.props.i_gyr,
+    'slenEff','slenBadge','slenMom','designBadge','passBadge','slenSection');
+
+  // ── Display Y–Y results
+  if(biaxial){
+    showSlenderness(ry, NEd, ry.MEd, passYY, secYY.props.i_gyr,
+      'slenEffYY','slenBadgeYY','slenMomYY','designBadgeYY','passBadgeYY','slenSectionYY');
+  } else {
+    document.getElementById('slenSectionYY').style.display='none';
+  }
+
+  // ── Biaxial check (EC2 §5.8.9)
+  if(biaxial){
+    const fck  = sec.props.fck;
+    const As   = sec.props.As;
+    const Ac   = sec.props.Ac;
+    const fc   = sec.props.fc;
+    const NRd  = fc*Ac + FYD*As;                     // N
+    const ratio= (NEd*1000) / NRd;
+    const a    = biaxialA(ratio);
+    const MRdz = McapXX;  // capacity from X–X diagram at NEd  (kNm)
+    const MRdy = McapYY;  // capacity from Y–Y diagram at NEd  (kNm)
+    const MEz  = rx.MEd;
+    const MEy  = ry.MEd;
+    const util = Math.pow(MEz/MRdz, a) + Math.pow(MEy/MRdy, a);
+    const passBiax = util <= 1.0;
+
+    document.getElementById('biaxBlock').innerHTML =
+      row('NRd = Ac·fcd + As·fyd', `${(NRd/1000).toFixed(0)} kN`)+
+      row('NEd/NRd', `${ratio.toFixed(3)}`)+
+      row('Exponent a (interpolated)', `${a.toFixed(2)}`)+
+      row('MRdz — X–X capacity at NEd', `${MRdz.toFixed(1)} kNm`)+
+      row('MRdy — Y–Y capacity at NEd', `${MRdy.toFixed(1)} kNm`)+
+      row('MEdz — design moment X–X', `${MEz.toFixed(1)} kNm`)+
+      row('MEdy — design moment Y–Y', `${MEy.toFixed(1)} kNm`)+
+      row('(MEdz/MRdz)ᵃ + (MEdy/MRdy)ᵃ', `${util.toFixed(3)}`,'hi');
+
+    document.getElementById('biaxBadge').className=`badge ${passBiax?'pass':'fail'}`;
+    document.getElementById('biaxBadge').textContent=passBiax
+      ?`✓ BIAXIAL PASS — utilisation ${(util*100).toFixed(1)}%`
+      :`✗ BIAXIAL FAIL — utilisation ${(util*100).toFixed(1)}%  (> 100%)`;
+    document.getElementById('biaxSection').style.display='block';
+  } else {
+    document.getElementById('biaxSection').style.display='none';
+  }
+
+  // ── Fire resistance — Method A (BS EN 1992-1-2 §5.3.2(4))
+  const mufi      = Math.max(0.1, Math.min(1.0, +V('mufi') || 0.7));
+  const storey_m  = (+V('clen')) / 1000;
+  const fr = computeFireResistance(sec, mufi, storey_m);
+  showFireResults(fr);
+
+  // ── Store for report
+  window.lastCalc = {
+    sec, secYY, isRect, NEd, Mtop, Mbot, MtopY, MbotY,
+    rx, ry, biaxial, McapXX, McapYY, passXX, passYY,
+    fr, mufi, storey_m, k1xx, k2xx, k1yy, k2yy, phief, l
+  };
+}
+
+// ════════════════════════════════════════════════════════════
+// BRACED TOGGLE
+// ════════════════════════════════════════════════════════════
+function setBraced(val){
+  isBraced=val;
+  const btns=document.getElementById('togBrace').querySelectorAll('button');
+  btns[0].classList.toggle('on',val);
+  btns[1].classList.toggle('on',!val);
+}
+
+// ════════════════════════════════════════════════════════════
+// SECTION VISUALISER
+// ════════════════════════════════════════════════════════════
+let currentTab='rect';
+function setTab(tab){
+  currentTab=tab;
+  document.querySelectorAll('.sf').forEach(f=>f.classList.remove('on'));
+  document.getElementById('f-'+tab).classList.add('on');
+  document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('on'));
+  document.getElementById('t-'+tab).classList.add('on');
+  drawViz();
+}
+function drawViz(){ currentTab==='rect'?drawRect():drawCirc(); }
+
+function drawRect(){
+  const cv=document.getElementById('vr'), ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,200,180);
+  const b=+V('rb')||300, h=+V('rh')||400, cov=+V('rcov')||35, lnk=+V('rlink')||8;
+  const dX=+V('rdx')||20, dY=+V('rdy')||16, nX=+V('rnx')||3, nY=+V('rny')||4;
+  const sc=Math.min(170/b,160/h), W=b*sc, H=h*sc;
+  const ox=(200-W)/2, oy=(180-H)/2;
+  ctx.fillStyle='#1e2128'; ctx.fillRect(ox,oy,W,H);
+  ctx.strokeStyle='#4fffb0'; ctx.lineWidth=1.5; ctx.strokeRect(ox,oy,W,H);
+  ctx.strokeStyle='#3dd6f5'; ctx.lineWidth=0.5; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(ox-6,oy+H/2); ctx.lineTo(ox+W+6,oy+H/2); ctx.stroke();
+  ctx.setLineDash([]); ctx.fillStyle='#3dd6f5'; ctx.font='8px monospace'; ctx.fillText('X–X',ox+W+3,oy+H/2+3);
+  const dcX=(cov+lnk+dX/2)*sc, dcY=(cov+lnk+dY/2)*sc, nY_int=Math.max(0,nY-2);
+  function dot(x,y,r,c){ctx.beginPath();ctx.arc(x,y,r,0,2*Math.PI);ctx.fillStyle=c;ctx.fill();}
+  for(let i=0;i<nX;i++){
+    const px=nX>1?ox+dcX+i*(W-2*dcX)/(nX-1):ox+W/2;
+    dot(px,oy+dcX,Math.max(dX*sc/2,2.5),'#ff6b6b');
+    dot(px,oy+H-dcX,Math.max(dX*sc/2,2.5),'#ff6b6b');
+  }
+  for(let i=0;i<nY_int;i++){
+    const py=oy+dcY+(i+1)*(H-2*dcY)/(nY_int+1);
+    dot(ox+dcY,py,Math.max(dY*sc/2,2),'#ffb347');
+    dot(ox+W-dcY,py,Math.max(dY*sc/2,2),'#ffb347');
+  }
+}
+
+function drawCirc(){
+  const cv=document.getElementById('vc'), ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,200,180);
+  const D=+V('cd')||400, cov=+V('ccov')||35, lnk=+V('clink')||8, nb=+V('cnb')||8, db=+V('cdb')||20;
+  const R=80;
+  ctx.fillStyle='#1e2128'; ctx.beginPath(); ctx.arc(100,90,R,0,2*Math.PI); ctx.fill();
+  ctx.strokeStyle='#4fffb0'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(100,90,R,0,2*Math.PI); ctx.stroke();
+  ctx.strokeStyle='#3dd6f5'; ctx.lineWidth=0.5; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(100-R-6,90); ctx.lineTo(100+R+6,90); ctx.stroke();
+  ctx.setLineDash([]); ctx.fillStyle='#3dd6f5'; ctx.font='8px monospace'; ctx.fillText('X–X',100+R+3,93);
+  const Rb=R*(1-(cov+lnk+db/2)/(D/2));
+  for(let i=0;i<nb;i++){
+    const ang=(2*Math.PI*i)/nb;
+    ctx.beginPath(); ctx.arc(100+Rb*Math.sin(ang),90-Rb*Math.cos(ang),3.5,0,2*Math.PI);
+    ctx.fillStyle='#ff6b6b'; ctx.fill();
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// PRINT REPORT — KaTeX-rendered calculation sheet
+// ════════════════════════════════════════════════════════════
+function generateReport(){
+  if(!window.lastCalc){ alert('Run Check Design ↗ first.'); return; }
+  const C = window.lastCalc;
+  const { sec, secYY, isRect, NEd, Mtop, Mbot, MtopY, MbotY,
+          rx, ry, biaxial, McapXX, McapYY, passXX, passYY,
+          fr, mufi, storey_m, k1xx, k2xx, k1yy, k2yy, phief, l } = C;
+  const p  = sec.props;
+  const pY = secYY ? secYY.props : null;
+
+  // ── Grab section canvas image
+  const cvs = document.getElementById('vizCanvas');
+  drawViz();
+  const imgData = cvs ? cvs.toDataURL('image/png') : '';
+
+  // ── Helpers
+  const n2 = v => (+v).toFixed(2);
+  const n1 = v => (+v).toFixed(1);
+  const n0 = v => (+v).toFixed(0);
+  const pf = (pass) => pass
+    ? `<span class="pass">PASS ✓</span>`
+    : `<span class="fail">FAIL ✗</span>`;
+
+  // ── Calculation row: description | $latex = substituted = result$
+  const cr = (desc, tex, ref='') =>
+    `<tr><td class="cd">${desc}</td><td class="cm">\\(${tex}\\)</td><td class="cr">${ref}</td></tr>`;
+
+  // ── Section heading
+  const sh = (n, t) =>
+    `<tr class="sh"><td colspan="3"><span class="sn">${n}</span>${t}</td></tr>`;
+
+  // ── Pass/fail row
+  const pfRow = (desc, pass, detail='') =>
+    `<tr class="pfr"><td class="cd">${desc}</td><td class="cm" colspan="2">${pf(pass)} ${detail}</td></tr>`;
+
+  // ── Divider
+  const div = () => `<tr class="divr"><td colspan="3"></td></tr>`;
+
+  // Material / section values
+  const fck=p.fck, fcd_v=p.fc, fyd_v=FYD;
+  const Ac=p.Ac, As=p.As, rho=p.rho;
+  const b_v = isRect ? p.b : p.D;
+  const h_v = isRect ? p.h : p.D;
+  const omega_v = As*fyd_v/(Ac*fcd_v);
+
+  // ── Date
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+
+  // ═══════════════════════════════════════════════
+  // BUILD ROWS
+  // ═══════════════════════════════════════════════
+  let rows = '';
+
+  // ── 1. Section Properties
+  rows += sh('1', 'Section Properties');
+  if(isRect){
+    rows += cr('Section type', `\\text{Rectangular}\\quad b = ${n0(p.b)}\\,\\text{mm},\\quad h = ${n0(p.h)}\\,\\text{mm}`,'');
+  } else {
+    rows += cr('Section type', `\\text{Circular}\\quad D = ${n0(p.D)}\\,\\text{mm}`,'');
+  }
+  rows += cr('Concrete class',
+    `f_{ck} = ${n0(fck)}\\,\\text{MPa},\\quad f_{cd} = \\frac{\\alpha_{cc}\\,f_{ck}}{\\gamma_c} = \\frac{0.85 \\times ${n0(fck)}}{1.5} = ${n1(fcd_v)}\\,\\text{MPa}`,
+    '§3.1.6');
+  rows += cr('Reinforcement',
+    `f_{yk} = 500\\,\\text{MPa},\\quad f_{yd} = \\frac{f_{yk}}{\\gamma_s} = \\frac{500}{1.15} = ${n1(fyd_v)}\\,\\text{MPa}`,
+    '§3.2.7');
+  rows += cr('Gross cross-section area',
+    `A_c = ${n0(Ac)}\\,\\text{mm}^2`,
+    '');
+  rows += cr('Longitudinal reinforcement',
+    `A_s = ${n0(As)}\\,\\text{mm}^2,\\quad \\rho = \\frac{A_s}{A_c} = ${(rho).toFixed(2)}\\%`,
+    '§9.5.2');
+  rows += cr('Mechanical reinforcement ratio',
+    `\\omega = \\frac{A_s f_{yd}}{A_c f_{cd}} = \\frac{${n0(As)} \\times ${n1(fyd_v)}}{${n0(Ac)} \\times ${n1(fcd_v)}} = ${n2(omega_v)}`,
+    '');
+  rows += div();
+
+  // ── 2. Applied Loads
+  rows += sh('2', 'Applied Loads');
+  rows += cr('Design axial load',`N_{Ed} = ${n1(NEd)}\\,\\text{kN}`,'');
+  rows += cr('Moments about X–X',
+    `M_{top,x} = ${n1(Mtop)}\\,\\text{kNm},\\quad M_{bot,x} = ${n1(Mbot)}\\,\\text{kNm}`,'');
+  if(biaxial){
+    rows += cr('Moments about Y–Y',
+      `M_{top,y} = ${n1(MtopY)}\\,\\text{kNm},\\quad M_{bot,y} = ${n1(MbotY)}\\,\\text{kNm}`,'');
+  }
+  rows += div();
+
+  // ── helper: one axis of slenderness
+  function slendernessRows(r, axisLabel, k1, k2, isYY){
+    let s = '';
+    const h_ax = isYY ? (isRect?p.b:p.D) : (isRect?p.h:p.D);
+    s += sh(isYY?'4':'3', `Slenderness &amp; Design Moments — ${axisLabel}`);
+    s += cr('Column clear height', `l = ${n0(l)}\\,\\text{mm}`,'');
+    s += cr('End fixity factors', `k_1 = ${n2(k1)},\\quad k_2 = ${n2(k2)}`,'PD6687');
+    s += cr('Effective length (braced)',
+      `l_0 = 0.5\\,l\\sqrt{\\left(1+\\frac{k_1}{0.45+k_1}\\right)\\!\\left(1+\\frac{k_2}{0.45+k_2}\\right)} = ${n0(r.l0)}\\,\\text{mm}`,
+      '§5.8.3.2');
+    s += cr('Radius of gyration',
+      `i = \\frac{${isRect?(isYY?'b':'h'):'D'}}{\\sqrt{12}} = \\frac{${n0(h_ax)}}{\\sqrt{12}} = ${n1(r.i)}\\,\\text{mm}`,
+      '');
+    s += cr('Slenderness ratio',
+      `\\lambda = \\frac{l_0}{i} = \\frac{${n0(r.l0)}}{${n1(r.i)}} = ${n1(r.lambda)}`,
+      '§5.8.3.2');
+    s += cr('Geometric imperfection',
+      `e_i = \\frac{l_0}{400} = \\frac{${n0(r.l0)}}{400} = ${n1(r.ei)}\\,\\text{mm}`,
+      '§5.2(7)');
+    s += cr('Max end moment',
+      `M_{02} = \\max(|M_{top}|,|M_{bot}|)+e_i N_{Ed} = ${n1(r.M02)}\\,\\text{kNm}`,
+      '§6.1(4)');
+    s += cr('Min end moment',
+      `M_{01} = ${r.M01<0?'':'+'}{\\rm sign} \\cdot \\min(|M_{top}|,|M_{bot}|)+e_i N_{Ed} = ${n1(r.M01)}\\,\\text{kNm}\\quad [${r.M01<0?'\\text{double curv.}':'\\text{single curv.}'}]`,
+      '§5.8.8.2');
+    s += cr('Moment ratio',
+      `r_m = \\frac{M_{01}}{M_{02}} = \\frac{${n2(r.M01)}}{${n2(r.M02)}} = ${n2(r.rm)}`,
+      '');
+    s += cr('Factor A',
+      `A = \\frac{1}{1+0.2\\,\\varphi_{ef}} = \\frac{1}{1+0.2\\times${n2(phief)}} = ${n2(r.A)}`,
+      '§5.8.3.1');
+    s += cr('Factor B',
+      `B = \\sqrt{1+2\\omega} = \\sqrt{1+2\\times${n2(omega_v)}} = ${n2(r.B)}`,
+      '§5.8.3.1');
+    s += cr('Factor C',
+      `C = 1.7 - r_m = 1.7 - (${n2(r.rm)}) = ${n2(r.C)}`,
+      '§5.8.3.1');
+    s += cr('Relative axial force',
+      `n = \\frac{N_{Ed}}{A_c\\,f_{cd}} = \\frac{${n0(NEd*1000)}}{${n0(Ac)}\\times${n1(fcd_v)}} = ${n2(r.n_rel)}`,
+      '');
+    s += cr('Slenderness limit',
+      `\\lambda_{lim} = \\frac{20\\,A\\,B\\,C}{\\sqrt{n}} = \\frac{20\\times${n2(r.A)}\\times${n2(r.B)}\\times${n2(r.C)}}{\\sqrt{${n2(r.n_rel)}}} = ${n1(r.lambda_lim)}`,
+      '§5.8.3.1');
+    const slenderLabel = r.lambda <= r.lambda_lim ? `\\lambda=${n1(r.lambda)} \\leq \\lambda_{lim}=${n1(r.lambda_lim)}\\,\\Rightarrow\\,\\text{2nd order effects may be ignored}` : `\\lambda=${n1(r.lambda)} > \\lambda_{lim}=${n1(r.lambda_lim)}\\,\\Rightarrow\\,\\text{2nd order effects included}`;
+    s += pfRow(`Slenderness check (${axisLabel})`, r.lambda<=r.lambda_lim, `\\(${slenderLabel}\\)`);
+    // Design moment
+    s += cr('Equivalent first-order moment',
+      `M_{0e} = \\max(0.6\\,M_{02}+0.4\\,M_{01},\\;0.4\\,M_{02}) = ${n1(r.M0e)}\\,\\text{kNm}`,
+      '§5.8.8.2');
+    if(r.M2 > 0.001){
+      s += cr('Curvature factor K_r',
+        `K_r = \\frac{n_u - n}{n_u - n_{bal}} = \\frac{(1+\\omega)-${n2(r.n_rel)}}{(1+\\omega)-0.4} = ${n2(r.Kr)}`,
+        '§5.8.8.3');
+      s += cr('Creep factor K_φ',
+        `K_\\varphi = \\max\\!\\left(1,\\,1+\\beta\\,\\varphi_{ef}\\right) = ${n2(r.Kphi)}\\quad \\beta=0.35+\\tfrac{f_{ck}}{200}-\\tfrac{\\lambda}{150}`,
+        '§5.8.8.3');
+      s += cr('Nominal curvature',
+        `\\tfrac{1}{r} = K_r K_\\varphi \\,\\tfrac{\\varepsilon_{yd}}{0.45\\,d_{eff}} = ${(r.curv*1e6).toFixed(4)}\\times10^{-6}\\,\\text{mm}^{-1}`,
+        '§5.8.8.3');
+      s += cr('2nd-order eccentricity',
+        `e_2 = \\frac{1}{r}\\cdot\\frac{l_0^2}{10} = ${n1(r.e2)}\\,\\text{mm},\\quad M_2 = N_{Ed}\\,e_2 = ${n1(r.M2)}\\,\\text{kNm}`,
+        '§5.8.8.2');
+    }
+    s += cr('Governing design moment',
+      `M_{Ed} = \\max\\!\\left\\{M_{02};\\;M_{0e}+M_2;\\;|M_{01}|+0.5M_2;\\;e_0 N_{Ed}\\right\\} = ${n1(r.MEd)}\\,\\text{kNm}`,
+      '§5.8.8.2');
+    s += div();
+    return s;
+  }
+
+  rows += slendernessRows(rx, 'X–X', k1xx, k2xx, false);
+  if(biaxial) rows += slendernessRows(ry, 'Y–Y', k1yy, k2yy, true);
+
+  // ── M-N Capacity check
+  rows += sh(biaxial?'5':'4', 'M–N Interaction — Capacity Check');
+  rows += cr('Section moment capacity at N_{Ed} (X–X)',
+    `M_{Rd,xx}(N_{Ed}=${n1(NEd)}\\,\\text{kN}) = ${n1(McapXX)}\\,\\text{kNm}`, '');
+  rows += cr('Design moment (X–X)',
+    `M_{Ed,xx} = ${n1(rx.MEd)}\\,\\text{kNm}`, '');
+  rows += pfRow(`M–N check (X–X)`, passXX,
+    `\\(M_{Ed}=${n1(rx.MEd)} \\leq M_{Rd}=${n1(McapXX)}\\,\\text{kNm}\\)`);
+  if(biaxial){
+    rows += cr('Section moment capacity at N_{Ed} (Y–Y)',
+      `M_{Rd,yy}(N_{Ed}=${n1(NEd)}\\,\\text{kN}) = ${n1(McapYY)}\\,\\text{kNm}`, '');
+    rows += cr('Design moment (Y–Y)',
+      `M_{Ed,yy} = ${n1(ry.MEd)}\\,\\text{kNm}`, '');
+    rows += pfRow(`M–N check (Y–Y)`, passYY,
+      `\\(M_{Ed}=${n1(ry.MEd)} \\leq M_{Rd}=${n1(McapYY)}\\,\\text{kNm}\\)`);
+  }
+  rows += div();
+
+  // ── Biaxial
+  if(biaxial){
+    const NRd_bi = fcd_v*Ac + fyd_v*As;
+    const ratio_bi = (NEd*1000)/NRd_bi;
+    const a_bi = ratio_bi<=0.1?1.0:ratio_bi<=0.7?1.0+0.5*(ratio_bi-0.1)/0.6:ratio_bi<=1.0?1.5+0.5*(ratio_bi-0.7)/0.3:2.0;
+    const util_bi = Math.pow(rx.MEd/McapXX, a_bi) + Math.pow(ry.MEd/McapYY, a_bi);
+    const passBi  = util_bi <= 1.0;
+    rows += sh('6','Biaxial Bending Check (EC2 §5.8.9)');
+    rows += cr('Design axial resistance',
+      `N_{Rd} = A_c\\,f_{cd} + A_s\\,f_{yd} = ${n0(Ac)}\\times${n1(fcd_v)}+${n0(As)}\\times${n1(fyd_v)} = ${n0(NRd_bi/1000)}\\,\\text{kN}`,
+      '§5.8.9');
+    rows += cr('Axial load ratio',
+      `\\frac{N_{Ed}}{N_{Rd}} = \\frac{${n0(NEd*1000)}}{${n0(NRd_bi)}} = ${n2(ratio_bi)}\\quad\\Rightarrow\\;a = ${n2(a_bi)}`,
+      '§5.8.9');
+    rows += cr('Biaxial utilisation',
+      `\\left(\\frac{${n1(rx.MEd)}}{${n1(McapXX)}}\\right)^{${n2(a_bi)}} + \\left(\\frac{${n1(ry.MEd)}}{${n1(McapYY)}}\\right)^{${n2(a_bi)}} = ${n2(util_bi)} \\leq 1.0`,
+      '§5.8.9(4)');
+    rows += pfRow('Biaxial check', passBi,
+      `Utilisation = ${(util_bi*100).toFixed(1)}\\%`);
+    rows += div();
+  }
+
+  // ── Fire (Method A)
+  const secNum = biaxial ? '7' : '5';
+  rows += sh(secNum, 'Fire Resistance — BS EN 1992-1-2 §5.3.2(4) Method A');
+  rows += cr('Axis distance',
+    `a = c_{nom}+\\phi_{link}+\\tfrac{\\phi}{2} = ${n0(fr.a_mm)}\\,\\text{mm}`,
+    '§5.3.2');
+  rows += cr('Equivalent width',
+    `b' = ${n0(fr.b_prime)}\\,\\text{mm}\\quad[${isRect&&p.h>=1.5*p.b?`h\\geq 1.5b:\\;1.2b=1.2\\times${n0(p.b)}`:`2A_c/(b+h)=${n0(2*Ac/(p.b||p.D+p.b||p.D))}`}]`,
+    'Table 5.2a');
+  rows += cr('Load level contribution',
+    `R_{\\eta_{fi}} = 83\\!\\left(1-\\frac{\\mu_{fi}(1+\\omega)}{0.85/\\alpha_{cc}+\\omega}\\right) = 83\\!\\left(1-\\frac{${n2(mufi)}\\times${n2(1+fr.omega_fire)}}{1.0+${n2(fr.omega_fire)}}\\right) = ${n1(fr.R_etafi)}\\,\\text{min}`,
+    'Eq.(5.7)');
+  rows += cr('Axis distance contribution',
+    `R_a = 1.6(a-30) = 1.6(${n0(fr.a_mm)}-30) = ${n1(fr.R_a)}\\,\\text{min}`,
+    'Eq.(5.7)');
+  rows += cr('Slenderness contribution',
+    `R_l = 9.6\\left(5-\\max\\!\\left(\\tfrac{l}{2\\,\\text{m}},2.0\\right)\\right) = 9.6\\left(5-${n1(Math.max(storey_m/2,2))}\\right) = ${n1(fr.R_l)}\\,\\text{min}`,
+    'Eq.(5.7)');
+  rows += cr('Width contribution',
+    `R_b = 0.09\\,b' = 0.09\\times${n0(fr.b_prime)} = ${n1(fr.R_b)}\\,\\text{min}`,
+    'Eq.(5.7)');
+  rows += cr('Bar arrangement bonus',
+    `R_n = ${fr.R_n}\\,\\text{min}\\quad[n=${fr.n_bars}${fr.R_n>0?'>':'\\leq'}4\\text{ bars}]`,
+    'Eq.(5.7)');
+  rows += cr('\\(\\Sigma R_i\\)',
+    `R_{\\eta_{fi}}+R_a+R_l+R_b+R_n = ${n1(fr.R_etafi)}+${n1(fr.R_a)}+${n1(fr.R_l)}+${n1(fr.R_b)}+${n0(fr.R_n)} = ${n1(fr.R_sum)}\\,\\text{min}`,
+    '');
+  rows += cr('Fire resistance (Eq. 5.7)',
+    `R = 120\\!\\left(\\frac{\\Sigma R_i}{120}\\right)^{\\!1.8} = 120\\!\\left(\\frac{${n1(fr.R_sum)}}{120}\\right)^{1.8} = ${n1(fr.R_min)}\\,\\text{min}`,
+    '§5.3.2(4)');
+  rows += pfRow(`Fire rating`, fr.R_min>=30,
+    `R = ${n0(fr.R_min)}\\,\\text{min}\\;\\Rightarrow\\;\\text{achieves}\\;\\mathbf{R${fr.rating}}`);
+
+  // ═══════════════════════════════════════════════
+  // ASSEMBLE FULL HTML DOCUMENT
+  // ═══════════════════════════════════════════════
+  const sectionDesc = isRect
+    ? `Rectangular column ${n0(p.b)}×${n0(p.h)} mm, ${n0(p.fck)} MPa concrete`
+    : `Circular column Ø${n0(p.D)} mm, ${n0(p.fck)} MPa concrete`;
+
+  const html = `<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<title>RC Column Calculation</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Segoe UI',Arial,sans-serif;font-size:9.5pt;color:#111;background:#fff;padding:15mm 16mm;}
+  @page{size:A4;margin:10mm;}
+  @media print{body{padding:0;}
+    .no-print{display:none!important;}
+    tr{page-break-inside:avoid;}
+    .sh td{page-break-before:auto;}
+  }
+  /* Header */
+  .hdr{display:grid;grid-template-columns:1fr auto;align-items:start;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid #1a1a2e;}
+  .hdr-title{font-size:13pt;font-weight:700;color:#1a1a2e;}
+  .hdr-sub{font-size:8.5pt;color:#555;margin-top:3px;}
+  .hdr-meta{text-align:right;font-size:8pt;color:#555;}
+  .hdr-meta strong{display:block;font-size:9.5pt;color:#1a1a2e;}
+  /* Section viz */
+  .viz-wrap{display:flex;gap:20px;align-items:flex-start;margin-bottom:12px;}
+  .viz-wrap img{border:1px solid #ddd;border-radius:4px;width:140px;height:auto;}
+  .summary-tbl{font-size:8.5pt;border-collapse:collapse;}
+  .summary-tbl td{padding:2px 8px 2px 0;}
+  .summary-tbl td:first-child{color:#555;white-space:nowrap;}
+  .summary-tbl td:last-child{font-weight:600;}
+  /* Main calc table */
+  table.ct{width:100%;border-collapse:collapse;margin-top:4px;}
+  table.ct td{vertical-align:top;padding:3px 6px;}
+  tr.sh td{background:#1a1a2e;color:#fff;font-weight:600;font-size:8.5pt;padding:5px 8px;letter-spacing:.5px;}
+  .sn{display:inline-block;background:#4fffb0;color:#1a1a2e;font-size:7pt;font-weight:700;padding:1px 6px;border-radius:10px;margin-right:8px;}
+  td.cd{width:32%;font-size:8.5pt;color:#333;padding-left:8px;border-bottom:1px solid #f0f0f0;}
+  td.cm{width:58%;font-size:8.5pt;border-bottom:1px solid #f0f0f0;}
+  td.cr{width:10%;font-size:7.5pt;color:#888;border-bottom:1px solid #f0f0f0;white-space:nowrap;}
+  tr.pfr td{background:#f8f8f8;padding:4px 8px;}
+  tr.pfr td.cd{font-weight:600;}
+  tr.divr td{height:8px;border:none;}
+  .pass{color:#1a7a4a;font-weight:700;}
+  .fail{color:#c0392b;font-weight:700;}
+  /* Print button */
+  .print-btn{display:inline-block;padding:8px 22px;background:#1a1a2e;color:#fff;border:none;border-radius:4px;font-size:10pt;cursor:pointer;margin-bottom:16px;}
+  .print-btn:hover{background:#2d2d5a;}
+  .footer{margin-top:16px;padding-top:8px;border-top:1px solid #ccc;font-size:7.5pt;color:#888;display:grid;grid-template-columns:1fr 1fr;gap:4px;}
+</style>
+</head>
+<body>
+<button class="print-btn no-print" onclick="window.print()">⎙ Print / Save PDF</button>
+
+<div class="hdr">
+  <div>
+    <div class="hdr-title">RC Column Design Calculation</div>
+    <div class="hdr-sub">EN 1992-1-1:2004 + UK National Annex &nbsp;|&nbsp; ${sectionDesc}</div>
+  </div>
+  <div class="hdr-meta">
+    <strong>Calculation Sheet</strong>
+    Date: ${dateStr}
+  </div>
+</div>
+
+<div class="viz-wrap">
+  ${imgData ? `<img src="${imgData}" alt="Section">` : ''}
+  <table class="summary-tbl">
+    <tr><td>Section:</td><td>${sectionDesc}</td></tr>
+    ${isRect?`<tr><td>Reinforcement:</td><td>${n0(As)} mm² (${p.rho.toFixed(2)}%)</td></tr>`
+            :`<tr><td>Reinforcement:</td><td>${n0(As)} mm² (${p.rho.toFixed(2)}%)</td></tr>`}
+    <tr><td>Applied N<sub>Ed</sub>:</td><td>${n1(NEd)} kN</td></tr>
+    <tr><td>Design M (X–X):</td><td>${n1(rx.MEd)} kNm &nbsp; ${passXX?'✓ PASS':'✗ FAIL'}</td></tr>
+    ${biaxial?`<tr><td>Design M (Y–Y):</td><td>${n1(ry.MEd)} kNm &nbsp; ${passYY?'✓ PASS':'✗ FAIL'}</td></tr>`:''}
+    <tr><td>Fire resistance:</td><td>R = ${n0(fr.R_min)} min &nbsp; → R${fr.rating}</td></tr>
+  </table>
+</div>
+
+<table class="ct">
+${rows}
+</table>
+
+<div class="footer">
+  <div>Calculated by: RC Column Design Tool (EN 1992-1-1 / EN 1992-1-2)</div>
+  <div style="text-align:right">Perega &nbsp;|&nbsp; ${dateStr}</div>
+  <div style="color:#aaa;font-size:7pt;grid-column:1/-1;margin-top:2px;">
+    This calculation has been prepared as an aid to design. All results should be verified by a qualified engineer.
+    M–N diagram generated by stress-block integration (EC2 §3.1.7). Fire resistance by Method A (Eq. 5.7, BS EN 1992-1-2:2004).
+  </div>
+</div>
+
+<script>
+  // Auto-render KaTeX after load
+  document.addEventListener('DOMContentLoaded',()=>{
+    if(typeof renderMathInElement==='function'){
+      renderMathInElement(document.body,{
+        delimiters:[
+          {left:'\\\\(',right:'\\\\)',display:false},
+          {left:'\\\\[',right:'\\\\]',display:true}
+        ],
+        throwOnError:false
+      });
+    }
+  });
+<\/script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"><\/script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body,{delimiters:[{left:'\\\\(',right:'\\\\)',display:false},{left:'\\\\[',right:'\\\\]',display:true}],throwOnError:false})"><\/script>
+</body></html>`;
+
+  const w = window.open('','_blank','width=900,height=700');
+  if(!w){ alert('Please allow pop-ups to view the report.'); return; }
+  w.document.write(html);
+  w.document.close();
+}
+
+// ════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════
+initChart(); drawViz();
+document.querySelectorAll('input,select').forEach(el=>el.addEventListener('input',drawViz));
+</script>
+</body>
+</html>
