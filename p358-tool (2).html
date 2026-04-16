@@ -1,0 +1,2717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P358 Steel Joint Design Tool</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400;600;700&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f2f5f2;--surface:#ffffff;--card:#f8faf8;--border:#c4d4c8;
+  --text:#1a2e1a;--muted:#4a6b52;--accent:#1a5e28;--accent-mid:#2d7a3e;
+  --accent-light:#e8f2ea;--header:#164d21;--header2:#1f6b2e;
+  --pass:#1a5e28;--fail:#c0392b;--warn:#c47a0a;
+  --mono:'JetBrains Mono',monospace;--head:'Source Serif 4',serif;--body:'Inter',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:14px;line-height:1.5;}
+
+/* ── HEADER ── */
+.hdr{background:var(--header);border-bottom:3px solid var(--accent-mid);padding:14px 24px;
+  display:flex;align-items:center;justify-content:space-between;}
+.logo{font-family:var(--head);font-weight:700;font-size:21px;letter-spacing:-.2px;color:#fff;}
+.logo em{color:#7fd894;font-style:normal;}
+.logo-sub{color:rgba(255,255,255,.6);font-size:10px;font-family:var(--mono);letter-spacing:2px;margin-top:3px;}
+.hdr-meta{text-align:right;color:rgba(255,255,255,.65);font-size:11px;line-height:1.8;}
+.hdr-meta b{color:#a8e6b4;font-family:var(--mono);}
+
+/* ── JOINT SELECTOR BAR ── */
+.jt-bar{background:var(--header2);border-bottom:2px solid var(--accent);
+  padding:12px 20px 0;overflow-x:auto;}
+.jt-inner{display:flex;gap:6px;min-width:max-content;padding-bottom:12px;}
+.jt-card{display:flex;flex-direction:column;align-items:center;gap:5px;width:96px;
+  padding:8px 6px 7px;border-radius:5px;cursor:pointer;
+  border:1.5px solid rgba(255,255,255,.2);background:rgba(255,255,255,.06);
+  transition:all .18s;user-select:none;}
+.jt-card:hover:not(.locked){border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.12);}
+.jt-card.active{border-color:#7fd894;background:rgba(127,216,148,.15);}
+.jt-card.locked{opacity:.4;cursor:not-allowed;}
+.jt-icon{width:70px;height:48px;display:flex;align-items:center;justify-content:center;}
+.jt-icon svg{width:100%;height:100%;}
+.jt-name{font-size:9.5px;font-weight:600;text-align:center;color:rgba(255,255,255,.75);
+  line-height:1.3;font-family:var(--body);}
+.jt-card.active .jt-name{color:#a8e6b4;}
+.jt-tag{font-size:9px;font-family:var(--mono);letter-spacing:.6px;padding:1px 6px;border-radius:2px;}
+.tag-done{background:rgba(127,216,148,.25);color:#7fd894;}
+.tag-soon{background:rgba(255,200,80,.15);color:#ffc850;}
+
+/* ── LAYOUT ── */
+.layout{display:grid;grid-template-columns:390px 1fr;min-height:calc(100vh - 132px);}
+.col-l{padding:18px 16px 24px 20px;border-right:1px solid var(--border);overflow-y:auto;
+  background:var(--surface);}
+.col-r{padding:20px 20px 24px 20px;overflow-y:auto;background:var(--bg);}
+
+/* ── CARDS & FORMS ── */
+.card{background:var(--card);border:1px solid var(--border);border-radius:5px;
+  padding:15px;margin-bottom:10px;border-left:3px solid var(--accent);}
+.card-title{font-family:var(--body);font-weight:700;font-size:11px;color:var(--accent);
+  letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;}
+.field{margin-bottom:10px;}
+.field:last-child{margin-bottom:0;}
+.field label{display:block;color:var(--muted);font-size:11px;font-weight:600;
+  letter-spacing:.3px;text-transform:uppercase;margin-bottom:4px;}
+.field label em{color:var(--muted);font-weight:400;font-size:10px;text-transform:none;
+  letter-spacing:0;font-style:normal;}
+.iw{position:relative;}
+.iw input,.iw select{width:100%;background:#fff;border:1px solid var(--border);
+  border-radius:4px;padding:7px 34px 7px 10px;color:var(--text);font-size:13px;
+  font-family:var(--mono);outline:none;transition:border-color .2s;appearance:none;}
+.iw input:focus,.iw select:focus{border-color:var(--accent);outline:none;}
+.iw .unit{position:absolute;right:8px;top:50%;transform:translateY(-50%);
+  color:var(--muted);font-size:10px;font-family:var(--mono);pointer-events:none;}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:9px;}
+.g2 .field,.g3 .field{margin-bottom:0;}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;}
+.ibox{background:rgba(26,94,40,.06);border:1px solid rgba(26,94,40,.2);border-radius:4px;
+  padding:7px 10px;font-size:11px;color:var(--muted);font-family:var(--mono);
+  margin-top:9px;line-height:1.8;}
+
+/* ── BUTTONS ── */
+.btn-calc{width:100%;background:var(--accent);color:#fff;border:none;border-radius:5px;
+  padding:12px;font-size:14px;font-weight:700;font-family:var(--body);letter-spacing:.3px;
+  cursor:pointer;margin-top:4px;transition:background .2s;}
+.btn-calc:hover{background:var(--accent-mid);}
+.btn-sm{background:transparent;color:var(--muted);border:1px solid var(--border);
+  border-radius:4px;padding:6px 14px;font-size:12px;cursor:pointer;}
+.btn-sm:hover{color:var(--accent);border-color:var(--accent);}
+.err{background:#fef2f2;border:1px solid #fca5a5;border-radius:4px;
+  padding:9px 13px;color:#c0392b;font-size:12px;margin-bottom:10px;}
+
+/* ── DIAGRAM PANEL ── */
+.diag-panel{display:flex;flex-direction:column;align-items:center;gap:12px;padding:8px 0;}
+.diag-title{font-family:var(--head);font-weight:700;font-size:17px;color:var(--accent);}
+.diag-desc{font-size:12px;color:var(--muted);text-align:center;max-width:380px;line-height:1.7;}
+.diag-wrap{background:#fff;border:1px solid var(--border);border-radius:5px;
+  padding:16px;width:100%;box-shadow:0 1px 3px rgba(0,0,0,.06);}
+.diag-legend{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;
+  font-size:11px;font-family:var(--mono);color:var(--muted);}
+.leg{display:flex;align-items:center;gap:5px;}
+.leg-sw{width:14px;height:10px;border-radius:2px;}
+
+/* ── RESULTS ── */
+.rhdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.rhdr-t{font-family:var(--head);font-weight:700;font-size:18px;color:var(--accent);}
+.verdict{border-radius:5px;padding:16px 18px;margin-bottom:14px;
+  display:flex;align-items:center;justify-content:space-between;}
+.verdict.pass{background:#edf7ee;border:2px solid var(--pass);border-left:5px solid var(--pass);}
+.verdict.fail{background:#fef2f2;border:2px solid var(--fail);border-left:5px solid var(--fail);}
+.v-lbl{font-family:var(--head);font-weight:700;font-size:18px;letter-spacing:.3px;}
+.verdict.pass .v-lbl{color:var(--pass);}
+.verdict.fail .v-lbl{color:var(--fail);}
+.v-sub{color:var(--muted);font-size:11px;margin-top:3px;}
+.v-util{text-align:right;}
+.v-util-lbl{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px;}
+.v-util-val{font-family:var(--mono);font-size:24px;font-weight:600;}
+.sumgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:6px;margin-bottom:14px;}
+.si{background:#fff;border:1px solid var(--border);border-radius:4px;padding:6px 10px;}
+.si-k{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.3px;}
+.si-v{font-family:var(--mono);font-size:12px;font-weight:600;margin-top:2px;color:var(--text);}
+.slbl{font-family:var(--body);font-weight:700;font-size:11px;color:var(--accent);
+  letter-spacing:1px;text-transform:uppercase;margin:14px 0 8px;
+  padding-bottom:5px;border-bottom:1px solid var(--border);}
+.slbl:first-child{margin-top:0;}
+
+/* ── CHECK ROWS ── */
+.cr{background:#fff;border:1px solid var(--border);border-radius:4px;
+  margin-bottom:5px;overflow:hidden;}
+.cr.pass{border-left:4px solid var(--pass);}
+.cr.fail{border-left:4px solid var(--fail);}
+.crh{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;user-select:none;}
+.crh:hover{background:var(--accent-light);}
+.cr-n{font-family:var(--mono);font-size:11px;color:var(--muted);min-width:18px;font-weight:600;}
+.cr-name{font-size:13px;font-weight:500;flex:1;min-width:0;color:var(--text);}
+.cr-bw{min-width:70px;text-align:right;}
+.cr-dvc{font-size:10px;color:var(--muted);font-family:var(--mono);}
+.cr-trk{height:3px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:3px;}
+.cr-fill{height:100%;border-radius:2px;transition:width .4s;}
+.cr-pct{font-family:var(--mono);font-size:12px;font-weight:700;min-width:44px;text-align:right;}
+.cr-badge{font-size:10px;font-weight:700;font-family:var(--mono);letter-spacing:.8px;
+  padding:2px 8px;border-radius:3px;min-width:40px;text-align:center;}
+.bp{background:rgba(26,94,40,.12);color:var(--pass);}
+.bf{background:rgba(192,57,43,.1);color:var(--fail);}
+.cr-arr{color:var(--muted);font-size:11px;margin-left:2px;}
+.crd{padding:0 12px 12px;border-top:1px solid var(--border);display:none;background:#fafcfa;}
+.crd.open{display:block;}
+.dref{display:inline-block;background:var(--accent-light);border-radius:3px;padding:2px 8px;
+  font-size:11px;color:var(--accent);font-family:var(--mono);margin:8px 0 6px;
+  border:1px solid rgba(26,94,40,.2);}
+.dcalc{background:#fff;border-radius:4px;padding:10px;border:1px solid var(--border);}
+.dline{font-family:var(--mono);font-size:11.5px;padding:2.5px 0;color:var(--text);opacity:.85;}
+.dline+.dline{border-top:1px solid rgba(0,0,0,.05);}
+.dres{display:flex;justify-content:flex-end;align-items:center;gap:10px;
+  margin-top:10px;padding-top:8px;border-top:1px solid var(--border);}
+.dres-l{color:var(--muted);font-size:11px;}
+.dres-v{font-family:var(--mono);font-size:15px;font-weight:700;}
+.notes{background:#fff;border:1px solid var(--border);border-left:3px solid var(--accent);
+  border-radius:4px;padding:12px;color:var(--muted);font-size:11px;line-height:1.9;margin-top:12px;}
+.notes b{color:var(--text);}
+
+@media(max-width:820px){
+  .layout{grid-template-columns:1fr;}
+  .col-l{border-right:none;border-bottom:1px solid var(--border);}
+}
+@media print{
+  .no-print{display:none!important;}
+  body{background:#fff!important;}
+  .card,.cr,.verdict,.notes,.si,.diag-wrap{border:1px solid #ccc!important;}
+  .crd{display:block!important;}
+  .hdr{background:var(--header)!important;}
+}
+</style>
+</head>
+<body>
+
+<header class="hdr no-print">
+  <div>
+    <div class="logo">P358 <em>Design</em> Tool</div>
+    <div class="logo-sub">SIMPLE JOINTS TO EUROCODE 3 — UK NATIONAL ANNEX</div>
+  </div>
+  <div class="hdr-meta">SCI P358 · EN 1993-1-8 · EN 1993-1-1<br><b>γM0 = 1.00 · γM2 = 1.25</b></div>
+</header>
+
+<div class="jt-bar no-print"><div class="jt-inner" id="jt-bar"></div></div>
+
+<div class="layout">
+  <div class="col-l">
+    <div class="card">
+      <div class="card-title">📋 Project Info</div>
+      <div class="g2">
+        <div class="field"><label>Project</label><div class="iw"><input type="text" id="proj-name" placeholder="e.g. Office Block"></div></div>
+        <div class="field"><label>Reference</label><div class="iw"><input type="text" id="proj-ref" placeholder="24-123-ST01"></div></div>
+        <div class="field"><label>Engineer</label><div class="iw"><input type="text" id="proj-eng" placeholder="Initials"></div></div>
+        <div class="field"><label>Date</label><div class="iw"><input type="date" id="proj-date" style="color-scheme:dark"></div></div>
+      </div>
+    </div>
+    <div id="input-panel"></div>
+    <div id="err-box" class="err" style="display:none"></div>
+    <button class="btn-calc" onclick="doCalc()">▶  Run Design Calculations</button>
+  </div>
+  <div class="col-r">
+    <div id="diag-area"></div>
+    <div id="results" style="display:none"></div>
+  </div>
+</div>
+
+<script>
+// ─── DATA ────────────────────────────────────────────────────
+const BOLT={M16:{d:16,d0:18,As:157},M20:{d:20,d0:22,As:245},M24:{d:24,d0:26,As:353},M27:{d:27,d0:30,As:459}};
+const MAT={S275:{fy:275,fu:430,bw:.85},S355:{fy:355,fu:490,bw:.90}};
+const GM0=1,GM2=1.25;
+
+// UKB/UKC section database: {d, b, tf, tw, r, Av (shear area mm²)}
+// d=depth, b=flange width, tf=flange thickness, tw=web thickness, r=root radius
+const SECTIONS={
+// ── UKB (Universal Beams) ──────────────────────────────────────────────────────────
+  '133×102×25 UKB': {d:133,b:102,tf:7.8,tw:5.7,r:7.6,A:3200},
+  '178×102×19 UKB': {d:177,b:102,tf:7.9,tw:4.8,r:7.6,A:2390},
+  '203×133×25 UKB': {d:203,b:133,tf:7.8,tw:5.8,r:7.6,A:3280},
+  '203×133×30 UKB': {d:207,b:134,tf:9.6,tw:6.4,r:7.6,A:3670},
+  '254×102×22 UKB': {d:254,b:102,tf:6.8,tw:5.8,r:7.6,A:3910},
+  '254×102×25 UKB': {d:257,b:102,tf:8.4,tw:6.1,r:7.6,A:4200},
+  '254×102×28 UKB': {d:260,b:102,tf:10.0,tw:6.4,r:7.6,A:4490},
+  '254×146×31 UKB': {d:251,b:146,tf:8.6,tw:6.1,r:7.6,A:4210},
+  '254×146×37 UKB': {d:256,b:146,tf:10.9,tw:6.4,r:7.6,A:4680},
+  '305×102×25 UKB': {d:305,b:102,tf:7.0,tw:5.8,r:7.6,A:4600},
+  '305×102×28 UKB': {d:309,b:102,tf:8.9,tw:6.1,r:7.6,A:4980},
+  '305×102×33 UKB': {d:313,b:102,tf:10.8,tw:6.6,r:7.6,A:5520},
+  '305×127×37 UKB': {d:304,b:124,tf:10.7,tw:7.2,r:8.9,A:5900},
+  '305×127×42 UKB': {d:307,b:124,tf:12.1,tw:8.0,r:8.9,A:6660},
+  '305×127×48 UKB': {d:311,b:125,tf:14.0,tw:9.0,r:8.9,A:7500},
+  '305×165×40 UKB': {d:303,b:165,tf:10.2,tw:6.1,r:8.9,A:5360},
+  '305×165×46 UKB': {d:307,b:165,tf:11.8,tw:6.7,r:8.9,A:5840},
+  '305×165×54 UKB': {d:310,b:166,tf:13.7,tw:7.9,r:8.9,A:7000},
+  '356×127×33 UKB': {d:349,b:125,tf:8.5,tw:6.0,r:10.2,A:5680},
+  '356×127×39 UKB': {d:353,b:126,tf:10.7,tw:6.5,r:10.2,A:6790},
+  '356×171×45 UKB': {d:352,b:171,tf:9.7,tw:7.0,r:10.2,A:7230},
+  '356×171×51 UKB': {d:355,b:172,tf:11.5,tw:7.4,r:10.2,A:7520},
+  '356×171×57 UKB': {d:358,b:172,tf:13.0,tw:8.0,r:10.2,A:8360},
+  '356×171×67 UKB': {d:364,b:174,tf:15.7,tw:9.1,r:10.2,A:9890},
+  '406×140×39 UKB': {d:398,b:142,tf:8.6,tw:6.4,r:10.2,A:7080},
+  '406×140×46 UKB': {d:402,b:142,tf:11.2,tw:6.9,r:10.2,A:8050},
+  '406×178×54 UKB': {d:403,b:178,tf:10.9,tw:7.7,r:10.2,A:9080},
+  '406×178×60 UKB': {d:407,b:178,tf:12.8,tw:7.9,r:10.2,A:9860},
+  '406×178×67 UKB': {d:410,b:179,tf:14.3,tw:8.8,r:10.2,A:11100},
+  '406×178×74 UKB': {d:413,b:179,tf:16.0,tw:9.5,r:10.2,A:12200},
+  '457×152×52 UKB': {d:449,b:152,tf:10.9,tw:7.6,r:10.2,A:9870},
+  '457×152×60 UKB': {d:455,b:153,tf:13.3,tw:8.1,r:10.2,A:11100},
+  '457×152×67 UKB': {d:458,b:153,tf:15.0,tw:9.0,r:10.2,A:12600},
+  '457×191×67 UKB': {d:454,b:190,tf:12.7,tw:8.5,r:10.2,A:11800},
+  '457×191×74 UKB': {d:457,b:190,tf:14.5,tw:9.0,r:10.2,A:12700},
+  '457×191×82 UKB': {d:460,b:191,tf:16.0,tw:9.9,r:10.2,A:14000},
+  '457×191×89 UKB': {d:463,b:192,tf:17.7,tw:10.5,r:10.2,A:15400},
+  '457×191×98 UKB': {d:467,b:193,tf:19.6,tw:11.4,r:10.2,A:17200},
+  '533×210×82 UKB': {d:528,b:209,tf:13.2,tw:9.6,r:12.7,A:16200},
+  '533×210×92 UKB': {d:533,b:209,tf:15.6,tw:10.2,r:12.7,A:17600},
+  '533×210×101 UKB':{d:536,b:210,tf:17.4,tw:10.8,r:12.7,A:19600},
+  '610×229×101 UKB':{d:603,b:228,tf:14.8,tw:10.6,r:12.7,A:20900},
+  '610×229×113 UKB':{d:607,b:228,tf:17.3,tw:11.2,r:12.7,A:22500},
+  '610×229×125 UKB':{d:612,b:229,tf:19.6,tw:11.9,r:12.7,A:24500},
+  '610×229×140 UKB':{d:617,b:230,tf:22.1,tw:13.1,r:12.7,A:27600},
+  '686×254×125 UKB':{d:677,b:253,tf:16.2,tw:11.7,r:15.2,A:27200},
+  '686×254×140 UKB':{d:683,b:253,tf:19.0,tw:12.4,r:15.2,A:29600},
+  '762×267×134 UKB':{d:750,b:265,tf:15.5,tw:12.0,r:16.5,A:30200},
+  '762×267×147 UKB':{d:754,b:265,tf:17.5,tw:12.8,r:16.5,A:33300},
+// ── UKC (Universal Columns) ───────────────────────────────────────────────────────
+  '152×152×23 UKC': {d:152,b:152,tf:6.8,tw:6.1,r:7.6,A:2990},
+  '152×152×30 UKC': {d:158,b:153,tf:9.4,tw:6.6,r:7.6,A:3680},
+  '152×152×37 UKC': {d:162,b:154,tf:11.5,tw:8.0,r:7.6,A:4680},
+  '203×203×46 UKC': {d:203,b:203,tf:11.0,tw:7.3,r:10.2,A:5100},
+  '203×203×52 UKC': {d:206,b:204,tf:12.5,tw:8.0,r:10.2,A:5930},
+  '203×203×60 UKC': {d:210,b:206,tf:14.2,tw:9.4,r:10.2,A:7120},
+  '203×203×71 UKC': {d:216,b:206,tf:17.3,tw:10.3,r:10.2,A:8050},
+  '254×254×73 UKC': {d:254,b:254,tf:14.2,tw:8.6,r:12.7,A:7870},
+  '254×254×89 UKC': {d:260,b:256,tf:17.3,tw:10.4,r:12.7,A:10300},
+  '254×254×107 UKC':{d:267,b:258,tf:20.5,tw:13.0,r:12.7,A:13100},
+  '305×305×97 UKC': {d:308,b:305,tf:15.4,tw:9.9,r:15.2,A:11200},
+  '305×305×118 UKC':{d:314,b:307,tf:18.7,tw:12.0,r:15.2,A:14300},
+  '305×305×137 UKC':{d:320,b:309,tf:21.7,tw:13.8,r:15.2,A:17000},
+  '356×368×129 UKC':{d:355,b:368,tf:17.5,tw:10.4,r:15.2,A:13400},
+  '356×368×153 UKC':{d:362,b:370,tf:20.7,tw:12.3,r:15.2,A:16300},
+  '356×368×177 UKC':{d:368,b:372,tf:23.8,tw:14.4,r:15.2,A:19700},
+};
+
+// Build select options HTML
+const UKB_SECTIONS = Object.keys(SECTIONS).filter(k=>k.includes('UKB'));
+const UKC_SECTIONS = Object.keys(SECTIONS).filter(k=>k.includes('UKC'));
+function secOpts(defSec){
+  let h='<option value="">— manual entry —</option><optgroup label="UKB Beams">';
+  UKB_SECTIONS.forEach(k=>h+=`<option${k===defSec?' selected':''}>${k}</option>`);
+  h+='</optgroup><optgroup label="UKC Columns">';
+  UKC_SECTIONS.forEach(k=>h+=`<option${k===defSec?' selected':''}>${k}</option>`);
+  return h+'</optgroup>';
+}
+
+// Notch requirement check (P358 §3 / Table 3.1)
+// Returns {required, dn_min, ln_min, note} 
+// dn_min = min notch depth, ln_min = min notch length
+function notchCheck(beamSec, suppSec){
+  if(!beamSec||!suppSec) return null;
+  const b=SECTIONS[beamSec], s=SECTIONS[suppSec];
+  if(!b||!s) return null;
+  // A notch is required if the beam top flange would clash with the supporting member flange
+  // Standard notch: dn ≥ tf_supp + r_supp + 5mm clearance (to clear root of supporting flange)
+  // Notch length: ln ≥ b_supp/2 + 10mm (to clear supporting flange)
+  const dn_min = s.tf + s.r + 5;
+  const ln_min = s.b/2 + 10;
+  // Notch required if supporting member flange depth > beam flange (i.e. would clash)
+  const required = true; // conservative — always flag possibility
+  return {required, dn_min: Math.ceil(dn_min), ln_min: Math.ceil(ln_min),
+    note:`Notch depth dn ≥ tf,supp+r+5 = ${s.tf}+${s.r}+5 = ${Math.ceil(dn_min)} mm. Length ln ≥ b,supp/2+10 = ${Math.ceil(ln_min)} mm.`};
+}
+
+const JOINTS=[
+  {id:'fin',    label:'Fin Plate',                ready:true,  ref:'P358 §5',
+   desc:'Single plate welded to support column, bolted through the beam web. Suited to beams framing into a column web or flange.'},
+  {id:'pdep',   label:'Partial Depth End Plate',  ready:true,  ref:'P358 §4',
+   desc:'End plate welded to beam web only (not the flanges), then bolted to the column flange. Most common simple beam-to-column connection.'},
+  {id:'fdep',   label:'Full Depth End Plate',     ready:true,  ref:'P358 §4.7',
+   desc:'End plate welded to beam web AND both flanges. Significantly higher tying resistance than partial depth. Separate web and flange weld checks.'},
+  {id:'dcleat', label:'Double Cleat',             ready:true,  ref:'EC3-1-8 (not P358)',
+   desc:'Pair of equal-leg angle cleats: outstanding legs to the column/beam, web legs bolted to the beam web. No site welding. Note: web cleats are not covered by P358 — checks based on EC3-1-8 / ECCS Pub.126.'},
+  {id:'scleat', label:'Single Cleat',             ready:true,  ref:'EC3-1-8 (not P358)',
+   desc:'Single angle cleat bolted to the support and through the beam web. Used where access permits only one side. Note: not covered by P358 — checks based on EC3-1-8 / ECCS Pub.126.'},
+  {id:'splice', label:'Column Splice',            ready:true,  ref:'P358 §6',
+   desc:'Bolted bearing splice joining two column lengths. Cover plates each side of web and flange. Transfers axial force, shear, and nominal moment from construction eccentricity.'},
+  {id:'base',   label:'Column Base',              ready:true,  ref:'P358 §7',
+   desc:'Bolted base plate connecting a column to a concrete foundation. Checks base plate bending, holding-down bolt tension and shear, weld to column, and bearing on concrete grout.'},
+  {id:'brace',  label:'Bracing Connection',       ready:true,  ref:'P358 §8',
+   desc:'Bolted gusset plate connection for a diagonal flat bar or angle bracing member. Gusset welded to supporting frame, bracing bolted through gusset.'},
+];
+
+// ─── SVG HELPERS (Engineering drawing style) ─────────────────
+// Steel sections: medium grey fill, dark outline (draughting convention)
+const ss='fill:#d8e4eb;stroke:#333;stroke-width:1.8;';
+const sp='fill:#fff;stroke:#333;stroke-width:1.5;';        // plate (white, outlined)
+const sweld='fill:#222;stroke:none;';                       // weld (solid black triangle)
+const stxt='fill:#222;font-size:9.5px;font-family:Arial,sans-serif;';
+const sdim='fill:#444;font-size:8.5px;font-family:Arial,sans-serif;';
+// Concrete hatching fill (crosshatch via pattern)
+function concHatch(id){
+  return `<pattern id="${id}" patternUnits="userSpaceOnUse" width="8" height="8">
+    <line x1="0" y1="0" x2="8" y2="8" stroke="#999" stroke-width=".7"/>
+    <line x1="8" y1="0" x2="0" y2="8" stroke="#999" stroke-width=".7"/>
+  </pattern>`;
+}
+// Standard bolt circle: white circle + cross-hair
+function bolt(cx,cy,r=6){
+  return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#fff" stroke="#333" stroke-width="1.3"/>
+    <line x1="${cx-r*.6}" y1="${cy}" x2="${cx+r*.6}" y2="${cy}" stroke="#333" stroke-width=".9"/>
+    <line x1="${cx}" y1="${cy-r*.6}" x2="${cx}" y2="${cy+r*.6}" stroke="#333" stroke-width=".9"/>`;
+}
+function bolts(cx,r,ys){
+  return ys.map(y=>bolt(cx,y,r)).join('');
+}
+// Fillet weld: solid black filled triangle on plate edge
+function weld(x,y1,y2,side=1){
+  const m=(y1+y2)/2, s=side*6;
+  return `<polygon points="${x},${y1} ${x},${y2} ${x+s},${m}" ${sweld}/>`;
+}
+// Arrow head marker definition
+function arrowMarker(id,col='#333',flip=false){
+  return `<marker id="${id}" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+    <polygon points="${flip?'7,3.5 0,0 0,7':'0,0 7,3.5 0,7'}" fill="${col}"/></marker>`;
+}
+// Dimension line with ticks
+function dimLine(x1,y1,x2,y2,aid){
+  return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
+    stroke="#555" stroke-width=".8" stroke-dasharray="none"
+    marker-start="url(#${aid})" marker-end="url(#${aid})"/>`;
+}
+// Dimension tick (short perpendicular line)
+function tick(x,y,horiz=false){
+  return horiz
+    ? `<line x1="${x}" y1="${y-4}" x2="${x}" y2="${y+4}" stroke="#555" stroke-width=".8"/>`
+    : `<line x1="${x-4}" y1="${y}" x2="${x+4}" y2="${y}" stroke="#555" stroke-width=".8"/>`;
+}
+
+const D={
+  sec:'fill:#cdd8e0;stroke:#1a1a1a;stroke-width:1.5',      // steel section
+  web:'fill:#cdd8e0;stroke:#1a1a1a;stroke-width:1',        // web (lighter)
+  plt:'fill:#fff;stroke:#1a1a1a;stroke-width:1.5',          // plate / cleat
+  wld:'fill:#1a1a1a;stroke:none',                           // weld (solid black triangle)
+  bolt:'fill:#fff;stroke:#1a1a1a;stroke-width:1.3',         // bolt circle
+  dim:'stroke:#555;stroke-width:0.8;stroke-dasharray:none', // dimension line
+  txt:'fill:#222;font-family:Arial,sans-serif;font-size:10',// label text
+  sml:'fill:#555;font-family:Arial,sans-serif;font-size:8.5',// small label
+  grn:'fill:#1a5e28;font-family:Arial,sans-serif;font-size:11;font-weight:bold', // force label
+  hat:'fill:url(#hatch)',                                    // concrete hatch
+};
+// ─── THUMBNAIL SVGs (72×50) ───────────────────────────────────
+const THUMBS={
+  fin:`<svg viewBox="0 0 72 50" xmlns="http://www.w3.org/2000/svg">
+    <rect x="3" y="4" width="5" height="42" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+    <rect x="1" y="4" width="9" height="5" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+    <rect x="1" y="41" width="9" height="5" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+    <polygon points="8,14 8,36 13,25" fill="#222"/>
+    <rect x="8" y="14" width="22" height="22" fill="#fff" stroke="#333" stroke-width="1.2"/>
+    ${bolts(25,3.2,[19,25,31])}
+    <rect x="30" y="9" width="40" height="32" fill="#d8e4eb" stroke="#333" stroke-width="1"/>
+    <rect x="30" y="4" width="40" height="7" fill="#d8e4eb" stroke="#333" stroke-width="1"/>
+    <rect x="30" y="39" width="40" height="7" fill="#d8e4eb" stroke="#333" stroke-width="1"/>
+  </svg>`,
+  pdep:`<svg viewBox="0 0 72 50" xmlns="http://www.w3.org/2000/svg">
+    <rect x="3" y="2" width="5" height="46" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+    <rect x="1" y="2" width="9" height="6" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+    <rect x="1" y="42" width="9" height="6" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+    <rect x="8" y="12" width="8" height="26" fill="#fff" stroke="#333" stroke-width="1.2"/>
+    ${bolts(12,3,[18,25,32])}
+    <rect x="16" y="16" width="54" height="18" fill="#d8e4eb" stroke="#333" stroke-width="1"/>
+    <rect x="16" y="10" width="54" height="7" fill="#d8e4eb" stroke="#333" stroke-width="1"/>
+    <rect x="16" y="33" width="54" height="7" fill="#d8e4eb" stroke="#333" stroke-width="1"/>
+    <line x1="16" y1="16" x2="16" y2="34" stroke="#222" stroke-width="2.5"/>
+  </svg>`,
+  fdep:`<svg viewBox="0 0 72 50" xmlns="http://www.w3.org/2000/svg">
+    <rect x="3" y="2" width="5" height="46" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+    <rect x="1" y="2" width="9" height="6" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+    <rect x="1" y="42" width="9" height="6" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+    <rect x="8" y="4" width="8" height="42" fill="#fff" stroke="#333" stroke-width="1.2"/>
+    ${bolts(12,3,[10,18,32,40])}
+    <rect x="16" y="14" width="54" height="22" fill="#d8e4eb" stroke="#333" stroke-width="1"/>
+    <rect x="16" y="4" width="54" height="12" fill="#d8e4eb" stroke="#333" stroke-width="1"/>
+    <rect x="16" y="34" width="54" height="12" fill="#d8e4eb" stroke="#333" stroke-width="1"/>
+    <line x1="16" y1="4" x2="16" y2="46" stroke="#222" stroke-width="2.5"/>
+  </svg>`,
+  cleat:`<svg viewBox="0 0 72 50" xmlns="http://www.w3.org/2000/svg">
+    <rect x="3" y="2" width="5" height="46" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+    <rect x="1" y="2" width="9" height="6" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+    <rect x="1" y="42" width="9" height="6" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+    <rect x="8" y="11" width="14" height="5" fill="#fff" stroke="#333" stroke-width="1"/>
+    <rect x="8" y="34" width="14" height="5" fill="#fff" stroke="#333" stroke-width="1"/>
+    <rect x="21" y="11" width="5" height="28" fill="#fff" stroke="#333" stroke-width="1"/>
+    ${bolts(15,2.5,[13.5,36.5])}${bolts(24,2.5,[21,29])}
+    <rect x="26" y="15" width="44" height="20" fill="#d8e4eb" stroke="#333" stroke-width="1"/>
+    <rect x="26" y="9" width="44" height="8" fill="#d8e4eb" stroke="#333" stroke-width="1"/>
+    <rect x="26" y="33" width="44" height="8" fill="#d8e4eb" stroke="#333" stroke-width="1"/>
+  </svg>`,
+  splice:`<svg viewBox="0 0 72 50" xmlns="http://www.w3.org/2000/svg">
+    <rect x="33" y="2" width="5" height="19" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+    <rect x="24" y="2" width="23" height="6" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+    <rect x="24" y="15" width="23" height="6" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+    <rect x="33" y="29" width="5" height="19" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+    <rect x="24" y="29" width="23" height="6" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+    <rect x="24" y="42" width="23" height="6" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+    <rect x="17" y="16" width="9" height="18" fill="#fff" stroke="#333" stroke-width="1"/>
+    <rect x="45" y="16" width="9" height="18" fill="#fff" stroke="#333" stroke-width="1"/>
+    ${bolts(21,2.5,[22,28])}${bolts(49,2.5,[22,28])}
+  </svg>`,
+  base:`<svg viewBox="0 0 72 50" xmlns="http://www.w3.org/2000/svg">
+    <rect x="32" y="2" width="5" height="25" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+    <rect x="23" y="2" width="23" height="6" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+    <rect x="9" y="27" width="51" height="6" fill="#fff" stroke="#333" stroke-width="1.2"/>
+    <line x1="16" y1="33" x2="16" y2="43" stroke="#333" stroke-width="2"/>
+    <line x1="55" y1="33" x2="55" y2="43" stroke="#333" stroke-width="2"/>
+    ${bolt(16,43,3)} ${bolt(55,43,3)}
+    <rect x="0" y="45" width="72" height="5" fill="#e0e0e0" stroke="#555" stroke-width=".8"/>
+    <line x1="0" y1="45" x2="6" y2="50" stroke="#888" stroke-width=".7"/>
+    <line x1="8" y1="45" x2="14" y2="50" stroke="#888" stroke-width=".7"/>
+    <line x1="16" y1="45" x2="22" y2="50" stroke="#888" stroke-width=".7"/>
+    <line x1="24" y1="45" x2="30" y2="50" stroke="#888" stroke-width=".7"/>
+    <line x1="32" y1="45" x2="38" y2="50" stroke="#888" stroke-width=".7"/>
+    <line x1="40" y1="45" x2="46" y2="50" stroke="#888" stroke-width=".7"/>
+    <line x1="48" y1="45" x2="54" y2="50" stroke="#888" stroke-width=".7"/>
+    <line x1="56" y1="45" x2="62" y2="50" stroke="#888" stroke-width=".7"/>
+    <line x1="64" y1="45" x2="70" y2="50" stroke="#888" stroke-width=".7"/>
+  </svg>`,
+  brace:`<svg viewBox="0 0 72 50" xmlns="http://www.w3.org/2000/svg">
+    <rect x="2" y="36" width="66" height="6" fill="#d8e4eb" stroke="#333" stroke-width="1"/>
+    <rect x="2" y="2" width="5" height="40" fill="#d8e4eb" stroke="#333" stroke-width="1"/>
+    <polygon points="7,30 7,42 46,42 46,36" fill="#fff" stroke="#333" stroke-width="1"/>
+    <line x1="10" y1="30" x2="44" y2="7" stroke="#d8e4eb" stroke-width="5" stroke-linecap="round"/>
+    <line x1="10" y1="30" x2="44" y2="7" stroke="#333" stroke-width="1.5"/>
+    ${bolt(20,37,2.5)}${bolt(32,35,2.5)}${bolt(42,39,2.5)}
+  </svg>`,
+};
+
+// ─── HAND-DRAWN SVG DIAGRAMS ─────────────────────────────────
+// Style constants
+function bolt(cx,cy,r=5.5){
+  return `<circle cx="${cx}" cy="${cy}" r="${r}" ${D.bolt}/>
+<line x1="${cx-r*.6}" y1="${cy}" x2="${cx+r*.6}" y2="${cy}" stroke="#1a1a1a" stroke-width="0.9"/>
+<line x1="${cx}" y1="${cy-r*.6}" x2="${cx}" y2="${cy+r*.6}" stroke="#1a1a1a" stroke-width="0.9"/>`;
+}
+function weldTri(x,y1,y2,dir=1){
+  const m=(y1+y2)/2, s=dir*7;
+  return `<polygon points="${x},${y1} ${x},${y2} ${x+s},${m}" ${D.wld}/>`;
+}
+function weldH(x1,x2,y,dir=1){
+  const m=(x1+x2)/2, s=dir*7;
+  return `<polygon points="${x1},${y} ${x2},${y} ${m},${y+s}" ${D.wld}/>`;
+}
+function dimV(x,y1,y2,label,lx){
+  const mid=(y1+y2)/2;
+  return `<line x1="${x}" y1="${y1}" x2="${x}" y2="${y2}" stroke="#555" stroke-width="0.7"
+    marker-start="url(#darrr)" marker-end="url(#darr)"/>
+  <line x1="${x-3}" y1="${y1}" x2="${x+3}" y2="${y1}" stroke="#555" stroke-width="0.7"/>
+  <line x1="${x-3}" y1="${y2}" x2="${x+3}" y2="${y2}" stroke="#555" stroke-width="0.7"/>
+  <text ${D.sml} x="${lx}" y="${mid+3}" text-anchor="middle">${label}</text>`;
+}
+function dimH(x1,x2,y,label,ly){
+  const mid=(x1+x2)/2;
+  return `<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="#555" stroke-width="0.7"
+    marker-start="url(#darrr)" marker-end="url(#darr)"/>
+  <line x1="${x1}" y1="${y-3}" x2="${x1}" y2="${y+3}" stroke="#555" stroke-width="0.7"/>
+  <line x1="${x2}" y1="${y-3}" x2="${x2}" y2="${y+3}" stroke="#555" stroke-width="0.7"/>
+  <text ${D.sml} x="${mid}" y="${ly}" text-anchor="middle">${label}</text>`;
+}
+function label(x,y,txt,anchor='start'){
+  return `<text ${D.txt} x="${x}" y="${y}" text-anchor="${anchor}">${txt}</text>`;
+}
+function slabel(x,y,txt,anchor='start'){
+  return `<text ${D.sml} x="${x}" y="${y}" text-anchor="${anchor}">${txt}</text>`;
+}
+function forceArrowH(x1,x2,y,lbl){
+  return `<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="#1a5e28" stroke-width="2" marker-end="url(#arr)"/>
+  <text ${D.grn} x="${x1>x2?x1+5:x1-5}" y="${y+4}" text-anchor="${x1>x2?'start':'end'}">${lbl}</text>`;
+}
+function forceArrowV(x,y1,y2,lbl){
+  return `<line x1="${x}" y1="${y1}" x2="${x}" y2="${y2}" stroke="#1a5e28" stroke-width="2" marker-end="url(#arr)"/>
+  <text ${D.grn} x="${x+5}" y="${y1+(y2-y1)/2}" text-anchor="start">${lbl}</text>`;
+}
+// I-section: cx=web centre, y=top, d=depth, tf=flange t, tw=web t, bf=flange width
+function isec(cx,y,d,tf,tw,bf){
+  const hw=bf/2;
+  return `<rect x="${cx-hw}" y="${y}" width="${bf}" height="${tf}" ${D.sec}/>
+  <rect x="${cx-tw/2}" y="${y+tf}" width="${tw}" height="${d-2*tf}" ${D.web}/>
+  <rect x="${cx-hw}" y="${y+d-tf}" width="${bf}" height="${tf}" ${D.sec}/>`;
+}
+// Rotated I-section (horizontal beam): cy=web centre, x=left, len=length
+function isecH(x,cy,len,tf,tw,bf){
+  const hw=bf/2;
+  return `<rect x="${x}" y="${cy-hw}" width="${len}" height="${tf}" ${D.sec}/>
+  <rect x="${x}" y="${cy-tw/2}" width="${len}" height="${tw}" ${D.web}/>
+  <rect x="${x}" y="${cy+hw-tf}" width="${len}" height="${tf}" ${D.sec}/>`;
+}
+
+function svgStart(w,h){
+  return `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;background:#fff;max-height:420px">
+<defs>
+<pattern id="hatch" patternUnits="userSpaceOnUse" width="6" height="6">
+  <line x1="0" y1="6" x2="6" y2="0" stroke="#999" stroke-width="0.8"/>
+</pattern>
+<marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+  <polygon points="0,0 6,3 0,6" fill="#1a5e28"/></marker>
+<marker id="darr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+  <polygon points="0,0 6,3 0,6" fill="#555"/></marker>
+<marker id="darrr" markerWidth="6" markerHeight="6" refX="1" refY="3" orient="auto">
+  <polygon points="6,0 0,3 6,6" fill="#555"/></marker>
+</defs>`;
+}
+
+function diagFin(){
+  // Fin plate: column (vertical UC) on left, fin plate welded to column face,
+  // beam (horizontal UB) bolted through fin plate. Elevation view.
+  const s=svgStart(480,300);
+  // Column UC: web centred at x=48, full height
+  const cc=48, ctf=14, ctw=9, cbf=52;
+  // Column
+  const col=`<rect x="${cc-cbf/2}" y="0" width="${cbf}" height="15" ${D.sec}/>
+  <rect x="${cc-ctw/2}" y="15" width="${ctw}" height="270" ${D.web}/>
+  <rect x="${cc-cbf/2}" y="285" width="${cbf}" height="15" ${D.sec}/>`;
+  // Fin plate: welded to right face of column flange at x=72
+  const px=cc+cbf/2, ph=150, ptop=75, ptw=12, plp=80;
+  const plate=`<rect x="${px}" y="${ptop}" width="${plp}" height="${ph}" ${D.plt}/>`;
+  const welds=weldTri(px,ptop,ptop+ph,-1)+weldTri(px,ptop,ptop+ph,1);
+  // 3 bolts at x = px+50 (e2=50 from col face, so bolt at px+50)
+  const bx=px+50, e1=25, p1=50;
+  const bolts=bolt(bx,ptop+e1)+bolt(bx,ptop+e1+p1)+bolt(bx,ptop+e1+2*p1);
+  // Beam UB: horizontal, web centre at y=150, from x=px+12 to right edge
+  const bcy=150, btf=14, btw=9, bbf=80, blen=310;
+  const beam=isecH(px+ptw,bcy,blen,btf,btw,bbf);
+  // Dimensions
+  const dims=
+    dimV(px+plp+12, ptop, ptop+e1, 'e₁', px+plp+22)+
+    dimV(px+plp+12, ptop+e1, ptop+e1+p1, 'p₁', px+plp+22)+
+    dimV(px+plp+12, ptop+e1+p1, ptop+e1+2*p1, 'p₁', px+plp+22)+
+    dimH(px, bx, ptop+ph+18, 'e₂', ptop+ph+30)+
+    dimH(px, px+plp, ptop+ph+40, 'L_p', ptop+ph+52)+
+    dimH(px, px+plp+btw, ptop-22, 'a = L_p − e₂', ptop-10);
+  // Labels
+  const labs=
+    label(2, 150,'Column (UC)')+
+    label(px+20, ptop-8,'Fin plate')+
+    slabel(px+2, ptop+ph+8,'weld')+
+    label(px+ptw+blen/2, bcy-bbf/2-5,'Beam (UB)', 'middle')+
+    `<text ${D.grn} x="465" y="148" text-anchor="end">V →</text>`+
+    `<line x1="430" y1="150" x2="460" y2="150" stroke="#1a5e28" stroke-width="2.5" marker-end="url(#arr)"/>`;
+  return s+col+plate+welds+bolts+beam+dims+labs+'</svg>';
+}
+
+function diagPDEP(){
+  // PDEP: column flange on left, end plate welded to beam web, bolts into col flange
+  const s=svgStart(480,300);
+  // Column: show just the flange (connection to flange face)
+  const cflange=`<rect x="0" y="0" width="20" height="300" ${D.sec}/>
+  <rect x="20" y="0" width="28" height="16" fill="#cdd8e0" stroke="#1a1a1a" stroke-width="1"/>
+  <rect x="20" y="284" width="28" height="16" fill="#cdd8e0" stroke="#1a1a1a" stroke-width="1"/>`;
+  // End plate: partial depth, welded to beam web
+  // Plate sits from y=75 to y=225 (150mm height), 12mm thick, face at x=48
+  const epx=48, eph=150, eptop=75, eptk=14;
+  const endplate=`<rect x="${epx}" y="${eptop}" width="${eptk}" height="${eph}" ${D.plt}/>`;
+  // Bolts through plate into col flange: 3 bolts
+  const bx=epx+7, e1=25, p1=50;
+  const bolts=bolt(bx,eptop+e1)+bolt(bx,eptop+e1+p1)+bolt(bx,eptop+e1+2*p1);
+  // Beam UB: from x=epx+eptk rightwards, web centre at y=150
+  const bcy=150, btf=16, btw=9, bbf=100, blen=320;
+  const beam=isecH(epx+eptk,bcy,blen,btf,btw,bbf);
+  // Weld: beam web to plate right face
+  const wx=epx+eptk;
+  const welds=weldTri(wx,eptop,eptop+eph,1)+weldTri(wx,eptop,eptop+eph,-1);
+  // Plate stops short of flanges annotation
+  const annot=`<line x1="${epx}" y1="${eptop}" x2="${epx-22}" y2="${eptop-18}" stroke="#555" stroke-width="0.8"/>
+  <text ${D.sml} x="${epx-26}" y="${eptop-22}" text-anchor="end">plate short</text>
+  <text ${D.sml} x="${epx-26}" y="${eptop-12}" text-anchor="end">of flanges</text>
+  <line x1="${epx}" y1="${eptop+eph}" x2="${epx-22}" y2="${eptop+eph+18}" stroke="#555" stroke-width="0.8"/>
+  <text ${D.sml} x="${epx-26}" y="${eptop+eph+28}" text-anchor="end">partial depth</text>`;
+  // Dimensions
+  const dims=
+    dimV(epx+eptk+blen-8, eptop, eptop+e1, 'e₁', epx+eptk+blen+6)+
+    dimV(epx+eptk+blen-8, eptop+e1, eptop+e1+p1, 'p₁', epx+eptk+blen+6)+
+    dimV(epx+eptk+blen-8, eptop+e1+p1, eptop+e1+2*p1, 'p₁', epx+eptk+blen+6)+
+    dimH(bx, wx, eptop+eph+22, 'e', eptop+eph+34)+
+    dimV(epx+eptk+blen-8, eptop, eptop+eph, 'h_p', epx+eptk+blen+26);
+  const labs=
+    label(2, 148,'Column (UC)')+
+    label(epx+2, eptop-8,'End plate (partial)')+
+    label(epx+eptk+blen/2, bcy-bbf/2-5,'Beam (UB)','middle')+
+    `<text ${D.grn} x="475" y="148" text-anchor="end">V →</text>`+
+    `<line x1="440" y1="150" x2="470" y2="150" stroke="#1a5e28" stroke-width="2.5" marker-end="url(#arr)"/>`;
+  return s+cflange+endplate+bolts+beam+welds+annot+dims+labs+'</svg>';
+}
+
+function diagFDEP(){
+  // FDEP: full depth plate — welded to web AND both flanges
+  const s=svgStart(480,320);
+  const cflange=`<rect x="0" y="0" width="20" height="320" ${D.sec}/>
+  <rect x="20" y="0" width="28" height="16" fill="#cdd8e0" stroke="#1a1a1a" stroke-width="1"/>
+  <rect x="20" y="304" width="28" height="16" fill="#cdd8e0" stroke="#1a1a1a" stroke-width="1"/>`;
+  // Beam: full depth 250mm, tf=16, tw=9, bf=120
+  const bcy=160, btf=16, btw=9, bbf=120, bd=250, blen=320;
+  const btop=bcy-bd/2, bbot=bcy+bd/2;
+  const beam=`<rect x="62" y="${btop}" width="${blen}" height="${btf}" ${D.sec}/>
+  <rect x="62" y="${btop+btf}" width="${blen}" height="${bd-2*btf}" ${D.web}/>
+  <rect x="62" y="${bbot-btf}" width="${blen}" height="${btf}" ${D.sec}/>`;
+  // Full depth end plate: same height as beam
+  const epx=48, eptk=12;
+  const endplate=`<rect x="${epx}" y="${btop}" width="${eptk}" height="${bd}" ${D.plt}/>`;
+  // 4 bolts
+  const bx=epx+6;
+  const bolts=bolt(bx,btop+20)+bolt(bx,btop+70)+bolt(bx,bbot-70)+bolt(bx,bbot-20);
+  // Welds: web weld (thick line), flange welds (top and bottom)
+  const webweld=`<rect x="${epx+eptk-1}" y="${btop+btf}" width="4" height="${bd-2*btf}" fill="#1a1a1a"/>
+  <text ${D.sml} x="${epx-2}" y="${bcy}" text-anchor="end" writing-mode="tb" transform="rotate(-90,${epx-8},${bcy})">web weld</text>`;
+  const flgweld=weldH(epx+eptk,epx+eptk+80,btop+btf,-1)+weldH(epx+eptk,epx+eptk+80,bbot-btf,1);
+  const fwlabs=`<line x1="${epx+eptk+40}" y1="${btop+btf}" x2="${epx+eptk+40}" y2="${btop-12}" stroke="#555" stroke-width="0.7"/>
+  <text ${D.sml} x="${epx+eptk+42}" y="${btop-2}">flange weld</text>
+  <line x1="${epx+eptk+40}" y1="${bbot-btf}" x2="${epx+eptk+40}" y2="${bbot+12}" stroke="#555" stroke-width="0.7"/>
+  <text ${D.sml} x="${epx+eptk+42}" y="${bbot+20}">flange weld</text>`;
+  const dims=
+    dimV(62+blen+8, btop, btop+btf, 't_f', 62+blen+22)+
+    dimV(62+blen+8, btop, bbot, 'd', 62+blen+38)+
+    dimV(62+blen+8, btop+btf, bbot-btf, 'd_w', 62+blen+54)+
+    dimH(bx, epx+eptk, bbot+30, 'e', bbot+42);
+  const labs=
+    label(2,160,'Column')+label(62+blen/2, btop-8,'Beam (UB)','middle')+
+    label(epx+2, btop-10,'Full depth end plate')+
+    `<text ${D.grn} x="476" y="158" text-anchor="end">V →</text>`+
+    `<line x1="440" y1="160" x2="472" y2="160" stroke="#1a5e28" stroke-width="2.5" marker-end="url(#arr)"/>`;
+  return s+cflange+beam+endplate+bolts+webweld+flgweld+fwlabs+dims+labs+'</svg>';
+}
+
+function diagCleat(){
+  // Double angle cleat: col on left, two angle cleats, beam on right
+  const s=svgStart(480,300);
+  // Column UC
+  const cc=50, ctf=14, ctw=9, cbf=52;
+  const col=`<rect x="${cc-cbf/2}" y="0" width="${cbf}" height="15" ${D.sec}/>
+  <rect x="${cc-ctw/2}" y="15" width="${ctw}" height="270" ${D.web}/>
+  <rect x="${cc-cbf/2}" y="285" width="${cbf}" height="15" ${D.sec}/>`;
+  // Angle cleats: outstanding leg to column, web leg to beam
+  // Show as two L-shapes. Outstanding leg: from col face x=76 inward, vertical
+  // Web leg: from x=76+outleg horizontal
+  const cx=cc+cbf/2; // col right face = 76
+  const outleg=10, webleg=60, tc=10;
+  const hc=140, ytop=80;
+  // Near cleat (solid)
+  const cleat1=`<rect x="${cx}" y="${ytop}" width="${outleg}" height="${hc}" ${D.plt}/>
+  <rect x="${cx+outleg}" y="${ytop+hc/2-tc/2-25}" width="${webleg}" height="${tc}" ${D.plt}/>
+  <rect x="${cx+outleg}" y="${ytop+hc/2-tc/2+25}" width="${webleg}" height="${tc}" ${D.plt}/>`;
+  // Far cleat (dashed — shown offset slightly)
+  const cleat2=`<rect x="${cx+2}" y="${ytop}" width="${outleg}" height="${hc}" fill="none" stroke="#888" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="${cx+outleg+2}" y="${ytop+hc/2-tc/2-25}" width="${webleg}" height="${tc}" fill="none" stroke="#888" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="${cx+outleg+2}" y="${ytop+hc/2-tc/2+25}" width="${webleg}" height="${tc}" fill="none" stroke="#888" stroke-width="1" stroke-dasharray="5,3"/>`;
+  // Support bolts (outstanding leg into column): 3 bolts
+  const sbx=cx+outleg/2, e1=22, p1=48;
+  const sbolts=bolt(sbx,ytop+e1)+bolt(sbx,ytop+e1+p1)+bolt(sbx,ytop+e1+2*p1);
+  // Web bolts: through web legs and beam web
+  const wbx=cx+outleg+webleg/2;
+  const wbolts=bolt(wbx,ytop+hc/2-25)+bolt(wbx,ytop+hc/2+25);
+  // Beam
+  const bcy=150, btf=14, btw=8, bbf=90, blen=290;
+  const beam=isecH(cx+outleg+webleg,bcy,blen,btf,btw,bbf);
+  // Labels
+  const labs=
+    label(2,148,'Column (UC)')+
+    label(cx+2,ytop-8,'Angle cleats ×2')+
+    slabel(cx,ytop+hc/2,'L_out','start')+
+    `<line x1="${sbx-14}" y1="${ytop+e1}" x2="${sbx-28}" y2="${ytop+e1-16}" stroke="#555" stroke-width="0.7"/>
+    <text ${D.sml} x="${sbx-30}" y="${ytop+e1-18}" text-anchor="end">support bolts</text>`+
+    `<line x1="${wbx+10}" y1="${ytop+hc/2-25}" x2="${wbx+26}" y2="${ytop+hc/2-36}" stroke="#555" stroke-width="0.7"/>
+    <text ${D.sml} x="${wbx+28}" y="${ytop+hc/2-38}">web bolts</text>`+
+    label(cx+outleg+webleg+blen/2,bcy-bbf/2-5,'Beam (UB)','middle')+
+    `<rect x="${cx+outleg+webleg+30}" y="258" width="90" height="14" fill="#f0f9f2" stroke="#1a5e28" stroke-width="0.8" rx="2"/>
+    <text ${D.sml} x="${cx+outleg+webleg+75}" y="269" text-anchor="middle" fill="#1a5e28">No site welds</text>`+
+    `<text ${D.grn} x="475" y="148" text-anchor="end">V →</text>`+
+    `<line x1="440" y1="150" x2="472" y2="150" stroke="#1a5e28" stroke-width="2.5" marker-end="url(#arr)"/>`;
+  return s+col+cleat2+cleat1+sbolts+wbolts+beam+labs+'</svg>';
+}
+
+function diagSCleat(){
+  // Single angle cleat — similar to double but one side only, full V
+  const s=svgStart(480,300);
+  const cc=50, cbf=52, ctw=9;
+  const col=`<rect x="${cc-cbf/2}" y="0" width="${cbf}" height="15" ${D.sec}/>
+  <rect x="${cc-ctw/2}" y="15" width="${ctw}" height="270" ${D.web}/>
+  <rect x="${cc-cbf/2}" y="285" width="${cbf}" height="15" ${D.sec}/>`;
+  const cx=cc+cbf/2;
+  const outleg=10, webleg=60, tc=10, hc=100, ytop=100;
+  const cleat=`<rect x="${cx}" y="${ytop}" width="${outleg}" height="${hc}" ${D.plt}/>
+  <rect x="${cx+outleg}" y="${ytop+hc/2-tc/2}" width="${webleg}" height="${tc}" ${D.plt}/>`;
+  const sbx=cx+outleg/2, e1=22, p1=56;
+  const sbolts=bolt(sbx,ytop+e1)+bolt(sbx,ytop+e1+p1);
+  const wbolts=bolt(cx+outleg+webleg/2, ytop+hc/2);
+  const bcy=150, btf=14, btw=8, bbf=80, blen=300;
+  const beam=isecH(cx+outleg+webleg,bcy,blen,btf,btw,bbf);
+  const labs=
+    label(2,148,'Column (UC)')+
+    label(cx+2,ytop-8,'Single cleat ×1')+
+    `<rect x="${cx+outleg+webleg+30}" y="258" width="90" height="14" fill="#f0f9f2" stroke="#1a5e28" stroke-width="0.8" rx="2"/>
+    <text ${D.sml} x="${cx+outleg+webleg+75}" y="269" text-anchor="middle" fill="#1a5e28">No site welds</text>`+
+    `<rect x="${cx+outleg+webleg+30}" y="238" width="90" height="14" fill="#fff8ed" stroke="#c47a0a" stroke-width="0.8" rx="2"/>
+    <text ${D.sml} x="${cx+outleg+webleg+75}" y="249" text-anchor="middle" fill="#c47a0a">Full V on one cleat</text>`+
+    label(cx+outleg+webleg+blen/2,bcy-bbf/2-5,'Beam (UB)','middle')+
+    `<text ${D.grn} x="475" y="148" text-anchor="end">V →</text>`+
+    `<line x1="440" y1="150" x2="472" y2="150" stroke="#1a5e28" stroke-width="2.5" marker-end="url(#arr)"/>`;
+  return s+col+cleat+sbolts+wbolts+beam+labs+'</svg>';
+}
+
+function diagSplice(){
+  // Column splice: upper + lower column, web plates, flange plates, bearing gap
+  const s=svgStart(480,340);
+  const cx=240, ctf=14, ctw=9, cbf=110, gap=14;
+  const upBot=148, loTop=upBot+gap;
+  // Upper column (top half)
+  const upper=`<rect x="${cx-cbf/2}" y="10" width="${cbf}" height="${ctf}" ${D.sec}/>
+  <rect x="${cx-ctw/2}" y="${10+ctf}" width="${ctw}" height="${upBot-10-ctf}" ${D.web}/>
+  <rect x="${cx-cbf/2}" y="${upBot-ctf}" width="${cbf}" height="${ctf}" ${D.sec}/>`;
+  // Lower column
+  const lower=`<rect x="${cx-cbf/2}" y="${loTop}" width="${cbf}" height="${ctf}" ${D.sec}/>
+  <rect x="${cx-ctw/2}" y="${loTop+ctf}" width="${ctw}" height="${310-loTop-ctf}" ${D.web}/>
+  <rect x="${cx-cbf/2}" y="${310-ctf}" width="${cbf}" height="${ctf}" ${D.sec}/>`;
+  // Bearing gap line
+  const bg=`<line x1="${cx-cbf/2-10}" y1="${upBot}" x2="${cx+cbf/2+10}" y2="${upBot}" stroke="#555" stroke-width="0.8" stroke-dasharray="5,3"/>
+  <line x1="${cx-cbf/2-10}" y1="${loTop}" x2="${cx+cbf/2+10}" y2="${loTop}" stroke="#555" stroke-width="0.8" stroke-dasharray="5,3"/>
+  <text ${D.sml} x="${cx+cbf/2+14}" y="${upBot+gap/2+3}">bearing gap</text>`;
+  // Web cover plates (both sides): thin plates covering the gap zone
+  const wpw=8, wph=90, wpx1=cx-ctw/2-wpw, wpx2=cx+ctw/2;
+  const wpy=upBot-wph/2;
+  const webplates=`<rect x="${wpx1}" y="${wpy}" width="${wpw}" height="${wph}" ${D.plt}/>
+  <rect x="${wpx2}" y="${wpy}" width="${wpw}" height="${wph}" ${D.plt}/>`;
+  const wbolts=bolt(wpx1+wpw/2,wpy+22)+bolt(wpx1+wpw/2,wpy+45)+bolt(wpx1+wpw/2,wpy+68)+
+    bolt(wpx2+wpw/2,wpy+22)+bolt(wpx2+wpw/2,wpy+45)+bolt(wpx2+wpw/2,wpy+68);
+  // Flange cover plates: top pair
+  const fpw=36, fptk=9;
+  const fpy1=upBot-ctf-fptk, fpy2=loTop+ctf;
+  const fpx1=cx-cbf/2-2, fpx2=cx+cbf/2-fpw+2;
+  const fplates=`<rect x="${fpx1}" y="${fpy1}" width="${fpw}" height="${fptk}" ${D.plt}/>
+  <rect x="${fpx2}" y="${fpy1}" width="${fpw}" height="${fptk}" ${D.plt}/>
+  <rect x="${fpx1}" y="${fpy2}" width="${fpw}" height="${fptk}" ${D.plt}/>
+  <rect x="${fpx2}" y="${fpy2}" width="${fpw}" height="${fptk}" ${D.plt}/>`;
+  const fbolts=bolt(fpx1+18,fpy1+fptk/2)+bolt(fpx2+18,fpy1+fptk/2)+
+    bolt(fpx1+18,fpy2+fptk/2)+bolt(fpx2+18,fpy2+fptk/2);
+  // Force arrows
+  const forces=`<line x1="${cx}" y1="10" x2="${cx}" y2="30" stroke="#1a5e28" stroke-width="2.5" marker-end="url(#arr)"/>
+  <text ${D.grn} x="${cx+6}" y="24">N</text>
+  <line x1="${cx+100}" y1="${upBot+gap/2}" x2="${cx+78}" y2="${upBot+gap/2}" stroke="#1a5e28" stroke-width="2" marker-end="url(#arr)"/>
+  <text ${D.grn} x="${cx+104}" y="${upBot+gap/2+4}">V</text>`;
+  // Labels
+  const labs=
+    label(cx-cbf/2-60, 80,'Upper column')+
+    label(cx-cbf/2-60, 260,'Lower column')+
+    `<line x1="${cx-cbf/2-4}" y1="${wpy+20}" x2="${cx-cbf/2-38}" y2="${wpy}" stroke="#555" stroke-width="0.7"/>
+    <text ${D.sml} x="${cx-cbf/2-42}" y="${wpy-2}" text-anchor="end">Web cover plates</text>`+
+    `<line x1="${fpx1+fpw/2}" y1="${fpy1}" x2="${fpx1+fpw/2}" y2="${fpy1-16}" stroke="#555" stroke-width="0.7"/>
+    <text ${D.sml} x="${fpx1+fpw/2}" y="${fpy1-20}" text-anchor="middle">Flange plates</text>`+
+    dimH(wpx1,wpx2+wpw,340,`L_cp = ${gap} + plates`,352);
+  return s+upper+lower+bg+webplates+wbolts+fplates+fbolts+forces+labs+'</svg>';
+}
+
+function diagBase(){
+  // Column base: column sitting on base plate, HD bolts, concrete, grout
+  const s=svgStart(420,340);
+  const cx=210, ctf=14, ctw=9, cbf=100;
+  const cbot=190; // bottom of column
+  // Column
+  const col=`<rect x="${cx-cbf/2}" y="10" width="${cbf}" height="${ctf}" ${D.sec}/>
+  <rect x="${cx-ctw/2}" y="${10+ctf}" width="${ctw}" height="${cbot-10-ctf}" ${D.web}/>
+  <rect x="${cx-cbf/2}" y="${cbot-ctf}" width="${cbf}" height="${ctf}" ${D.sec}/>`;
+  // Weld at column foot (fillet triangles)
+  const weld_base=weldH(cx-cbf/2,cx-ctw/2,cbot,1)+weldH(cx+ctw/2,cx+cbf/2,cbot,1);
+  // Base plate
+  const bpw=180, bph=16, bpx=cx-bpw/2, bpy=cbot;
+  const baseplate=`<rect x="${bpx}" y="${bpy}" width="${bpw}" height="${bph}" ${D.plt}/>`;
+  // Grout
+  const gpy=bpy+bph;
+  const grout=`<rect x="${bpx-10}" y="${gpy}" width="${bpw+20}" height="12" fill="#e8e8e8" stroke="#888" stroke-width="0.8" stroke-dasharray="4,2"/>
+  <text ${D.sml} x="${cx}" y="${gpy+9}" text-anchor="middle">grout</text>`;
+  // Concrete
+  const cony=gpy+12;
+  const conc=`<rect x="${bpx-30}" y="${cony}" width="${bpw+60}" height="60" ${D.hat} stroke="#777" stroke-width="1"/>
+  <text ${D.sml} x="${cx}" y="${cony+35}" text-anchor="middle">Concrete foundation</text>`;
+  // HD bolts (4 off — show 2 in this elevation)
+  const hdx1=bpx+25, hdx2=bpx+bpw-25;
+  const hdbolts=`<line x1="${hdx1}" y1="${bpy}" x2="${hdx1}" y2="${cony+50}" stroke="#444" stroke-width="3"/>
+  <line x1="${hdx2}" y1="${bpy}" x2="${hdx2}" y2="${cony+50}" stroke="#444" stroke-width="3"/>
+  ${bolt(hdx1,bpy+bph/2,6)} ${bolt(hdx2,bpy+bph/2,6)}`;
+  // Cantilever c dimension
+  const cdims=
+    dimH(bpx, cx-cbf/2, bpy+bph+30, 'c', bpy+bph+42)+
+    dimH(cx+cbf/2, bpx+bpw, bpy+bph+30, 'c', bpy+bph+42)+
+    dimH(bpx, bpx+bpw, cony+72, 'B_p', cony+84)+
+    dimV(bpx-38, bpy, bpy+bph, 't_p', bpx-48);
+  // Forces
+  const forces=`<line x1="${cx}" y1="10" x2="${cx}" y2="30" stroke="#1a5e28" stroke-width="2.5" marker-end="url(#arr)"/>
+  <text ${D.grn} x="${cx+6}" y="24">N</text>
+  <line x1="${cx+80}" y1="${cbot-60}" x2="${cx+58}" y2="${cbot-60}" stroke="#1a5e28" stroke-width="2" marker-end="url(#arr)"/>
+  <text ${D.grn} x="${cx+84}" y="${cbot-56}">V</text>`;
+  const labs=
+    label(cx-cbf/2-50, 100,'Column')+
+    label(bpx+2, bpy-6,'Base plate')+
+    `<line x1="${hdx1-8}" y1="${cony+30}" x2="${hdx1-30}" y2="${cony+40}" stroke="#555" stroke-width="0.7"/>
+    <text ${D.sml} x="${hdx1-34}" y="${cony+44}" text-anchor="end">HD bolts</text>`;
+  return s+col+weld_base+baseplate+grout+conc+hdbolts+cdims+forces+labs+'</svg>';
+}
+
+function diagBrace(){
+  // Bracing: supporting frame bottom + column left, triangular gusset, diagonal brace, bolts
+  const s=svgStart(480,320);
+  // Supporting beam (horizontal, bottom)
+  const beamH=`<rect x="0" y="228" width="480" height="16" ${D.sec}/>
+  <rect x="0" y="244" width="480" height="40" ${D.web}/>
+  <rect x="0" y="284" width="480" height="16" ${D.sec}/>`;
+  // Supporting column (vertical, left)
+  const colV=`<rect x="0" y="0" width="16" height="244" ${D.sec}/>
+  <rect x="16" y="0" width="30" height="244" ${D.web}/>`;
+  // Gusset plate (triangle): top-left to bottom-right along beam + up left
+  const gpoly=`<polygon points="46,228 240,228 240,100" ${D.plt}/>`;
+  // Weld on beam top flange
+  const gw1=weldH(46,240,228,-1);
+  // Weld on column right face (vertical)
+  const gw2=weldTri(46,100,228,1);
+  // Brace member (flat bar diagonal)
+  const ba=Math.atan2(240-46,228-100); // angle
+  const bl=Math.sqrt((240-46)**2+(228-100)**2);
+  const bw=18;
+  const brace=`<g transform="rotate(${-ba*180/Math.PI} 240 100)">
+  <rect x="${240-bl}" y="${100-bw/2}" width="${bl}" height="${bw}" ${D.sec}/>
+  </g>`;
+  // Bolts along brace near gusset (3 bolts, spaced along brace direction)
+  const p1=55, e1=40;
+  const bdx=Math.cos(ba), bdy=-Math.sin(ba);
+  const b0x=240-e1*bdx, b0y=100+e1*bdy;
+  const bbolts=
+    bolt(b0x,b0y)+
+    bolt(b0x-p1*bdx,b0y+p1*bdy)+
+    bolt(b0x-2*p1*bdx,b0y+2*p1*bdy);
+  // Force arrow along brace
+  const forces=`<line x1="${240+50*bdx}" y1="${100-50*bdy}" x2="${240+20*bdx}" y2="${100-20*bdy}" stroke="#1a5e28" stroke-width="2.5" marker-end="url(#arr)"/>
+  <text ${D.grn} x="${240+58*bdx}" y="${100-50*bdy+4}">N</text>`;
+  // Eccentricity: bolt group CG to weld line
+  const ecx=b0x-p1*bdx, ecy=b0y+p1*bdy;
+  const ecc=`<line x1="${ecx}" y1="${ecy}" x2="${ecx}" y2="228" stroke="#555" stroke-width="0.8" stroke-dasharray="3,2"/>
+  <line x1="${ecx}" y1="244" x2="240" y2="244" stroke="#555" stroke-width="0.8" marker-start="url(#darrr)" marker-end="url(#darr)"/>
+  <text ${D.sml} x="${(ecx+240)/2}" y="256" text-anchor="middle">e</text>`;
+  // hg dimension
+  const hgdim=dimV(255,100,228,'h_g',268);
+  // Labels
+  const labs=
+    slabel(50,100,'Gusset plate')+
+    slabel(300,150,'Bracing member')+
+    `<line x1="${b0x-10}" y1="${b0y+10}" x2="${b0x+30}" y2="${b0y-30}" stroke="#555" stroke-width="0.7"/>
+    <text ${D.sml} x="${b0x+32}" y="${b0y-32}">bolt group</text>`;
+  return s+beamH+colV+gpoly+gw1+gw2+brace+bbolts+forces+ecc+hgdim+labs+'</svg>';
+}
+
+const DIAGRAMS={
+  fin:diagFin, pdep:diagPDEP, fdep:diagFDEP,
+  dcleat:diagCleat, scleat:diagSCleat,
+  splice:diagSplice, base:diagBase, brace:diagBrace,
+};
+
+// ─── INPUT FORMS ──────────────────────────────────────────────
+function formFin(){return`
+<div class="card"><div class="card-title">📐 Section Sizes</div>
+  <div class="g2">
+    <div class="field"><label>Supported Beam</label><div class="iw"><select id="fin-beamSec" onchange="secFill('fin','beam',this.value)">
+      ${secOpts('457×191×82 UKB')}</select></div></div>
+    <div class="field"><label>Supporting Member</label><div class="iw"><select id="fin-suppSec" onchange="secFill('fin','supp',this.value)">
+      ${secOpts('254×254×89 UKC')}</select></div></div>
+  </div>
+  <div class="ibox" id="fin-notch">Select sections above to check notch requirement.</div>
+</div>
+<div class="card"><div class="card-title">⚡ Applied Loads</div>
+  <div class="field"><label>Design Shear V_Ed <em>— ULS</em></label>
+    <div class="iw"><input type="number" id="fin-V" value="150"><span class="unit">kN</span></div></div>
+</div>
+<div class="card"><div class="card-title">🔩 Bolt Group</div>
+  <div class="g2">
+    <div class="field"><label>Bolt Size</label><div class="iw"><select id="fin-boltSize">
+      <option>M16</option><option selected>M20</option><option>M24</option><option>M27</option>
+    </select></div></div>
+    <div class="field"><label>No. of Bolts n</label><div class="iw"><input type="number" id="fin-n" value="3"></div></div>
+    <div class="field"><label>Pitch p₁ <em>— c/c vert.</em></label><div class="iw"><input type="number" id="fin-p1" value="70"><span class="unit">mm</span></div></div>
+    <div class="field"><label>End dist e₁</label><div class="iw"><input type="number" id="fin-e1" value="50"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Edge dist (plate) e₂</label><div class="iw"><input type="number" id="fin-e2p" value="50"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Edge dist (web) e₂</label><div class="iw"><input type="number" id="fin-e2w" value="40"><span class="unit">mm</span></div></div>
+  </div>
+</div>
+<div class="card"><div class="card-title">📏 Geometry</div>
+  <div class="g2">
+    <div class="field"><label>Plate thick t_p</label><div class="iw"><input type="number" id="fin-tp" value="10"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Plate height h_p</label><div class="iw"><input type="number" id="fin-hp" value="200"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Plate length L_p</label><div class="iw"><input type="number" id="fin-lp" value="90"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Beam web t_w <em>— auto from section</em></label><div class="iw"><input type="number" id="fin-tw" value="9.9"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Weld leg a_w <em>— both sides</em></label><div class="iw"><input type="number" id="fin-aw" value="8"><span class="unit">mm</span></div></div>
+  </div>
+  <div class="ibox" id="fin-ecc">Eccentricity a = Lp − e₂ = 90 − 50 = 40 mm  ·  Hole d₀ = 22 mm</div>
+</div>
+<div class="card"><div class="card-title">🏗 Material Grades</div>
+  <div class="g2">
+    <div class="field"><label>Fin Plate</label><div class="iw"><select id="fin-platGrade">
+      <option selected>S275</option><option>S355</option></select></div></div>
+    <div class="field"><label>Beam</label><div class="iw"><select id="fin-beamGrade">
+      <option>S275</option><option selected>S355</option></select></div></div>
+  </div>
+  <div class="ibox">t≤16mm · S275: fy=275, fu=430 MPa · S355: fy=355, fu=490 MPa</div>
+</div>`;}
+
+function formPDEP(){return`
+<div class="card"><div class="card-title">📐 Section Sizes</div>
+  <div class="g2">
+    <div class="field"><label>Supported Beam</label><div class="iw"><select id="pdep-beamSec" onchange="secFill('pdep','beam',this.value)">
+      ${secOpts('457×191×82 UKB')}</select></div></div>
+    <div class="field"><label>Supporting Column</label><div class="iw"><select id="pdep-suppSec" onchange="secFill('pdep','supp',this.value)">
+      ${secOpts('254×254×89 UKC')}</select></div></div>
+  </div>
+  <div class="ibox" id="pdep-notch">Select sections above to check notch requirement.</div>
+</div>
+<div class="card"><div class="card-title">⚡ Applied Loads</div>
+  <div class="field"><label>Design Shear V_Ed <em>— ULS</em></label>
+    <div class="iw"><input type="number" id="pdep-V" value="150"><span class="unit">kN</span></div></div>
+</div>
+<div class="card"><div class="card-title">🔩 Bolt Group</div>
+  <div class="g2">
+    <div class="field"><label>Bolt Size</label><div class="iw"><select id="pdep-boltSize">
+      <option>M16</option><option selected>M20</option><option>M24</option><option>M27</option>
+    </select></div></div>
+    <div class="field"><label>No. of Bolts n</label><div class="iw"><input type="number" id="pdep-n" value="3"></div></div>
+    <div class="field"><label>Pitch p₁</label><div class="iw"><input type="number" id="pdep-p1" value="70"><span class="unit">mm</span></div></div>
+    <div class="field"><label>End dist e₁</label><div class="iw"><input type="number" id="pdep-e1" value="50"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Edge dist e₂</label><div class="iw"><input type="number" id="pdep-e2" value="40"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Bolt-to-weld e</label><div class="iw"><input type="number" id="pdep-ep" value="40"><span class="unit">mm</span></div></div>
+  </div>
+  <div class="ibox">e = horizontal distance bolt CL → beam web face (weld). Typical 30–60 mm.</div>
+</div>
+<div class="card"><div class="card-title">📏 Geometry</div>
+  <div class="g2">
+    <div class="field"><label>Plate thick t_p</label><div class="iw"><input type="number" id="pdep-tp" value="10"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Plate height h_p</label><div class="iw"><input type="number" id="pdep-hp" value="200"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Col. flange t_fc <em>— auto</em></label><div class="iw"><input type="number" id="pdep-tfc" value="17.3"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Beam web t_w <em>— auto</em></label><div class="iw"><input type="number" id="pdep-tw" value="9.9"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Weld leg a_w <em>— both sides</em></label><div class="iw"><input type="number" id="pdep-aw" value="6"><span class="unit">mm</span></div></div>
+  </div>
+</div>
+<div class="card"><div class="card-title">🏗 Material Grades</div>
+  <div class="g3">
+    <div class="field"><label>End Plate</label><div class="iw"><select id="pdep-platGrade">
+      <option selected>S275</option><option>S355</option></select></div></div>
+    <div class="field"><label>Column</label><div class="iw"><select id="pdep-colGrade">
+      <option selected>S275</option><option>S355</option></select></div></div>
+    <div class="field"><label>Beam</label><div class="iw"><select id="pdep-beamGrade">
+      <option>S275</option><option selected>S355</option></select></div></div>
+  </div>
+  <div class="ibox">t≤16mm · S275: fy=275, fu=430 MPa · S355: fy=355, fu=490 MPa</div>
+</div>`;}
+
+function formFDEP(){return`
+<div class="card"><div class="card-title">⚡ Applied Loads</div>
+  <div class="field"><label>Design Shear V_Ed <em>— ULS</em></label>
+    <div class="iw"><input type="number" id="fdep-V" value="150"><span class="unit">kN</span></div></div>
+</div>
+<div class="card"><div class="card-title">🔩 Bolt Group <em style="text-transform:none;letter-spacing:0;font-size:10px;color:var(--muted)"> — single row, within web depth</em></div>
+  <div class="g2">
+    <div class="field"><label>Bolt Size</label><div class="iw"><select id="fdep-boltSize">
+      <option>M16</option><option selected>M20</option><option>M24</option><option>M27</option>
+    </select></div></div>
+    <div class="field"><label>No. of Bolts n</label><div class="iw"><input type="number" id="fdep-n" value="4"></div></div>
+    <div class="field"><label>Pitch p₁</label><div class="iw"><input type="number" id="fdep-p1" value="70"><span class="unit">mm</span></div></div>
+    <div class="field"><label>End dist e₁ <em>— from flange face</em></label><div class="iw"><input type="number" id="fdep-e1" value="50"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Edge dist e₂</label><div class="iw"><input type="number" id="fdep-e2" value="40"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Bolt-to-weld e <em>— moment arm</em></label><div class="iw"><input type="number" id="fdep-ep" value="35"><span class="unit">mm</span></div></div>
+  </div>
+  <div class="ibox">e = horizontal distance from bolt CL to beam web face. Typical 25–50 mm.</div>
+</div>
+<div class="card"><div class="card-title">📐 Beam & Plate Geometry</div>
+  <div class="g2">
+    <div class="field"><label>Plate thick t_p</label><div class="iw"><input type="number" id="fdep-tp" value="10"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Beam depth d <em>= plate height</em></label><div class="iw"><input type="number" id="fdep-d" value="310"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Beam web t_w</label><div class="iw"><input type="number" id="fdep-tw" value="8"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Beam flange t_f</label><div class="iw"><input type="number" id="fdep-tf" value="15"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Beam flange b_f <em>— weld length</em></label><div class="iw"><input type="number" id="fdep-bf" value="125"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Col. flange t_fc</label><div class="iw"><input type="number" id="fdep-tfc" value="12"><span class="unit">mm</span></div></div>
+  </div>
+</div>
+<div class="card"><div class="card-title">🔧 Weld Sizes</div>
+  <div class="g2">
+    <div class="field"><label>Web weld leg a_w <em>— both sides</em></label><div class="iw"><input type="number" id="fdep-aww" value="6"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Flange weld leg a_f <em>— both flanges</em></label><div class="iw"><input type="number" id="fdep-awf" value="8"><span class="unit">mm</span></div></div>
+  </div>
+  <div class="ibox" id="fdep-info">Web welds run along d_w = d − 2t_f.  Flange welds run along full flange width b_f.</div>
+</div>
+<div class="card"><div class="card-title">🏗 Material Grades</div>
+  <div class="g3">
+    <div class="field"><label>End Plate</label><div class="iw"><select id="fdep-platGrade">
+      <option selected>S275</option><option>S355</option></select></div></div>
+    <div class="field"><label>Column</label><div class="iw"><select id="fdep-colGrade">
+      <option selected>S275</option><option>S355</option></select></div></div>
+    <div class="field"><label>Beam</label><div class="iw"><select id="fdep-beamGrade">
+      <option>S275</option><option selected>S355</option></select></div></div>
+  </div>
+  <div class="ibox">t≤16mm · S275: fy=275, fu=430 MPa · S355: fy=355, fu=490 MPa</div>
+</div>`;}
+
+function formDCleat(){return`
+<div class="card" style="border-left-color:#c47a0a;background:#fffdf5">
+  <div class="card-title" style="color:#c47a0a">⚠ Code Basis — Not P358</div>
+  <div style="font-size:11px;color:#7a4f00;line-height:1.8">
+    Web cleats are <b>not covered by SCI P358</b>. P358 covers end plates, fin plates, column splices, column bases and bracing only.
+    These checks are based on <b>EC3-1-8 §3 bolt/bearing rules</b> and <b>ECCS Publication 126</b> (European recommendations for simple joints).
+    The double angle cleat design model follows established UK practice from P212 (BS 5950 predecessor).
+    <b>Results should be verified independently before use in design.</b>
+  </div>
+</div>
+<div class="card"><div class="card-title">📐 Section Sizes</div>
+  <div class="g2">
+    <div class="field"><label>Supported Beam</label><div class="iw"><select id="dcl-beamSec" onchange="secFill('dcl','beam',this.value)">
+      ${secOpts('457×191×82 UKB')}</select></div></div>
+    <div class="field"><label>Supporting Column</label><div class="iw"><select id="dcl-suppSec" onchange="secFill('dcl','supp',this.value)">
+      ${secOpts('254×254×89 UKC')}</select></div></div>
+  </div>
+  <div class="ibox" id="dcl-notch">Select sections above to check notch requirement.</div>
+</div>
+<div class="card"><div class="card-title">⚡ Applied Loads</div>
+  <div class="field"><label>Design Shear V_Ed <em>— ULS</em></label>
+    <div class="iw"><input type="number" id="dcl-V" value="100"><span class="unit">kN</span></div></div>
+</div>
+<div class="card"><div class="card-title">🔩 Bolt Group</div>
+  <div class="g2">
+    <div class="field"><label>Bolt Size</label><div class="iw"><select id="dcl-boltSize">
+      <option>M16</option><option selected>M20</option><option>M24</option><option>M27</option>
+    </select></div></div>
+    <div class="field"><label>Bolts per cleat n</label><div class="iw"><input type="number" id="dcl-n" value="3"></div></div>
+    <div class="field"><label>Pitch p₁ <em>— c/c vertical</em></label><div class="iw"><input type="number" id="dcl-p1" value="70"><span class="unit">mm</span></div></div>
+    <div class="field"><label>End dist e₁</label><div class="iw"><input type="number" id="dcl-e1" value="50"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Gauge (support) e₂_s</label><div class="iw"><input type="number" id="dcl-e2s" value="35"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Edge dist (web) e₂_w</label><div class="iw"><input type="number" id="dcl-e2w" value="35"><span class="unit">mm</span></div></div>
+  </div>
+  <div class="ibox">Two cleats: support bolt group per cleat carries V/2 with eccentricity e₂_s. Web bolts (2n total) carry V concentrically.</div>
+</div>
+<div class="card"><div class="card-title">📏 Angle Cleat Geometry</div>
+  <div class="g2">
+    <div class="field"><label>Cleat thickness t_c</label><div class="iw"><input type="number" id="dcl-tc" value="10"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Outstanding leg L_out</label><div class="iw"><input type="number" id="dcl-lout" value="90"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Web leg L_web</label><div class="iw"><input type="number" id="dcl-lweb" value="90"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Beam web t_w <em>— auto</em></label><div class="iw"><input type="number" id="dcl-tw" value="9.9"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Col. flange t_fc <em>— auto</em></label><div class="iw"><input type="number" id="dcl-tfc" value="17.3"><span class="unit">mm</span></div></div>
+  </div>
+  <div class="ibox" id="dcl-hc">Cleat height hc = e₁+(n−1)p₁+e₁</div>
+</div>
+<div class="card"><div class="card-title">🏗 Material Grades</div>
+  <div class="g3">
+    <div class="field"><label>Angle Cleat</label><div class="iw"><select id="dcl-cleatGrade">
+      <option selected>S275</option><option>S355</option></select></div></div>
+    <div class="field"><label>Column</label><div class="iw"><select id="dcl-colGrade">
+      <option selected>S275</option><option>S355</option></select></div></div>
+    <div class="field"><label>Beam</label><div class="iw"><select id="dcl-beamGrade">
+      <option>S275</option><option selected>S355</option></select></div></div>
+  </div>
+</div>`;}
+
+function formSCleat(){return`
+<div class="card" style="border-left-color:#c47a0a;background:#fffdf5">
+  <div class="card-title" style="color:#c47a0a">⚠ Code Basis — Not P358</div>
+  <div style="font-size:11px;color:#7a4f00;line-height:1.8">
+    Web cleats are <b>not covered by SCI P358</b>. Single cleat checks based on <b>EC3-1-8 §3</b> and <b>ECCS Publication 126</b>.
+    Single cleat carries the full shear V on one leg — more eccentric than double cleat.
+    <b>Results should be verified independently before use in design.</b>
+  </div>
+</div>
+<div class="card"><div class="card-title">📐 Section Sizes</div>
+  <div class="g2">
+    <div class="field"><label>Supported Beam</label><div class="iw"><select id="scl-beamSec" onchange="secFill('scl','beam',this.value)">
+      ${secOpts('305×127×48 UKB')}</select></div></div>
+    <div class="field"><label>Supporting Column</label><div class="iw"><select id="scl-suppSec" onchange="secFill('scl','supp',this.value)">
+      ${secOpts('203×203×60 UKC')}</select></div></div>
+  </div>
+  <div class="ibox" id="scl-notch">Select sections above to check notch requirement.</div>
+</div>
+<div class="card"><div class="card-title">⚡ Applied Loads</div>
+  <div class="field"><label>Design Shear V_Ed <em>— ULS</em></label>
+    <div class="iw"><input type="number" id="scl-V" value="60"><span class="unit">kN</span></div></div>
+</div>
+<div class="card"><div class="card-title">🔩 Bolt Group</div>
+  <div class="g2">
+    <div class="field"><label>Bolt Size</label><div class="iw"><select id="scl-boltSize">
+      <option>M16</option><option selected>M20</option><option>M24</option><option>M27</option>
+    </select></div></div>
+    <div class="field"><label>No. of Bolts n</label><div class="iw"><input type="number" id="scl-n" value="2"></div></div>
+    <div class="field"><label>Pitch p₁</label><div class="iw"><input type="number" id="scl-p1" value="70"><span class="unit">mm</span></div></div>
+    <div class="field"><label>End dist e₁</label><div class="iw"><input type="number" id="scl-e1" value="50"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Gauge (support) e₂_s</label><div class="iw"><input type="number" id="scl-e2s" value="35"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Edge dist (web) e₂_w</label><div class="iw"><input type="number" id="scl-e2w" value="35"><span class="unit">mm</span></div></div>
+  </div>
+  <div class="ibox">Single cleat carries full shear V (not V/2). Support bolt group carries V eccentrically with moment V×e₂_s. Web bolts carry V concentrically through n bolts.</div>
+</div>
+<div class="card"><div class="card-title">📏 Angle Cleat Geometry</div>
+  <div class="g2">
+    <div class="field"><label>Cleat thickness t_c</label><div class="iw"><input type="number" id="scl-tc" value="10"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Outstanding leg L_out</label><div class="iw"><input type="number" id="scl-lout" value="90"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Web leg L_web</label><div class="iw"><input type="number" id="scl-lweb" value="90"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Beam web t_w <em>— auto</em></label><div class="iw"><input type="number" id="scl-tw" value="9.0"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Col. flange t_fc <em>— auto</em></label><div class="iw"><input type="number" id="scl-tfc" value="14.2"><span class="unit">mm</span></div></div>
+  </div>
+  <div class="ibox" id="scl-hc">Cleat height hc = e₁+(n−1)p₁+e₁</div>
+</div>
+<div class="card"><div class="card-title">🏗 Material Grades</div>
+  <div class="g3">
+    <div class="field"><label>Angle Cleat</label><div class="iw"><select id="scl-cleatGrade">
+      <option selected>S275</option><option>S355</option></select></div></div>
+    <div class="field"><label>Column</label><div class="iw"><select id="scl-colGrade">
+      <option selected>S275</option><option>S355</option></select></div></div>
+    <div class="field"><label>Beam</label><div class="iw"><select id="scl-beamGrade">
+      <option>S275</option><option selected>S355</option></select></div></div>
+  </div>
+</div>`;}
+
+function formSplice(){return`
+<div class="card"><div class="card-title">⚡ Applied Loads</div>
+  <div class="ibox" style="margin-bottom:10px">Bearing splice: axial load is transferred by direct bearing. Cover plates resist shear and the nominal moment from construction eccentricity.</div>
+  <div class="g2">
+    <div class="field"><label>Axial force N_Ed <em>— compressive</em></label>
+      <div class="iw"><input type="number" id="sp-N" value="800"><span class="unit">kN</span></div></div>
+    <div class="field"><label>Shear V_Ed <em>— horizontal</em></label>
+      <div class="iw"><input type="number" id="sp-V" value="25"><span class="unit">kN</span></div></div>
+  </div>
+</div>
+<div class="card"><div class="card-title">🔩 Bolt Group — Web Plates</div>
+  <div class="g2">
+    <div class="field"><label>Bolt Size</label><div class="iw"><select id="sp-boltSize">
+      <option>M16</option><option selected>M20</option><option>M24</option><option>M27</option>
+    </select></div></div>
+    <div class="field"><label>Bolts per web plate n_w <em>— each side</em></label>
+      <div class="iw"><input type="number" id="sp-nw" value="4"></div></div>
+    <div class="field"><label>Pitch p₁</label>
+      <div class="iw"><input type="number" id="sp-p1w" value="70"><span class="unit">mm</span></div></div>
+    <div class="field"><label>End dist e₁</label>
+      <div class="iw"><input type="number" id="sp-e1w" value="50"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Edge dist e₂ (web plate)</label>
+      <div class="iw"><input type="number" id="sp-e2w" value="35"><span class="unit">mm</span></div></div>
+  </div>
+</div>
+<div class="card"><div class="card-title">🔩 Bolt Group — Flange Plates</div>
+  <div class="g2">
+    <div class="field"><label>Bolts per flange plate n_f <em>— per plate, each side</em></label>
+      <div class="iw"><input type="number" id="sp-nf" value="2"></div></div>
+    <div class="field"><label>Gauge e₂ (flange plate)</label>
+      <div class="iw"><input type="number" id="sp-e2f" value="50"><span class="unit">mm</span></div></div>
+    <div class="field"><label>End dist e₁ (flange)</label>
+      <div class="iw"><input type="number" id="sp-e1f" value="40"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Pitch p₁ (flange) <em>— if n_f &gt; 1</em></label>
+      <div class="iw"><input type="number" id="sp-p1f" value="60"><span class="unit">mm</span></div></div>
+  </div>
+</div>
+<div class="card"><div class="card-title">📐 Column & Plate Geometry</div>
+  <div class="g2">
+    <div class="field"><label>Col. flange width b_f</label>
+      <div class="iw"><input type="number" id="sp-bf" value="209"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Col. flange thick t_f</label>
+      <div class="iw"><input type="number" id="sp-tf" value="17"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Col. web thick t_w</label>
+      <div class="iw"><input type="number" id="sp-tw" value="10"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Col. depth d</label>
+      <div class="iw"><input type="number" id="sp-d" value="206"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Flange plate thick t_fp</label>
+      <div class="iw"><input type="number" id="sp-tfp" value="12"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Flange plate width b_fp</label>
+      <div class="iw"><input type="number" id="sp-bfp" value="180"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Web plate thick t_wp</label>
+      <div class="iw"><input type="number" id="sp-twp" value="10"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Web plate length L_cp <em>— each side of joint</em></label>
+      <div class="iw"><input type="number" id="sp-Lcp" value="200"><span class="unit">mm</span></div></div>
+  </div>
+  <div class="ibox">Defaults suit 203×203×60 UC (S355). Flange plates each side of each flange (×4 total). Web plates each side of web (×2 total).</div>
+</div>
+<div class="card"><div class="card-title">🏗 Material Grades</div>
+  <div class="g2">
+    <div class="field"><label>Column</label><div class="iw"><select id="sp-colGrade">
+      <option>S275</option><option selected>S355</option></select></div></div>
+    <div class="field"><label>Cover Plates</label><div class="iw"><select id="sp-platGrade">
+      <option>S275</option><option selected>S355</option></select></div></div>
+  </div>
+  <div class="ibox">t≤16mm · S275: fy=275, fu=430 MPa · S355: fy=355, fu=490 MPa</div>
+</div>`;}
+
+function formBase(){return`
+<div class="card"><div class="card-title">⚡ Applied Loads <em style="font-weight:400;letter-spacing:0;text-transform:none;font-size:10px">— at column base</em></div>
+  <div class="g2">
+    <div class="field"><label>Axial N_Ed <em>— compressive +ve</em></label>
+      <div class="iw"><input type="number" id="ba-N" value="600"><span class="unit">kN</span></div></div>
+    <div class="field"><label>Shear V_Ed</label>
+      <div class="iw"><input type="number" id="ba-V" value="40"><span class="unit">kN</span></div></div>
+    <div class="field"><label>Moment M_Ed <em>— if applicable</em></label>
+      <div class="iw"><input type="number" id="ba-M" value="0"><span class="unit">kN·m</span></div></div>
+  </div>
+  <div class="ibox">For a nominally pinned base: set M_Ed = 0. Axial + shear only. P358 §10 covers pinned bases.</div>
+</div>
+<div class="card"><div class="card-title">🔩 Holding-Down Bolts</div>
+  <div class="g2">
+    <div class="field"><label>HD Bolt Diameter d_hd</label>
+      <div class="iw"><input type="number" id="ba-dhd" value="24"><span class="unit">mm</span></div></div>
+    <div class="field"><label>No. of HD Bolts n_hd</label>
+      <div class="iw"><input type="number" id="ba-nhd" value="4"></div></div>
+    <div class="field"><label>HD Bolt Grade</label>
+      <div class="iw"><select id="ba-hdgrade">
+        <option value="4.6">4.6 — fub=400 MPa</option>
+        <option value="8.8" selected>8.8 — fub=800 MPa</option>
+      </select></div></div>
+    <div class="field"><label>Tensile stress area A_s</label>
+      <div class="iw"><input type="number" id="ba-As" value="353"><span class="unit">mm²</span></div></div>
+    <div class="field"><label>HD bolt c/c (x-dir) e_x</label>
+      <div class="iw"><input type="number" id="ba-ex" value="300"><span class="unit">mm</span></div></div>
+    <div class="field"><label>HD bolt c/c (y-dir) e_y</label>
+      <div class="iw"><input type="number" id="ba-ey" value="200"><span class="unit">mm</span></div></div>
+  </div>
+  <div class="ibox">Tensile stress areas: M20=245, M24=353, M27=459, M30=561 mm²</div>
+</div>
+<div class="card"><div class="card-title">📐 Base Plate & Column Geometry</div>
+  <div class="g2">
+    <div class="field"><label>Base plate thick t_p</label>
+      <div class="iw"><input type="number" id="ba-tp" value="20"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Base plate width B_p</label>
+      <div class="iw"><input type="number" id="ba-Bp" value="300"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Base plate depth D_p</label>
+      <div class="iw"><input type="number" id="ba-Dp" value="300"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Column flange width b_f</label>
+      <div class="iw"><input type="number" id="ba-bf" value="209"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Column depth d_c</label>
+      <div class="iw"><input type="number" id="ba-dc" value="206"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Weld leg a_w <em>— col to plate</em></label>
+      <div class="iw"><input type="number" id="ba-aw" value="8"><span class="unit">mm</span></div></div>
+  </div>
+  <div class="ibox" id="ba-c">Cantilever c = (B_p − b_f)/2 = (300−209)/2 = 45.5 mm</div>
+</div>
+<div class="card"><div class="card-title">🏗 Materials</div>
+  <div class="g3">
+    <div class="field"><label>Column grade</label><div class="iw"><select id="ba-colGrade">
+      <option>S275</option><option selected>S355</option></select></div></div>
+    <div class="field"><label>Plate grade</label><div class="iw"><select id="ba-platGrade">
+      <option selected>S275</option><option>S355</option></select></div></div>
+    <div class="field"><label>Concrete f_ck</label><div class="iw"><select id="ba-fck">
+      <option value="20">C20/25</option><option value="25" selected>C25/30</option>
+      <option value="30">C30/37</option><option value="32">C32/40</option>
+    </select></div></div>
+  </div>
+  <div class="ibox">Grout assumed same class as concrete. fj = β_j × (a₁×a₂)^0.5 × fck/3 per EC2 §6.7, β_j=0.67.</div>
+</div>`;}
+
+function formBrace(){return`
+<div class="card"><div class="card-title">⚡ Applied Loads <em style="font-weight:400;letter-spacing:0;text-transform:none;font-size:10px">— in bracing member</em></div>
+  <div class="g2">
+    <div class="field"><label>Axial N_Ed <em>— tension or compression</em></label>
+      <div class="iw"><input type="number" id="br-N" value="180"><span class="unit">kN</span></div></div>
+    <div class="field"><label>Sign convention</label>
+      <div class="iw"><select id="br-sign">
+        <option value="1" selected>Tension (+)</option>
+        <option value="-1">Compression (−)</option>
+      </select></div></div>
+  </div>
+  <div class="ibox">For block shear and bolt group checks, tension is the critical case. Compression rarely governs for typical gusset geometry.</div>
+</div>
+<div class="card"><div class="card-title">🔩 Bolt Group — Brace to Gusset</div>
+  <div class="g2">
+    <div class="field"><label>Bolt Size</label>
+      <div class="iw"><select id="br-boltSize">
+        <option>M16</option><option selected>M20</option><option>M24</option><option>M27</option>
+      </select></div></div>
+    <div class="field"><label>No. of Bolts n</label>
+      <div class="iw"><input type="number" id="br-n" value="3"></div></div>
+    <div class="field"><label>Pitch p₁ <em>— along brace axis</em></label>
+      <div class="iw"><input type="number" id="br-p1" value="70"><span class="unit">mm</span></div></div>
+    <div class="field"><label>End dist e₁</label>
+      <div class="iw"><input type="number" id="br-e1" value="40"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Edge dist e₂ (gusset)</label>
+      <div class="iw"><input type="number" id="br-e2g" value="40"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Edge dist e₂ (brace)</label>
+      <div class="iw"><input type="number" id="br-e2b" value="30"><span class="unit">mm</span></div></div>
+  </div>
+  <div class="ibox">Single row of bolts along brace centreline. Bolt group carries axial N_Ed concentrically (P358 §11 simple joint).</div>
+</div>
+<div class="card"><div class="card-title">📐 Gusset & Brace Geometry</div>
+  <div class="g2">
+    <div class="field"><label>Gusset thick t_g</label>
+      <div class="iw"><input type="number" id="br-tg" value="10"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Gusset depth h_g <em>— at weld</em></label>
+      <div class="iw"><input type="number" id="br-hg" value="200"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Brace thickness t_b <em>— flat bar</em></label>
+      <div class="iw"><input type="number" id="br-tb" value="10"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Brace width w_b</label>
+      <div class="iw"><input type="number" id="br-wb" value="90"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Eccentricity e <em>— bolt CL to weld</em></label>
+      <div class="iw"><input type="number" id="br-e" value="60"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Weld leg a_w <em>— gusset to frame</em></label>
+      <div class="iw"><input type="number" id="br-aw" value="8"><span class="unit">mm</span></div></div>
+  </div>
+  <div class="ibox">e = perpendicular distance from bolt-group centroid to the gusset weld line. Used for in-plane moment on gusset weld.</div>
+</div>
+<div class="card"><div class="card-title">🏗 Material Grades</div>
+  <div class="g3">
+    <div class="field"><label>Gusset plate</label><div class="iw"><select id="br-gussGrade">
+      <option selected>S275</option><option>S355</option></select></div></div>
+    <div class="field"><label>Brace member</label><div class="iw"><select id="br-braceGrade">
+      <option selected>S275</option><option>S355</option></select></div></div>
+    <div class="field"><label>Frame/support</label><div class="iw"><select id="br-frameGrade">
+      <option selected>S275</option><option>S355</option></select></div></div>
+  </div>
+  <div class="ibox">t≤16mm · S275: fy=275, fu=430 MPa · S355: fy=355, fu=490 MPa</div>
+</div>`;}
+
+// ─── CALCULATIONS ─────────────────────────────────────────────
+const fv=v=>parseFloat(v)||0, fi=v=>Math.max(1,parseInt(v)||1);
+const rd=(v,d=2)=>(+v).toFixed(d), esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const rc=r=>r>1?'var(--fail)':r>.85?'var(--warn)':'var(--pass)';
+function chk(id,name,ref,lines,cap,dem,unit){const r=cap>0?dem/cap:999;return{id,name,ref,lines,cap,dem,unit,r,pass:r<=1};}
+
+function calcFin(g){
+  const b=BOLT[g.boltSize],pm=MAT[g.platGrade],bm=MAT[g.beamGrade];
+  const Vn=fv(g.V)*1e3,nb=fi(g.n),P1=fv(g.p1),E1=fv(g.e1),E2p=fv(g.e2p),E2w=fv(g.e2w);
+  const Tp=fv(g.tp),Hp=fv(g.hp),Lp=fv(g.lp),Tw=fv(g.tw),Aw=.707*fv(g.aw);
+  const{d,d0,As}=b,fub=800,a=Lp-E2p;
+  // γM2 = 1.25 for bolts/welds (EC3-1-8 UK NA); = 1.1 for plate cross-section fracture (EC3-1-1 UK NA)
+  const GM2s=1.1;  // section fracture (net shear, block shear on plates)
+  let Iy=0;for(let i=0;i<nb;i++){const y=i*P1-(nb-1)*P1/2;Iy+=y*y;}
+  const ym=(nb-1)*P1/2,M=Vn*a,Fvd=Vn/nb,Fhm=Iy>0?M*ym/Iy:0,Fr=Math.sqrt(Fvd*Fvd+Fhm*Fhm);
+  const C=[];
+
+  // 1 — Bolt group shear (elastic in-plane analysis, equivalent to P358 α-β for n2=1)
+  const FvRd=.6*fub*As/GM2;
+  const beta_check = 6*a/(nb*(nb+1)*P1);
+  C.push(chk('1','Bolt Group — Shear Resistance','EC3-1-8 Table 3.4 / P358 §5.5 Check 2',[
+    `Bolt ${g.boltSize} Gr.8.8  As=${As} mm²  Fv,Rd = 0.6×${fub}×${As}/1.25 = ${rd(FvRd/1e3)} kN/bolt`,
+    `Eccentricity z = a = Lp − e₂ = ${Lp} − ${E2p} = ${a} mm`,
+    `Elastic analysis (≡ P358 β-method: β = 6z/[n(n+1)p₁] = ${rd(beta_check,3)})`,
+    `Iy = Σyi² = ${rd(Iy,0)} mm²   ymax = ${ym} mm`,
+    `F_direct = V/n = ${rd(Fvd/1e3)} kN   F_moment = V·a·ymax/Iy = ${rd(Fhm/1e3)} kN`,
+    `F_resultant = √(${rd(Fvd/1e3)}²+${rd(Fhm/1e3)}²) = ${rd(Fr/1e3)} kN`,
+  ],FvRd/1e3,Fr/1e3,'kN'));
+
+  // 2 — Bearing on fin plate
+  const k1p=Math.min(2.8*E2p/d0-1.7,2.5),abp=nb>1?Math.min(E1/(3*d0),P1/(3*d0)-.25,fub/pm.fu,1):Math.min(E1/(3*d0),fub/pm.fu,1);
+  const FbpRd=Math.max(0,k1p)*Math.max(0,abp)*pm.fu*d*Tp/GM2/1e3;
+  C.push(chk('2','Bearing Resistance — Fin Plate','EC3-1-8 Table 3.4 / P358 §5.5 Check 3',[
+    `k₁ = min(2.8×${E2p}/${d0}−1.7, 2.5) = ${rd(k1p)}`,
+    `αb = min(e₁/3d₀${nb>1?`, p₁/3d₀−¼`:``, `fub/fu`}, 1) = ${rd(abp,3)}`,
+    `Fb,Rd = ${rd(k1p)}×${rd(abp,3)}×${pm.fu}×${d}×${Tp}/1.25 = ${rd(FbpRd)} kN`,
+  ],FbpRd,Fr/1e3,'kN'));
+
+  // 3 — Bearing on beam web
+  const k1w=Math.min(2.8*E2w/d0-1.7,2.5),abw=nb>1?Math.min(E1/(3*d0),P1/(3*d0)-.25,fub/bm.fu,1):Math.min(E1/(3*d0),fub/bm.fu,1);
+  const FbwRd=Math.max(0,k1w)*Math.max(0,abw)*bm.fu*d*Tw/GM2/1e3;
+  C.push(chk('3','Bearing Resistance — Beam Web','EC3-1-8 Table 3.4 / P358 §5.5 Check 4',[
+    `k₁ = ${rd(k1w)}   αb = ${rd(abw,3)}   tw = ${Tw} mm   fu,beam = ${bm.fu} MPa`,
+    `Fb,Rd = ${rd(k1w)}×${rd(abw,3)}×${bm.fu}×${d}×${Tw}/1.25 = ${rd(FbwRd)} kN`,
+  ],FbwRd,Fr/1e3,'kN'));
+
+  // 4 — Fin plate gross shear
+  const VgRd_p=pm.fy*Hp*Tp/(Math.sqrt(3)*GM0)/1e3;
+  C.push(chk('4','Fin Plate — Gross Section Shear','EC3-1-1 §6.2.6 / P358 §5.5 Check 5',[
+    `Av = hp × tp = ${Hp}×${Tp} = ${Hp*Tp} mm²`,
+    `Vpl,Rd = fy×Av/(√3×γM0) = ${pm.fy}×${Hp*Tp}/√3 = ${rd(VgRd_p)} kN`,
+  ],VgRd_p,fv(g.V),'kN'));
+
+  // 5 — Fin plate net shear  [γM2 = 1.1 per EC3-1-1 UK NA — P358 §5.5 Note]
+  const Avnet_p=(Hp-nb*d0)*Tp;
+  const VnRd_p=.9*pm.fu*Math.max(0,Avnet_p)/(Math.sqrt(3)*GM2s)/1e3;
+  C.push(chk('5','Fin Plate — Net Section Shear','EC3-1-1 §6.2.6 / P358 §5.5 Check 6',[
+    `Anet = (hp − n·d₀)×tp = (${Hp}−${nb}×${d0})×${Tp} = ${Avnet_p} mm²`,
+    `Vnet,Rd = 0.9×fu×Anet/(√3×γM2) = 0.9×${pm.fu}×${Math.max(0,Avnet_p)}/(√3×1.1) = ${rd(VnRd_p)} kN`,
+    `Note: γM2 = 1.1 per EC3-1-1 UK NA for plate cross-section fracture`,
+  ],VnRd_p,fv(g.V),'kN'));
+
+  // 6 — Fin plate block shear  [fu term: γM2 = 1.1]
+  const Ant_p=Math.max(0,(E2p-d0/2)*Tp),Anv_p=Math.max(0,(E1+(nb-1)*P1-(nb-.5)*d0)*Tp);
+  const Veff_p=(pm.fu*Ant_p/GM2s+pm.fy*Anv_p/(Math.sqrt(3)*GM0))/1e3;
+  C.push(chk('6','Fin Plate — Block Shear','EC3-1-8 §3.10.2 / P358 §5.5 Check 7',[
+    `Ant = (e₂p − d₀/2)×tp = ${rd(Ant_p,0)} mm²   Anv = ${rd(Anv_p,0)} mm²`,
+    `Veff,Rd = fu·Ant/γM2 + fy·Anv/(√3·γM0)  (γM2 = 1.1 for plate fracture)`,
+    `       = ${rd(pm.fu*Ant_p/GM2s/1e3)} + ${rd(pm.fy*Anv_p/(Math.sqrt(3)*GM0)/1e3)} = ${rd(Veff_p)} kN`,
+  ],Veff_p,fv(g.V),'kN'));
+
+  // 7 — Fin plate bending due to eccentricity
+  const MEd=Vn*a/1e6,Wel=Tp*Hp*Hp/6,MRd=pm.fy*Wel/GM0/1e6;
+  C.push(chk('7','Fin Plate — Bending (Eccentricity)','EC3-1-1 §6.2.5 / P358 §5.5 Check 8',[
+    `Eccentricity a = Lp − e₂ = ${a} mm`,
+    `MEd = V×a = ${rd(Vn/1e3)}×${a}/1000 = ${rd(MEd)} kN·m`,
+    `Wel = tp×hp²/6 = ${Tp}×${Hp}²/6 = ${rd(Wel,0)} mm³`,
+    `MRd = fy×Wel/γM0 = ${pm.fy}×${rd(Wel,0)}/10⁶ = ${rd(MRd)} kN·m`,
+  ],MRd,MEd,'kN·m'));
+
+  // 8 — Fillet weld to support (DIRECT SHEAR ONLY per P358 Appendix C.3)
+  // The fin plate weld carries vertical shear V only. The eccentricity moment is
+  // resisted by the fin plate in bending (Check 7), NOT transferred back to the weld.
+  const fwRd_w=pm.fu/(Math.sqrt(3)*pm.bw*GM2);
+  const tau_w=Vn/(2*Aw*Hp);
+  C.push(chk('8','Fillet Weld to Support — Direct Shear','EC3-1-8 §4.5.3 / P358 App.C.3',[
+    `Weld leg = ${fv(g.aw)} mm   throat a = ${rd(Aw)} mm   (both sides, length = hp)`,
+    `fw,Rd = fu/(√3·βw·γM2) = ${pm.fu}/(√3×${pm.bw}×1.25) = ${rd(fwRd_w,1)} N/mm²`,
+    `τ = V/(2·a·hp) = ${rd(Vn/1e3,0)}k/(2×${rd(Aw)}×${Hp}) = ${rd(tau_w,1)} N/mm²`,
+    `P358 App.C.3: fin plate weld resists direct shear only — moment is carried`,
+    `by the plate in bending (Check 7), not transferred back to the weld.`,
+  ],fwRd_w,tau_w,'N/mm²'));
+
+  // 9 — Beam web gross shear (local, at connection zone)
+  const Av_bw=Hp*Tw;
+  const VgRd_bw=bm.fy*Av_bw/(Math.sqrt(3)*GM0)/1e3;
+  C.push(chk('9','Beam Web — Gross Section Shear (Local)','EC3-1-1 §6.2.6 / P358 §5.5 Check 9',[
+    `Local shear area: Av = hp × tw = ${Hp}×${Tw} = ${Av_bw} mm²`,
+    `Vpl,Rd = fy,b×Av/(√3×γM0) = ${bm.fy}×${Av_bw}/√3 = ${rd(VgRd_bw)} kN`,
+  ],VgRd_bw,fv(g.V),'kN'));
+
+  // 10 — Beam web net shear  [γM2 = 1.1]
+  const Avnet_bw=Math.max(0,(Hp-nb*d0)*Tw);
+  const VnRd_bw=.9*bm.fu*Avnet_bw/(Math.sqrt(3)*GM2s)/1e3;
+  C.push(chk('10','Beam Web — Net Section Shear','EC3-1-1 §6.2.6 / P358 §5.5 Check 10',[
+    `Anet = (hp − n·d₀)×tw = (${Hp}−${nb}×${d0})×${Tw} = ${Avnet_bw} mm²`,
+    `Vnet,Rd = 0.9×fu,b×Anet/(√3×γM2) = 0.9×${bm.fu}×${Avnet_bw}/(√3×1.1) = ${rd(VnRd_bw)} kN`,
+    `Note: γM2 = 1.1 per EC3-1-1 UK NA`,
+  ],VnRd_bw,fv(g.V),'kN'));
+
+  // 11 — Beam web block shear  [fu term: γM2 = 1.1]
+  const Ant_bw=Math.max(0,(E2w-d0/2)*Tw);
+  const Anv_bw=Math.max(0,(E1+(nb-1)*P1-(nb-.5)*d0)*Tw);
+  const Veff_bw=(bm.fu*Ant_bw/GM2s+bm.fy*Anv_bw/(Math.sqrt(3)*GM0))/1e3;
+  C.push(chk('11','Beam Web — Block Shear','EC3-1-8 §3.10.2 / P358 §5.5 Check 11',[
+    `Ant = (e₂w − d₀/2)×tw = (${E2w}−${d0/2})×${Tw} = ${rd(Ant_bw,0)} mm²`,
+    `Anv = (e₁ + (n−1)p₁ − (n−0.5)d₀)×tw = ${rd(Anv_bw,0)} mm²`,
+    `Veff,Rd = fu·Ant/γM2 + fy·Anv/(√3·γM0) = ${rd(bm.fu*Ant_bw/GM2s/1e3)} + ${rd(bm.fy*Anv_bw/(Math.sqrt(3)*GM0)/1e3)} = ${rd(Veff_bw)} kN`,
+    `γM2 = 1.1 for beam web fracture (EC3-1-1 UK NA)`,
+  ],Veff_bw,fv(g.V),'kN'));
+
+  return{checks:C,allPass:C.every(c=>c.pass),maxR:Math.max(...C.map(c=>c.r))};
+}
+
+function calcPDEP(g){
+  // Partial Depth End Plate — P358 §4.5
+  // Key structural characteristic: connection rotation causes tension in top bolts,
+  // so P358 §4.5 Check 2 applies a 0.8 reduction factor to bolt shear capacity.
+  const b=BOLT[g.boltSize],pm=MAT[g.platGrade],cm=MAT[g.colGrade],bm=MAT[g.beamGrade];
+  const Vn=fv(g.V)*1e3,nb=fi(g.n),P1=fv(g.p1),E1=fv(g.e1),E2=fv(g.e2),Ep=fv(g.ep);
+  const Tp=fv(g.tp),Hp=fv(g.hp),Tfc=fv(g.tfc),Tw=fv(g.tw),Aw=.707*fv(g.aw);
+  const{d,d0,As}=b,fub=800,Fvd=Vn/nb;
+  const GM2s=1.1;  // section fracture (EC3-1-1 UK NA)
+  const C=[];
+
+  // 1 — Bolt group shear with 0.8 tension reduction (P358 §4.5 Check 2)
+  const FvRd=.6*fub*As/GM2;
+  const VRd_bolts = nb * 0.8 * FvRd;   // 0.8 factor per P358: bolts carry combined shear + tension
+  C.push(chk('1','Bolt Group — Shear Resistance (with 0.8 Tension Reduction)','EC3-1-8 Table 3.4 / P358 §4.5 Check 2',[
+    `Bolt ${g.boltSize} Gr.8.8  As=${As} mm²`,
+    `Fv,Rd = 0.6×${fub}×${As}/1.25 = ${rd(FvRd/1e3)} kN/bolt`,
+    `P358 §4.5: PDEP rotation causes tension in top bolts — 0.8 reduction applied`,
+    `VRd = n × 0.8 × Fv,Rd = ${nb} × 0.8 × ${rd(FvRd/1e3)} = ${rd(VRd_bolts/1e3)} kN`,
+  ],VRd_bolts/1e3,fv(g.V),'kN'));
+
+  // 2 — Bearing on end plate (demand = direct shear per bolt = V/n)
+  const k1p=Math.min(2.8*E2/d0-1.7,2.5);
+  const abp=nb>1?Math.min(E1/(3*d0),P1/(3*d0)-.25,fub/pm.fu,1):Math.min(E1/(3*d0),fub/pm.fu,1);
+  const FbpRd=Math.max(0,k1p)*Math.max(0,abp)*pm.fu*d*Tp/GM2/1e3;
+  C.push(chk('2','Bearing Resistance — End Plate','EC3-1-8 Table 3.4 / P358 §4.5 Check 3',[
+    `k₁ = min(2.8×${E2}/${d0}−1.7, 2.5) = ${rd(k1p)}`,
+    `αb = ${rd(abp,3)}   tp = ${Tp} mm   fu,plate = ${pm.fu} MPa`,
+    `Fb,Rd = ${rd(k1p)}×${rd(abp,3)}×${pm.fu}×${d}×${Tp}/1.25 = ${rd(FbpRd)} kN`,
+    `Applied per bolt = V/n = ${rd(Fvd/1e3)} kN`,
+  ],FbpRd,Fvd/1e3,'kN'));
+
+  // 3 — Bearing on column flange
+  const k1c=Math.min(2.8*E2/d0-1.7,2.5);
+  const abc=nb>1?Math.min(E1/(3*d0),P1/(3*d0)-.25,fub/cm.fu,1):Math.min(E1/(3*d0),fub/cm.fu,1);
+  const FbcRd=Math.max(0,k1c)*Math.max(0,abc)*cm.fu*d*Tfc/GM2/1e3;
+  C.push(chk('3','Bearing Resistance — Column Flange','EC3-1-8 Table 3.4 / P358 §4.5 Check 4',[
+    `k₁ = ${rd(k1c)}   αb = ${rd(abc,3)}   tfc = ${Tfc} mm   fu,col = ${cm.fu} MPa`,
+    `Fb,Rd = ${rd(FbcRd)} kN   Applied per bolt = ${rd(Fvd/1e3)} kN`,
+  ],FbcRd,Fvd/1e3,'kN'));
+
+  // 4 — End plate gross shear
+  const VgRd_p=pm.fy*Hp*Tp/(Math.sqrt(3)*GM0)/1e3;
+  C.push(chk('4','End Plate — Gross Section Shear','EC3-1-1 §6.2.6 / P358 §4.5 Check 5',[
+    `Av = hp × tp = ${Hp}×${Tp} = ${Hp*Tp} mm²`,
+    `Vpl,Rd = ${pm.fy}×${Hp*Tp}/√3 = ${rd(VgRd_p)} kN`,
+  ],VgRd_p,fv(g.V),'kN'));
+
+  // 5 — End plate net shear [γM2 = 1.1 per EC3-1-1 UK NA]
+  const Avnet_p=Math.max(0,(Hp-nb*d0)*Tp);
+  const VnRd_p=.9*pm.fu*Avnet_p/(Math.sqrt(3)*GM2s)/1e3;
+  C.push(chk('5','End Plate — Net Section Shear','EC3-1-1 §6.2.6 / P358 §4.5 Check 6',[
+    `Anet = (${Hp} − ${nb}×${d0}) × ${Tp} = ${Avnet_p} mm²`,
+    `Vnet,Rd = 0.9×${pm.fu}×${Avnet_p}/(√3×1.1) = ${rd(VnRd_p)} kN`,
+    `γM2 = 1.1 per EC3-1-1 UK NA (plate cross-section fracture)`,
+  ],VnRd_p,fv(g.V),'kN'));
+
+  // 6 — End plate block shear [fu term: γM2 = 1.1]
+  const Ant_p=Math.max(0,(E2-d0/2)*Tp);
+  const Anv_p=Math.max(0,(E1+(nb-1)*P1-(nb-.5)*d0)*Tp);
+  const Veff_p=(pm.fu*Ant_p/GM2s+pm.fy*Anv_p/(Math.sqrt(3)*GM0))/1e3;
+  C.push(chk('6','End Plate — Block Shear','EC3-1-8 §3.10.2 / P358 §4.5 Check 7',[
+    `Ant = (e₂ − d₀/2)×tp = (${E2}−${d0/2})×${Tp} = ${rd(Ant_p,0)} mm²`,
+    `Anv = (e₁+(n−1)p₁−(n−0.5)d₀)×tp = ${rd(Anv_p,0)} mm²`,
+    `Veff,Rd = fu·Ant/γM2 + fy·Anv/(√3·γM0) = ${rd(pm.fu*Ant_p/GM2s/1e3)} + ${rd(pm.fy*Anv_p/(Math.sqrt(3)*GM0)/1e3)} = ${rd(Veff_p)} kN`,
+    `γM2 = 1.1 for plate cross-section fracture (EC3-1-1 UK NA)`,
+  ],Veff_p,fv(g.V),'kN'));
+
+  // 7 — End plate bending (coexisting moment from bolt eccentricity)
+  // P358 §4.5 Check 9: low shear (VEd ≤ 0.5 Vpl,Rd) — check moment separately.
+  // High shear case: reduced moment capacity. We show both for completeness.
+  const MEd_p=Vn*Ep/1e6;
+  const Wel_p=Tp*Hp*Hp/6;
+  const MRd_p=pm.fy*Wel_p/GM0/1e6;
+  const isLowShear = fv(g.V) <= 0.5*VgRd_p;
+  C.push(chk('7','End Plate — Bending (Coexisting Moment)','EC3-1-1 §6.2.5 / P358 §4.5 Check 9',[
+    `e = bolt CL to beam web = ${Ep} mm`,
+    `MEd = V×e = ${rd(Vn/1e3)}×${Ep}/1000 = ${rd(MEd_p)} kN·m`,
+    `Wel = tp×hp²/6 = ${Tp}×${Hp}²/6 = ${rd(Wel_p,0)} mm³`,
+    `MRd = fy×Wel/γM0 = ${rd(MRd_p)} kN·m`,
+    `VEd/Vpl,Rd = ${rd(fv(g.V)/VgRd_p,3)} → ${isLowShear?'LOW shear: M and V checked separately (OK)':'HIGH shear: moment capacity reduced — check interaction'}`,
+  ],MRd_p,MEd_p,'kN·m'));
+
+  // 8 — Weld to beam web (full-strength per P358 App. C.2 — direct shear only)
+  const fwRd_p=pm.fu/(Math.sqrt(3)*pm.bw*GM2);
+  const fwRd_b=bm.fu/(Math.sqrt(3)*bm.bw*GM2);
+  const fwRd=Math.min(fwRd_p,fwRd_b);
+  const tau_w=Vn/(2*Aw*Hp);
+  C.push(chk('8','Fillet Weld to Beam Web — Shear','EC3-1-8 §4.5.3 / P358 App. C.2',[
+    `Leg = ${fv(g.aw)} mm   throat a = ${rd(Aw)} mm   (both sides, length = hp)`,
+    `fw,Rd = min(fu,plate, fu,beam)/(√3·βw·γM2) = min(${rd(fwRd_p,1)}, ${rd(fwRd_b,1)}) = ${rd(fwRd,1)} N/mm²`,
+    `τ = V/(2·a·hp) = ${rd(Vn/1e3,0)}k/(2×${rd(Aw)}×${Hp}) = ${rd(tau_w,1)} N/mm²`,
+    `P358 App. C.2: end plate weld is full-strength — direct shear only governs`,
+  ],fwRd,tau_w,'N/mm²'));
+
+  // 9 — Beam web gross shear (local at connection zone)
+  const VgRd_bw=bm.fy*Hp*Tw/(Math.sqrt(3)*GM0)/1e3;
+  C.push(chk('9','Beam Web — Gross Section Shear (Local)','EC3-1-1 §6.2.6 / P358 §4.5 Check 10',[
+    `Local shear area: Av = hp × tw = ${Hp}×${Tw} = ${Hp*Tw} mm²`,
+    `Vpl,Rd = ${bm.fy}×${Hp*Tw}/√3 = ${rd(VgRd_bw)} kN`,
+  ],VgRd_bw,fv(g.V),'kN'));
+
+  // 10 — Beam web net shear [γM2 = 1.1]
+  const Avnet_bw=Math.max(0,(Hp-nb*d0)*Tw);
+  const VnRd_bw=.9*bm.fu*Avnet_bw/(Math.sqrt(3)*GM2s)/1e3;
+  C.push(chk('10','Beam Web — Net Section Shear','EC3-1-1 §6.2.6 / P358 §4.5 Check 11',[
+    `Anet = (${Hp}−${nb}×${d0})×${Tw} = ${Avnet_bw} mm²`,
+    `Vnet,Rd = 0.9×${bm.fu}×${Avnet_bw}/(√3×1.1) = ${rd(VnRd_bw)} kN`,
+    `γM2 = 1.1 per EC3-1-1 UK NA`,
+  ],VnRd_bw,fv(g.V),'kN'));
+
+  // 11 — Beam web block shear [γM2 = 1.1]
+  const Ant_bw=Math.max(0,(E2-d0/2)*Tw);
+  const Anv_bw=Math.max(0,(E1+(nb-1)*P1-(nb-.5)*d0)*Tw);
+  const Veff_bw=(bm.fu*Ant_bw/GM2s+bm.fy*Anv_bw/(Math.sqrt(3)*GM0))/1e3;
+  C.push(chk('11','Beam Web — Block Shear','EC3-1-8 §3.10.2 / P358 §4.5 Check 12',[
+    `Ant = (e₂−d₀/2)×tw = ${rd(Ant_bw,0)} mm²   Anv = ${rd(Anv_bw,0)} mm²`,
+    `Veff,Rd = fu·Ant/γM2 + fy·Anv/(√3·γM0) = ${rd(bm.fu*Ant_bw/GM2s/1e3)} + ${rd(bm.fy*Anv_bw/(Math.sqrt(3)*GM0)/1e3)} = ${rd(Veff_bw)} kN`,
+    `γM2 = 1.1 for beam web fracture (EC3-1-1 UK NA)`,
+  ],Veff_bw,fv(g.V),'kN'));
+
+  return{checks:C,allPass:C.every(c=>c.pass),maxR:Math.max(...C.map(c=>c.r))};
+}
+
+function calcFDEP(g){
+  // Full Depth End Plate — P358 §4.7
+  // Plate welded to beam web AND both flanges. Web weld carries shear;
+  // flange welds carry the moment couple from eccentricity.
+  // Like PDEP, the 0.8 bolt reduction applies (coexisting tension from rotation).
+  const b=BOLT[g.boltSize],pm=MAT[g.platGrade],cm=MAT[g.colGrade],bm=MAT[g.beamGrade];
+  const Vn=fv(g.V)*1e3,nb=fi(g.n),P1=fv(g.p1),E1=fv(g.e1),E2=fv(g.e2),Ep=fv(g.ep);
+  const Tp=fv(g.tp),D=fv(g.d),Tw=fv(g.tw),Tf=fv(g.tf),Bf=fv(g.bf),Tfc=fv(g.tfc);
+  const Hp=D;
+  const dw=D-2*Tf;     // clear web depth
+  const ds=D-Tf;       // lever arm: flange CL to flange CL ≈ d−tf
+  const Aw_w=.707*fv(g.aww);
+  const Aw_f=.707*fv(g.awf);
+  const{d,d0,As}=b,fub=800;
+  const GM2s=1.1;  // section fracture (EC3-1-1 UK NA)
+  const C=[];
+
+  // 1 — Bolt group shear with 0.8 reduction (P358 §4.7 Check 2)
+  // AD370 / P358 page 76 confirms FDEP uses same 0.8 reduction as PDEP.
+  const FvRd=.6*fub*As/GM2;
+  const VRd_bolts = nb * 0.8 * FvRd;
+  C.push(chk('1','Bolt Group — Shear Resistance (0.8 Tension Reduction)','EC3-1-8 Table 3.4 / P358 §4.7 Check 2',[
+    `Bolt ${g.boltSize} Gr.8.8  As=${As} mm²`,
+    `Fv,Rd = 0.6×${fub}×${As}/1.25 = ${rd(FvRd/1e3)} kN/bolt`,
+    `FDEP rotation induces tension in bolts — 0.8 reduction per P358 §4.7 (same as PDEP)`,
+    `VRd = n × 0.8 × Fv,Rd = ${nb} × 0.8 × ${rd(FvRd/1e3)} = ${rd(VRd_bolts/1e3)} kN`,
+  ],VRd_bolts/1e3,fv(g.V),'kN'));
+
+  // 2 — Bearing on end plate (demand = V/n per bolt)
+  const Fvd=Vn/nb;
+  const k1p=Math.min(2.8*E2/d0-1.7,2.5);
+  const abp=nb>1?Math.min(E1/(3*d0),P1/(3*d0)-.25,fub/pm.fu,1):Math.min(E1/(3*d0),fub/pm.fu,1);
+  const FbpRd=Math.max(0,k1p)*Math.max(0,abp)*pm.fu*d*Tp/GM2/1e3;
+  C.push(chk('2','Bearing Resistance — End Plate','EC3-1-8 Table 3.4 / P358 §4.7 Check 3',[
+    `k₁ = ${rd(k1p)}  αb = ${rd(abp,3)}  tp = ${Tp} mm  fu,plate = ${pm.fu} MPa`,
+    `Fb,Rd = ${rd(FbpRd)} kN   Applied per bolt = V/n = ${rd(Fvd/1e3)} kN`,
+  ],FbpRd,Fvd/1e3,'kN'));
+
+  // 3 — Bearing on column flange
+  const k1c=Math.min(2.8*E2/d0-1.7,2.5);
+  const abc=nb>1?Math.min(E1/(3*d0),P1/(3*d0)-.25,fub/cm.fu,1):Math.min(E1/(3*d0),fub/cm.fu,1);
+  const FbcRd=Math.max(0,k1c)*Math.max(0,abc)*cm.fu*d*Tfc/GM2/1e3;
+  C.push(chk('3','Bearing Resistance — Column Flange','EC3-1-8 Table 3.4 / P358 §4.7 Check 4',[
+    `k₁ = ${rd(k1c)}  αb = ${rd(abc,3)}  tfc = ${Tfc} mm  fu,col = ${cm.fu} MPa`,
+    `Fb,Rd = ${rd(FbcRd)} kN   Applied per bolt = ${rd(Fvd/1e3)} kN`,
+  ],FbcRd,Fvd/1e3,'kN'));
+
+  // 4 — End plate gross shear (full depth = beam depth D)
+  const VgRd_p=pm.fy*Hp*Tp/(Math.sqrt(3)*GM0)/1e3;
+  C.push(chk('4','End Plate — Gross Section Shear','EC3-1-1 §6.2.6 / P358 §4.7 Check 5',[
+    `hp = d = ${D} mm  (full beam depth)`,
+    `Av = hp × tp = ${D}×${Tp} = ${D*Tp} mm²`,
+    `Vpl,Rd = ${pm.fy}×${D*Tp}/(√3×1.0) = ${rd(VgRd_p)} kN`,
+  ],VgRd_p,fv(g.V),'kN'));
+
+  // 5 — End plate net shear [γM2 = 1.1 per EC3-1-1 UK NA]
+  const Avnet_p=Math.max(0,(Hp-nb*d0)*Tp);
+  const VnRd_p=.9*pm.fu*Avnet_p/(Math.sqrt(3)*GM2s)/1e3;
+  C.push(chk('5','End Plate — Net Section Shear','EC3-1-1 §6.2.6 / P358 §4.7 Check 6',[
+    `Anet = (${D}−${nb}×${d0})×${Tp} = ${Avnet_p} mm²`,
+    `Vnet,Rd = 0.9×${pm.fu}×${Avnet_p}/(√3×1.1) = ${rd(VnRd_p)} kN`,
+    `γM2 = 1.1 per EC3-1-1 UK NA (plate cross-section fracture)`,
+  ],VnRd_p,fv(g.V),'kN'));
+
+  // 6 — End plate block shear [fu term: γM2 = 1.1]
+  const Ant_p=Math.max(0,(E2-d0/2)*Tp);
+  const Anv_p=Math.max(0,(E1+(nb-1)*P1-(nb-.5)*d0)*Tp);
+  const Veff_p=(pm.fu*Ant_p/GM2s+pm.fy*Anv_p/(Math.sqrt(3)*GM0))/1e3;
+  C.push(chk('6','End Plate — Block Shear','EC3-1-8 §3.10.2 / P358 §4.7 Check 7',[
+    `Ant = (e₂−d₀/2)×tp = (${E2}−${d0/2})×${Tp} = ${rd(Ant_p,0)} mm²`,
+    `Anv = (e₁+(n−1)p₁−(n−0.5)d₀)×tp = ${rd(Anv_p,0)} mm²`,
+    `Veff,Rd = fu·Ant/γM2 + fy·Anv/(√3·γM0)  (γM2 = 1.1)`,
+    `       = ${rd(pm.fu*Ant_p/GM2s/1e3)} + ${rd(pm.fy*Anv_p/(Math.sqrt(3)*GM0)/1e3)} = ${rd(Veff_p)} kN`,
+  ],Veff_p,fv(g.V),'kN'));
+
+  // 7 — End plate bending (eccentricity from bolt CL to web weld face)
+  // P358 §4.7: flange welds restrain plate rotation, so plate bending check is
+  // on the web strip: MEd = V×e; MRd = fy×Wel (using full plate hp is conservative)
+  const MEd_p=Vn*Ep/1e6;
+  const Wel_p=Tp*Hp*Hp/6;
+  const MRd_p=pm.fy*Wel_p/GM0/1e6;
+  C.push(chk('7','End Plate — Bending (Eccentricity)','EC3-1-1 §6.2.5 / P358 §4.7 Check 8',[
+    `e (bolt CL → beam web) = ${Ep} mm`,
+    `MEd = V×e = ${rd(Vn/1e3)}×${Ep}/1000 = ${rd(MEd_p)} kN·m`,
+    `Wel = tp×hp²/6 = ${Tp}×${D}²/6 = ${rd(Wel_p,0)} mm³  (hp = d = ${D} mm, conservative)`,
+    `MRd = fy×Wel/γM0 = ${rd(MRd_p)} kN·m`,
+    `Flange welds restrain rotation — conservative to use full plate section modulus`,
+  ],MRd_p,MEd_p,'kN·m'));
+
+  // 8 — Web fillet weld (direct shear only; moment taken by flange welds)
+  const fwRd_wp=pm.fu/(Math.sqrt(3)*pm.bw*GM2);
+  const fwRd_wb=bm.fu/(Math.sqrt(3)*bm.bw*GM2);
+  const fwRd_w=Math.min(fwRd_wp,fwRd_wb);
+  const tau_w=Vn/(2*Aw_w*dw);
+  C.push(chk('8','Web Fillet Weld — Direct Shear','EC3-1-8 §4.5.3 / P358 §4.7 / App.C.2',[
+    `Web weld leg = ${fv(g.aww)} mm  throat = ${rd(Aw_w)} mm  (both sides)`,
+    `Clear web: dw = d−2tf = ${D}−${2*Tf} = ${rd(dw,0)} mm`,
+    `fw,Rd = min(${rd(fwRd_wp,1)}, ${rd(fwRd_wb,1)}) = ${rd(fwRd_w,1)} N/mm²  (weaker part governs)`,
+    `τ = V/(2·a·dw) = ${rd(Vn/1e3,0)}k/(2×${rd(Aw_w)}×${rd(dw,0)}) = ${rd(tau_w,1)} N/mm²`,
+    `Web welds: shear only — moment couple carried by flange welds (Check 9)`,
+  ],fwRd_w,tau_w,'N/mm²'));
+
+  // 9 — Flange fillet weld (horizontal force couple from coexisting moment)
+  const Ffl=Vn*Ep/ds;
+  const fwRd_fp=pm.fu/(Math.sqrt(3)*pm.bw*GM2);
+  const fwRd_fb=bm.fu/(Math.sqrt(3)*bm.bw*GM2);
+  const fwRd_f=Math.min(fwRd_fp,fwRd_fb);
+  const F_fl_Rd=fwRd_f*Aw_f*Bf;
+  C.push(chk('9','Flange Fillet Weld — Horizontal Force Couple','EC3-1-8 §4.5.3 / P358 §4.7 Check 9',[
+    `Flange weld leg = ${fv(g.awf)} mm  throat = ${rd(Aw_f)} mm  length = bf = ${Bf} mm`,
+    `Lever arm: ds = d−tf = ${D}−${Tf} = ${rd(ds,0)} mm`,
+    `F_fl = V·e/ds = ${rd(Vn/1e3,0)}k×${Ep}/${rd(ds,0)} = ${rd(Ffl/1e3)} kN per flange`,
+    `fw,Rd = ${rd(fwRd_f,1)} N/mm²  →  F_fl,Rd = fw,Rd×a×bf = ${rd(fwRd_f,1)}×${rd(Aw_f)}×${Bf}/1000 = ${rd(F_fl_Rd/1e3)} kN`,
+  ],F_fl_Rd/1e3,Ffl/1e3,'kN'));
+
+  // 10 — Beam web gross shear (local at connection zone)
+  const VgRd_bw=bm.fy*Hp*Tw/(Math.sqrt(3)*GM0)/1e3;
+  C.push(chk('10','Beam Web — Gross Section Shear (Local)','EC3-1-1 §6.2.6 / P358 §4.7 Check 10',[
+    `Av = hp × tw = ${Hp}×${Tw} = ${Hp*Tw} mm²  (hp = d = full beam depth)`,
+    `Vpl,Rd = ${bm.fy}×${Hp*Tw}/√3 = ${rd(VgRd_bw)} kN`,
+  ],VgRd_bw,fv(g.V),'kN'));
+
+  // 11 — Beam web net shear [γM2 = 1.1]
+  const Avnet_bw=Math.max(0,(Hp-nb*d0)*Tw);
+  const VnRd_bw=.9*bm.fu*Avnet_bw/(Math.sqrt(3)*GM2s)/1e3;
+  C.push(chk('11','Beam Web — Net Section Shear','EC3-1-1 §6.2.6 / P358 §4.7 Check 11',[
+    `Anet = (${Hp}−${nb}×${d0})×${Tw} = ${Avnet_bw} mm²`,
+    `Vnet,Rd = 0.9×${bm.fu}×${Avnet_bw}/(√3×1.1) = ${rd(VnRd_bw)} kN`,
+    `γM2 = 1.1 per EC3-1-1 UK NA`,
+  ],VnRd_bw,fv(g.V),'kN'));
+
+  // 12 — Beam web block shear [γM2 = 1.1]
+  const Ant_bw=Math.max(0,(E2-d0/2)*Tw);
+  const Anv_bw=Math.max(0,(E1+(nb-1)*P1-(nb-.5)*d0)*Tw);
+  const Veff_bw=(bm.fu*Ant_bw/GM2s+bm.fy*Anv_bw/(Math.sqrt(3)*GM0))/1e3;
+  C.push(chk('12','Beam Web — Block Shear','EC3-1-8 §3.10.2 / P358 §4.7 Check 12',[
+    `Ant = (e₂−d₀/2)×tw = ${rd(Ant_bw,0)} mm²   Anv = ${rd(Anv_bw,0)} mm²`,
+    `Veff,Rd = fu·Ant/γM2 + fy·Anv/(√3·γM0) = ${rd(bm.fu*Ant_bw/GM2s/1e3)} + ${rd(bm.fy*Anv_bw/(Math.sqrt(3)*GM0)/1e3)} = ${rd(Veff_bw)} kN`,
+    `γM2 = 1.1 for beam web fracture (EC3-1-1 UK NA)`,
+  ],Veff_bw,fv(g.V),'kN'));
+
+  return{checks:C,allPass:C.every(c=>c.pass),maxR:Math.max(...C.map(c=>c.r))};
+}
+
+function calcDCleat(g){
+  // Double Web Cleat — EC3-1-8 / ECCS Pub.126 (NOT P358 — web cleats not in P358)
+  // Two angle cleats: outstanding legs bolted to column, web legs bolted to beam web.
+  // Support bolt group: n bolts per cleat, each cleat carries V/2 with eccentricity e2s.
+  // Web bolt group: 2n total bolts, concentric shear V.
+  const b=BOLT[g.boltSize], cm=MAT[g.colGrade], bm=MAT[g.beamGrade], cl=MAT[g.cleatGrade];
+  const Vn=fv(g.V)*1e3, nb=fi(g.n);
+  const P1=fv(g.p1), E1=fv(g.e1), E2s=fv(g.e2s), E2w=fv(g.e2w);
+  const Tc=fv(g.tc), Tw=fv(g.tw), Tfc=fv(g.tfc);
+  const {d,d0,As}=b, fub=800;
+  const GM2s=1.1;  // section fracture (EC3-1-1 UK NA)
+  const hc = E1 + (nb-1)*P1 + E1;
+
+  // Support bolt group — elastic Iy analysis (each cleat V/2, eccentricity e2s)
+  let Iy=0;
+  for(let i=0;i<nb;i++){const y=i*P1-(nb-1)*P1/2; Iy+=y*y;}
+  const ym=(nb-1)*P1/2;
+  const Vs=Vn/2, Ms=Vs*E2s, Fvd_s=Vs/nb;
+  const Fhm_s=Iy>0?Ms*ym/Iy:0, Fr_s=Math.sqrt(Fvd_s**2+Fhm_s**2);
+
+  const C=[];
+  const FvRd=.6*fub*As/GM2;
+
+  // 1 — Support bolt shear (elastic bolt group, per cleat)
+  C.push(chk('1','Support Bolts — Shear Resistance (per cleat)','EC3-1-8 Table 3.4 / P358 §8.3',[
+    `Each cleat carries V/2 = ${rd(Vn/2e3)} kN with eccentricity e₂_s = ${E2s} mm`,
+    `Fv,Rd = 0.6×800×${As}/1.25 = ${rd(FvRd/1e3)} kN/bolt`,
+    nb>1?`Iy = ${rd(Iy,0)} mm²  ymax = ${ym} mm  Ms = V/2 × e₂_s = ${rd(Ms/1e6)} kN·m`:`Single bolt`,
+    `F_direct = ${rd(Fvd_s/1e3)} kN↓   F_moment = ${rd(Fhm_s/1e3)} kN→`,
+    `F_resultant = √(${rd(Fvd_s/1e3)}²+${rd(Fhm_s/1e3)}²) = ${rd(Fr_s/1e3)} kN`,
+  ],FvRd/1e3,Fr_s/1e3,'kN'));
+
+  // 2 — Bearing on outstanding cleat leg (γM2 = 1.25 for bolt bearing)
+  const k1s=Math.min(2.8*E2s/d0-1.7,2.5);
+  const abs_=nb>1?Math.min(E1/(3*d0),P1/(3*d0)-.25,fub/cl.fu,1):Math.min(E1/(3*d0),fub/cl.fu,1);
+  const FbsRd=Math.max(0,k1s)*Math.max(0,abs_)*cl.fu*d*Tc/GM2/1e3;
+  C.push(chk('2','Bearing — Outstanding Cleat Leg (support bolts)','EC3-1-8 Table 3.4 / P358 §8.3',[
+    `k₁ = min(2.8×${E2s}/${d0}−1.7, 2.5) = ${rd(k1s)}`,
+    `αb = ${rd(abs_,3)}   tc = ${Tc} mm   fu,cleat = ${cl.fu} MPa`,
+    `Fb,Rd = ${rd(k1s)}×${rd(abs_,3)}×${cl.fu}×${d}×${Tc}/1.25 = ${rd(FbsRd)} kN`,
+  ],FbsRd,Fr_s/1e3,'kN'));
+
+  // 3 — Bearing on column flange
+  const k1c=Math.min(2.8*E2s/d0-1.7,2.5);
+  const abc=nb>1?Math.min(E1/(3*d0),P1/(3*d0)-.25,fub/cm.fu,1):Math.min(E1/(3*d0),fub/cm.fu,1);
+  const FbcRd=Math.max(0,k1c)*Math.max(0,abc)*cm.fu*d*Tfc/GM2/1e3;
+  C.push(chk('3','Bearing — Column Flange','EC3-1-8 Table 3.4 / P358 §8.3',[
+    `k₁ = ${rd(k1c)}   αb = ${rd(abc,3)}   tfc = ${Tfc} mm`,
+    `Fb,Rd = ${rd(FbcRd)} kN`,
+  ],FbcRd,Fr_s/1e3,'kN'));
+
+  // 4 — Web bolt shear (2 cleats × n bolts, concentric)
+  const FvRd_web_total=2*nb*FvRd;
+  C.push(chk('4','Web Bolts — Total Shear Resistance (2 cleats)','EC3-1-8 Table 3.4 / P358 §8.3',[
+    `Web bolts concentric: 2 cleats × ${nb} bolts = ${2*nb} total`,
+    `Fv,Rd,total = ${2*nb} × ${rd(FvRd/1e3)} = ${rd(FvRd_web_total/1e3)} kN`,
+  ],FvRd_web_total/1e3,fv(g.V),'kN'));
+
+  // 5 — Bearing on web cleat leg
+  const Fvd_w=Vn/(2*nb);
+  const k1w=Math.min(2.8*E2w/d0-1.7,2.5);
+  const abw=nb>1?Math.min(E1/(3*d0),P1/(3*d0)-.25,fub/cl.fu,1):Math.min(E1/(3*d0),fub/cl.fu,1);
+  const FbwcRd=Math.max(0,k1w)*Math.max(0,abw)*cl.fu*d*Tc/GM2/1e3;
+  C.push(chk('5','Bearing — Web Cleat Leg (web bolts)','EC3-1-8 Table 3.4 / P358 §8.3',[
+    `Force per web bolt: V/(2n) = ${rd(Fvd_w/1e3)} kN`,
+    `k₁ = ${rd(k1w)}   αb = ${rd(abw,3)}   Fb,Rd = ${rd(FbwcRd)} kN`,
+  ],FbwcRd,Fvd_w/1e3,'kN'));
+
+  // 6 — Bearing on beam web
+  const k1bw=Math.min(2.8*E2w/d0-1.7,2.5);
+  const ab_bw=nb>1?Math.min(E1/(3*d0),P1/(3*d0)-.25,fub/bm.fu,1):Math.min(E1/(3*d0),fub/bm.fu,1);
+  const FbbwRd=Math.max(0,k1bw)*Math.max(0,ab_bw)*bm.fu*d*Tw/GM2/1e3;
+  C.push(chk('6','Bearing — Beam Web (web bolts)','EC3-1-8 Table 3.4 / P358 §8.3',[
+    `k₁ = ${rd(k1bw)}   αb = ${rd(ab_bw,3)}   tw = ${Tw} mm`,
+    `Fb,Rd = ${rd(FbbwRd)} kN   Applied = ${rd(Fvd_w/1e3)} kN`,
+  ],FbbwRd,Fvd_w/1e3,'kN'));
+
+  // 7 — Cleat gross section shear (per cleat, demand = V/2)
+  const VgRd=cl.fy*hc*Tc/(Math.sqrt(3)*GM0)/1e3;
+  C.push(chk('7','Cleat — Gross Section Shear (per cleat)','EC3-1-1 §6.2.6 / P358 §8.4',[
+    `hc = e₁+(n−1)p₁+e₁ = ${E1}+${(nb-1)*P1}+${E1} = ${hc} mm`,
+    `Av = hc×tc = ${hc}×${Tc} = ${hc*Tc} mm²`,
+    `Vpl,Rd = ${cl.fy}×${hc*Tc}/√3 = ${rd(VgRd)} kN   Applied = V/2 = ${rd(fv(g.V)/2)} kN`,
+  ],VgRd,fv(g.V)/2,'kN'));
+
+  // 8 — Cleat net section shear [γM2 = 1.1 per EC3-1-1 UK NA]
+  const Avnet=Math.max(0,(hc-nb*d0)*Tc);
+  const VnRd=.9*cl.fu*Avnet/(Math.sqrt(3)*GM2s)/1e3;
+  C.push(chk('8','Cleat — Net Section Shear (per cleat)','EC3-1-1 §6.2.6 / P358 §8.4',[
+    `Anet = (hc−n·d₀)×tc = (${hc}−${nb}×${d0})×${Tc} = ${Avnet} mm²`,
+    `Vnet,Rd = 0.9×${cl.fu}×${Avnet}/(√3×1.1) = ${rd(VnRd)} kN`,
+    `γM2 = 1.1 per EC3-1-1 UK NA (cleat cross-section fracture)`,
+  ],VnRd,fv(g.V)/2,'kN'));
+
+  // 9 — Cleat block shear (per cleat) [fu term: γM2 = 1.1]
+  const Ant_c=Math.max(0,(E2s-d0/2)*Tc);
+  const Anv_c=Math.max(0,(E1+(nb-1)*P1-(nb-.5)*d0)*Tc);
+  const Veff_c=(cl.fu*Ant_c/GM2s+cl.fy*Anv_c/(Math.sqrt(3)*GM0))/1e3;
+  C.push(chk('9','Cleat — Block Shear (per cleat)','EC3-1-8 §3.10.2 / P358 §8.4',[
+    `Ant = (e₂_s−d₀/2)×tc = (${E2s}−${d0/2})×${Tc} = ${rd(Ant_c,0)} mm²`,
+    `Anv = (e₁+(n−1)p₁−(n−0.5)d₀)×tc = ${rd(Anv_c,0)} mm²`,
+    `Veff,Rd = fu·Ant/γM2+fy·Anv/(√3·γM0)  (γM2 = 1.1)`,
+    `       = ${rd(cl.fu*Ant_c/GM2s/1e3)}+${rd(cl.fy*Anv_c/(Math.sqrt(3)*GM0)/1e3)} = ${rd(Veff_c)} kN`,
+  ],Veff_c,fv(g.V)/2,'kN'));
+
+  // 10 — Outstanding leg bending (PLASTIC strip — P358 §8.4)
+  // P358 uses the plastic section modulus of a plate strip of width p1_eff:
+  //   Wpl = tc² × p1_eff / 4   (plastic, not tc²p/6 elastic)
+  // The cantilever moment at the angle heel = Fh_crit × e2s
+  const Fh_crit=Iy>0?Ms*ym/Iy:Vs/nb;
+  const MEd_leg=Fh_crit*E2s;
+  const p1_eff=nb>1?P1:2*E1;
+  const Wpl_leg=Tc*Tc*p1_eff/4;           // PLASTIC strip modulus per P358 §8.4
+  const MRd_leg=cl.fy*Wpl_leg/GM0;
+  C.push(chk('10','Outstanding Leg — Bending (Plastic Strip)','EC3-1-1 §6.2.5 / P358 §8.4',[
+    `Horizontal force on critical bolt: Fh = Ms·ymax/Iy = ${rd(Fhm_s/1e3)} kN`,
+    `Cantilever arm = e₂_s = ${E2s} mm`,
+    `MEd = Fh × e₂_s = ${rd(Fh_crit/1e3)}×${E2s}/1000 = ${rd(MEd_leg/1e6)} kN·m`,
+    `Tributary width per bolt: p₁_eff = ${p1_eff} mm`,
+    `P358 §8.4 uses PLASTIC strip modulus: Wpl = tc²×p₁_eff/4 = ${Tc}²×${p1_eff}/4 = ${rd(Wpl_leg,0)} mm³`,
+    `MRd = fy×Wpl/γM0 = ${cl.fy}×${rd(Wpl_leg,0)}/10⁶ = ${rd(MRd_leg/1e6)} kN·m`,
+  ],MRd_leg/1e6,MEd_leg/1e6,'kN·m'));
+
+  // 11 — Beam web gross shear (local at connection zone, height = hc)
+  const VgRd_bw=bm.fy*hc*Tw/(Math.sqrt(3)*GM0)/1e3;
+  C.push(chk('11','Beam Web — Gross Section Shear (Local)','EC3-1-1 §6.2.6 / P358 §8.4',[
+    `Local shear area: Av = hc×tw = ${hc}×${Tw} = ${hc*Tw} mm²`,
+    `Vpl,Rd = ${bm.fy}×${hc*Tw}/√3 = ${rd(VgRd_bw)} kN`,
+  ],VgRd_bw,fv(g.V),'kN'));
+
+  // 12 — Beam web net shear [γM2 = 1.1]
+  const Avnet_bw=Math.max(0,(hc-nb*d0)*Tw);
+  const VnRd_bw=.9*bm.fu*Avnet_bw/(Math.sqrt(3)*GM2s)/1e3;
+  C.push(chk('12','Beam Web — Net Section Shear','EC3-1-1 §6.2.6 / P358 §8.4',[
+    `Anet = (hc−n·d₀)×tw = (${hc}−${nb}×${d0})×${Tw} = ${Avnet_bw} mm²`,
+    `Vnet,Rd = 0.9×${bm.fu}×${Avnet_bw}/(√3×1.1) = ${rd(VnRd_bw)} kN`,
+    `γM2 = 1.1 per EC3-1-1 UK NA`,
+  ],VnRd_bw,fv(g.V),'kN'));
+
+  // 13 — Beam web block shear [γM2 = 1.1]
+  const Ant_bw=Math.max(0,(E2w-d0/2)*Tw);
+  const Anv_bw=Math.max(0,(E1+(nb-1)*P1-(nb-.5)*d0)*Tw);
+  const Veff_bw=(bm.fu*Ant_bw/GM2s+bm.fy*Anv_bw/(Math.sqrt(3)*GM0))/1e3;
+  C.push(chk('13','Beam Web — Block Shear','EC3-1-8 §3.10.2 / P358 §8.4',[
+    `Ant = (e₂w−d₀/2)×tw = ${rd(Ant_bw,0)} mm²   Anv = ${rd(Anv_bw,0)} mm²`,
+    `Veff,Rd = fu·Ant/γM2+fy·Anv/(√3·γM0) = ${rd(bm.fu*Ant_bw/GM2s/1e3)}+${rd(bm.fy*Anv_bw/(Math.sqrt(3)*GM0)/1e3)} = ${rd(Veff_bw)} kN`,
+    `γM2 = 1.1 per EC3-1-1 UK NA`,
+  ],Veff_bw,fv(g.V),'kN'));
+
+  return{checks:C,allPass:C.every(c=>c.pass),maxR:Math.max(...C.map(c=>c.r))};
+}
+
+function calcSCleat(g){
+  // Single Web Cleat — EC3-1-8 / ECCS Pub.126 (NOT P358 — web cleats not in P358)
+  // One angle cleat: outstanding leg bolted to column, web leg bolted to beam web.
+  // Unlike double cleat, full shear V (not V/2) on a single cleat.
+  // Torsion on beam web is a concern — this check covers in-plane behaviour only.
+  const b=BOLT[g.boltSize], cm=MAT[g.colGrade], bm=MAT[g.beamGrade], cl=MAT[g.cleatGrade];
+  const Vn=fv(g.V)*1e3, nb=fi(g.n);
+  const P1=fv(g.p1), E1=fv(g.e1), E2s=fv(g.e2s), E2w=fv(g.e2w);
+  const Tc=fv(g.tc), Tw=fv(g.tw), Tfc=fv(g.tfc);
+  const {d,d0,As}=b, fub=800;
+  const GM2s=1.1;
+  const hc=E1+(nb-1)*P1+E1;
+
+  // Support bolt group: single cleat carries FULL V (not V/2) with eccentricity e2s
+  let Iy=0;
+  for(let i=0;i<nb;i++){const y=i*P1-(nb-1)*P1/2; Iy+=y*y;}
+  const ym=(nb-1)*P1/2;
+  const Vs=Vn, Ms=Vs*E2s, Fvd_s=Vs/nb;
+  const Fhm_s=Iy>0?Ms*ym/Iy:0, Fr_s=Math.sqrt(Fvd_s**2+Fhm_s**2);
+  const C=[];
+  const FvRd=.6*fub*As/GM2;
+
+  C.push(chk('1','Support Bolts — Shear Resistance (Single Cleat, Full V)','EC3-1-8 Table 3.4 / ECCS Pub.126',[
+    `Single cleat: full V = ${rd(Vn/1e3)} kN with eccentricity e₂_s = ${E2s} mm`,
+    `(Double cleat would carry V/2; single cleat carries full V — more critical)`,
+    `Fv,Rd = 0.6×800×${As}/1.25 = ${rd(FvRd/1e3)} kN/bolt`,
+    `Iy = ${rd(Iy,0)} mm²   ymax = ${ym} mm   Ms = V×e₂_s = ${rd(Ms/1e6)} kN·m`,
+    `F_direct = ${rd(Fvd_s/1e3)} kN↓   F_moment = ${rd(Fhm_s/1e3)} kN→`,
+    `F_resultant = √(${rd(Fvd_s/1e3)}²+${rd(Fhm_s/1e3)}²) = ${rd(Fr_s/1e3)} kN`,
+  ],FvRd/1e3,Fr_s/1e3,'kN'));
+
+  const k1s=Math.min(2.8*E2s/d0-1.7,2.5);
+  const abs_=nb>1?Math.min(E1/(3*d0),P1/(3*d0)-.25,fub/cl.fu,1):Math.min(E1/(3*d0),fub/cl.fu,1);
+  const FbsRd=Math.max(0,k1s)*Math.max(0,abs_)*cl.fu*d*Tc/GM2/1e3;
+  C.push(chk('2','Bearing — Outstanding Cleat Leg','EC3-1-8 Table 3.4',[
+    `k₁ = ${rd(k1s)}  αb = ${rd(abs_,3)}  Fb,Rd = ${rd(FbsRd)} kN`,
+  ],FbsRd,Fr_s/1e3,'kN'));
+
+  const k1c=Math.min(2.8*E2s/d0-1.7,2.5);
+  const abc=nb>1?Math.min(E1/(3*d0),P1/(3*d0)-.25,fub/cm.fu,1):Math.min(E1/(3*d0),fub/cm.fu,1);
+  const FbcRd=Math.max(0,k1c)*Math.max(0,abc)*cm.fu*d*Tfc/GM2/1e3;
+  C.push(chk('3','Bearing — Column Flange','EC3-1-8 Table 3.4',[
+    `k₁ = ${rd(k1c)}  αb = ${rd(abc,3)}  Fb,Rd = ${rd(FbcRd)} kN`,
+  ],FbcRd,Fr_s/1e3,'kN'));
+
+  // Web bolts: single cleat, n bolts carry V concentrically
+  const FvRd_web_total=nb*FvRd;
+  C.push(chk('4','Web Bolts — Shear Resistance (n bolts, concentric)','EC3-1-8 Table 3.4',[
+    `Single cleat: ${nb} web bolts carry V = ${rd(Vn/1e3)} kN concentrically`,
+    `Total Fv,Rd = ${nb}×${rd(FvRd/1e3)} = ${rd(FvRd_web_total/1e3)} kN`,
+  ],FvRd_web_total/1e3,fv(g.V),'kN'));
+
+  const Fvd_w=Vn/nb;
+  const k1w=Math.min(2.8*E2w/d0-1.7,2.5);
+  const abw=nb>1?Math.min(E1/(3*d0),P1/(3*d0)-.25,fub/cl.fu,1):Math.min(E1/(3*d0),fub/cl.fu,1);
+  const FbwcRd=Math.max(0,k1w)*Math.max(0,abw)*cl.fu*d*Tc/GM2/1e3;
+  C.push(chk('5','Bearing — Web Cleat Leg','EC3-1-8 Table 3.4',[
+    `V/n = ${rd(Fvd_w/1e3)} kN   Fb,Rd = ${rd(FbwcRd)} kN`,
+  ],FbwcRd,Fvd_w/1e3,'kN'));
+
+  const k1bw=Math.min(2.8*E2w/d0-1.7,2.5);
+  const ab_bw=nb>1?Math.min(E1/(3*d0),P1/(3*d0)-.25,fub/bm.fu,1):Math.min(E1/(3*d0),fub/bm.fu,1);
+  const FbbwRd=Math.max(0,k1bw)*Math.max(0,ab_bw)*bm.fu*d*Tw/GM2/1e3;
+  C.push(chk('6','Bearing — Beam Web','EC3-1-8 Table 3.4',[
+    `k₁ = ${rd(k1bw)}  αb = ${rd(ab_bw,3)}  Fb,Rd = ${rd(FbbwRd)} kN`,
+  ],FbbwRd,Fvd_w/1e3,'kN'));
+
+  // Cleat gross shear — carries full V (single cleat)
+  const VgRd=cl.fy*hc*Tc/(Math.sqrt(3)*GM0)/1e3;
+  C.push(chk('7','Cleat — Gross Section Shear (full V)','EC3-1-1 §6.2.6',[
+    `hc = ${hc} mm  Av = ${hc*Tc} mm²  Vpl,Rd = ${rd(VgRd)} kN  Applied = ${rd(fv(g.V))} kN`,
+  ],VgRd,fv(g.V),'kN'));
+
+  const Avnet=Math.max(0,(hc-nb*d0)*Tc);
+  const VnRd=.9*cl.fu*Avnet/(Math.sqrt(3)*GM2s)/1e3;
+  C.push(chk('8','Cleat — Net Section Shear','EC3-1-1 §6.2.6',[
+    `Anet = (${hc}−${nb}×${d0})×${Tc} = ${Avnet} mm²  Vnet,Rd = ${rd(VnRd)} kN  (γM2=1.1)`,
+  ],VnRd,fv(g.V),'kN'));
+
+  const Ant_c=Math.max(0,(E2s-d0/2)*Tc);
+  const Anv_c=Math.max(0,(E1+(nb-1)*P1-(nb-.5)*d0)*Tc);
+  const Veff_c=(cl.fu*Ant_c/GM2s+cl.fy*Anv_c/(Math.sqrt(3)*GM0))/1e3;
+  C.push(chk('9','Cleat — Block Shear','EC3-1-8 §3.10.2',[
+    `Ant = ${rd(Ant_c,0)} mm²  Anv = ${rd(Anv_c,0)} mm²  Veff,Rd = ${rd(Veff_c)} kN  (γM2=1.1)`,
+  ],Veff_c,fv(g.V),'kN'));
+
+  // Outstanding leg bending — plastic strip (full V on one cleat)
+  const Fh_crit=Iy>0?Ms*ym/Iy:Vs/nb;
+  const MEd_leg=Fh_crit*E2s;
+  const p1_eff=nb>1?P1:2*E1;
+  const Wpl_leg=Tc*Tc*p1_eff/4;
+  const MRd_leg=cl.fy*Wpl_leg/GM0;
+  C.push(chk('10','Outstanding Leg — Bending (Plastic Strip)','EC3-1-1 §6.2.5 / ECCS Pub.126',[
+    `Fh = ${rd(Fhm_s/1e3)} kN  e = ${E2s} mm  MEd = ${rd(MEd_leg/1e6)} kN·m`,
+    `Wpl = tc²×p/4 = ${Tc}²×${p1_eff}/4 = ${rd(Wpl_leg,0)} mm³  MRd = ${rd(MRd_leg/1e6)} kN·m`,
+  ],MRd_leg/1e6,MEd_leg/1e6,'kN·m'));
+
+  // Beam web checks
+  const VgRd_bw=bm.fy*hc*Tw/(Math.sqrt(3)*GM0)/1e3;
+  C.push(chk('11','Beam Web — Gross Shear (Local)','EC3-1-1 §6.2.6',[
+    `Av = hc×tw = ${hc}×${Tw} = ${hc*Tw} mm²  Vpl,Rd = ${rd(VgRd_bw)} kN`,
+  ],VgRd_bw,fv(g.V),'kN'));
+
+  const Avnet_bw=Math.max(0,(hc-nb*d0)*Tw);
+  const VnRd_bw=.9*bm.fu*Avnet_bw/(Math.sqrt(3)*GM2s)/1e3;
+  C.push(chk('12','Beam Web — Net Shear','EC3-1-1 §6.2.6',[
+    `Anet = ${Avnet_bw} mm²  Vnet,Rd = ${rd(VnRd_bw)} kN  (γM2=1.1)`,
+  ],VnRd_bw,fv(g.V),'kN'));
+
+  const Ant_bw=Math.max(0,(E2w-d0/2)*Tw);
+  const Anv_bw=Math.max(0,(E1+(nb-1)*P1-(nb-.5)*d0)*Tw);
+  const Veff_bw=(bm.fu*Ant_bw/GM2s+bm.fy*Anv_bw/(Math.sqrt(3)*GM0))/1e3;
+  C.push(chk('13','Beam Web — Block Shear','EC3-1-8 §3.10.2',[
+    `Ant = ${rd(Ant_bw,0)} mm²  Anv = ${rd(Anv_bw,0)} mm²  Veff,Rd = ${rd(Veff_bw)} kN  (γM2=1.1)`,
+  ],Veff_bw,fv(g.V),'kN'));
+
+  return{checks:C,allPass:C.every(c=>c.pass),maxR:Math.max(...C.map(c=>c.r))};
+}
+
+function calcSplice(g){
+  // Column splice — bearing type (P358 §9)
+  // Axial load transferred by direct bearing between prepared column end faces.
+  // Cover plates resist: (a) shear V_Ed, (b) nominal moment V_Ed × L_cp/2 (P358 §9.3)
+  const b=BOLT[g.boltSize], cm=MAT[g.colGrade], pm=MAT[g.platGrade];
+  const Nn=fv(g.N)*1e3, Vn=fv(g.V)*1e3;
+  const nw=fi(g.nw), nf=fi(g.nf);
+  const P1w=fv(g.p1w), E1w=fv(g.e1w), E2w=fv(g.e2w);
+  const P1f=fv(g.p1f), E1f=fv(g.e1f), E2f=fv(g.e2f);
+  const Bf=fv(g.bf), Tf=fv(g.tf), Tw=fv(g.tw), D=fv(g.d);
+  const Tfp=fv(g.tfp), Bfp=fv(g.bfp), Twp=fv(g.twp), Lcp=fv(g.Lcp);
+  const {d,d0,As}=b, fub=800;
+  const GM2s=1.1;  // section fracture (EC3-1-1 UK NA)
+
+  const dw=D-2*Tf;                    // web clear depth
+  const hwp=2*E1w+(nw-1)*P1w;         // web plate height
+  const Vwp=Vn/2;                     // shear per web plate
+
+  // P358 §9.3: nominal moment lever arm = D - tf (flange plate CL to CL)
+  const lever=D-Tf;
+  const M_nom=Vn*Lcp/2;               // N·mm
+  const Ffl=M_nom/lever;              // axial force in each flange plate pair (N)
+
+  const C=[];
+
+  // 1 — Web plate bolt shear
+  const FvRd_wb=.6*fub*As/GM2;
+  const FvRd_web_total=2*nw*FvRd_wb;
+  C.push(chk('1','Web Plate Bolts — Shear Resistance','EC3-1-8 Table 3.4 / P358 §9.4',[
+    `Bolt ${g.boltSize} Gr.8.8  As=${As} mm²  Fv,Rd=${rd(FvRd_wb/1e3)} kN/bolt`,
+    `2 web plates × ${nw} bolts = ${2*nw} bolts total, carry V_Ed = ${rd(Vn/1e3)} kN`,
+    `Fv,Rd,total = ${2*nw}×${rd(FvRd_wb/1e3)} = ${rd(FvRd_web_total/1e3)} kN`,
+  ],FvRd_web_total/1e3,fv(g.V),'kN'));
+
+  // 2 — Bearing on web cover plate
+  const Fvd_w=Vn/(2*nw);
+  const k1_wp=Math.min(2.8*E2w/d0-1.7,2.5);
+  const ab_wp=nw>1?Math.min(E1w/(3*d0),P1w/(3*d0)-.25,fub/pm.fu,1):Math.min(E1w/(3*d0),fub/pm.fu,1);
+  const FbwpRd=Math.max(0,k1_wp)*Math.max(0,ab_wp)*pm.fu*d*Twp/GM2/1e3;
+  C.push(chk('2','Bearing — Web Cover Plate','EC3-1-8 Table 3.4 / P358 §9.4',[
+    `k₁=${rd(k1_wp)}  αb=${rd(ab_wp,3)}  twp=${Twp} mm`,
+    `Fb,Rd=${rd(FbwpRd)} kN   Applied per bolt = V/(2nw) = ${rd(Fvd_w/1e3)} kN`,
+  ],FbwpRd,Fvd_w/1e3,'kN'));
+
+  // 3 — Bearing on column web
+  const ab_cw=nw>1?Math.min(E1w/(3*d0),P1w/(3*d0)-.25,fub/cm.fu,1):Math.min(E1w/(3*d0),fub/cm.fu,1);
+  const FbcwRd=Math.max(0,k1_wp)*Math.max(0,ab_cw)*cm.fu*d*Tw/GM2/1e3;
+  C.push(chk('3','Bearing — Column Web','EC3-1-8 Table 3.4 / P358 §9.4',[
+    `k₁=${rd(k1_wp)}  αb=${rd(ab_cw,3)}  tw=${Tw} mm`,
+    `Fb,Rd=${rd(FbcwRd)} kN   Applied per bolt = ${rd(Fvd_w/1e3)} kN`,
+  ],FbcwRd,Fvd_w/1e3,'kN'));
+
+  // 4 — Web plate gross shear
+  const Ag_wp=hwp*Twp;
+  const Vg_wpRd=pm.fy*Ag_wp/(Math.sqrt(3)*GM0)/1e3;
+  C.push(chk('4','Web Plate — Gross Section Shear','EC3-1-1 §6.2.6 / P358 §9.4',[
+    `hwp = 2e₁+(n−1)p₁ = ${hwp} mm`,
+    `Av = hwp×twp = ${Ag_wp} mm²`,
+    `Vpl,Rd = ${pm.fy}×${Ag_wp}/√3 = ${rd(Vg_wpRd)} kN   Applied per plate = ${rd(Vwp/1e3)} kN`,
+  ],Vg_wpRd,Vwp/1e3,'kN'));
+
+  // 5 — Web plate net shear [γM2 = 1.1 per EC3-1-1 UK NA]
+  const An_wp=Math.max(0,(hwp-nw*d0)*Twp);
+  const Vn_wpRd=.9*pm.fu*An_wp/(Math.sqrt(3)*GM2s)/1e3;
+  C.push(chk('5','Web Plate — Net Section Shear','EC3-1-1 §6.2.6 / P358 §9.4',[
+    `Anet = (${hwp}−${nw}×${d0})×${Twp} = ${An_wp} mm²`,
+    `Vnet,Rd = 0.9×${pm.fu}×${An_wp}/(√3×1.1) = ${rd(Vn_wpRd)} kN`,
+    `γM2 = 1.1 per EC3-1-1 UK NA (plate cross-section fracture)`,
+  ],Vn_wpRd,Vwp/1e3,'kN'));
+
+  // 6 — Flange plate bolts (carry nominal moment force)
+  // P358 §9.3: M_nom = V_Ed × L_cp/2; lever arm = D - tf (flange CL to flange CL)
+  const FvRd_fb=.6*fub*As/GM2;
+  const FvRd_fl_total=2*nf*FvRd_fb;
+  C.push(chk('6','Flange Plate Bolts — Axial Force (Nominal Moment)','EC3-1-8 Table 3.4 / P358 §9.3',[
+    `M_nom = V_Ed × L_cp/2 = ${rd(Vn/1e3)}×${Lcp}/2 = ${rd(M_nom/1e6)} kN·m`,
+    `Lever arm = D − tf = ${D}−${Tf} = ${lever} mm  (flange plate CL to CL, per P358 §9.3)`,
+    `F_fl = M_nom / lever = ${rd(M_nom/1e6)}×10⁶/${lever} = ${rd(Ffl/1e3)} kN (per flange pair)`,
+    `2 flange plates × ${nf} bolts per plate = ${2*nf} bolts per flange`,
+    `Fv,Rd,total = ${2*nf}×${rd(FvRd_fb/1e3)} = ${rd(FvRd_fl_total/1e3)} kN`,
+  ],FvRd_fl_total/1e3,Ffl/1e3,'kN'));
+
+  // 7 — Bearing on flange cover plate
+  const Fvd_f=Ffl/(2*nf);
+  const k1_fp=Math.min(2.8*E2f/d0-1.7,2.5);
+  const ab_fp=nf>1?Math.min(E1f/(3*d0),P1f/(3*d0)-.25,fub/pm.fu,1):Math.min(E1f/(3*d0),fub/pm.fu,1);
+  const FbfpRd=Math.max(0,k1_fp)*Math.max(0,ab_fp)*pm.fu*d*Tfp/GM2/1e3;
+  C.push(chk('7','Bearing — Flange Cover Plate','EC3-1-8 Table 3.4 / P358 §9.4',[
+    `k₁=${rd(k1_fp)}  αb=${rd(ab_fp,3)}  tfp=${Tfp} mm`,
+    `Fb,Rd=${rd(FbfpRd)} kN   Applied per bolt = F_fl/(2nf) = ${rd(Fvd_f/1e3)} kN`,
+  ],FbfpRd,Fvd_f/1e3,'kN'));
+
+  // 8 — Bearing on column flange
+  const ab_cf=nf>1?Math.min(E1f/(3*d0),P1f/(3*d0)-.25,fub/cm.fu,1):Math.min(E1f/(3*d0),fub/cm.fu,1);
+  const FbcfRd=Math.max(0,k1_fp)*Math.max(0,ab_cf)*cm.fu*d*Tf/GM2/1e3;
+  C.push(chk('8','Bearing — Column Flange','EC3-1-8 Table 3.4 / P358 §9.4',[
+    `k₁=${rd(k1_fp)}  αb=${rd(ab_cf,3)}  tf=${Tf} mm`,
+    `Fb,Rd=${rd(FbcfRd)} kN   Applied per bolt = ${rd(Fvd_f/1e3)} kN`,
+  ],FbcfRd,Fvd_f/1e3,'kN'));
+
+  // 9 — Flange plate gross tension
+  const Ag_fp=2*Bfp*Tfp;
+  const NplRd_fp=pm.fy*Ag_fp/GM0/1e3;
+  C.push(chk('9','Flange Plates — Gross Tension (pair)','EC3-1-1 §6.2.3 / P358 §9.4',[
+    `2 plates per flange (one each side): Ag = 2×${Bfp}×${Tfp} = ${Ag_fp} mm²`,
+    `Npl,Rd = fy×Ag/γM0 = ${pm.fy}×${Ag_fp}/1.0/1000 = ${rd(NplRd_fp)} kN`,
+    `Applied: F_fl = ${rd(Ffl/1e3)} kN`,
+  ],NplRd_fp,Ffl/1e3,'kN'));
+
+  // 10 — Flange plate NET tension [γM2 = 1.1, deduct 1 bolt hole per plate]
+  const An_fp=Math.max(0,2*(Bfp-d0)*Tfp);
+  const NnetRd_fp=.9*pm.fu*An_fp/GM2s/1e3;
+  C.push(chk('10','Flange Plates — Net Section Tension (pair)','EC3-1-1 §6.2.3 / P358 §9.4',[
+    `Anet = 2×(bfp−d₀)×tfp = 2×(${Bfp}−${d0})×${Tfp} = ${An_fp} mm²  (1 bolt hole per plate)`,
+    `Nnet,Rd = 0.9×fu×Anet/γM2 = 0.9×${pm.fu}×${An_fp}/1.1/1000 = ${rd(NnetRd_fp)} kN`,
+    `γM2 = 1.1 per EC3-1-1 UK NA`,
+  ],NnetRd_fp,Ffl/1e3,'kN'));
+
+  // 11 — Column end bearing (direct axial compression)
+  // P358 §9.2: σ_bearing ≤ fy (yield stress of column material)
+  // Bearing area = full column cross-sectional area (web + flanges)
+  const A_col=2*Bf*Tf+(D-2*Tf)*Tw;
+  const sigma_b=Nn/A_col;
+  C.push(chk('11','Column End Bearing — Direct Axial Compression','P358 §9.2',[
+    `Full column cross-section: A = 2×bf×tf + (D−2tf)×tw`,
+    `  = 2×${Bf}×${Tf} + (${D}−${2*Tf})×${Tw} = ${A_col} mm²`,
+    `σ_bearing = N_Ed/A = ${rd(Nn/1e3)}×1000/${A_col} = ${rd(sigma_b,1)} N/mm²`,
+    `Limit per P358 §9.2: fy = ${cm.fy} N/mm²  (bearing on machined faces)`,
+    `Note: bearing splice requires column ends to be machined flat and square.`,
+  ],cm.fy,sigma_b,'N/mm²'));
+
+  return{checks:C,allPass:C.every(c=>c.pass),maxR:Math.max(...C.map(c=>c.r))};
+}
+
+function calcBase(g){
+  // Column base plate — nominally pinned (P358 §10 / EC3-1-8 §6.2.5)
+  // Checks: bearing on grout, base plate bending,
+  //         HD bolt tension (uplift from moment), HD bolt shear,
+  //         weld of column to base plate.
+  const Nn  = fv(g.N)*1e3;           // axial (N), +ve compression
+  const Vn  = fv(g.V)*1e3;           // shear (N)
+  const Mn  = fv(g.M)*1e6;           // moment (N·mm)
+  const nhd = fi(g.nhd);
+  const dhd = fv(g.dhd);
+  const fub = g.hdgrade==='4.6' ? 400 : 800;
+  const Ahd = fv(g.As);              // tensile stress area of HD bolt
+  const ex  = fv(g.ex);              // HD bolt c/c in x (parallel to moment plane)
+  const ey  = fv(g.ey);
+  const tp  = fv(g.tp);
+  const Bp  = fv(g.Bp);
+  const Dp  = fv(g.Dp);
+  const bf  = fv(g.bf);
+  const dc  = fv(g.dc);
+  const aw  = fv(g.aw);
+  const fck = fv(g.fck);
+  const pm  = MAT[g.platGrade];
+  const cm  = MAT[g.colGrade];
+
+  // ── Bearing strength of grout/concrete (EC2 §6.7 / EC3-1-8 §6.2.5) ────────
+  // Design bearing strength: fj = β_j × fcd  where fcd = fck/1.5
+  // For a spread ratio ≤ 3: use simplified fj = 0.67 × fck/1.5
+  const fcd  = fck / 1.5;
+  const beta = 0.67;
+  const fj   = beta * fcd;              // N/mm² — grout bearing strength
+
+  // Effective bearing area (base plate footprint)
+  const A_bp = Bp * Dp;                // mm²
+
+  // Maximum bearing resistance
+  const N_Rd_bearing = fj * A_bp / 1e3; // kN
+
+  // ── Cantilever dimension c (base plate overhang beyond column face) ────────
+  const c_x = (Bp - bf) / 2;           // overhang in x (mm)
+  const c_y = (Dp - dc) / 2;           // overhang in y (mm)
+  const c   = Math.max(c_x, c_y);      // governing cantilever (mm)
+
+  // ── Required plate thickness from bending ────────────────────────────────
+  // P358 §10.3: tp,req = c × √(3 × fj / fy)
+  // where fj is bearing pressure under the plate (actual = N / A_bp)
+  const sigma_act = Nn / A_bp;          // actual bearing pressure (N/mm²)
+  const tp_req = c * Math.sqrt(3 * Math.max(sigma_act, 0) / pm.fy);
+  const C = [];
+
+  // ── 1. Base plate bearing on grout ──────────────────────────────────────
+  C.push(chk('1','Base Plate — Bearing on Grout/Concrete','EC2 §6.7 / EC3-1-8 §6.2.5 / P358 §10.3',[
+    `Plate area: A_bp = B_p × D_p = ${Bp} × ${Dp} = ${A_bp} mm²`,
+    `Concrete fck = ${fck} MPa  →  fcd = fck/1.5 = ${rd(fcd,1)} MPa`,
+    `Design bearing strength: fj = β_j × fcd = 0.67 × ${rd(fcd,1)} = ${rd(fj,1)} N/mm²`,
+    `Bearing resistance: N_Rd = fj × A_bp = ${rd(fj,1)} × ${A_bp} / 1000 = ${rd(N_Rd_bearing)} kN`,
+    `Applied N_Ed = ${rd(Nn/1e3)} kN`,
+  ], N_Rd_bearing, Nn/1e3, 'kN'));
+
+  // ── 2. Base plate bending ────────────────────────────────────────────────
+  C.push(chk('2','Base Plate — Bending Resistance','EC3-1-1 §6.2.5 / P358 §10.3',[
+    `Bearing pressure: σ_act = N_Ed / A_bp = ${rd(Nn/1e3)} × 1000 / ${A_bp} = ${rd(sigma_act,2)} N/mm²`,
+    `Cantilever c = max((B_p−b_f)/2, (D_p−d_c)/2) = max(${rd(c_x,1)}, ${rd(c_y,1)}) = ${rd(c,1)} mm`,
+    `Required t_p,req = c × √(3σ/fy) = ${rd(c,1)} × √(3 × ${rd(sigma_act,2)} / ${pm.fy}) = ${rd(tp_req,1)} mm`,
+    `Provided t_p = ${tp} mm  ${tp >= tp_req ? '✓  sufficient' : '✗  insufficient — increase plate thickness'}`,
+  ], tp, tp_req, 'mm'));
+
+  // ── 3. HD bolt tension (from moment + uplift) ────────────────────────────
+  // Tension in HD bolts arises from applied moment and any net uplift.
+  // Simple model: T per bolt = (M_Ed / lever_arm − N_Ed/n_hd) / n_tension
+  //   lever_arm ≈ distance between HD bolt rows = e_x (bolt c/c in bending direction)
+  //   n_tension = n_hd / 2 (half the bolts in tension for moment case)
+  const lever = ex;                         // tension bolt group lever arm (mm)
+  const T_moment = Mn / lever;              // total tension from moment (N)
+  const T_axial  = -Nn / nhd;              // uplift per bolt from axial (−ve = compression → 0)
+  const T_bolt   = Math.max(0, T_moment/nhd*2 + Math.max(0, T_axial)); // per bolt (N)
+  const FtRd_hd  = 0.9 * fub * Ahd / GM2 / 1e3; // kN — EC3-1-8 Table 3.4
+  // If no moment and net compression, tension = 0 → check is trivially satisfied
+  const T_dem = T_bolt / 1e3;              // kN
+  C.push(chk('3','Holding-Down Bolts — Tension (Moment + Uplift)','EC3-1-8 Table 3.4 / P358 §10.4',[
+    `Lever arm ≈ e_x = ${ex} mm   n_hd = ${nhd} bolts`,
+    `T_moment = M_Ed / e_x = ${rd(Mn/1e6)} × 10⁶ / ${ex} = ${rd(T_moment/1e3)} kN total`,
+    `T_axial  = -N_Ed / n_hd = ${rd(T_axial/1e3)} kN/bolt  (−ve = compression, clamping)`,
+    `T per bolt (tension side) = ${rd(T_dem)} kN`,
+    `Ft,Rd = 0.9 × fub × As / γM2 = 0.9 × ${fub} × ${Ahd} / 1.25 = ${rd(FtRd_hd)} kN`,
+    T_dem <= 0 ? `Net compression — no tension in HD bolts. Check satisfied by inspection.` : ``,
+  ].filter(Boolean), Math.max(FtRd_hd, 0.001), Math.max(T_dem, 0), 'kN'));
+
+  // ── 4. HD bolt shear ──────────────────────────────────────────────────────
+  // All bolts carry shear (friction + bearing); use bearing model per EC3-1-8
+  // Shear capacity: Fv,Rd = 0.6 × fub × As / γM2 (threads in shear plane)
+  const FvRd_hd  = 0.6 * fub * Ahd / GM2 / 1e3;   // per bolt (kN)
+  const FvRd_tot = nhd * FvRd_hd;                   // total (kN)
+  // Combined tension-shear interaction (EC3-1-8 Table 3.4):
+  //   Fv,Ed/(Fv,Rd) + Ft,Ed/(1.4×Ft,Rd) ≤ 1.0
+  const IV  = fv(g.V) / FvRd_tot;
+  const IT  = Math.max(T_dem, 0) / (1.4 * FtRd_hd);
+  const I_combined = IV + IT;
+  C.push(chk('4','Holding-Down Bolts — Shear (+ Tension Interaction)','EC3-1-8 Table 3.4 / P358 §10.4',[
+    `Fv,Rd per bolt = 0.6 × ${fub} × ${Ahd} / 1.25 = ${rd(FvRd_hd)} kN`,
+    `Total Fv,Rd = ${nhd} × ${rd(FvRd_hd)} = ${rd(FvRd_tot)} kN`,
+    `Shear utilisation: V_Ed / Fv,Rd,tot = ${rd(fv(g.V))} / ${rd(FvRd_tot)} = ${rd(IV*100,1)}%`,
+    `Combined interaction: Fv/Fv,Rd + Ft/(1.4×Ft,Rd) = ${rd(IV,3)} + ${rd(IT,3)} = ${rd(I_combined,3)}`,
+  ], 1.0, I_combined, '—'));
+
+  // ── 5. Weld of column to base plate ──────────────────────────────────────
+  // Full perimeter fillet weld (all round). Resists N_Ed (axial) and V_Ed (shear).
+  // Capacity uses the WEAKER of plate material and column material (EC3-1-8 §4.5.3).
+  const Aw_throat = 0.707 * aw;
+  const L_weld    = 2 * (bf + dc);             // approx. weld perimeter for I-section
+  const A_weld    = Aw_throat * L_weld;
+  const fwRd_plate = pm.fu / (Math.sqrt(3) * pm.bw * GM2);
+  const fwRd_col   = cm.fu / (Math.sqrt(3) * cm.bw * GM2);
+  const fwRd       = Math.min(fwRd_plate, fwRd_col); // weaker governs
+  const sigma_weld = Nn / A_weld;
+  const tau_weld   = Vn / A_weld;
+  const f_weld_res = Math.sqrt(sigma_weld**2 + tau_weld**2);
+  C.push(chk('5','Column-to-Base-Plate Fillet Weld','EC3-1-8 §4.5.3 / P358 §10.5',[
+    `Weld leg = ${aw} mm  throat = ${rd(Aw_throat)} mm`,
+    `Perimeter: L = 2(bf+dc) = 2(${bf}+${dc}) = ${L_weld} mm`,
+    `Total throat area: A_w = ${rd(Aw_throat)} × ${L_weld} = ${rd(A_weld,0)} mm²`,
+    `fw,Rd (plate) = ${pm.fu}/(√3×${pm.bw}×1.25) = ${rd(fwRd_plate,1)} N/mm²`,
+    `fw,Rd (column) = ${cm.fu}/(√3×${cm.bw}×1.25) = ${rd(fwRd_col,1)} N/mm²`,
+    `fw,Rd (governs) = ${rd(fwRd,1)} N/mm²  (weaker of plate and column)`,
+    `σ (axial) = N/A_w = ${rd(sigma_weld,1)} N/mm²`,
+    `τ (shear) = V/A_w = ${rd(tau_weld,1)} N/mm²`,
+    `f_result = √(σ²+τ²) = ${rd(f_weld_res,1)} N/mm²`,
+  ], fwRd, f_weld_res, 'N/mm²'));
+
+  return{checks:C, allPass:C.every(c=>c.pass), maxR:Math.max(...C.map(c=>c.r))};
+}
+
+function calcBrace(g){
+  // Bracing connection — gusset plate, bolted brace (P358 §11 / EC3-1-8)
+  // Bracing member (flat bar or angle) bolted through gusset plate.
+  // Gusset welded to supporting frame. Bolt group carries N_Ed concentrically.
+  const b   = BOLT[g.boltSize];
+  const gm  = MAT[g.gussGrade];
+  const bm  = MAT[g.braceGrade];
+  const fm  = MAT[g.frameGrade];
+  const Nn  = fv(g.N)*1e3 * fv(g.sign);
+  const Na  = Math.abs(Nn);
+  const nb  = fi(g.n);
+  const P1  = fv(g.p1), E1=fv(g.e1), E2g=fv(g.e2g), E2b=fv(g.e2b);
+  const Tg  = fv(g.tg), Hg=fv(g.hg), Tb=fv(g.tb), Wb=fv(g.wb);
+  const Ecc = fv(g.e);
+  const Aw  = 0.707*fv(g.aw);
+  const {d,d0,As} = b, fub=800;
+  const GM2s=1.1;  // section fracture (EC3-1-1 UK NA)
+
+  // Whitmore effective width — P358 §11.4
+  // Stress spreads at 30° from first to last bolt. Width = 2×L_bolt×tan30° + w_brace.
+  // Physical limit: can't exceed actual gusset height hg.
+  const L_bolt = Math.max(0, (nb-1)*P1);
+  const W_whit = 2 * L_bolt * Math.tan(30*Math.PI/180) + Wb;
+  const W_eff  = Math.min(W_whit, Hg);   // governs: Whitmore or physical gusset width
+
+  const C = [];
+
+  // 1 — Bolt group axial shear (concentric)
+  const FvRd     = 0.6*fub*As/GM2;
+  const FvRd_tot = nb * FvRd;
+  C.push(chk('1','Bolt Group — Axial Shear (Brace to Gusset)','EC3-1-8 Table 3.4 / P358 §11.3',[
+    `Bolt ${g.boltSize} Gr.8.8  As=${As} mm²  fub=${fub} MPa`,
+    `Fv,Rd = 0.6×${fub}×${As}/1.25 = ${rd(FvRd/1e3)} kN/bolt`,
+    `Concentric axial: ${nb} bolts  Fv,Rd,total = ${nb}×${rd(FvRd/1e3)} = ${rd(FvRd_tot/1e3)} kN`,
+  ],FvRd_tot/1e3,Na/1e3,'kN'));
+
+  // 2 — Bearing on gusset plate
+  const k1g  = Math.min(2.8*E2g/d0-1.7,2.5);
+  const abg  = nb>1?Math.min(E1/(3*d0),P1/(3*d0)-0.25,fub/gm.fu,1):Math.min(E1/(3*d0),fub/gm.fu,1);
+  const FbgRd = Math.max(0,k1g)*Math.max(0,abg)*gm.fu*d*Tg/GM2/1e3;
+  C.push(chk('2','Bearing Resistance — Gusset Plate','EC3-1-8 Table 3.4 / P358 §11.3',[
+    `k₁ = ${rd(k1g)}  αb = ${rd(abg,3)}  tg = ${Tg} mm`,
+    `Fb,Rd = ${rd(FbgRd)} kN   Applied per bolt = N/n = ${rd(Na/1e3/nb)} kN`,
+  ],FbgRd,Na/1e3/nb,'kN'));
+
+  // 3 — Bearing on brace member
+  const k1b  = Math.min(2.8*E2b/d0-1.7,2.5);
+  const abb  = nb>1?Math.min(E1/(3*d0),P1/(3*d0)-0.25,fub/bm.fu,1):Math.min(E1/(3*d0),fub/bm.fu,1);
+  const FbbRd = Math.max(0,k1b)*Math.max(0,abb)*bm.fu*d*Tb/GM2/1e3;
+  C.push(chk('3','Bearing Resistance — Brace Member','EC3-1-8 Table 3.4 / P358 §11.3',[
+    `k₁ = ${rd(k1b)}  αb = ${rd(abb,3)}  tb = ${Tb} mm`,
+    `Fb,Rd = ${rd(FbbRd)} kN   Applied per bolt = ${rd(Na/1e3/nb)} kN`,
+  ],FbbRd,Na/1e3/nb,'kN'));
+
+  // 4 — Gusset plate gross tension — Whitmore section (P358 §11.4)
+  // Effective width = min(Whitmore width, physical gusset height hg)
+  const Ag_eff  = W_eff * Tg;
+  const NplRd_g = gm.fy * Ag_eff / GM0 / 1e3;
+  C.push(chk('4','Gusset Plate — Gross Tension (Whitmore Section)','EC3-1-1 §6.2.3 / P358 §11.4',[
+    `Whitmore width: W = 2×(n−1)p₁×tan30° + wb = 2×${L_bolt}×tan30° + ${Wb} = ${rd(W_whit,1)} mm`,
+    `Physical gusset height: hg = ${Hg} mm`,
+    `Effective width: W_eff = min(${rd(W_whit,1)}, ${Hg}) = ${rd(W_eff,1)} mm  ${W_whit>Hg?'(gusset governs)':'(Whitmore governs)'}`,
+    `Ag = W_eff × tg = ${rd(W_eff,1)} × ${Tg} = ${rd(Ag_eff,0)} mm²`,
+    `Npl,Rd = fy × Ag / γM0 = ${gm.fy} × ${rd(Ag_eff,0)} / 1.0 / 1000 = ${rd(NplRd_g)} kN`,
+  ],NplRd_g,Na/1e3,'kN'));
+
+  // 5 — Gusset plate net tension [γM2 = 1.1 per EC3-1-1 UK NA]
+  // Net area deducts bolt holes across the critical section (one bolt in single row)
+  const An_g    = Math.max(0,(Hg-nb*d0)*Tg);  // conservative: all holes in one section
+  const NnetRd_g = 0.9*gm.fu*An_g/GM2s/1e3;
+  C.push(chk('5','Gusset Plate — Net Section Tension','EC3-1-1 §6.2.3 / P358 §11.4',[
+    `Anet = (hg − n·d₀) × tg = (${Hg}−${nb}×${d0})×${Tg} = ${An_g} mm²`,
+    `Nnet,Rd = 0.9×${gm.fu}×${An_g}/1.1/1000 = ${rd(NnetRd_g)} kN`,
+    `γM2 = 1.1 per EC3-1-1 UK NA (plate cross-section fracture)`,
+  ],NnetRd_g,Na/1e3,'kN'));
+
+  // 6 — Gusset plate block shear [fu term: γM2 = 1.1]
+  const Ant_bs = Math.max(0,(E2g-d0/2)*Tg);
+  const Anv_bs = Math.max(0,(E1+(nb-1)*P1-(nb-0.5)*d0)*Tg);
+  const Veff_bs = (gm.fu*Ant_bs/GM2s + gm.fy*Anv_bs/(Math.sqrt(3)*GM0))/1e3;
+  C.push(chk('6','Gusset Plate — Block Shear','EC3-1-8 §3.10.2 / P358 §11.4',[
+    `Ant = (e₂g−d₀/2)×tg = (${E2g}−${d0/2})×${Tg} = ${rd(Ant_bs,0)} mm²`,
+    `Anv = (e₁+(n−1)p₁−(n−0.5)d₀)×tg = ${rd(Anv_bs,0)} mm²`,
+    `Veff,Rd = fu·Ant/γM2 + fy·Anv/(√3·γM0)  (γM2 = 1.1)`,
+    `       = ${rd(gm.fu*Ant_bs/GM2s/1e3)} + ${rd(gm.fy*Anv_bs/(Math.sqrt(3)*GM0)/1e3)} = ${rd(Veff_bs)} kN`,
+  ],Veff_bs,Na/1e3,'kN'));
+
+  // 7 — Brace member net section tension [γM2 = 1.1]
+  const An_b    = Math.max(0,(Wb-d0)*Tb);
+  const NnetRd_b = 0.9*bm.fu*An_b/GM2s/1e3;
+  C.push(chk('7','Brace Member — Net Section Tension','EC3-1-1 §6.2.3 / P358 §11.4',[
+    `Brace: wb = ${Wb} mm  tb = ${Tb} mm  (flat bar, single bolt row)`,
+    `Anet = (wb−d₀)×tb = (${Wb}−${d0})×${Tb} = ${An_b} mm²`,
+    `Nnet,Rd = 0.9×${bm.fu}×${An_b}/1.1/1000 = ${rd(NnetRd_b)} kN`,
+    `γM2 = 1.1 per EC3-1-1 UK NA`,
+  ],NnetRd_b,Na/1e3,'kN'));
+
+  // 8 — Gusset weld to frame — shear + in-plane moment (P358 §11.5)
+  // N_Ed runs as direct shear along the weld length hg.
+  // Eccentricity e between bolt-group centroid and weld face creates in-plane moment.
+  // Weld both sides: total throat area = 2×a×hg; second moment Iw = 2×a×hg³/12.
+  const A_weld_tot = 2*Aw*Hg;
+  const fwRd_g   = gm.fu/(Math.sqrt(3)*gm.bw*GM2);
+  const fwRd_fr  = fm.fu/(Math.sqrt(3)*fm.bw*GM2);
+  const fwRd     = Math.min(fwRd_g,fwRd_fr);
+  const tau_N    = Na/A_weld_tot;
+  const M_w      = Na*Ecc;
+  const Iw       = 2*Aw*Hg**3/12;
+  const sigma_M  = M_w*(Hg/2)/Iw;
+  const f_res    = Math.sqrt(tau_N**2+sigma_M**2);
+  C.push(chk('8','Gusset Weld to Frame — Shear + In-Plane Moment','EC3-1-8 §4.5.3 / P358 §11.5',[
+    `Leg = ${fv(g.aw)} mm  throat = ${rd(Aw)} mm  length = hg = ${Hg} mm (both sides)`,
+    `fw,Rd = min(fu,guss, fu,frame)/(√3·βw·γM2) = ${rd(fwRd,1)} N/mm²`,
+    `τ = N/(2·a·hg) = ${rd(Na/1e3)}k/(2×${rd(Aw)}×${Hg}) = ${rd(tau_N,1)} N/mm²`,
+    `M_w = N·e = ${rd(Na/1e3)}k×${Ecc}/1000 = ${rd(M_w/1e6)} kN·m`,
+    `Iw = 2·a·hg³/12 = ${rd(Iw,0)} mm⁴`,
+    `σ_M = M_w·(hg/2)/Iw = ${rd(sigma_M,1)} N/mm²`,
+    `f_result = √(τ²+σ²) = ${rd(f_res,1)} N/mm²`,
+  ],fwRd,f_res,'N/mm²'));
+
+  return{checks:C,allPass:C.every(c=>c.pass),maxR:Math.max(...C.map(c=>c.r))};
+}
+
+// ─── UI STATE ─────────────────────────────────────────────────
+let activeId='fin';
+const gv=id=>document.getElementById(id)?.value||'0';
+
+// ── Section auto-fill ──────────────────────────────────────────
+function secFill(pfx, role, secName){
+  const s = SECTIONS[secName];
+  if(!s) return;
+  // role='beam': fill tw (beam web), for fdep also tf,bf,d
+  // role='supp': fill tfc (col flange), and update notch info
+  if(role==='beam'){
+    const twEl = document.getElementById(pfx+'-tw');
+    if(twEl) twEl.value = s.tw;
+    // FDEP also needs d, tf, bf
+    const dEl=document.getElementById(pfx+'-d');
+    const tfEl=document.getElementById(pfx+'-tf');
+    const bfEl=document.getElementById(pfx+'-bf');
+    if(dEl) dEl.value=s.d;
+    if(tfEl) tfEl.value=s.tf;
+    if(bfEl) bfEl.value=s.b;
+    // Update hint box
+    const hint=document.getElementById(pfx+'-ecc');
+    if(hint){const lp=fv(gv(pfx+'-lp')),e2=fv(gv(pfx+'-e2p')||gv(pfx+'-e2'));
+      hint.textContent=`tw = ${s.tw} mm · d = ${s.d} mm · tf = ${s.tf} mm · bf = ${s.b} mm`;}
+  }
+  if(role==='supp'){
+    const tfcEl=document.getElementById(pfx+'-tfc');
+    if(tfcEl) tfcEl.value=s.tf;
+  }
+  // Update notch box
+  const beamSec=document.getElementById(pfx+'-beamSec')?.value;
+  const suppSec=document.getElementById(pfx+'-suppSec')?.value;
+  const notchEl=document.getElementById(pfx+'-notch');
+  if(notchEl && beamSec && suppSec){
+    const nc=notchCheck(beamSec,suppSec);
+    if(nc){
+      const b=SECTIONS[beamSec], sp=SECTIONS[suppSec];
+      // Notch is required if supporting flange width means beam flange would clash
+      const flangeClear = sp.tf + sp.r + 5;
+      notchEl.innerHTML=`<b>Notch check — ${beamSec} into ${suppSec}</b><br>
+        Min notch depth dn ≥ tf,supp + r,supp + 5 = ${sp.tf} + ${sp.r} + 5 = ${nc.dn_min} mm<br>
+        Min notch length ln ≥ b,supp/2 + 10 = ${Math.round(sp.b/2)} + 10 = ${nc.ln_min} mm<br>
+        Beam: d=${b.d} tf=${b.tf} tw=${b.tw} mm · Support: d=${sp.d} tf=${sp.tf} b=${sp.b} mm`;
+    }
+  }
+}
+
+// Trigger secFill on initial load after form rendered
+function initSecFill(pfx){
+  const bs=document.getElementById(pfx+'-beamSec');
+  const ss=document.getElementById(pfx+'-suppSec');
+  if(bs&&bs.value) secFill(pfx,'beam',bs.value);
+  if(ss&&ss.value) secFill(pfx,'supp',ss.value);
+}
+
+function switchJt(id){
+  const jt=JOINTS.find(j=>j.id===id);
+  if(!jt)return;
+  activeId=id;
+  document.querySelectorAll('.jt-card').forEach(el=>el.classList.toggle('active',el.dataset.id===id));
+  const pan=document.getElementById('input-panel');
+  if(id==='fin')   pan.innerHTML=formFin();
+  else if(id==='pdep')  pan.innerHTML=formPDEP();
+  else if(id==='fdep')  pan.innerHTML=formFDEP();
+  else if(id==='dcleat') pan.innerHTML=formDCleat();
+  else if(id==='scleat') pan.innerHTML=formSCleat();
+  else if(id==='splice') pan.innerHTML=formSplice();
+  else if(id==='base')  pan.innerHTML=formBase();
+  else if(id==='brace') pan.innerHTML=formBrace();
+  showDiag(jt);
+  document.getElementById('results').style.display='none';
+  if(id==='fin')    setTimeout(()=>{attachFin();initSecFill('fin');},50);
+  if(id==='pdep')   setTimeout(()=>{initSecFill('pdep');},50);
+  if(id==='fdep')   setTimeout(()=>{initSecFill('fdep');},50);
+  if(id==='dcleat') setTimeout(()=>{attachDCleat();initSecFill('dcl');},50);
+  if(id==='scleat') setTimeout(()=>{attachSCleat();initSecFill('scl');},50);
+  if(id==='base')   setTimeout(attachBase,50);
+}
+
+function showDiag(jt){
+  const diagFns={fin:diagFin,pdep:diagPDEP,fdep:diagFDEP,
+    dcleat:diagCleat,scleat:diagCleat,splice:diagSplice,base:diagBase,brace:diagBrace};
+  const notP358=['dcleat','scleat'];
+  const disclaimer=notP358.includes(jt.id)?
+    `<div style="background:#fffdf5;border:1px solid #c47a0a;border-radius:4px;padding:7px 10px;font-size:10.5px;color:#7a4f00;margin-top:8px">
+      ⚠ Web cleats are <b>not covered by SCI P358</b>. Checks based on EC3-1-8 / ECCS Pub.126.</div>`:'';
+  document.getElementById('diag-area').innerHTML=`
+    <div class="diag-panel">
+      <div class="diag-title">${jt.label}</div>
+      <div class="diag-desc">${jt.desc}</div>
+      <div class="diag-wrap">${diagFns[jt.id]?diagFns[jt.id]():''}</div>
+      ${disclaimer}
+      <div style="color:var(--muted);font-size:10px;font-family:var(--mono);margin-top:4px">${jt.ref}</div>
+    </div>`;
+}
+
+function doCalc(){
+  const eb=document.getElementById('err-box');
+  eb.style.display='none';
+  const jt=JOINTS.find(j=>j.id===activeId);
+  if(!jt?.ready){eb.textContent=jt?.label+' not yet implemented.';eb.style.display='block';return;}
+  try{
+    let g,res,sum;
+    if(activeId==='fin'){g=readFin();res=calcFin(g);sum=finSum(g);}
+    else if(activeId==='pdep'){g=readPDEP();res=calcPDEP(g);sum=pdepSum(g);}
+    else if(activeId==='fdep'){g=readFDEP();res=calcFDEP(g);sum=fdepSum(g);}
+    else if(activeId==='dcleat'){g=readDCleat();res=calcDCleat(g);sum=dcleatSum(g);}
+    else if(activeId==='scleat'){g=readSCleat();res=calcSCleat(g);sum=scleatSum(g);}
+    else if(activeId==='splice'){g=readSplice();res=calcSplice(g);sum=spliceSum(g);}
+    else if(activeId==='base'){g=readBase();res=calcBase(g);sum=baseSum(g);}
+    else if(activeId==='brace'){g=readBrace();res=calcBrace(g);sum=braceSum(g);}
+    else{g=readPDEP();res=calcPDEP(g);sum=pdepSum(g);}
+    document.getElementById('diag-area').innerHTML='';
+    renderRes(res,jt.label,sum);
+  }catch(e){eb.textContent='Error: '+e.message;eb.style.display='block';}
+}
+
+function readFin(){return{V:gv('fin-V'),n:gv('fin-n'),p1:gv('fin-p1'),e1:gv('fin-e1'),
+  e2p:gv('fin-e2p'),e2w:gv('fin-e2w'),boltSize:gv('fin-boltSize'),
+  tp:gv('fin-tp'),hp:gv('fin-hp'),lp:gv('fin-lp'),tw:gv('fin-tw'),aw:gv('fin-aw'),
+  platGrade:gv('fin-platGrade'),beamGrade:gv('fin-beamGrade')};}
+function readPDEP(){return{V:gv('pdep-V'),n:gv('pdep-n'),p1:gv('pdep-p1'),e1:gv('pdep-e1'),
+  e2:gv('pdep-e2'),ep:gv('pdep-ep'),boltSize:gv('pdep-boltSize'),
+  tp:gv('pdep-tp'),hp:gv('pdep-hp'),tfc:gv('pdep-tfc'),tw:gv('pdep-tw'),aw:gv('pdep-aw'),
+  platGrade:gv('pdep-platGrade'),colGrade:gv('pdep-colGrade'),beamGrade:gv('pdep-beamGrade')};}
+function readFDEP(){return{V:gv('fdep-V'),n:gv('fdep-n'),p1:gv('fdep-p1'),e1:gv('fdep-e1'),
+  e2:gv('fdep-e2'),ep:gv('fdep-ep'),boltSize:gv('fdep-boltSize'),
+  tp:gv('fdep-tp'),d:gv('fdep-d'),tw:gv('fdep-tw'),tf:gv('fdep-tf'),bf:gv('fdep-bf'),
+  tfc:gv('fdep-tfc'),aww:gv('fdep-aww'),awf:gv('fdep-awf'),
+  platGrade:gv('fdep-platGrade'),colGrade:gv('fdep-colGrade'),beamGrade:gv('fdep-beamGrade')};}
+
+function readDCleat(){return{V:gv('dcl-V'),n:gv('dcl-n'),p1:gv('dcl-p1'),e1:gv('dcl-e1'),
+  e2s:gv('dcl-e2s'),e2w:gv('dcl-e2w'),boltSize:gv('dcl-boltSize'),
+  tc:gv('dcl-tc'),lout:gv('dcl-lout'),lweb:gv('dcl-lweb'),tw:gv('dcl-tw'),tfc:gv('dcl-tfc'),
+  cleatGrade:gv('dcl-cleatGrade'),colGrade:gv('dcl-colGrade'),beamGrade:gv('dcl-beamGrade')};}
+function readSCleat(){return{V:gv('scl-V'),n:gv('scl-n'),p1:gv('scl-p1'),e1:gv('scl-e1'),
+  e2s:gv('scl-e2s'),e2w:gv('scl-e2w'),boltSize:gv('scl-boltSize'),
+  tc:gv('scl-tc'),lout:gv('scl-lout'),lweb:gv('scl-lweb'),tw:gv('scl-tw'),tfc:gv('scl-tfc'),
+  cleatGrade:gv('scl-cleatGrade'),colGrade:gv('scl-colGrade'),beamGrade:gv('scl-beamGrade')};}
+
+function finSum(g){const a=fv(g.lp)-fv(g.e2p);return[['V_Ed',g.V+' kN'],['Bolts',g.n+'×'+g.boltSize],['Pitch p₁',g.p1+' mm'],['Eccen. a',a+' mm'],['Plate',g.hp+'×'+g.lp+'×'+g.tp+' mm'],['t_w',g.tw+' mm'],['Weld leg',g.aw+' mm'],['Plate',g.platGrade],['Beam',g.beamGrade]];}
+function pdepSum(g){return[['V_Ed',g.V+' kN'],['Bolts',g.n+'×'+g.boltSize],['Pitch p₁',g.p1+' mm'],['Bolt-weld e',g.ep+' mm'],['Plate',g.hp+'×'+g.tp+' mm'],['t_fc',g.tfc+' mm'],['Weld leg',g.aw+' mm'],['Plate',g.platGrade],['Column',g.colGrade],['Beam',g.beamGrade]];}
+function fdepSum(g){return[['V_Ed',g.V+' kN'],['Bolts',g.n+'×'+g.boltSize],['Pitch p₁',g.p1+' mm'],['Bolt-weld e',g.ep+' mm'],['Beam depth d',g.d+' mm'],['Web t_w',g.tw+' mm'],['Flange t_f',g.tf+' mm'],['Flange b_f',g.bf+' mm'],['Web weld',g.aww+' mm'],['Flange weld',g.awf+' mm'],['Plate',g.platGrade],['Column',g.colGrade],['Beam',g.beamGrade]];}
+function dcleatSum(g){const hc=fv(g.e1)+(fi(g.n)-1)*fv(g.p1)+fv(g.e1);
+  return[['V_Ed',g.V+' kN'],['Double cleat','2×('+g.n+'×'+g.boltSize+')'],['Pitch p₁',g.p1+' mm'],
+  ['Gauge e₂_s',g.e2s+' mm'],['Cleat h_c',rd(hc,0)+' mm'],['Cleat t_c',g.tc+' mm'],
+  ['Cleat',g.cleatGrade],['Column',g.colGrade],['Beam',g.beamGrade]];}
+function scleatSum(g){const hc=fv(g.e1)+(fi(g.n)-1)*fv(g.p1)+fv(g.e1);
+  return[['V_Ed',g.V+' kN'],['Single cleat','1×('+g.n+'×'+g.boltSize+')'],['Pitch p₁',g.p1+' mm'],
+  ['Gauge e₂_s',g.e2s+' mm'],['Cleat h_c',rd(hc,0)+' mm'],['Cleat t_c',g.tc+' mm'],
+  ['Cleat',g.cleatGrade],['Column',g.colGrade],['Beam',g.beamGrade]];}
+
+function readSplice(){return{
+  N:gv('sp-N'),V:gv('sp-V'),boltSize:gv('sp-boltSize'),
+  nw:gv('sp-nw'),p1w:gv('sp-p1w'),e1w:gv('sp-e1w'),e2w:gv('sp-e2w'),
+  nf:gv('sp-nf'),p1f:gv('sp-p1f'),e1f:gv('sp-e1f'),e2f:gv('sp-e2f'),
+  bf:gv('sp-bf'),tf:gv('sp-tf'),tw:gv('sp-tw'),d:gv('sp-d'),
+  tfp:gv('sp-tfp'),bfp:gv('sp-bfp'),twp:gv('sp-twp'),Lcp:gv('sp-Lcp'),
+  colGrade:gv('sp-colGrade'),platGrade:gv('sp-platGrade')};}
+function spliceSum(g){return[
+  ['N_Ed',g.N+' kN'],['V_Ed',g.V+' kN'],['Bolts',g.boltSize+' Gr.8.8'],
+  ['Web bolts/plate',g.nw+'×'],['Flange bolts/plate',g.nf+'×'],
+  ['Col b_f',g.bf+' mm'],['Col t_f',g.tf+' mm'],['Col t_w',g.tw+' mm'],
+  ['Flange plate',g.bfp+'×'+g.tfp+' mm'],['Web plate t',g.twp+' mm'],
+  ['Cover L_cp',g.Lcp+' mm'],['Column',g.colGrade],['Plates',g.platGrade]];}
+
+function readBase(){return{
+  N:gv('ba-N'),V:gv('ba-V'),M:gv('ba-M'),
+  dhd:gv('ba-dhd'),nhd:gv('ba-nhd'),hdgrade:gv('ba-hdgrade'),As:gv('ba-As'),
+  ex:gv('ba-ex'),ey:gv('ba-ey'),
+  tp:gv('ba-tp'),Bp:gv('ba-Bp'),Dp:gv('ba-Dp'),bf:gv('ba-bf'),dc:gv('ba-dc'),aw:gv('ba-aw'),
+  fck:gv('ba-fck'),colGrade:gv('ba-colGrade'),platGrade:gv('ba-platGrade')};}
+function baseSum(g){
+  const c=Math.max((fv(g.Bp)-fv(g.bf))/2,(fv(g.Dp)-fv(g.dc))/2);
+  return[['N_Ed',g.N+' kN'],['V_Ed',g.V+' kN'],['M_Ed',g.M+' kN·m'],
+    ['HD bolts',g.nhd+'×M'+g.dhd+' Gr.'+g.hdgrade],
+    ['Base plate',g.Bp+'×'+g.Dp+'×'+g.tp+' mm'],
+    ['Cantilever c',rd(c,1)+' mm'],['Weld leg',g.aw+' mm'],
+    ['Concrete','C'+g.fck+'/'+{20:'25',25:'30',30:'37',32:'40'}[g.fck]],
+    ['Plate',g.platGrade],['Column',g.colGrade]];}
+
+function attachBase(){
+  const upd=()=>{
+    const Bp=fv(gv('ba-Bp')),bf=fv(gv('ba-bf')),Dp=fv(gv('ba-Dp')),dc=fv(gv('ba-dc'));
+    const cx=(Bp-bf)/2, cy=(Dp-dc)/2;
+    const el=document.getElementById('ba-c');
+    if(el) el.textContent=`Cantilever c = max((B_p−b_f)/2, (D_p−d_c)/2) = max(${rd(cx,1)}, ${rd(cy,1)}) = ${rd(Math.max(cx,cy),1)} mm`;
+  };
+  ['ba-Bp','ba-bf','ba-Dp','ba-dc'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('input',upd);});
+}
+
+function readBrace(){return{
+  N:gv('br-N'),sign:gv('br-sign'),boltSize:gv('br-boltSize'),
+  n:gv('br-n'),p1:gv('br-p1'),e1:gv('br-e1'),e2g:gv('br-e2g'),e2b:gv('br-e2b'),
+  tg:gv('br-tg'),hg:gv('br-hg'),tb:gv('br-tb'),wb:gv('br-wb'),e:gv('br-e'),aw:gv('br-aw'),
+  gussGrade:gv('br-gussGrade'),braceGrade:gv('br-braceGrade'),frameGrade:gv('br-frameGrade')};}
+function braceSum(g){return[
+  ['N_Ed',g.N+' kN ('+(g.sign==='1'?'T':'C')+')'],['Bolts',g.n+'×'+g.boltSize],
+  ['Pitch p₁',g.p1+' mm'],['Eccentricity e',g.e+' mm'],
+  ['Gusset',g.hg+'×'+g.tg+' mm'],['Brace',g.wb+'×'+g.tb+' mm'],
+  ['Weld leg',g.aw+' mm'],['Gusset',g.gussGrade],['Brace',g.braceGrade],['Frame',g.frameGrade]];}
+
+function renderRes(res,type,summary){
+  const{checks,allPass,maxR}=res;
+  const proj=[gv('proj-eng'),gv('proj-ref'),gv('proj-date')].filter(v=>v&&v!=='0').join(' · ');
+  const el=document.getElementById('results');
+  el.style.display='block';
+  el.innerHTML=`
+    <div class="rhdr">
+      <div class="rhdr-t">${esc(type)}</div>
+      <button class="btn-sm no-print" onclick="window.print()">⎙ Print / PDF</button>
+    </div>
+    <div class="verdict ${allPass?'pass':'fail'}">
+      <div>
+        <div class="v-lbl">${allPass?'✓  DESIGN SATISFACTORY':'✗  DESIGN FAILS'}</div>
+        <div class="v-sub">${checks.filter(c=>c.pass).length}/${checks.length} checks pass · P358 / EC3-1-8 / UK NA${proj?' · '+esc(proj):''}</div>
+      </div>
+      <div class="v-util">
+        <div class="v-util-lbl">Max Utilisation</div>
+        <div class="v-util-val" style="color:${rc(maxR)}">${(maxR*100).toFixed(1)}%</div>
+      </div>
+    </div>
+    <div class="slbl">Input Summary</div>
+    <div class="sumgrid">${summary.map(([k,v])=>`<div class="si"><div class="si-k">${esc(k)}</div><div class="si-v">${esc(v)}</div></div>`).join('')}</div>
+    <div class="slbl">Design Checks</div>
+    ${checks.map(c=>{const pct=Math.min(c.r,1)*100,col=rc(c.r);return`
+      <div class="cr ${c.pass?'pass':'fail'}" id="row-${c.id}">
+        <div class="crh" onclick="tog('${c.id}')">
+          <span class="cr-n">${c.id}</span>
+          <span class="cr-name">${esc(c.name)}</span>
+          <div class="cr-bw">
+            <div class="cr-dvc">${rd(c.dem)} / ${rd(c.cap)} ${esc(c.unit)}</div>
+            <div class="cr-trk"><div class="cr-fill" style="width:${pct}%;background:${col}"></div></div>
+          </div>
+          <span class="cr-pct" style="color:${col}">${(c.r*100).toFixed(1)}%</span>
+          <span class="cr-badge ${c.pass?'bp':'bf'}">${c.pass?'PASS':'FAIL'}</span>
+          <span class="cr-arr">▼</span>
+        </div>
+        <div class="crd" id="dtl-${c.id}">
+          <span class="dref">${esc(c.ref)}</span>
+          <div class="dcalc">${c.lines.map(l=>`<div class="dline">${esc(l)}</div>`).join('')}</div>
+          <div class="dres"><span class="dres-l">Utilisation</span>
+            <span class="dres-v" style="color:${col}">${(c.r*100).toFixed(1)}% ${c.pass?'✓':'✗'}</span></div>
+        </div>
+      </div>`;}).join('')}
+    <div class="notes"><b>Notes:</b> SCI P358 / EN 1993-1-8:2005 / UK NA. t≤16mm per BS EN 10025-2.
+      Bolt Gr.8.8 (fub=800 MPa), threads in shear plane. γM0=1.00, γM2=1.25. Design aid only.</div>`;
+}
+
+function tog(id){
+  const d=document.getElementById('dtl-'+id);
+  const a=document.querySelector(`#row-${id} .cr-arr`);
+  a.textContent=d.classList.toggle('open')?'▲':'▼';
+}
+
+
+function attachFin(){
+  const upd=()=>{
+    const lp=fv(gv('fin-lp')),e2p=fv(gv('fin-e2p'));
+    const sz=gv('fin-boltSize'),d0=BOLT[sz]?.d0||22;
+    const el=document.getElementById('fin-ecc');
+    if(el) el.textContent=`Eccentricity a = Lp−e₂ = ${lp}−${e2p} = ${lp-e2p} mm  ·  Hole d₀ = ${d0} mm`;
+  };
+  ['fin-lp','fin-e2p'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('input',upd);});
+  const bs=document.getElementById('fin-boltSize');if(bs)bs.addEventListener('change',upd);
+}
+
+function attachDCleat(){
+  const upd=()=>{
+    const n=fi(gv('dcl-n')),p1=fv(gv('dcl-p1')),e1=fv(gv('dcl-e1'));
+    const hc=e1+(n-1)*p1+e1;
+    const el=document.getElementById('dcl-hc');
+    if(el) el.textContent=`Cleat height hc = e₁+(n−1)p₁+e₁ = ${e1}+${(n-1)*p1}+${e1} = ${hc} mm`;
+  };
+  ['dcl-n','dcl-p1','dcl-e1'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('input',upd);});
+  upd();
+}
+
+function attachSCleat(){
+  const upd=()=>{
+    const n=fi(gv('scl-n')),p1=fv(gv('scl-p1')),e1=fv(gv('scl-e1'));
+    const hc=e1+(n-1)*p1+e1;
+    const el=document.getElementById('scl-hc');
+    if(el) el.textContent=`Cleat height hc = e₁+(n−1)p₁+e₁ = ${e1}+${(n-1)*p1}+${e1} = ${hc} mm  (single cleat — carries full V)`;
+  };
+  ['scl-n','scl-p1','scl-e1'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('input',upd);});
+  upd();
+}
+
+// Add THUMBS for new connection types (reuse cleat thumb for both)
+THUMBS.dcleat = THUMBS.cleat;
+THUMBS.scleat = `<svg viewBox="0 0 72 50" xmlns="http://www.w3.org/2000/svg">
+  <rect x="3" y="2" width="5" height="46" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+  <rect x="1" y="2" width="9" height="6" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+  <rect x="1" y="42" width="9" height="6" fill="#d8e4eb" stroke="#333" stroke-width="1.2"/>
+  <rect x="8" y="14" width="13" height="4" fill="#fff" stroke="#333" stroke-width="1"/>
+  <rect x="20" y="14" width="4" height="22" fill="#fff" stroke="#333" stroke-width="1"/>
+  ${bolt(13,16,2.5)} ${bolt(13,28,2.5)} ${bolt(22,22,2.5)}
+  <rect x="24" y="16" width="46" height="18" fill="#d8e4eb" stroke="#333" stroke-width="1"/>
+  <rect x="24" y="10" width="46" height="7" fill="#d8e4eb" stroke="#333" stroke-width="1"/>
+  <rect x="24" y="33" width="46" height="7" fill="#d8e4eb" stroke="#333" stroke-width="1"/>
+  <text fill="#c47a0a" font-size="6" font-family="Arial,sans-serif" x="28" y="44">×1</text>
+</svg>`;
+
+// ─── INIT ─────────────────────────────────────────────────────
+document.getElementById('proj-date').value=new Date().toISOString().slice(0,10);
+
+// Build joint type bar
+document.getElementById('jt-bar').innerHTML=JOINTS.map(jt=>`
+  <div class="jt-card ${jt.id===activeId?'active':''} ${jt.ready?'':'locked'}"
+    data-id="${jt.id}" onclick="${jt.ready?`switchJt('${jt.id}')`:''}" title="${jt.desc}">
+    <div class="jt-icon">${THUMBS[jt.id]||''}</div>
+    <div class="jt-name">${jt.label}</div>
+    <div class="jt-tag ${jt.ready?'tag-done':'tag-soon'}">${jt.ready?'ACTIVE':'SOON'}</div>
+  </div>`).join('');
+
+switchJt('fin');
+</script>
+</body>
+</html>
