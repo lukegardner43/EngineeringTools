@@ -127,6 +127,16 @@ tr.kr td{color:var(--grn);} tr.bal td{color:var(--cyn);}
     <button id="t-circ" onclick="setTab('circ')">Circular</button>
   </div>
 
+  <!-- PROJECT INFO -->
+  <div class="grp">
+    <div class="gl">Project Information</div>
+    <div class="f"><label>Project</label><input type="text" id="proj-name" placeholder="Project name" style="flex:1;"></div>
+    <div class="f"><label>Reference</label><input type="text" id="proj-ref" placeholder="Job / drawing ref" style="flex:1;"></div>
+    <div class="f"><label>Engineer</label><input type="text" id="proj-eng" placeholder="Engineer name" style="flex:1;"></div>
+    <div class="f"><label>Date</label><input type="text" id="proj-date" placeholder="Date" style="flex:1;"></div>
+  </div>
+  <hr class="divider">
+
   <div class="inp-scroll">
 
   <!-- RECTANGULAR -->
@@ -1200,188 +1210,234 @@ function drawCirc(){
 }
 
 // ════════════════════════════════════════════════════════════
-// PRINT REPORT — KaTeX-rendered calculation sheet
+// PDF EXPORT — jsPDF + KaTeX + html2canvas
 // ════════════════════════════════════════════════════════════
-function generateReport(){
+function startPDF(btn){
   if(!window.lastCalc){ alert('Run Check Design ↗ first.'); return; }
+  btn.disabled=true; btn.textContent='Generating…';
+  requestAnimationFrame(()=>requestAnimationFrame(()=>
+    exportPDF().finally(()=>{ btn.disabled=false; btn.textContent='Export PDF'; })
+  ));
+}
+
+async function exportPDF(){
   const C = window.lastCalc;
   const { sec, secYY, isRect, NEd, Mtop, Mbot, MtopY, MbotY,
           rx, ry, biaxial, McapXX, McapYY, passXX, passYY,
           fr, mufi, storey_m, k1xx, k2xx, k1yy, k2yy, phief, l } = C;
   const p  = sec.props;
-  const pY = secYY ? secYY.props : null;
 
-  // ── Grab section canvas image
-  drawViz();
-  const cvs = isRect ? document.getElementById('vr') : document.getElementById('vc');
-  const imgData = cvs ? cvs.toDataURL('image/png') : '';
+  const {jsPDF} = window.jspdf;
+  const doc = new jsPDF({unit:'mm',format:'a4',orientation:'portrait'});
+  const W=210, M=15, TW=W-2*M;
+  let y=20;
 
-  // ── Helpers
-  const n2 = v => (+v).toFixed(2);
-  const n1 = v => (+v).toFixed(1);
-  const n0 = v => (+v).toFixed(0);
-  const pf = (pass) => pass
-    ? `<span class="pass">PASS ✓</span>`
-    : `<span class="fail">FAIL ✗</span>`;
+  function pageCheck(need){
+    if(y+need>282){doc.addPage();y=20;}
+  }
+  function h1(txt){
+    pageCheck(10);
+    doc.setFillColor(240,238,234);doc.rect(M,y-4,TW,8,'F');
+    doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(20,20,20);
+    doc.text(txt,M+2,y+1);y+=9;
+  }
+  function row(lbl,val,ref){
+    pageCheck(5);
+    doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(60,60,60);
+    doc.text(lbl,M,y,{maxWidth:TW*0.54});
+    doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(15,15,15);
+    doc.text(String(val),M+TW*0.56,y,{maxWidth:TW*0.26});
+    if(ref){doc.setFont('helvetica','italic');doc.setFontSize(7);doc.setTextColor(130,130,130);doc.text(ref,W-M,y,{align:'right',maxWidth:TW*0.18});}
+    y+=4.5;
+  }
+  function rowResult(lbl,val,ok){
+    pageCheck(6);
+    doc.setFillColor(ok?228:252,ok?242:228,ok?220:220);
+    doc.rect(M,y-3.5,TW,5.5,'F');
+    doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(60,60,60);
+    doc.text(lbl,M+1,y);
+    doc.setFont('helvetica','bold');doc.setFontSize(8);
+    doc.setTextColor(ok?25:170,ok?100:25,ok?25:25);
+    doc.text(val,M+TW*0.56,y);
+    doc.setTextColor(15,15,15);y+=5.5;
+  }
+  async function frow(label,latexStr,ref){
+    pageCheck(12);
+    const div=document.createElement('div');
+    div.style.cssText='position:absolute;left:-9999px;top:-9999px;background:#fff;padding:4px 8px;font-size:14px;';
+    document.body.appendChild(div);
+    try{katex.render(latexStr,div,{throwOnError:false,displayMode:false});}catch(e){div.textContent=latexStr;}
+    const cvs2=await html2canvas(div,{scale:2,backgroundColor:'#ffffff'});
+    document.body.removeChild(div);
+    const imgW=TW*0.44, imgH=Math.min(cvs2.height/cvs2.width*imgW,18);
+    pageCheck(imgH+4);
+    doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(60,60,60);
+    doc.text(label,M,y,{maxWidth:TW*0.50});
+    doc.addImage(cvs2.toDataURL('image/png'),'PNG',M+TW*0.52,y-5,imgW,imgH);
+    if(ref){doc.setFont('helvetica','italic');doc.setFontSize(7);doc.setTextColor(130,130,130);doc.text(ref,W-M,y,{align:'right',maxWidth:TW*0.16});}
+    y+=Math.max(imgH,6)+1;
+  }
 
-  // ── Calculation row: description | $latex = substituted = result$
-  const cr = (desc, tex, ref='') =>
-    `<tr><td class="cd">${desc}</td><td class="cm">\\(${tex}\\)</td><td class="cr">${ref}</td></tr>`;
-
-  // ── Section heading
-  const sh = (n, t) =>
-    `<tr class="sh"><td colspan="3"><span class="sn">${n}</span>${t}</td></tr>`;
-
-  // ── Pass/fail row
-  const pfRow = (desc, pass, detail='') =>
-    `<tr class="pfr ${pass?'ok':'ng'}"><td class="cd">${desc}</td><td class="cm" colspan="2">${pf(pass)} ${detail}</td></tr>`;
-
-  // ── Divider
-  const div = () => `<tr class="divr"><td colspan="3"></td></tr>`;
-
-  // Material / section values
-  const fck=p.fck, fcd_v=p.fc, fyd_v=FYD;
+  // Number helpers
+  const n2=v=>(+v).toFixed(2), n1=v=>(+v).toFixed(1), n0=v=>(+v).toFixed(0);
+  const fcd_v=p.fc, fyd_v=FYD;
   const Ac=p.Ac, As=p.As, rho=p.rho;
-  const b_v = isRect ? p.b : p.D;
-  const h_v = isRect ? p.h : p.D;
-  const omega_v = As*fyd_v/(Ac*fcd_v);
+  const omega_v=As*fyd_v/(Ac*fcd_v);
 
-  // ── Date
-  const now = new Date();
-  const dateStr = now.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+  // ── Dark header
+  doc.setFillColor(26,26,26);
+  doc.rect(0,0,210,16,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(13);doc.setTextColor(255,255,255);
+  doc.text('RC Column Design Calculation',M,11);
+  doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(180,180,180);
+  doc.text('EN 1992-1-1:2004 + UK NA · Nominal curvature method',W-M,11,{align:'right'});
 
-  // ═══════════════════════════════════════════════
-  // BUILD ROWS
-  // ═══════════════════════════════════════════════
-  let rows = '';
+  // ── Project meta
+  y=24;
+  const mf=[
+    ['Project',  document.getElementById('proj-name')?.value||''],
+    ['Reference',document.getElementById('proj-ref')?.value||''],
+    ['Engineer', document.getElementById('proj-eng')?.value||''],
+    ['Date',     document.getElementById('proj-date')?.value||new Date().toLocaleDateString('en-GB')],
+  ];
+  doc.setFontSize(8);
+  mf.forEach(([k,v],i)=>{
+    const col=(i<2)?0:TW/2, ro=i%2;
+    doc.setFont('helvetica','normal');doc.setTextColor(80,80,80);
+    doc.text(k+':',M+col,y+ro*5);
+    doc.setFont('helvetica','bold');doc.setTextColor(20,20,20);
+    doc.text(v||'—',M+col+22,y+ro*5);
+  });
+  y+=16;
+
+  // ── Section image
+  drawViz();
+  const sectionCanvas = isRect ? document.getElementById('vr') : document.getElementById('vc');
+  if(sectionCanvas){
+    const sImgW=35, sImgH=sectionCanvas.height/sectionCanvas.width*sImgW;
+    doc.addImage(sectionCanvas.toDataURL('image/png'),'PNG',W-M-sImgW,y-2,sImgW,sImgH);
+  }
+
+  // ── Overall result banner
+  const overallPass=passXX&&(!biaxial||passYY);
+  doc.setFillColor(overallPass?42:180,overallPass?110:40,overallPass?30:40);
+  doc.roundedRect(M,y,TW-40,10,2,2,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(255,255,255);
+  doc.text(overallPass?'SECTION ADEQUATE — ALL CHECKS PASS':'SECTION INADEQUATE — CHECKS FAILED',M+4,y+6.5);
+  y+=15;
+
+  // ── Summary rows
+  const sectionDesc=isRect?`Rectangular ${n0(p.b)}×${n0(p.h)} mm`:`Circular Ø${n0(p.D)} mm`;
+  row('Section',`${sectionDesc}, C${n0(p.fck)}/__ concrete`,'');
+  row('Reinforcement',`As = ${n0(As)} mm²  (ρ = ${rho.toFixed(2)}%)`,'');
+  row('Applied NEd',`${n1(NEd)} kN`,'');
+  row('Design moment X–X',`MEd = ${n1(rx.MEd)} kNm  ${passXX?'✓':'✗'}`,'');
+  if(biaxial) row('Design moment Y–Y',`MEd = ${n1(ry.MEd)} kNm  ${passYY?'✓':'✗'}`,'');
+  row('Fire resistance',`R = ${n0(fr.R_min)} min  → R${fr.rating}`,'');
+  y+=3;
+
+  // ── jsPDF section helpers (already defined above as h1/row/rowResult/frow)
+
+  const fck=p.fck;
 
   // ── 1. Section Properties
-  rows += sh('1', 'Section Properties');
+  h1('1. Section Properties');
   if(isRect){
-    rows += cr('Section type', `\\text{Rectangular}\\quad b = ${n0(p.b)}\\,\\text{mm},\\quad h = ${n0(p.h)}\\,\\text{mm}`,'');
+    await frow('Section type', `\\text{Rectangular}\\quad b = ${n0(p.b)}\\,\\text{mm},\\quad h = ${n0(p.h)}\\,\\text{mm}`, '');
   } else {
-    rows += cr('Section type', `\\text{Circular}\\quad D = ${n0(p.D)}\\,\\text{mm}`,'');
+    await frow('Section type', `\\text{Circular}\\quad D = ${n0(p.D)}\\,\\text{mm}`, '');
   }
-  rows += cr('Concrete class',
+  await frow('Concrete class',
     `f_{ck} = ${n0(fck)}\\,\\text{MPa},\\quad f_{cd} = \\frac{\\alpha_{cc}\\,f_{ck}}{\\gamma_c} = \\frac{0.85 \\times ${n0(fck)}}{1.5} = ${n1(fcd_v)}\\,\\text{MPa}`,
     '§3.1.6');
-  rows += cr('Reinforcement',
+  await frow('Reinforcement',
     `f_{yk} = 500\\,\\text{MPa},\\quad f_{yd} = \\frac{f_{yk}}{\\gamma_s} = \\frac{500}{1.15} = ${n1(fyd_v)}\\,\\text{MPa}`,
     '§3.2.7');
-  rows += cr('Gross cross-section area',
-    `A_c = ${n0(Ac)}\\,\\text{mm}^2`,
-    '');
-  rows += cr('Longitudinal reinforcement',
+  await frow('Gross cross-section area', `A_c = ${n0(Ac)}\\,\\text{mm}^2`, '');
+  await frow('Longitudinal reinforcement',
     `A_s = ${n0(As)}\\,\\text{mm}^2,\\quad \\rho = \\frac{A_s}{A_c} = ${(rho).toFixed(2)}\\%`,
     '§9.5.2');
-  rows += cr('Mechanical reinforcement ratio',
+  await frow('Mechanical reinforcement ratio',
     `\\omega = \\frac{A_s f_{yd}}{A_c f_{cd}} = \\frac{${n0(As)} \\times ${n1(fyd_v)}}{${n0(Ac)} \\times ${n1(fcd_v)}} = ${n2(omega_v)}`,
     '');
-  rows += div();
+  y+=3;
 
   // ── 2. Applied Loads
-  rows += sh('2', 'Applied Loads');
-  rows += cr('Design axial load',`N_{Ed} = ${n1(NEd)}\\,\\text{kN}`,'');
-  rows += cr('Moments about X–X',
-    `M_{top,x} = ${n1(Mtop)}\\,\\text{kNm},\\quad M_{bot,x} = ${n1(Mbot)}\\,\\text{kNm}`,'');
-  if(biaxial){
-    rows += cr('Moments about Y–Y',
-      `M_{top,y} = ${n1(MtopY)}\\,\\text{kNm},\\quad M_{bot,y} = ${n1(MbotY)}\\,\\text{kNm}`,'');
-  }
-  rows += div();
+  h1('2. Applied Loads');
+  await frow('Design axial load', `N_{Ed} = ${n1(NEd)}\\,\\text{kN}`, '');
+  await frow('Moments about X\u2013X', `M_{top,x} = ${n1(Mtop)}\\,\\text{kNm},\\quad M_{bot,x} = ${n1(Mbot)}\\,\\text{kNm}`, '');
+  if(biaxial) await frow('Moments about Y\u2013Y', `M_{top,y} = ${n1(MtopY)}\\,\\text{kNm},\\quad M_{bot,y} = ${n1(MbotY)}\\,\\text{kNm}`, '');
+  y+=3;
 
-  // ── helper: one axis of slenderness
-  function slendernessRows(r, axisLabel, k1, k2, isYY){
-    let s = '';
+  // ── Slenderness helper (async)
+  async function doSlenderness(r, axisLabel, k1, k2, secNum, isYY){
     const h_ax = isYY ? (isRect?p.b:p.D) : (isRect?p.h:p.D);
-    s += sh(isYY?'4':'3', `Slenderness &amp; Design Moments — ${axisLabel}`);
-    s += cr('Column clear height', `l = ${n0(l)}\\,\\text{mm}`,'');
-    s += cr('End fixity factors', `k_1 = ${n2(k1)},\\quad k_2 = ${n2(k2)}`,'PD6687');
-    s += cr('Effective length (braced)',
+    h1(`${secNum}. Slenderness & Design Moments \u2014 ${axisLabel}`);
+    await frow('Column clear height', `l = ${n0(l)}\\,\\text{mm}`, '');
+    await frow('End fixity factors', `k_1 = ${n2(k1)},\\quad k_2 = ${n2(k2)}`, 'PD6687');
+    await frow('Effective length (braced)',
       `l_0 = 0.5\\,l\\sqrt{\\left(1+\\frac{k_1}{0.45+k_1}\\right)\\!\\left(1+\\frac{k_2}{0.45+k_2}\\right)} = ${n0(r.l0)}\\,\\text{mm}`,
       '§5.8.3.2');
-    s += cr('Radius of gyration',
+    await frow('Radius of gyration',
       isRect
         ? `i = \\frac{${isYY?'b':'h'}}{\\sqrt{12}} = \\frac{${n0(h_ax)}}{\\sqrt{12}} = ${n1(r.i)}\\,\\text{mm}`
         : `i = \\frac{D}{4} = \\frac{${n0(h_ax)}}{4} = ${n1(r.i)}\\,\\text{mm}`,
       '');
-    s += cr('Slenderness ratio',
-      `\\lambda = \\frac{l_0}{i} = \\frac{${n0(r.l0)}}{${n1(r.i)}} = ${n1(r.lambda)}`,
-      '§5.8.3.2');
-    s += cr('Geometric imperfection',
-      `e_i = \\frac{l_0}{400} = \\frac{${n0(r.l0)}}{400} = ${n1(r.ei)}\\,\\text{mm}`,
-      '§5.2(7)');
-    s += cr('Max end moment',
-      `M_{02} = \\max(|M_{top}|,|M_{bot}|)+e_i N_{Ed} = ${n1(r.M02)}\\,\\text{kNm}`,
-      '§6.1(4)');
-    s += cr('Min end moment',
-      `M_{01} = ${r.M01<0?'':'+'}{\\rm sign} \\cdot \\min(|M_{top}|,|M_{bot}|)+e_i N_{Ed} = ${n1(r.M01)}\\,\\text{kNm}\\quad [${r.M01<0?'\\text{double curv.}':'\\text{single curv.}'}]`,
+    await frow('Slenderness ratio', `\\lambda = \\frac{l_0}{i} = \\frac{${n0(r.l0)}}{${n1(r.i)}} = ${n1(r.lambda)}`, '§5.8.3.2');
+    await frow('Geometric imperfection', `e_i = \\frac{l_0}{400} = \\frac{${n0(r.l0)}}{400} = ${n1(r.ei)}\\,\\text{mm}`, '§5.2(7)');
+    await frow('Max end moment', `M_{02} = \\max(|M_{top}|,|M_{bot}|)+e_i N_{Ed} = ${n1(r.M02)}\\,\\text{kNm}`, '§6.1(4)');
+    await frow('Min end moment',
+      `M_{01} = ${r.M01<0?'':'+'}\\mathrm{sign} \\cdot \\min(|M_{top}|,|M_{bot}|)+e_i N_{Ed} = ${n1(r.M01)}\\,\\text{kNm}`,
       '§5.8.8.2');
-    s += cr('Moment ratio',
-      `r_m = \\frac{M_{01}}{M_{02}} = \\frac{${n2(r.M01)}}{${n2(r.M02)}} = ${n2(r.rm)}`,
-      '');
-    s += cr('Factor A',
-      `A = \\frac{1}{1+0.2\\,\\varphi_{ef}} = \\frac{1}{1+0.2\\times${n2(phief)}} = ${n2(r.A)}`,
-      '§5.8.3.1');
-    s += cr('Factor B',
-      `B = \\sqrt{1+2\\omega} = \\sqrt{1+2\\times${n2(omega_v)}} = ${n2(r.B)}`,
-      '§5.8.3.1');
-    s += cr('Factor C',
-      `C = 1.7 - r_m = 1.7 - (${n2(r.rm)}) = ${n2(r.C)}`,
-      '§5.8.3.1');
-    s += cr('Relative axial force',
+    await frow('Moment ratio', `r_m = \\frac{M_{01}}{M_{02}} = \\frac{${n2(r.M01)}}{${n2(r.M02)}} = ${n2(r.rm)}`, '');
+    await frow('Factor A', `A = \\frac{1}{1+0.2\\,\\varphi_{ef}} = \\frac{1}{1+0.2\\times${n2(phief)}} = ${n2(r.A)}`, '§5.8.3.1');
+    await frow('Factor B', `B = \\sqrt{1+2\\omega} = \\sqrt{1+2\\times${n2(omega_v)}} = ${n2(r.B)}`, '§5.8.3.1');
+    await frow('Factor C', `C = 1.7 - r_m = 1.7 - (${n2(r.rm)}) = ${n2(r.C)}`, '§5.8.3.1');
+    await frow('Relative axial force',
       `n = \\frac{N_{Ed}}{A_c\\,f_{cd}} = \\frac{${n0(NEd*1000)}}{${n0(Ac)}\\times${n1(fcd_v)}} = ${n2(r.n_rel)}`,
       '');
-    s += cr('Slenderness limit',
+    await frow('Slenderness limit',
       `\\lambda_{lim} = \\frac{20\\,A\\,B\\,C}{\\sqrt{n}} = \\frac{20\\times${n2(r.A)}\\times${n2(r.B)}\\times${n2(r.C)}}{\\sqrt{${n2(r.n_rel)}}} = ${n1(r.lambda_lim)}`,
       '§5.8.3.1');
-    const slenderLabel = r.lambda <= r.lambda_lim ? `\\lambda=${n1(r.lambda)} \\leq \\lambda_{lim}=${n1(r.lambda_lim)}\\,\\Rightarrow\\,\\text{2nd order effects may be ignored}` : `\\lambda=${n1(r.lambda)} > \\lambda_{lim}=${n1(r.lambda_lim)}\\,\\Rightarrow\\,\\text{2nd order effects included}`;
-    s += pfRow(`Slenderness check (${axisLabel})`, r.lambda<=r.lambda_lim, `\\(${slenderLabel}\\)`);
-    // Design moment
-    s += cr('Equivalent first-order moment',
+    rowResult(`Slenderness check (${axisLabel})`, r.lambda<=r.lambda_lim?'PASS \u2713':'FAIL \u2717', r.lambda<=r.lambda_lim);
+    await frow('Equivalent first-order moment',
       `M_{0e} = \\max(0.6\\,M_{02}+0.4\\,M_{01},\\;0.4\\,M_{02}) = ${n1(r.M0e)}\\,\\text{kNm}`,
       '§5.8.8.2');
     if(r.M2 > 0.001){
-      s += cr('Curvature factor K_r',
+      await frow('Curvature factor K_r',
         `K_r = \\frac{n_u - n}{n_u - n_{bal}} = \\frac{(1+\\omega)-${n2(r.n_rel)}}{(1+\\omega)-0.4} = ${n2(r.Kr)}`,
         '§5.8.8.3');
-      s += cr('Creep factor K_φ',
-        `K_\\varphi = \\max\\!\\left(1,\\,1+\\beta\\,\\varphi_{ef}\\right) = ${n2(r.Kphi)}\\quad \\beta=0.35+\\tfrac{f_{ck}}{200}-\\tfrac{\\lambda}{150}`,
-        '§5.8.8.3');
-      s += cr('Nominal curvature',
+      await frow('Creep factor K_varphi', `K_\\varphi = \\max\\!\\left(1,\\,1+\\beta\\,\\varphi_{ef}\\right) = ${n2(r.Kphi)}`, '§5.8.8.3');
+      await frow('Nominal curvature',
         `\\tfrac{1}{r} = K_r K_\\varphi \\,\\tfrac{\\varepsilon_{yd}}{0.45\\,d_{eff}} = ${(r.curv*1e6).toFixed(4)}\\times10^{-6}\\,\\text{mm}^{-1}`,
         '§5.8.8.3');
-      s += cr('2nd-order eccentricity',
+      await frow('2nd-order eccentricity',
         `e_2 = \\frac{1}{r}\\cdot\\frac{l_0^2}{10} = ${n1(r.e2)}\\,\\text{mm},\\quad M_2 = N_{Ed}\\,e_2 = ${n1(r.M2)}\\,\\text{kNm}`,
         '§5.8.8.2');
     }
-    s += cr('Governing design moment',
+    await frow('Governing design moment',
       `M_{Ed} = \\max\\!\\left\\{M_{02};\\;M_{0e}+M_2;\\;|M_{01}|+0.5M_2;\\;e_0 N_{Ed}\\right\\} = ${n1(r.MEd)}\\,\\text{kNm}`,
       '§5.8.8.2');
-    s += div();
-    return s;
+    y+=3;
   }
 
-  rows += slendernessRows(rx, 'X–X', k1xx, k2xx, false);
-  if(biaxial) rows += slendernessRows(ry, 'Y–Y', k1yy, k2yy, true);
+  await doSlenderness(rx, 'X\u2013X', k1xx, k2xx, '3', false);
+  if(biaxial) await doSlenderness(ry, 'Y\u2013Y', k1yy, k2yy, '4', true);
 
-  // ── M-N Capacity check
-  rows += sh(biaxial?'5':'4', 'M–N Interaction — Capacity Check');
-  rows += cr('Section moment capacity at N_{Ed} (X–X)',
+  // ── M-N Capacity Check
+  const capSecNum = biaxial ? '5' : '4';
+  h1(`${capSecNum}. M\u2013N Interaction \u2014 Capacity Check`);
+  await frow('Section moment capacity at N_Ed (X\u2013X)',
     `M_{Rd,xx}(N_{Ed}=${n1(NEd)}\\,\\text{kN}) = ${n1(McapXX)}\\,\\text{kNm}`, '');
-  rows += cr('Design moment (X–X)',
-    `M_{Ed,xx} = ${n1(rx.MEd)}\\,\\text{kNm}`, '');
-  rows += pfRow(`M–N check (X–X)`, passXX,
-    `\\(M_{Ed}=${n1(rx.MEd)} \\leq M_{Rd}=${n1(McapXX)}\\,\\text{kNm}\\)`);
+  await frow('Design moment (X\u2013X)', `M_{Ed,xx} = ${n1(rx.MEd)}\\,\\text{kNm}`, '');
+  rowResult('M\u2013N check (X\u2013X)', passXX?'PASS \u2713':'FAIL \u2717', passXX);
   if(biaxial){
-    rows += cr('Section moment capacity at N_{Ed} (Y–Y)',
+    await frow('Section moment capacity at N_Ed (Y\u2013Y)',
       `M_{Rd,yy}(N_{Ed}=${n1(NEd)}\\,\\text{kN}) = ${n1(McapYY)}\\,\\text{kNm}`, '');
-    rows += cr('Design moment (Y–Y)',
-      `M_{Ed,yy} = ${n1(ry.MEd)}\\,\\text{kNm}`, '');
-    rows += pfRow(`M–N check (Y–Y)`, passYY,
-      `\\(M_{Ed}=${n1(ry.MEd)} \\leq M_{Rd}=${n1(McapYY)}\\,\\text{kNm}\\)`);
+    await frow('Design moment (Y\u2013Y)', `M_{Ed,yy} = ${n1(ry.MEd)}\\,\\text{kNm}`, '');
+    rowResult('M\u2013N check (Y\u2013Y)', passYY?'PASS \u2713':'FAIL \u2717', passYY);
   }
-  rows += div();
+  y+=3;
 
   // ── Biaxial
   if(biaxial){
@@ -1389,188 +1445,56 @@ function generateReport(){
     const ratio_bi = (NEd*1000)/NRd_bi;
     const a_bi = ratio_bi<=0.1?1.0:ratio_bi<=0.7?1.0+0.5*(ratio_bi-0.1)/0.6:ratio_bi<=1.0?1.5+0.5*(ratio_bi-0.7)/0.3:2.0;
     const util_bi = Math.pow(rx.MEd/McapXX, a_bi) + Math.pow(ry.MEd/McapYY, a_bi);
-    const passBi  = util_bi <= 1.0;
-    rows += sh('6','Biaxial Bending Check (EC2 §5.8.9)');
-    rows += cr('Design axial resistance',
+    const passBi = util_bi <= 1.0;
+    h1('6. Biaxial Bending Check (EC2 §5.8.9)');
+    await frow('Design axial resistance',
       `N_{Rd} = A_c\\,f_{cd} + A_s\\,f_{yd} = ${n0(Ac)}\\times${n1(fcd_v)}+${n0(As)}\\times${n1(fyd_v)} = ${n0(NRd_bi/1000)}\\,\\text{kN}`,
       '§5.8.9');
-    rows += cr('Axial load ratio',
+    await frow('Axial load ratio',
       `\\frac{N_{Ed}}{N_{Rd}} = \\frac{${n0(NEd*1000)}}{${n0(NRd_bi)}} = ${n2(ratio_bi)}\\quad\\Rightarrow\\;a = ${n2(a_bi)}`,
       '§5.8.9');
-    rows += cr('Biaxial utilisation',
+    await frow('Biaxial utilisation',
       `\\left(\\frac{${n1(rx.MEd)}}{${n1(McapXX)}}\\right)^{${n2(a_bi)}} + \\left(\\frac{${n1(ry.MEd)}}{${n1(McapYY)}}\\right)^{${n2(a_bi)}} = ${n2(util_bi)} \\leq 1.0`,
       '§5.8.9(4)');
-    rows += pfRow('Biaxial check', passBi,
-      `Utilisation = ${(util_bi*100).toFixed(1)}\\%`);
-    rows += div();
+    rowResult('Biaxial check', passBi?'PASS \u2713':'FAIL \u2717', passBi);
+    y+=3;
   }
 
   // ── Fire (Method A)
-  const secNum = biaxial ? '7' : '5';
-  rows += sh(secNum, 'Fire Resistance — BS EN 1992-1-2 §5.3.2(4) Method A');
-  rows += cr('Axis distance',
-    `a = c_{nom}+\\phi_{link}+\\tfrac{\\phi}{2} = ${n0(fr.a_mm)}\\,\\text{mm}`,
-    '§5.3.2');
-  rows += cr('Equivalent width',
-    `b' = ${n0(fr.b_prime)}\\,\\text{mm}\\quad[${isRect&&p.h>=1.5*p.b?`h\\geq 1.5b:\\;1.2b=1.2\\times${n0(p.b)}`:`2A_c/(b+h)=${n0(2*Ac/(p.b||p.D+p.b||p.D))}`}]`,
-    'Table 5.2a');
-  rows += cr('Load level contribution',
-    `R_{\\eta_{fi}} = 83\\!\\left(1-\\frac{\\mu_{fi}(1+\\omega)}{0.85/\\alpha_{cc}+\\omega}\\right) = 83\\!\\left(1-\\frac{${n2(mufi)}\\times${n2(1+fr.omega_fire)}}{1.0+${n2(fr.omega_fire)}}\\right) = ${n1(fr.R_etafi)}\\,\\text{min}`,
+  const fireSecNum = biaxial ? '7' : '5';
+  h1(`${fireSecNum}. Fire Resistance \u2014 BS EN 1992-1-2 §5.3.2(4) Method A`);
+  await frow('Axis distance', `a = c_{nom}+\\phi_{link}+\\tfrac{\\phi}{2} = ${n0(fr.a_mm)}\\,\\text{mm}`, '§5.3.2');
+  await frow('Equivalent width', `b' = ${n0(fr.b_prime)}\\,\\text{mm}`, 'Table 5.2a');
+  await frow('Load level contribution',
+    `R_{\\eta_{fi}} = 83\\!\\left(1-\\frac{\\mu_{fi}(1+\\omega)}{0.85/\\alpha_{cc}+\\omega}\\right) = ${n1(fr.R_etafi)}\\,\\text{min}`,
     'Eq.(5.7)');
-  rows += cr('Axis distance contribution',
-    `R_a = 1.6(a-30) = 1.6(${n0(fr.a_mm)}-30) = ${n1(fr.R_a)}\\,\\text{min}`,
-    'Eq.(5.7)');
-  rows += cr('Slenderness contribution',
-    `R_l = 9.6\\left(5-\\max\\!\\left(\\tfrac{l}{2\\,\\text{m}},2.0\\right)\\right) = 9.6\\left(5-${n1(Math.max(storey_m/2,2))}\\right) = ${n1(fr.R_l)}\\,\\text{min}`,
-    'Eq.(5.7)');
-  rows += cr('Width contribution',
-    `R_b = 0.09\\,b' = 0.09\\times${n0(fr.b_prime)} = ${n1(fr.R_b)}\\,\\text{min}`,
-    'Eq.(5.7)');
-  rows += cr('Bar arrangement bonus',
-    `R_n = ${fr.R_n}\\,\\text{min}\\quad[n=${fr.n_bars}${fr.R_n>0?'>':'\\leq'}4\\text{ bars}]`,
-    'Eq.(5.7)');
-  rows += cr('\\(\\Sigma R_i\\)',
+  await frow('Axis distance contribution', `R_a = 1.6(a-30) = 1.6(${n0(fr.a_mm)}-30) = ${n1(fr.R_a)}\\,\\text{min}`, 'Eq.(5.7)');
+  await frow('Slenderness contribution', `R_l = 9.6\\left(5-${n1(Math.max(storey_m/2,2))}\\right) = ${n1(fr.R_l)}\\,\\text{min}`, 'Eq.(5.7)');
+  await frow('Width contribution', `R_b = 0.09\\,b' = 0.09\\times${n0(fr.b_prime)} = ${n1(fr.R_b)}\\,\\text{min}`, 'Eq.(5.7)');
+  await frow('Bar arrangement bonus', `R_n = ${fr.R_n}\\,\\text{min}`, 'Eq.(5.7)');
+  await frow('Sum R_i',
     `R_{\\eta_{fi}}+R_a+R_l+R_b+R_n = ${n1(fr.R_etafi)}+${n1(fr.R_a)}+${n1(fr.R_l)}+${n1(fr.R_b)}+${n0(fr.R_n)} = ${n1(fr.R_sum)}\\,\\text{min}`,
     '');
-  rows += cr('Fire resistance (Eq. 5.7)',
-    `R = 120\\!\\left(\\frac{\\Sigma R_i}{120}\\right)^{\\!1.8} = 120\\!\\left(\\frac{${n1(fr.R_sum)}}{120}\\right)^{1.8} = ${n1(fr.R_min)}\\,\\text{min}`,
+  await frow('Fire resistance (Eq. 5.7)',
+    `R = 120\\!\\left(\\frac{${n1(fr.R_sum)}}{120}\\right)^{\\!1.8} = ${n1(fr.R_min)}\\,\\text{min}`,
     '§5.3.2(4)');
-  rows += pfRow(`Fire rating`, fr.R_min>=30,
-    `R = ${n0(fr.R_min)}\\,\\text{min}\\;\\Rightarrow\\;\\text{achieves}\\;\\mathbf{R${fr.rating}}`);
+  rowResult('Fire rating', fr.R_min>=30?'PASS \u2713':'FAIL \u2717', fr.R_min>=30);
+  row('Achieved fire rating', `R${fr.rating}`, '');
 
-  // ═══════════════════════════════════════════════
-  // ASSEMBLE FULL HTML DOCUMENT
-  // ═══════════════════════════════════════════════
-  const sectionDesc = isRect
-    ? `Rectangular column ${n0(p.b)}×${n0(p.h)} mm, ${n0(p.fck)} MPa concrete`
-    : `Circular column Ø${n0(p.D)} mm, ${n0(p.fck)} MPa concrete`;
-
-  const overallPass = passXX && (!biaxial || passYY);
-  const html = `<!DOCTYPE html>
-<html lang="en"><head>
-<meta charset="UTF-8">
-<title>RC Column Calculation</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
-<style>
-  *{box-sizing:border-box;margin:0;padding:0;}
-  body{font-family:'Segoe UI',Arial,sans-serif;font-size:9.5pt;color:#111;background:#fff;padding:15mm 16mm;}
-  @page{size:A4;margin:10mm;}
-  @media print{body{padding:0;}
-    .no-print{display:none!important;}
-    tr{page-break-inside:avoid;}
-    .sh td{page-break-before:auto;}
+  // ── Footer
+  const totalPages = doc.getNumberOfPages();
+  for(let i=1;i<=totalPages;i++){
+    doc.setPage(i);
+    doc.setFont('helvetica','italic');doc.setFontSize(7);doc.setTextColor(160,160,160);
+    doc.text(
+      `Page ${i} of ${totalPages}  |  RC Column Design  |  EN 1992-1-1:2004 + UK NA  |  Generated ${new Date().toLocaleDateString('en-GB')}`,
+      W/2, 290, {align:'center'}
+    );
   }
-  /* Header */
-  .hdr{display:grid;grid-template-columns:1fr auto;align-items:center;background:#1a1a1a;color:#fff;margin:-15mm -16mm 14px;padding:10px 16mm;}
-  .hdr-title{font-size:12pt;font-weight:700;color:#fff;}
-  .hdr-sub{font-size:8pt;color:#bbb;margin-top:2px;}
-  .hdr-meta{text-align:right;font-size:8pt;color:#bbb;}
-  .hdr-meta strong{display:block;font-size:9pt;color:#fff;}
-  /* Section viz */
-  .viz-wrap{display:flex;gap:20px;align-items:flex-start;margin-bottom:12px;}
-  .viz-wrap img{border:1px solid #ddd;border-radius:4px;width:140px;height:auto;}
-  .summary-tbl{font-size:8.5pt;border-collapse:collapse;}
-  .summary-tbl td{padding:2px 8px 2px 0;}
-  .summary-tbl td:first-child{color:#555;white-space:nowrap;}
-  .summary-tbl td:last-child{font-weight:600;}
-  /* Main calc table */
-  table.ct{width:100%;border-collapse:collapse;margin-top:4px;}
-  table.ct td{vertical-align:top;padding:3px 6px;}
-  tr.sh td{background:#f0ede8;color:#1a1a1a;font-weight:700;font-size:8.5pt;padding:5px 8px;}
-  .sn{display:inline-block;background:#1a1a1a;color:#fff;font-size:7pt;font-weight:700;padding:1px 6px;border-radius:10px;margin-right:8px;}
-  td.cd{width:32%;font-size:8.5pt;color:#333;padding-left:8px;border-bottom:1px solid #f0f0f0;}
-  td.cm{width:58%;font-size:8.5pt;border-bottom:1px solid #f0f0f0;}
-  td.cr{width:10%;font-size:7.5pt;color:#888;border-bottom:1px solid #f0f0f0;white-space:nowrap;}
-  tr.pfr td{padding:4px 8px;}
-  tr.pfr.ok td{background:#e4f2dc;}
-  tr.pfr.ng td{background:#fce8e8;}
-  tr.pfr td.cd{font-weight:600;}
-  tr.divr td{height:8px;border:none;}
-  .pass{color:#2e7d22;font-weight:700;}
-  .fail{color:#c0392b;font-weight:700;}
-  /* Result banner */
-  .result-banner{padding:9px 14px;border-radius:4px;margin-bottom:12px;display:flex;align-items:center;gap:12px;}
-  .result-banner.pass-b{background:#2e7d22;}
-  .result-banner.fail-b{background:#c0392b;}
-  .rb-verdict{font-size:12pt;font-weight:700;color:#fff;}
-  .rb-detail{font-size:8.5pt;color:rgba(255,255,255,.85);}
-  /* Print button */
-  .print-btn{display:inline-block;padding:8px 22px;background:#1a1a1a;color:#fff;border:none;border-radius:4px;font-size:10pt;cursor:pointer;margin-bottom:16px;}
-  .print-btn:hover{background:#333;}
-  .footer{margin-top:16px;padding-top:8px;border-top:1px solid #e0ddd8;font-size:7.5pt;color:#888;display:grid;grid-template-columns:1fr 1fr;gap:4px;}
-</style>
-</head>
-<body>
-<button class="print-btn no-print" onclick="window.print()">⎙ Print / Save PDF</button>
-
-<div class="hdr">
-  <div>
-    <div class="hdr-title">RC Column Design Calculation</div>
-    <div class="hdr-sub">EN 1992-1-1:2004 + UK National Annex &nbsp;|&nbsp; ${sectionDesc}</div>
-  </div>
-  <div class="hdr-meta">
-    <strong>Calculation Sheet</strong>
-    Date: ${dateStr}
-  </div>
-</div>
-
-<div class="result-banner ${overallPass?'pass-b':'fail-b'}">
-  <span class="rb-verdict">${overallPass?'PASS ✓':'FAIL ✗'}</span>
-  <span class="rb-detail">${overallPass
-    ? `M–N check OK · Fire R${fr.rating} · ${biaxial?'Biaxial check included':'Uniaxial'}`
-    : 'One or more checks failed — see details below'}</span>
-</div>
-
-<div class="viz-wrap">
-  ${imgData ? `<img src="${imgData}" alt="Section">` : ''}
-  <table class="summary-tbl">
-    <tr><td>Section:</td><td>${sectionDesc}</td></tr>
-    ${isRect?`<tr><td>Reinforcement:</td><td>${n0(As)} mm² (${p.rho.toFixed(2)}%)</td></tr>`
-            :`<tr><td>Reinforcement:</td><td>${n0(As)} mm² (${p.rho.toFixed(2)}%)</td></tr>`}
-    <tr><td>Applied N<sub>Ed</sub>:</td><td>${n1(NEd)} kN</td></tr>
-    <tr><td>Design M (X–X):</td><td>${n1(rx.MEd)} kNm &nbsp; ${passXX?'✓ PASS':'✗ FAIL'}</td></tr>
-    ${biaxial?`<tr><td>Design M (Y–Y):</td><td>${n1(ry.MEd)} kNm &nbsp; ${passYY?'✓ PASS':'✗ FAIL'}</td></tr>`:''}
-    <tr><td>Fire resistance:</td><td>R = ${n0(fr.R_min)} min &nbsp; → R${fr.rating}</td></tr>
-  </table>
-</div>
-
-<table class="ct">
-${rows}
-</table>
-
-<div class="footer">
-  <div>Calculated by: RC Column Design Tool (EN 1992-1-1 / EN 1992-1-2)</div>
-  <div style="text-align:right">Perega &nbsp;|&nbsp; ${dateStr}</div>
-  <div style="color:#aaa;font-size:7pt;grid-column:1/-1;margin-top:2px;">
-    This calculation has been prepared as an aid to design. All results should be verified by a qualified engineer.
-    M–N diagram generated by stress-block integration (EC2 §3.1.7). Fire resistance by Method A (Eq. 5.7, BS EN 1992-1-2:2004).
-  </div>
-</div>
-
-<script>
-  // Auto-render KaTeX after load
-  document.addEventListener('DOMContentLoaded',()=>{
-    if(typeof renderMathInElement==='function'){
-      renderMathInElement(document.body,{
-        delimiters:[
-          {left:'\\\\(',right:'\\\\)',display:false},
-          {left:'\\\\[',right:'\\\\]',display:true}
-        ],
-        throwOnError:false
-      });
-    }
-  });
-<\/script>
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"><\/script>
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"
-  onload="renderMathInElement(document.body,{delimiters:[{left:'\\\\(',right:'\\\\)',display:false},{left:'\\\\[',right:'\\\\]',display:true}],throwOnError:false})"><\/script>
-</body></html>`;
-
-  const w = window.open('','_blank','width=900,height=700');
-  if(!w){ alert('Please allow pop-ups to view the report.'); return; }
-  w.document.write(html);
-  w.document.close();
+  const pdfRef = document.getElementById('proj-ref')?.value || document.getElementById('proj-name')?.value || 'Report';
+  doc.save(`RC_Column_Design_${pdfRef.replace(/\s+/g,'_')}.pdf`);
 }
+
 
 // ════════════════════════════════════════════════════════════
 // INIT
