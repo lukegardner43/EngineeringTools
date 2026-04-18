@@ -57,6 +57,9 @@ input[type="checkbox"]{width:16px;height:16px;cursor:pointer;}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .proj-fields{background:#f5f4f1;border:1px solid #e0ddd8;border-radius:8px;padding:12px 14px;margin-bottom:14px;}
 </style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
@@ -323,11 +326,26 @@ async function exportPDF(){
     doc.setFillColor(ok?228:252,ok?242:228,ok?220:220);
     doc.rect(M,y-3.5,TW,5.5,'F');
     doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(60,60,60);
-    doc.text(lbl,M+1,y);
+    doc.text(lbl,M+1,y,{maxWidth:TW*0.52});
     doc.setFont('helvetica','bold');doc.setFontSize(8);
     doc.setTextColor(ok?25:170,ok?100:25,ok?25:25);
-    doc.text(val,M+TW*0.56,y);
+    doc.text(val,M+TW*0.56,y,{maxWidth:TW*0.40});
     doc.setTextColor(15,15,15);y+=5.5;
+  }
+  async function frow(label,latexStr,ref){
+    const div=document.createElement('div');
+    div.style.cssText='position:absolute;left:-9999px;top:-9999px;background:#fff;padding:4px 8px;font-size:14px;';
+    document.body.appendChild(div);
+    try{katex.render(latexStr,div,{throwOnError:false,displayMode:false});}catch(e){div.textContent=latexStr;}
+    const cvs2=await html2canvas(div,{scale:2,backgroundColor:'#ffffff'});
+    document.body.removeChild(div);
+    const imgW=TW*0.44, imgH=Math.min(cvs2.height/cvs2.width*imgW,16);
+    pageCheck(imgH+6);
+    doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(60,60,60);
+    doc.text(label,M,y+imgH*0.5,{maxWidth:TW*0.50});
+    doc.addImage(cvs2.toDataURL('image/png'),'PNG',M+TW*0.52,y,imgW,imgH);
+    if(ref){doc.setFont('helvetica','italic');doc.setFontSize(7);doc.setTextColor(130,130,130);doc.text(ref,W-M,y+imgH*0.5,{align:'right',maxWidth:TW*0.16});}
+    y+=imgH+3;
   }
 
   // Read project info
@@ -388,9 +406,8 @@ async function exportPDF(){
 
   // §2 Base Tie Force
   h1('2. Base Tie Force  Ft');
-  row('Formula','Ft = min(20 + 4n\u2080, 60)','NA to 9.10.2.1');
-  row('Substituted','= min(20 + 4\u00d7'+d.n0+', 60)','');
-  rowResult('Ft',d.Ft.toFixed(2)+' kN',true);
+  await frow('Formula', `F_t = \\min(20 + 4n_0,\\; 60) = \\min(20 + 4 \\times ${d.n0},\\; 60)`, 'NA to 9.10.2.1');
+  rowResult('Ft', d.Ft.toFixed(2)+' kN', true);
 
   if(d.cls==='1'){
     h1('3. Outcome');
@@ -405,21 +422,27 @@ async function exportPDF(){
 
     // §4 Internal Ties
     h1('4. Internal Ties');
-    row('Clause','NA to EN 1992-1-1 \u00a79.10.2.2','');
-    row('Formula','Ftie,int = max[ (1/7.5)(Gk+Gsk+Qk)(lr/5)Ft , Ft ]','');
-    row('Calculated value','= (1/7.5)('+d.avgLoad.toFixed(2)+')('+d.lr.toFixed(2)+'/5)('+d.Ft.toFixed(2)+') = '+d.Fint_calc.toFixed(2)+' kN','');
-    row('Minimum value','= Ft = '+d.Fint_min.toFixed(2)+' kN','');
-    rowResult('Internal tie force  (max of calc, min)',d.Fint.toFixed(2)+' kN',true);
-    row('Maximum tie spacing','= 1.5 \u00d7 lr = 1.5 \u00d7 '+d.lr.toFixed(2)+' = '+d.maxSp.toFixed(2)+' m','');
+    row('Clause','NA to EN 1992-1-1 §9.10.2.2','');
+    await frow('Formula',
+      `F_{tie,int} = \\max\\!\\left[\\frac{1}{7.5}(G_k+G_{sk}+Q_k)\\frac{l_r}{5}F_t,\\; F_t\\right]`,
+      'NA to 9.10.2.2');
+    await frow('Calculated value',
+      `= \\frac{1}{7.5}\\times${d.avgLoad.toFixed(2)}\\times\\frac{${d.lr.toFixed(2)}}{5}\\times${d.Ft.toFixed(2)} = ${d.Fint_calc.toFixed(2)}\\,\\text{kN}`,
+      '');
+    row('Minimum value', '= Ft = '+d.Fint_min.toFixed(2)+' kN', '');
+    rowResult('Internal tie force  (governing)', d.Fint.toFixed(2)+' kN', true);
+    row('Maximum tie spacing', '= 1.5 \u00d7 lr = 1.5 \u00d7 '+d.lr.toFixed(2)+' = '+d.maxSp.toFixed(2)+' m', '');
 
     // §5 Horizontal Ties to Columns/Walls
     h1('5. Horizontal Ties to Columns & Walls');
-    row('Clause','NA to EN 1992-1-1 \u00a79.10.2.3','');
-    row('2Ft','= 2 \u00d7 '+d.Ft.toFixed(2)+' = '+d.h1.toFixed(2)+' kN','');
-    row('ls\u00b7Ft / 2.5','= '+d.ls.toFixed(2)+'\u00d7'+d.Ft.toFixed(2)+'/2.5 = '+d.h2.toFixed(2)+' kN','');
-    row('0.03 NEd','= 0.03 \u00d7 '+d.NEd.toFixed(2)+' = '+d.h3.toFixed(2)+' kN','');
-    row('Formula','Ftie,col = max[ min(2Ft, ls\u00b7Ft/2.5), 0.03NEd ]','');
-    rowResult('Horizontal tie force',d.Fcol.toFixed(2)+' kN',true);
+    row('Clause','NA to EN 1992-1-1 §9.10.2.3','');
+    await frow('Formula',
+      `F_{tie,col} = \\max\\!\\left[\\min\\!\\left(2F_t,\\;\\frac{l_s F_t}{2.5}\\right),\\; 0.03N_{Ed}\\right]`,
+      'NA to 9.10.2.3');
+    await frow('Substituted',
+      `= \\max\\!\\left[\\min\\!\\left(${d.h1.toFixed(2)},\\;${d.h2.toFixed(2)}\\right),\\; ${d.h3.toFixed(2)}\\right] = ${d.Fcol.toFixed(2)}\\,\\text{kN}`,
+      '');
+    rowResult('Horizontal tie force', d.Fcol.toFixed(2)+' kN', true);
     row('Application','Edge columns: one direction. Corner columns: two directions.','');
   }
 
