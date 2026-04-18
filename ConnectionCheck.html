@@ -1358,7 +1358,7 @@ function formBrace(){return`
 const fv=v=>parseFloat(v)||0, fi=v=>Math.max(1,parseInt(v)||1);
 const rd=(v,d=2)=>(+v).toFixed(d), esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const rc=r=>r>1?'var(--fail)':r>.85?'var(--warn)':'var(--pass)';
-function chk(id,name,ref,lines,cap,dem,unit){const r=cap>0?dem/cap:999;return{id,name,ref,lines,cap,dem,unit,r,pass:r<=1};}
+function chk(id,name,ref,lines,cap,dem,unit,latex){const r=cap>0?dem/cap:999;return{id,name,ref,lines,cap,dem,unit,r,pass:r<=1,latex:latex||null};}
 
 function calcFin(g){
   const b=BOLT[g.boltSize],pm=MAT[g.platGrade],bm=MAT[g.beamGrade];
@@ -1381,7 +1381,7 @@ function calcFin(g){
     `Iy = Σyi² = ${rd(Iy,0)} mm²   ymax = ${ym} mm`,
     `F_direct = V/n = ${rd(Fvd/1e3)} kN   F_moment = V·a·ymax/Iy = ${rd(Fhm/1e3)} kN`,
     `F_resultant = √(${rd(Fvd/1e3)}²+${rd(Fhm/1e3)}²) = ${rd(Fr/1e3)} kN`,
-  ],FvRd/1e3,Fr/1e3,'kN'));
+  ],FvRd/1e3,Fr/1e3,'kN',`F_{v,Rd}=\\dfrac{0.6\\times${fub}\\times${As}}{1.25}=${rd(FvRd/1e3)}\\text{ kN/bolt}`));
 
   // 2 — Bearing on fin plate
   const k1p=Math.min(2.8*E2p/d0-1.7,2.5),abp=nb>1?Math.min(E1/(3*d0),P1/(3*d0)-.25,fub/pm.fu,1):Math.min(E1/(3*d0),fub/pm.fu,1);
@@ -1390,7 +1390,7 @@ function calcFin(g){
     `k₁ = min(2.8×${E2p}/${d0}−1.7, 2.5) = ${rd(k1p)}`,
     `αb = min(e₁/3d₀${nb>1?`, p₁/3d₀−¼`:``, `fub/fu`}, 1) = ${rd(abp,3)}`,
     `Fb,Rd = ${rd(k1p)}×${rd(abp,3)}×${pm.fu}×${d}×${Tp}/1.25 = ${rd(FbpRd)} kN`,
-  ],FbpRd,Fr/1e3,'kN'));
+  ],FbpRd,Fr/1e3,'kN',`F_{b,Rd}=\\dfrac{${rd(k1p)}\\times${rd(abp,3)}\\times${pm.fu}\\times${d}\\times${Tp}}{1.25}=${rd(FbpRd)}\\text{ kN}`));
 
   // 3 — Bearing on beam web
   const k1w=Math.min(2.8*E2w/d0-1.7,2.5),abw=nb>1?Math.min(E1/(3*d0),P1/(3*d0)-.25,fub/bm.fu,1):Math.min(E1/(3*d0),fub/bm.fu,1);
@@ -1398,14 +1398,14 @@ function calcFin(g){
   C.push(chk('3','Bearing Resistance — Beam Web','EC3-1-8 Table 3.4 / P358 §5.5 Check 4',[
     `k₁ = ${rd(k1w)}   αb = ${rd(abw,3)}   tw = ${Tw} mm   fu,beam = ${bm.fu} MPa`,
     `Fb,Rd = ${rd(k1w)}×${rd(abw,3)}×${bm.fu}×${d}×${Tw}/1.25 = ${rd(FbwRd)} kN`,
-  ],FbwRd,Fr/1e3,'kN'));
+  ],FbwRd,Fr/1e3,'kN',`F_{b,Rd}=\\dfrac{${rd(k1w)}\\times${rd(abw,3)}\\times${bm.fu}\\times${d}\\times${Tw}}{1.25}=${rd(FbwRd)}\\text{ kN}`));
 
   // 4 — Fin plate gross shear
   const VgRd_p=pm.fy*Hp*Tp/(Math.sqrt(3)*GM0)/1e3;
   C.push(chk('4','Fin Plate — Gross Section Shear','EC3-1-1 §6.2.6 / P358 §5.5 Check 5',[
     `Av = hp × tp = ${Hp}×${Tp} = ${Hp*Tp} mm²`,
     `Vpl,Rd = fy×Av/(√3×γM0) = ${pm.fy}×${Hp*Tp}/√3 = ${rd(VgRd_p)} kN`,
-  ],VgRd_p,fv(g.V),'kN'));
+  ],VgRd_p,fv(g.V),'kN',`V_{pl,Rd}=\\dfrac{${pm.fy}\\times${Hp*Tp}}{\\sqrt{3}\\times1.0}=${rd(VgRd_p)}\\text{ kN}`));
 
   // 5 — Fin plate net shear  [γM2 = 1.1 per EC3-1-1 UK NA — P358 §5.5 Note]
   const Avnet_p=(Hp-nb*d0)*Tp;
@@ -1414,7 +1414,7 @@ function calcFin(g){
     `Anet = (hp − n·d₀)×tp = (${Hp}−${nb}×${d0})×${Tp} = ${Avnet_p} mm²`,
     `Vnet,Rd = 0.9×fu×Anet/(√3×γM2) = 0.9×${pm.fu}×${Math.max(0,Avnet_p)}/(√3×1.1) = ${rd(VnRd_p)} kN`,
     `Note: γM2 = 1.1 per EC3-1-1 UK NA for plate cross-section fracture`,
-  ],VnRd_p,fv(g.V),'kN'));
+  ],VnRd_p,fv(g.V),'kN',`V_{net,Rd}=\\dfrac{0.9\\times${pm.fu}\\times${Math.max(0,Avnet_p)}}{\\sqrt{3}\\times1.1}=${rd(VnRd_p)}\\text{ kN}`));
 
   // 6 — Fin plate block shear  [fu term: γM2 = 1.1]
   const Ant_p=Math.max(0,(E2p-d0/2)*Tp),Anv_p=Math.max(0,(E1+(nb-1)*P1-(nb-.5)*d0)*Tp);
@@ -1423,7 +1423,7 @@ function calcFin(g){
     `Ant = (e₂p − d₀/2)×tp = ${rd(Ant_p,0)} mm²   Anv = ${rd(Anv_p,0)} mm²`,
     `Veff,Rd = fu·Ant/γM2 + fy·Anv/(√3·γM0)  (γM2 = 1.1 for plate fracture)`,
     `       = ${rd(pm.fu*Ant_p/GM2s/1e3)} + ${rd(pm.fy*Anv_p/(Math.sqrt(3)*GM0)/1e3)} = ${rd(Veff_p)} kN`,
-  ],Veff_p,fv(g.V),'kN'));
+  ],Veff_p,fv(g.V),'kN',`V_{eff,Rd}=\\dfrac{${pm.fu}\\times${rd(Ant_p,0)}}{1.1}+\\dfrac{${pm.fy}\\times${rd(Anv_p,0)}}{\\sqrt{3}}=${rd(Veff_p)}\\text{ kN}`));
 
   // 7 — Fin plate bending due to eccentricity
   const MEd=Vn*a/1e6,Wel=Tp*Hp*Hp/6,MRd=pm.fy*Wel/GM0/1e6;
@@ -1432,7 +1432,7 @@ function calcFin(g){
     `MEd = V×a = ${rd(Vn/1e3)}×${a}/1000 = ${rd(MEd)} kN·m`,
     `Wel = tp×hp²/6 = ${Tp}×${Hp}²/6 = ${rd(Wel,0)} mm³`,
     `MRd = fy×Wel/γM0 = ${pm.fy}×${rd(Wel,0)}/10⁶ = ${rd(MRd)} kN·m`,
-  ],MRd,MEd,'kN·m'));
+  ],MRd,MEd,'kN·m',`M_{Rd}=\\dfrac{${pm.fy}\\times${rd(Wel,0)}}{\\gamma_{M0}\\times10^6}=${rd(MRd)}\\text{ kN\\cdot m}`));
 
   // 8 — Fillet weld to support (DIRECT SHEAR ONLY per P358 Appendix C.3)
   // The fin plate weld carries vertical shear V only. The eccentricity moment is
@@ -1445,7 +1445,7 @@ function calcFin(g){
     `τ = V/(2·a·hp) = ${rd(Vn/1e3,0)}k/(2×${rd(Aw)}×${Hp}) = ${rd(tau_w,1)} N/mm²`,
     `P358 App.C.3: fin plate weld resists direct shear only — moment is carried`,
     `by the plate in bending (Check 7), not transferred back to the weld.`,
-  ],fwRd_w,tau_w,'N/mm²'));
+  ],fwRd_w,tau_w,'N/mm²',`f_{w,Rd}=\\dfrac{${pm.fu}}{\\sqrt{3}\\times${pm.bw}\\times1.25}=${rd(fwRd_w,1)}\\text{ N/mm}^2`));
 
   // 9 — Beam web gross shear (local, at connection zone)
   const Av_bw=Hp*Tw;
@@ -2889,6 +2889,8 @@ async function exportPDF(){
     // KaTeX utilisation fraction
     const uLaTeX=`\\eta = \\dfrac{${rd(c.dem)}}{${rd(c.cap)}}\\,\\text{${c.unit}} = ${rd(c.r,3)}\\;${c.pass?'\\leq 1.0\\;\\checkmark':'>1.0\\;\\times'}`;
     await frow('',uLaTeX,'');
+    // KaTeX capacity formula (if provided)
+    if(c.latex) await frow('',c.latex,'');
     // Calc lines
     if(c.ref){
       pageCheck(4);
