@@ -57,6 +57,7 @@ input[type="checkbox"]{width:16px;height:16px;cursor:pointer;}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .proj-fields{background:#f5f4f1;border:1px solid #e0ddd8;border-radius:8px;padding:12px 14px;margin-bottom:14px;}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 <div class="container">
@@ -141,7 +142,7 @@ input[type="checkbox"]{width:16px;height:16px;cursor:pointer;}
         </div>
 
         <button class="btn btn-calc" onclick="calculate()">Calculate Tie Forces</button>
-        <button class="btn btn-report" id="reportBtn" onclick="printReport()" disabled>Print Report</button>
+        <button class="btn btn-report" id="reportBtn" onclick="startPDF(this)" disabled>Export PDF</button>
       </div>
     </div>
 
@@ -278,122 +279,180 @@ function tog(id,btn){
   btn.textContent=shown?'\u25bc':'\u25b2';
 }
 
-function printReport(){
+function startPDF(btn){
+  btn.textContent='Generating\u2026';btn.disabled=true;
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    exportPDF().finally(()=>{btn.textContent='Export PDF';btn.disabled=false;});
+  }));
+}
+
+async function exportPDF(){
+  if(!window.jspdf){alert('PDF library not loaded yet.');return;}
   if(!lastCalc){alert('Run calculation first.');return;}
-  var d=lastCalc;
-  var now=new Date();
-  var dateStr=now.toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
-  var projName=V('projName')||'\u2014';
-  var jobNo=V('jobNo')||'\u2014';
-  var engineer=V('engineer')||'\u2014';
-  var calcRef=V('calcRef')||'\u2014';
-  var useLabel=document.getElementById('buildingUse').selectedOptions[0].text;
+  const d=lastCalc;
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const W=210,M=16,TW=W-2*M;
+  let y=18;
 
-  function row(type,clause,force,detail){
-    return '<tr><td><strong>'+type+'</strong></td><td class="mono">'+clause+'</td><td class="mono res">'+force+'</td><td>'+detail+'</td></tr>';
+  function pageCheck(h){if(y+(h||6)>278){doc.addPage();y=16;}}
+  function hline(col){doc.setDrawColor(...(col||[200,196,188]));doc.setLineWidth(0.2);doc.line(M,y,W-M,y);}
+  function h1(txt){
+    pageCheck(10);
+    doc.setFillColor(240,238,234);doc.rect(M,y-4,TW,8,'F');
+    doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(20,20,20);
+    doc.text(txt,M+2,y+1);y+=9;
   }
-  var rows='';
-  if(d.cls==='2A'||d.cls==='2B'||d.cls==='3'){
-    rows+=row('Peripheral Ties','9.10.2.1',d.Fper.toFixed(2)+' kN/m','Within 1.2 m of slab edge, each floor &amp; roof');
-    rows+=row('Internal Ties','9.10.2.2',d.Fint.toFixed(2)+' kN @ &le;'+d.maxSp.toFixed(2)+' m','2 perp. directions; distributed or at walls');
-    rows+=row('Horizontal (columns)','9.10.2.3',d.Fcol.toFixed(2)+' kN','Edge: 1 dir; Corner: 2 dirs');
+  function h2(txt){
+    pageCheck(9);
+    doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(80,80,80);
+    doc.text(txt.toUpperCase(),M,y);y+=3.5;
+    hline([180,175,165]);y+=3;
   }
+  function row(lbl,val,ref){
+    pageCheck(5);
+    doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(60,60,60);
+    doc.text(lbl,M,y,{maxWidth:TW*0.54});
+    doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(15,15,15);
+    doc.text(val,M+TW*0.56,y,{maxWidth:TW*0.26});
+    if(ref){doc.setFont('helvetica','italic');doc.setFontSize(7);doc.setTextColor(130,130,130);doc.text(ref,W-M,y,{align:'right',maxWidth:TW*0.18});}
+    y+=4.5;
+  }
+  function rowResult(lbl,val,ok){
+    pageCheck(6);
+    doc.setFillColor(ok?228:252,ok?242:228,ok?220:220);
+    doc.rect(M,y-3.5,TW,5.5,'F');
+    doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(60,60,60);
+    doc.text(lbl,M+1,y);
+    doc.setFont('helvetica','bold');doc.setFontSize(8);
+    doc.setTextColor(ok?25:170,ok?100:25,ok?25:25);
+    doc.text(val,M+TW*0.56,y);
+    doc.setTextColor(15,15,15);y+=5.5;
+  }
+
+  // Read project info
+  const projName=(V('projName')||'').trim();
+  const jobNo=(V('jobNo')||'').trim();
+  const engineer=(V('engineer')||'').trim();
+  const calcRef=(V('calcRef')||'').trim();
+  const useLabel=document.getElementById('buildingUse').selectedOptions[0].text;
+  const dateStr=new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+
+  // Header
+  doc.setFillColor(26,26,26);doc.rect(0,0,210,16,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(255,255,255);
+  doc.text('Concrete Frame Tie Force Design',M,8);
+  doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(180,180,180);
+  doc.text('Disproportionate Collapse  |  UK NA to BS EN 1992-1-1:2004  |  Approved Document A',M,13);
+  y=22;
+  doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(100,100,100);
+  doc.text(`Generated: ${dateStr}   Class ${d.cls}   Ft = ${d.Ft.toFixed(1)} kN   ${d.n0} storeys   ${d.floorArea.toFixed(0)} m\u00b2 floor area`,M,y);
+  y+=3;hline();y+=4;
+
+  // Project meta table
+  if(projName||jobNo||engineer||calcRef){
+    const colW=TW/2,kW=TW*0.14;
+    function metaCell(x,label,value){
+      doc.setFillColor(240,238,234);doc.rect(x,y-3.5,kW,5.5,'F');
+      doc.setFont('helvetica','bold');doc.setFontSize(7);doc.setTextColor(80,80,80);
+      doc.text(label,x+1,y);
+      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(20,20,20);
+      doc.text(value,x+kW+2,y,{maxWidth:colW-kW-4});
+    }
+    metaCell(M,'PROJECT',projName);metaCell(M+colW,'JOB REF',jobNo);y+=5.5;
+    metaCell(M,'ENGINEER',engineer);metaCell(M+colW,'CALC REF',calcRef);y+=5.5;
+    hline();y+=4;
+  }
+
+  // Result banner showing classification
+  const classColors={1:[80,140,60],2:[42,110,30],'2A':[42,110,30],'2B':[30,90,130],3:[180,80,20]};
+  const bc=classColors[d.cls]||[42,110,30];
+  doc.setFillColor(...bc);doc.roundedRect(M,y,TW,10,2,2,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(255,255,255);
+  const reqStr=d.cls==='1'?'No additional tie measures required':`Peripheral \u00b7 Internal \u00b7 Horizontal${(d.cls==='2B'||d.cls==='3')?' \u00b7 Vertical':''}`;
+  doc.text(`AD A Class ${d.cls}  \u2014  Ft = ${d.Ft.toFixed(1)} kN  \u2014  ${reqStr}`,M+3,y+6.5,{maxWidth:TW-6});
+  y+=14;
+
+  // §1 Classification & Parameters
+  h1('1. Building Classification & Design Parameters');
+  row('Building use',useLabel,'AD A Table 1');
+  row('Classification',d.c.rsn,'');
+  rowResult('AD A Class',`Class ${d.cls}`,true);
+  row('Number of storeys  n\u2080',`${d.n0}`,'');
+  row('Floor area  A',''+d.floorArea.toFixed(2)+' m\u00b2','');
+  row('Column spacing  l\u1d63',''+d.lr.toFixed(2)+' m  (max of Lx, Ly)','');
+  row('Floor-to-floor height  l\u209b',''+d.ls.toFixed(2)+' m','');
+  row('Gk + Gsk + Qk',''+d.gk.toFixed(2)+' + '+d.gsk.toFixed(2)+' + '+d.qk.toFixed(2)+' = '+d.avgLoad.toFixed(2)+' kN/m\u00b2','');
+  row('Design column load  NEd',''+d.NEd.toFixed(1)+' kN','');
+  row('\u03c8\u2081 (frequent factor)',''+d.psi1,'NA Table NA.1.3(A)');
+
+  // §2 Base Tie Force
+  h1('2. Base Tie Force  Ft');
+  row('Formula','Ft = min(20 + 4n\u2080, 60)','NA to 9.10.2.1');
+  row('Substituted','= min(20 + 4\u00d7'+d.n0+', 60)','');
+  rowResult('Ft',d.Ft.toFixed(2)+' kN',true);
+
+  if(d.cls==='1'){
+    h1('3. Outcome');
+    rowResult('No additional disproportionate collapse measures required','AD A Table 1 Class 1',true);
+  } else {
+    // §3 Peripheral Ties
+    h1('3. Peripheral Ties');
+    row('Clause','NA to EN 1992-1-1 \u00a79.10.2.1','');
+    row('Location','Within 1.2 m of external slab edge at every floor and roof level','');
+    row('Formula','Ftie,per = Ft','');
+    rowResult('Peripheral tie force',d.Fper.toFixed(2)+' kN/m',true);
+
+    // §4 Internal Ties
+    h1('4. Internal Ties');
+    row('Clause','NA to EN 1992-1-1 \u00a79.10.2.2','');
+    row('Formula','Ftie,int = max[ (1/7.5)(Gk+Gsk+Qk)(lr/5)Ft , Ft ]','');
+    row('Calculated value','= (1/7.5)('+d.avgLoad.toFixed(2)+')('+d.lr.toFixed(2)+'/5)('+d.Ft.toFixed(2)+') = '+d.Fint_calc.toFixed(2)+' kN','');
+    row('Minimum value','= Ft = '+d.Fint_min.toFixed(2)+' kN','');
+    rowResult('Internal tie force  (max of calc, min)',d.Fint.toFixed(2)+' kN',true);
+    row('Maximum tie spacing','= 1.5 \u00d7 lr = 1.5 \u00d7 '+d.lr.toFixed(2)+' = '+d.maxSp.toFixed(2)+' m','');
+
+    // §5 Horizontal Ties to Columns/Walls
+    h1('5. Horizontal Ties to Columns & Walls');
+    row('Clause','NA to EN 1992-1-1 \u00a79.10.2.3','');
+    row('2Ft','= 2 \u00d7 '+d.Ft.toFixed(2)+' = '+d.h1.toFixed(2)+' kN','');
+    row('ls\u00b7Ft / 2.5','= '+d.ls.toFixed(2)+'\u00d7'+d.Ft.toFixed(2)+'/2.5 = '+d.h2.toFixed(2)+' kN','');
+    row('0.03 NEd','= 0.03 \u00d7 '+d.NEd.toFixed(2)+' = '+d.h3.toFixed(2)+' kN','');
+    row('Formula','Ftie,col = max[ min(2Ft, ls\u00b7Ft/2.5), 0.03NEd ]','');
+    rowResult('Horizontal tie force',d.Fcol.toFixed(2)+' kN',true);
+    row('Application','Edge columns: one direction. Corner columns: two directions.','');
+  }
+
   if(d.cls==='2B'||d.cls==='3'){
-    rows+=row('Vertical Ties','9.10.2.5',d.Fvert.toFixed(2)+' kN/storey','Continuous, lowest to highest storey');
+    // §6 Vertical Ties
+    h1('6. Vertical Ties');
+    row('Clause','NA to EN 1992-1-1 \u00a79.10.2.5 & Table NA.1.3(A)','');
+    row('Accidental combination Ed/m\u00b2','= Gk + Gsk + \u03c8\u2081\u00b7Qk = '+d.gk.toFixed(2)+' + '+d.gsk.toFixed(2)+' + '+d.psi1+'\u00d7'+d.qk.toFixed(2)+' = '+(d.gk+d.gsk+d.psi1*d.qk).toFixed(2)+' kN/m\u00b2','');
+    row('Formula','Fv = Ed \u00d7 Afloor','');
+    rowResult('Vertical tie force per storey',d.Fvert.toFixed(2)+' kN',true);
+    row('Application','Continuous reinforcement from lowest to highest storey','');
   }
 
-  function cl(label,formula,result){
-    return '<div class="cline"><span class="clabel">'+label+'</span><span class="cformula">'+formula+'</span><span class="cresult">'+result+'</span></div>';
-  }
-  var calcs='';
-  calcs+='<div class="csec">&sect;1 &nbsp; Building Classification &amp; Design Parameters</div>';
-  calcs+=cl('Building use:',useLabel,'&mdash;');
-  calcs+=cl('Classification:',d.c.rsn,'Class '+d.cls);
-  calcs+=cl('Number of storeys n<sub>0</sub>:','&mdash;',''+d.n0);
-  calcs+=cl('Floor area A:',d.W.toFixed(2)+' &times; '+d.L.toFixed(2),d.floorArea.toFixed(2)+' m&sup2;');
-  calcs+=cl('Column spacing l<sub>r</sub>:','max('+V('csX')+', '+V('csY')+')',d.lr.toFixed(2)+' m');
-  calcs+=cl('Floor height l<sub>s</sub>:','&mdash;',d.ls.toFixed(2)+' m');
-  calcs+=cl('Design column load N<sub>Ed</sub>:','&mdash;',d.NEd.toFixed(2)+' kN');
-  calcs+=cl('G<sub>k</sub>:','&mdash;',d.gk.toFixed(2)+' kN/m&sup2;');
-  calcs+=cl('G<sub>sk</sub>:','&mdash;',d.gsk.toFixed(2)+' kN/m&sup2;');
-  calcs+=cl('Q<sub>k</sub>:','&mdash;',d.qk.toFixed(2)+' kN/m&sup2;');
-  calcs+=cl('&psi;<sub>1</sub> (frequent factor):','NA Table NA.1.3(A)',''+d.psi1);
-  calcs+='<div class="csec">&sect;2 &nbsp; Base Tie Force F<sub>t</sub> &nbsp; [NA to 9.10.2.1]</div>';
-  calcs+=cl('F<sub>t</sub>','= min(20 + 4n<sub>0</sub>, 60)','= min(20 + 4&times;'+d.n0+', 60) = <strong>'+d.Ft.toFixed(2)+' kN</strong>');
-  if(d.cls==='2A'||d.cls==='2B'||d.cls==='3'){
-    calcs+='<div class="csec">&sect;3 &nbsp; Peripheral Ties &nbsp; [NA to 9.10.2.1]</div>';
-    calcs+=cl('F<sub>tie,per</sub>','= F<sub>t</sub>','= <strong>'+d.Fper.toFixed(2)+' kN/m</strong>');
-    calcs+='<div class="csec">&sect;4 &nbsp; Internal Ties &nbsp; [NA to 9.10.2.2]</div>';
-    calcs+=cl('F<sub>tie,int</sub> (calc)','= (1/7.5)(G<sub>k</sub>+G<sub>sk</sub>+Q<sub>k</sub>)(l<sub>r</sub>/5)F<sub>t</sub>','= (1/7.5)('+d.avgLoad.toFixed(2)+')('+d.lr.toFixed(2)+'/5)('+d.Ft.toFixed(2)+') = '+d.Fint_calc.toFixed(2)+' kN');
-    calcs+=cl('F<sub>tie,int</sub> (min)','= F<sub>t</sub>','= '+d.Fint_min.toFixed(2)+' kN');
-    calcs+=cl('F<sub>tie,int</sub> (governs)','= max(calc, min)','= <strong>'+d.Fint.toFixed(2)+' kN</strong>');
-    calcs+=cl('Max. tie spacing','= 1.5 &times; l<sub>r</sub>','= <strong>'+d.maxSp.toFixed(2)+' m</strong>');
-    calcs+='<div class="csec">&sect;5 &nbsp; Horizontal Ties to Columns/Walls &nbsp; [NA to 9.10.2.3]</div>';
-    calcs+=cl('2F<sub>t</sub>','','= '+d.h1.toFixed(2)+' kN');
-    calcs+=cl('l<sub>s</sub>&middot;F<sub>t</sub> / 2.5','','= '+d.ls.toFixed(2)+'&times;'+d.Ft.toFixed(2)+'/2.5 = '+d.h2.toFixed(2)+' kN');
-    calcs+=cl('0.03 N<sub>Ed</sub>','','= 0.03&times;'+d.NEd.toFixed(2)+' = '+d.h3.toFixed(2)+' kN');
-    calcs+=cl('F<sub>tie,col</sub>','= max[min(2F<sub>t</sub>, l<sub>s</sub>F<sub>t</sub>/2.5), 0.03N<sub>Ed</sub>]','= max[min('+d.h1.toFixed(2)+', '+d.h2.toFixed(2)+'), '+d.h3.toFixed(2)+'] = <strong>'+d.Fcol.toFixed(2)+' kN</strong>');
-  }
-  if(d.cls==='2B'||d.cls==='3'){
-    var edUnit=(d.gk+d.gsk+d.psi1*d.qk);
-    calcs+='<div class="csec">&sect;6 &nbsp; Vertical Ties &nbsp; [NA to 9.10.2.5 &amp; Table NA.1.3(A)]</div>';
-    calcs+=cl('E<sub>d</sub> (per m&sup2;)','= G<sub>k</sub> + G<sub>sk</sub> + &psi;<sub>1</sub>&middot;Q<sub>k</sub>','= '+d.gk.toFixed(2)+' + '+d.gsk.toFixed(2)+' + '+d.psi1+'&times;'+d.qk.toFixed(2)+' = '+edUnit.toFixed(2)+' kN/m&sup2;');
-    calcs+=cl('F<sub>v</sub> per storey','= E<sub>d</sub> &times; A<sub>floor</sub>','= '+edUnit.toFixed(2)+'&times;'+d.floorArea.toFixed(2)+' = <strong>'+d.Fvert.toFixed(2)+' kN</strong>');
+  if(d.cls==='3'){
+    y+=2;
+    doc.setFillColor(254,243,198);doc.roundedRect(M,y,TW,12,2,2,'F');
+    doc.setDrawColor(245,158,11);doc.setLineWidth(0.3);doc.roundedRect(M,y,TW,12,2,2,'S');
+    doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(120,60,0);
+    doc.text('\u26a0 Class 3 Building: Tie forces alone may not be sufficient.',M+3,y+5);
+    doc.setFont('helvetica','normal');
+    doc.text('A systematic risk assessment is required per AD A Table 1.',M+3,y+10);
+    y+=16;
   }
 
-  var html='<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Tie Force Design \u2014 '+projName+'</title><style>';
-  html+='*{margin:0;padding:0;box-sizing:border-box;}body{font-family:"Segoe UI",Arial,sans-serif;font-size:10.5pt;color:#1e1e1e;background:#fff;}';
-  html+='.page{max-width:210mm;margin:0 auto;padding:16mm 18mm 20mm;}';
-  html+='.hdr{display:flex;justify-content:space-between;align-items:center;background:#1a1a1a;color:#fff;margin:-16mm -18mm 18px;padding:12px 18mm;}';
-  html+='.logo{display:flex;align-items:center;gap:8px;}.wm{font-size:18px;font-weight:700;letter-spacing:1px;}';
-  html+='.hdr-right{text-align:right;font-size:8.5pt;color:#bbb;line-height:1.7;}';
-  html+='.calc-title{font-size:13pt;font-weight:700;color:#fff;margin-bottom:2px;}.calc-sub{font-size:8.5pt;color:#bbb;}';
-  html+='.meta{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:9pt;}.meta td{padding:4px 8px;border:1px solid #e0ddd8;vertical-align:top;}';
-  html+='.meta td.k{background:#f0ede8;font-weight:600;width:110px;color:#555;}';
-  html+='.summary{background:#f5f4f1;border:1px solid #e0ddd8;border-radius:4px;padding:12px 16px;margin-bottom:18px;}';
-  html+='.stitle{font-size:9pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a1a1a;margin-bottom:8px;}';
-  html+='.sum-row{display:flex;gap:28px;flex-wrap:wrap;}';
-  html+='.slbl{font-size:8pt;text-transform:uppercase;color:#777;letter-spacing:.5px;}.sval{font-size:13pt;font-weight:700;color:#1a1a1a;}';
-  html+='.rtable{width:100%;border-collapse:collapse;margin-bottom:18px;font-size:9.5pt;}';
-  html+='.rtable th{background:#1a1a1a;color:white;padding:6px 10px;text-align:left;font-size:9pt;}';
-  html+='.rtable td{padding:5px 10px;border-bottom:1px solid #e0ddd8;vertical-align:top;}';
-  html+='.rtable tr:nth-child(even) td{background:#fafaf8;}.res{color:#1a1a1a;font-weight:700;}.mono{font-family:"Courier New",monospace;font-size:9pt;}';
-  html+='.csec{background:#f0ede8;padding:4px 8px;margin:14px 0 5px;font-size:9pt;font-weight:700;color:#1a1a1a;}';
-  html+='.cline{display:grid;grid-template-columns:190px 1fr 150px;gap:5px;align-items:baseline;padding:3px 6px;border-bottom:1px solid #f0ede8;font-size:9pt;}';
-  html+='.clabel{color:#333;font-weight:600;}.cformula{color:#555;font-family:"Courier New",monospace;font-size:8.5pt;}.cresult{text-align:right;font-family:"Courier New",monospace;font-weight:600;color:#1a1a1a;}';
-  html+='.footer{margin-top:24px;padding-top:10px;border-top:1px solid #e0ddd8;font-size:7.5pt;color:#999;text-align:center;}';
-  html+='.pbar{background:#f5f4f1;border-bottom:1px solid #e0ddd8;padding:8px 18mm;display:flex;gap:10px;align-items:center;}.pbar button{background:#1a1a1a;color:white;border:none;border-radius:4px;padding:7px 16px;font-size:10pt;cursor:pointer;font-weight:600;}';
-  html+='.pbar button:hover{background:#333;}.pbar .hint{font-size:9pt;color:#777;}';
-  html+='@media print{.pbar{display:none!important;}.page{padding:12mm 14mm;}.hdr{margin:-12mm -14mm 14px;padding:10px 14mm;}}';
-  html+='</style></head><body>';
-  html+='<div class="pbar"><button onclick="window.print()">\u2399 Print / Save as PDF</button><span class="hint">Select &ldquo;Save as PDF&rdquo; in the print dialog.</span></div>';
-  html+='<div class="page">';
-  html+='<div class="hdr"><div>';
-  html+='<div class="calc-title">Tie Force Design</div>';
-  html+='<div class="calc-sub">Disproportionate Collapse &mdash; Concrete Frame</div>';
-  html+='</div>';
-  html+='<div class="hdr-right"><div style="margin-top:6px;">Date: '+dateStr+'</div><div>Calc Ref: '+calcRef+'</div></div></div>';
-  html+='<table class="meta"><tr><td class="k">Project</td><td>'+projName+'</td><td class="k">Job No.</td><td>'+jobNo+'</td></tr>';
-  html+='<tr><td class="k">Building Use</td><td>'+useLabel+'</td><td class="k">Engineer</td><td>'+engineer+'</td></tr>';
-  html+='<tr><td colspan="4" style="background:#f9fafb;font-size:8.5pt;color:#374151;"><strong>Standards:</strong>&nbsp; UK National Annex to BS EN 1992-1-1:2004 &nbsp;&middot;&nbsp; Approved Document A: Structure (2004) &nbsp;&middot;&nbsp; PD 6687</td></tr></table>';
-  html+='<div class="summary"><div class="stitle">Classification &amp; Summary</div><div class="sum-row">';
-  html+='<div class="sum-item"><div class="slbl">AD A Class</div><div class="sval">Class '+d.cls+'</div></div>';
-  html+='<div class="sum-item"><div class="slbl">Base F<sub>t</sub></div><div class="sval">'+d.Ft.toFixed(1)+' kN</div></div>';
-  html+='<div class="sum-item"><div class="slbl">Storeys n<sub>0</sub></div><div class="sval">'+d.n0+'</div></div>';
-  html+='<div class="sum-item"><div class="slbl">Floor Area</div><div class="sval">'+d.floorArea.toFixed(1)+' m&sup2;</div></div>';
-  html+='<div class="sum-item"><div class="slbl">Col Spacing l<sub>r</sub></div><div class="sval">'+d.lr.toFixed(2)+' m</div></div>';
-  html+='</div><div style="margin-top:8px;font-size:8.5pt;color:#374151;"><em>Classification: '+d.c.rsn+'</em></div></div>';
-  html+='<table class="rtable"><thead><tr><th>Tie Type</th><th>NA Clause</th><th>Design Force</th><th>Location / Notes</th></tr></thead><tbody>'+rows+'</tbody></table>';
-  html+='<div style="margin-bottom:7px;font-size:10.5pt;font-weight:700;color:#1e1e1e;border-bottom:1px solid #e5e7eb;padding-bottom:4px;">Detailed Calculations</div>';
-  html+=calcs;
-  if(d.cls==='3') html+='<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:4px;padding:10px 12px;margin-top:16px;font-size:9pt;"><strong>&#9888; Class 3 Building:</strong> Tie forces alone may not be sufficient. A systematic risk assessment is required per AD A Table 1. Consult a suitably experienced structural engineer.</div>';
-  html+='<div class="footer">All calculations are the responsibility of the engineer. Verify results against relevant codes and standards. &nbsp;&middot;&nbsp; '+dateStr+'</div>';
-  html+='</div></body></html>';
+  // Footer
+  y+=3;hline();y+=3;
+  doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(130,130,130);
+  doc.text('References: UK National Annex to BS EN 1992-1-1:2004  |  Approved Document A: Structure (2004)  |  PD 6687',M,y,{maxWidth:TW});
+  y+=4;
+  doc.text('All calculations are the responsibility of the engineer. Verify results against relevant codes and standards.',M,y,{maxWidth:TW});
 
-  var w=window.open('','_blank','width=960,height=720');
-  if(!w){alert('Popup blocked \u2014 please allow popups for this page.');return;}
-  w.document.write(html);
-  w.document.close();
+  const projRef=calcRef||projName||'';
+  doc.save(`Tie_Force_Class${d.cls}_${projRef||dateStr.replace(/ /g,'_')}.pdf`);
 }
 
 window.onload=updateClass;
