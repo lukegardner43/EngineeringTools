@@ -164,6 +164,9 @@ body{background:#f5f4f1;color:#1a1a1a;font-family:-apple-system,BlinkMacSystemFo
   .print-hdr-sub{font-size:8pt;color:#bbb;}
 }
 </style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
@@ -2800,6 +2803,42 @@ async function exportPDF(){
     doc.setTextColor(15,15,15);y+=5.5;
   }
 
+  async function latexToPNG(tex, widthMM){
+    const PX_PER_MM=3.78, SCALE=2;
+    const pxW=Math.round(widthMM*PX_PER_MM);
+    const wrap=document.createElement('div');
+    wrap.style.cssText=`position:fixed;left:-9999px;top:0;width:${pxW}px;background:white;color:black;font-size:11px;line-height:1.4;padding:2px 4px;box-sizing:border-box`;
+    document.body.appendChild(wrap);
+    try{
+      katex.render(tex,wrap,{throwOnError:false,displayMode:false,output:'html'});
+      const cssH=wrap.offsetHeight;
+      const cvs=await html2canvas(wrap,{scale:SCALE,backgroundColor:'#ffffff',logging:false,width:pxW,height:cssH});
+      document.body.removeChild(wrap);
+      return{png:cvs.toDataURL('image/png'),heightMM:Math.min(cssH/PX_PER_MM,12)};
+    }catch(e){
+      if(document.body.contains(wrap))document.body.removeChild(wrap);
+      return null;
+    }
+  }
+  async function frow(label,latexStr,ref){
+    const result=await latexToPNG(latexStr,TW-10);
+    const imgH=result?result.heightMM:5;
+    const labelH=label?4.5:0;
+    pageCheck(labelH+imgH+3);
+    if(label){
+      doc.setFont('helvetica','italic');doc.setFontSize(7.5);doc.setTextColor(80,80,80);
+      doc.text(label,M+2,y); y+=4.5;
+    }
+    if(result){
+      doc.addImage(result.png,'PNG',M+4,y,TW-10,imgH);
+      y+=imgH+2;
+    }
+    if(ref){
+      doc.setFont('helvetica','italic');doc.setFontSize(7);doc.setTextColor(130,130,130);
+      doc.text(ref,W-M,y,{align:'right'});
+    }
+  }
+
   const res     = window.lastRes;
   const type    = window.lastType||'Connection Design';
   const summary = window.lastSummary||[];
@@ -2839,7 +2878,7 @@ async function exportPDF(){
 
   // 2. Design checks
   h1('2. Design Checks');
-  checks.forEach(c=>{
+  for(const c of checks){
     const util=`η = ${(c.r*100).toFixed(1)}%`;
     const demcap=`${rd(c.dem)} / ${rd(c.cap)} ${c.unit}`;
     rowResult(
@@ -2847,24 +2886,25 @@ async function exportPDF(){
       c.pass ? `PASS  ${util}  (${demcap})` : `FAIL  ${util}  (${demcap})`,
       c.pass
     );
-    // Show reference and first two calc lines
+    // KaTeX utilisation fraction
+    const uLaTeX=`\\eta = \\dfrac{${rd(c.dem)}}{${rd(c.cap)}}\\,\\text{${c.unit}} = ${rd(c.r,3)}\\;${c.pass?'\\leq 1.0\\;\\checkmark':'>1.0\\;\\times'}`;
+    await frow('',uLaTeX,'');
+    // Calc lines
     if(c.ref){
       pageCheck(4);
       doc.setFont('helvetica','italic');doc.setFontSize(7);doc.setTextColor(130,130,130);
-      doc.text(c.ref, M+3, y);
-      y+=4;
+      doc.text(c.ref, M+3, y); y+=4;
     }
     if(c.lines && c.lines.length){
       c.lines.slice(0,4).forEach(line=>{
         if(!line) return;
         pageCheck(4);
         doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(80,80,80);
-        doc.text('  '+line, M+3, y, {maxWidth:TW-3});
-        y+=4;
+        doc.text('  '+line, M+3, y, {maxWidth:TW-3}); y+=4;
       });
     }
-    y+=1.5;
-  });
+    y+=2;
+  }
 
   // 3. Notes
   pageCheck(20);
