@@ -564,32 +564,43 @@ function svgStart(w,h){
 }
 
 function diagFin(){
-  // Fin Plate connection — SCI P358 §5 elevation
-  // Supporting UC on the left (cut through web in elevation), fin plate welded
-  // to the flange face with a double fillet weld, notched beam bolted to plate.
-  // P358 parameters shown: z_p (eccentricity), e_1, e_2p, p_1, L_p, h_p,
-  //                        d_n (notch depth), l_n (notch length), g_h (clearance).
+  // Fin Plate connection — SCI P358 §5 elevation.
+  // Primary beam (supporting) shown as I-section END-ON: flanges top/bottom,
+  // web vertical. Fin plate welded to primary beam web, secondary beam
+  // (supported) bolted to fin plate, coming in from the right with top flange
+  // notched. Plate is SIZED so top and bottom bolt edge distances are equal.
   const W=620, H=470;
   const s=svgStart(W,H);
 
-  // ─── SUPPORTING COLUMN (UC, shown through full canvas height) ─────
-  const ccx=70, cbf=110, ctf=18, ctw=16;
-  const cFaceX=ccx+cbf/2;                    // right flange face = 125
+  // ─── PRIMARY BEAM (supporting, drawn end-on) ──────────────
+  const ccx=100, cbf=160, ctf=20, ctw=14;
+  const cFaceX=ccx+cbf/2;                    // right flange face
   const col =
     `<rect x="${ccx-cbf/2}" y="0" width="${cbf}" height="${ctf}" ${D.sec}/>
      <rect x="${ccx-ctw/2}" y="${ctf}" width="${ctw}" height="${H-2*ctf}" ${D.web}/>
      <rect x="${ccx-cbf/2}" y="${H-ctf}" width="${cbf}" height="${ctf}" ${D.sec}/>`;
 
-  // ─── BEAM (drawn first, so plate appears over web in the overlap) ─
-  const gh=10, bx=cFaceX+gh;                 // clearance gap g_h
-  const bcy=H/2+10;                           // beam CL, nudged down slightly
-  const bd=230, btf=18;
-  const blen=W-bx-12;
+  // ─── BOLT GROUP SIZING (drives plate height) ────────────
+  // Plate sized so e1 top = e1 bottom. ph = 2*e1 + (n-1)*p1
+  const n=4, e1=40, p1=70, e2p=50;
+  const plp=140;                             // plate length (horizontal)
+  const ph = 2*e1 + (n-1)*p1;                // plate height = 2*40 + 3*70 = 290
+
+  // ─── SECONDARY BEAM (supported, coming in from right) ────
+  // Beam depth must exceed plate + notch + small clearances.
+  // Bolt group vertical centre = beam CL, so plate is centred about beam CL.
+  const bcy=H/2;                              // beam CL
+  const btf=18;
+  const ndn=38;                               // top-flange notch depth
+  const nln=plp+12;                           // notch length (past plate + 12mm)
+  // Beam depth chosen so: notch(38) + 15 gap + plate(290) + 15 gap + bot flange(18)
+  const bd = ndn + 15 + ph + 15 + btf;        // = 376
   const btop=bcy-bd/2, bbot=bcy+bd/2;
-  const ndn=40, nln=70;                       // notch depth & length
+  const bx=cFaceX;                            // beam FLUSH with primary beam face
+  const blen=W-bx-16;
   // Top flange present only past the notch
   const topFlg=`<rect x="${bx+nln}" y="${btop}" width="${blen-nln}" height="${btf}" ${D.sec}/>`;
-  // Web: L-shaped outline accounting for the top-flange notch cutout
+  // Web: L-shaped outline with the top-flange notch cutout
   const webPoly =
     `<polygon points="
        ${bx},${btop+ndn}
@@ -599,356 +610,364 @@ function diagFin(){
        ${bx+blen},${bbot-btf}
        ${bx},${bbot-btf}" ${D.web}/>`;
   const botFlg=`<rect x="${bx}" y="${bbot-btf}" width="${blen}" height="${btf}" ${D.sec}/>`;
-  // Emphasise the notch re-entrant corner (drawn on top of web)
+  // Emphasise notch re-entrant corner
   const notchLine =
     `<polyline points="${bx},${btop+ndn} ${bx+nln},${btop+ndn} ${bx+nln},${btop}"
        fill="none" stroke="#1a1a1a" stroke-width="1.6"/>`;
   const beam = topFlg + webPoly + botFlg + notchLine;
 
-  // ─── FIN PLATE (drawn after the beam so it's visible in the overlap) ──
-  // Plate fits between the top notch line and the top of the bottom flange.
-  const ptop = btop + ndn + 8;               // small offset below notch
-  const pbot = bbot - btf - 8;               // small offset above bot flange
-  const ph   = pbot - ptop;                  // plate height
-  const plp  = 130;                           // plate length
-  const px   = cFaceX;
+  // ─── FIN PLATE (centred about beam CL, welded to primary beam web) ──
+  const ptop = bcy - ph/2;
+  const pbot = bcy + ph/2;
+  const px   = cFaceX;                        // plate starts at primary beam face
   const plate = `<rect x="${px}" y="${ptop}" width="${plp}" height="${ph}" ${D.plt}/>`;
 
-  // ─── FILLET WELDS (both sides, along full plate height) ──────────
+  // ─── FILLET WELDS (double fillet, both sides, full plate height) ──
   const wld =
     `<line x1="${px}" y1="${ptop}" x2="${px}" y2="${ptop+ph}" stroke="#1a1a1a" stroke-width="3.2"/>
-     <polygon points="${px},${ptop} ${px+10},${ptop} ${px},${ptop+10}" ${D.wld}/>
-     <polygon points="${px},${ptop+ph} ${px+10},${ptop+ph} ${px},${ptop+ph-10}" ${D.wld}/>`;
+     <polygon points="${px},${ptop} ${px+11},${ptop} ${px},${ptop+11}" ${D.wld}/>
+     <polygon points="${px},${ptop+ph} ${px+11},${ptop+ph} ${px},${ptop+ph-11}" ${D.wld}/>`;
 
-  // ─── BOLT GROUP (n = 3, single vertical line) ────────────────────
-  const e1=35, p1=60, e2p=45;
-  const boltX=px+plp-e2p;                     // bolt CL = 45 from free edge
-  const bY1=ptop+e1, bY2=bY1+p1, bY3=bY2+p1;
-  const bolts = bolt(boltX,bY1)+bolt(boltX,bY2)+bolt(boltX,bY3);
+  // ─── BOLT GROUP (n = 4, single vertical line) ────────────
+  const boltX=px+plp-e2p;
+  const bY=[];
+  for(let i=0;i<n;i++) bY.push(ptop+e1+i*p1);
+  const bolts=bY.map(y=>bolt(boltX,y)).join('');
 
-  // ─── DIMENSIONS (P358 nomenclature) ──────────────────────────────
-  // Right of plate: bolt spacing + h_p
-  const dimsR =
-    dimV(px+plp+20, ptop, bY1, 'e₁', px+plp+32) +
-    dimV(px+plp+20, bY1, bY2, 'p₁', px+plp+32) +
-    dimV(px+plp+20, bY2, bY3, 'p₁', px+plp+32) +
-    dimV(px+plp+20, bY3, ptop+ph, 'e₁', px+plp+32) +
-    dimV(px+plp+62, ptop, ptop+ph, 'h_p', px+plp+76);
-  // Below plate: z_p, e_2p, L_p
+  // ─── DIMENSIONS ──────────────────────────────────────
+  // Right of plate: e1, p1×3, e1, h_p
+  let dimsR =
+    dimV(px+plp+20, ptop, bY[0], 'e₁', px+plp+32);
+  for(let i=0;i<n-1;i++){
+    dimsR += dimV(px+plp+20, bY[i], bY[i+1], 'p₁', px+plp+32);
+  }
+  dimsR +=
+    dimV(px+plp+20, bY[n-1], pbot, 'e₁', px+plp+32) +
+    dimV(px+plp+62, ptop, pbot, 'h_p', px+plp+76);
+  // Below plate: z_p (eccentricity) + e2_p + L_p
   const dimsB =
-    dimH(px, boltX, bbot+34, 'z_p', bbot+46) +
+    dimH(cFaceX, boltX, bbot+34, 'z_p', bbot+46) +
     dimH(boltX, px+plp, bbot+34, 'e₂_p', bbot+46) +
     dimH(px, px+plp, bbot+62, 'L_p', bbot+74);
-  // Above: clearance g_h (over beam end) + notch d_n (left of beam), l_n (above notch)
+  // Above: notch d_n (left of beam), l_n (above notch)
   const dimsT =
-    dimH(cFaceX, bx, btop-30, 'g_h', btop-18) +
     dimV(bx-18, btop, btop+ndn, 'd_n', bx-34) +
     dimH(bx, bx+nln, btop-16, 'l_n', btop-4);
   const dims = dimsR + dimsB + dimsT;
 
-  // ─── LABELS & CALLOUTS ───────────────────────────────────────────
+  // ─── LABELS & CALLOUTS ───────────────────────────────
   const labs =
-    // Column label above beam
-    `<text ${D.txt} x="${ccx}" y="${btop/2+4}" text-anchor="middle">Column</text>
-     <text ${D.sml} x="${ccx}" y="${btop/2+18}" text-anchor="middle">(supporting)</text>` +
-    // Fin plate callout — short leader from plate top corner, out to top-right
-    `<line x1="${px+plp-4}" y1="${ptop+4}" x2="${px+plp+60}" y2="${btop-30}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.txt} x="${px+plp+64}" y="${btop-34}">Fin plate</text>
-     <text ${D.sml} x="${px+plp+64}" y="${btop-22}">t_p × L_p × h_p</text>` +
-    // Beam label (far right, above top flange)
-    label(bx+blen-8, btop-28, 'Beam (supported)', 'end') +
-    slabel(bx+blen-8, btop-16, 'notched UB', 'end') +
-    // Weld callout — leader down-left from weld mid-height, around the column,
-    // ending below the column bottom flange (clear of all geometry).
-    `<line x1="${px+2}" y1="${ptop+ph*0.65}" x2="${ccx-cbf/2-8}" y2="${H-6}" stroke="#555" stroke-width="0.7"/>
+    // Primary beam label (above)
+    `<text ${D.txt} x="${ccx}" y="${btop/2-6}" text-anchor="middle">Primary beam</text>
+     <text ${D.sml} x="${ccx}" y="${btop/2+8}" text-anchor="middle">(supporting)</text>` +
+    // Fin plate callout
+    `<line x1="${px+plp-8}" y1="${ptop+4}" x2="${px+plp+60}" y2="${btop-36}" stroke="#555" stroke-width="0.7"/>
+     <text ${D.txt} x="${px+plp+64}" y="${btop-40}">Fin plate</text>
+     <text ${D.sml} x="${px+plp+64}" y="${btop-28}">t_p × L_p × h_p</text>` +
+    // Secondary beam label
+    label(bx+blen-8, btop-36, 'Secondary beam', 'end') +
+    slabel(bx+blen-8, btop-24, '(supported, notched UB)', 'end') +
+    // Weld callout
+    `<line x1="${px+2}" y1="${ptop+ph*0.5}" x2="${ccx-cbf/2-8}" y2="${H-6}" stroke="#555" stroke-width="0.7"/>
      <text ${D.sml} x="${ccx-cbf/2-12}" y="${H-20}" text-anchor="end">Double fillet weld,</text>
      <text ${D.sml} x="${ccx-cbf/2-12}" y="${H-8}" text-anchor="end">leg a_w each side</text>` +
-    // Notch callout (short leader from notch corner, up and slightly right)
-    `<line x1="${bx+nln}" y1="${btop+ndn-4}" x2="${bx+nln+30}" y2="${btop-54}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${bx+nln+34}" y="${btop-56}">top-flange notch</text>` +
-    // Grade note under bolt group
+    // Notch callout
+    `<line x1="${bx+nln}" y1="${btop+ndn-4}" x2="${bx+nln+30}" y2="${btop-50}" stroke="#555" stroke-width="0.7"/>
+     <text ${D.sml} x="${bx+nln+34}" y="${btop-52}">top-flange notch</text>` +
+    // Grade note
     `<text ${D.sml} x="${boltX}" y="${bbot+94}" text-anchor="middle">n bolts, Grade 8.8</text>`;
 
-  // ─── APPLIED SHEAR V_Ed (vertical, acting on the beam) ───────────
-  const fax = boltX + 180;
-  const far_y1 = bcy-80, far_y2 = bcy+btf/2;
+  // ─── APPLIED SHEAR V_Ed (vertical, on beam) ──────────
+  const fax = boltX + 200;
   const force =
-    `<line x1="${fax}" y1="${far_y1}" x2="${fax}" y2="${far_y2}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
-     <text ${D.grn} x="${fax+10}" y="${bcy-20}">V_Ed</text>`;
+    `<line x1="${fax}" y1="${bcy-90}" x2="${fax}" y2="${bcy+btf/2}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
+     <text ${D.grn} x="${fax+10}" y="${bcy-30}">V_Ed</text>`;
 
   return s + col + beam + plate + wld + bolts + dims + labs + force + '</svg>';
 }
 
 function diagPDEP(){
   // Partial Depth End Plate connection — SCI P358 §4.5 elevation.
-  // Supporting UC on the left shown as full I-section. Partial-depth end plate
-  // welded with a double fillet weld to the beam web ONLY (stops short of both
-  // flanges — that's the defining feature of PDEP). Plate bolted through the
-  // column flange face. All P358 geometric parameters labelled.
-  const W=620, H=420;
+  // Primary beam (supporting) shown end-on as I-section. End plate welded to
+  // SECONDARY beam web only (not flanges — defining feature of PDEP), bolted
+  // through the primary beam flange face. Tops of both beams level.
+  const W=620, H=440;
   const s=svgStart(W,H);
 
-  // ─── SUPPORTING COLUMN (UC) ──────────────────────────────
-  const ccx=70, cbf=110, ctf=18, ctw=16;
-  const cFaceX=ccx+cbf/2;                    // right flange face = 125
+  // ─── PRIMARY BEAM (supporting, drawn end-on) ──────────────
+  const ccx=100, cbf=160, ctf=20, ctw=14;
+  const cFaceX=ccx+cbf/2;                    // right flange face
   const col =
     `<rect x="${ccx-cbf/2}" y="0" width="${cbf}" height="${ctf}" ${D.sec}/>
      <rect x="${ccx-ctw/2}" y="${ctf}" width="${ctw}" height="${H-2*ctf}" ${D.web}/>
      <rect x="${ccx-cbf/2}" y="${H-ctf}" width="${cbf}" height="${ctf}" ${D.sec}/>`;
 
-  // ─── BEAM (drawn first, plate sits in front of web in the overlap) ─
-  const bcy=H/2;                              // beam CL on canvas centre
-  const bd=220, btf=18;
-  const bx=cFaceX;                            // beam end flush with column face
-  const blen=W-bx-12;
-  const btop=bcy-bd/2, bbot=bcy+bd/2;
+  // ─── BOLT GROUP & PLATE SIZING ──────────────────────────
+  const n=4, e1=40, p1=60;
+  const ph = 2*e1 + (n-1)*p1;                // plate height = 260
+  const ptk=14;                               // plate thickness
+
+  // ─── SECONDARY BEAM (coming in from right) ────────────
+  // Tops of both beams level: secondary beam top = primary beam top + primary_tf
+  const btop = ctf;                           // top of secondary beam = top of primary flange
+  const btf=18;
+  const bd = ph + 2*15 + btf;                 // plate sits inside flanges with 15mm clearance
+  const bbot = btop + bd;
+  const bcy = (btop+bbot)/2;
+  // End plate sits AGAINST primary beam face (between column & beam end)
+  const px = cFaceX;                          // plate starts at primary beam face
+  const bx = cFaceX + ptk;                    // secondary beam starts after plate
+  const blen = W-bx-16;
+  // Secondary beam (full elevation)
   const topFlg=`<rect x="${bx}" y="${btop}" width="${blen}" height="${btf}" ${D.sec}/>`;
   const botFlg=`<rect x="${bx}" y="${bbot-btf}" width="${blen}" height="${btf}" ${D.sec}/>`;
   const web    =`<rect x="${bx}" y="${btop+btf}" width="${blen}" height="${bd-2*btf}" ${D.web}/>`;
   const beam = topFlg + web + botFlg;
 
-  // ─── END PLATE (partial depth — sits inside the flanges) ─
-  const pGap=14;                              // gap plate-to-flange (typical)
-  const ptop=btop+btf+pGap, pbot=bbot-btf-pGap;
-  const ph=pbot-ptop;
-  const ptk=14;                               // plate thickness (drawn larger for clarity)
-  const px=cFaceX-ptk;                        // plate bears against column flange
+  // ─── END PLATE (partial depth — sits between flanges) ──
+  const ptop=btop+btf+15, pbot=bbot-btf-15;
   const plate=`<rect x="${px}" y="${ptop}" width="${ptk}" height="${ph}" ${D.plt}/>`;
 
-  // ─── FILLET WELDS (double fillet, plate to BEAM WEB only) ──
-  // Shown as pair of triangles either side of the beam web at plate right edge.
-  const wwx=cFaceX;
+  // ─── FILLET WELDS (plate to beam web only) ────────────
+  // Weld is on the RIGHT face of the plate (against beam web).
+  const wwx=cFaceX+ptk;
   const wld =
-    weldTri(wwx, ptop, ptop+ph, 1) +           // weld on top side of web
-    weldTri(wwx, ptop, ptop+ph,-1);            // weld on bottom side of web
+    weldTri(wwx, ptop, ptop+ph, 1) +
+    weldTri(wwx, ptop, ptop+ph,-1);
 
-  // ─── BOLTS (through plate into column flange) ────────────
-  const e1=35, p1=60, n=3;
-  const boltX=px+ptk/2;                       // bolt CL through plate thickness centre
+  // ─── BOLTS (through plate AND primary beam flange) ────
+  const boltX = cFaceX + ptk/2;               // bolt CL at plate centre
   const bY=[];
   for(let i=0;i<n;i++) bY.push(ptop+e1+i*p1);
   const bolts=bY.map(y=>bolt(boltX,y)).join('');
 
-  // ─── DIMENSIONS ─────────────────────────────────────────
-  // Right of beam: e1, p1's, e1 and overall h_p
-  const dimsR =
-    dimV(bx+blen+18, ptop, bY[0], 'e₁', bx+blen+30) +
-    dimV(bx+blen+18, bY[0], bY[1], 'p₁', bx+blen+30) +
-    dimV(bx+blen+18, bY[1], bY[2], 'p₁', bx+blen+30) +
-    dimV(bx+blen+18, bY[2], pbot, 'e₁', bx+blen+30) +
-    dimV(bx+blen+60, ptop, pbot, 'h_p', bx+blen+74);
-  // Left of column (plate-to-flange gap, top and bottom)
-  const dimsL =
-    dimV(ccx-cbf/2-16, btop+btf, ptop, 'gap', ccx-cbf/2-30) +
-    dimV(ccx-cbf/2-16, pbot, bbot-btf, 'gap', ccx-cbf/2-30);
+  // ─── DIMENSIONS ──────────────────────────────────────
+  let dimsR =
+    dimV(bx+blen+20, ptop, bY[0], 'e₁', bx+blen+32);
+  for(let i=0;i<n-1;i++){
+    dimsR += dimV(bx+blen+20, bY[i], bY[i+1], 'p₁', bx+blen+32);
+  }
+  dimsR +=
+    dimV(bx+blen+20, bY[n-1], pbot, 'e₁', bx+blen+32) +
+    dimV(bx+blen+64, ptop, pbot, 'h_p', bx+blen+78);
+  // Plate thickness
+  const dimsT = dimV(bx+blen+20, btop, btop+btf, 't_f', bx+blen+34);
 
-  // ─── LABELS & CALLOUTS ──────────────────────────────────
+  // ─── LABELS & CALLOUTS ───────────────────────────────
   const labs =
-    `<text ${D.txt} x="${ccx}" y="${btop/2+4}" text-anchor="middle">Column</text>
-     <text ${D.sml} x="${ccx}" y="${btop/2+18}" text-anchor="middle">(supporting)</text>` +
-    // End plate callout (leader from plate, out to the left, above the gap dim)
-    `<line x1="${px-2}" y1="${ptop+20}" x2="${ccx-cbf/2-8}" y2="${btop+btf+30}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.txt} x="${ccx-cbf/2-12}" y="${btop+btf+26}" text-anchor="end">End plate</text>
-     <text ${D.sml} x="${ccx-cbf/2-12}" y="${btop+btf+38}" text-anchor="end">(partial depth)</text>` +
-    // Weld callout — leader below beam, down-left under the column
-    `<line x1="${cFaceX+6}" y1="${bcy+16}" x2="${ccx-cbf/2-8}" y2="${H-6}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${ccx-cbf/2-12}" y="${H-20}" text-anchor="end">Double fillet weld,</text>
-     <text ${D.sml} x="${ccx-cbf/2-12}" y="${H-8}" text-anchor="end">to beam web only</text>` +
-    // Beam label
-    label(bx+blen-8, btop-8, 'Beam (supported)', 'end') +
-    // Grade note below dimensions
-    `<text ${D.sml} x="${bx+blen+30}" y="${pbot+28}" text-anchor="middle">n bolts, Grade 8.8</text>`;
+    // Primary beam label — in clear area LEFT of secondary beam, below primary beam top flange
+    `<text ${D.txt} x="${ccx}" y="${bbot+60}" text-anchor="middle">Primary beam</text>
+     <text ${D.sml} x="${ccx}" y="${bbot+74}" text-anchor="middle">(supporting)</text>` +
+    // Secondary beam label — below beam, right side
+    `<text ${D.txt} x="${bx+blen-10}" y="${bbot+60}" text-anchor="end">Secondary beam</text>
+     <text ${D.sml} x="${bx+blen-10}" y="${bbot+74}" text-anchor="end">(supported)</text>` +
+    // End plate callout
+    `<line x1="${px+ptk-2}" y1="${ptop-4}" x2="${px+ptk+50}" y2="${btop+btf+4}" stroke="#555" stroke-width="0.7"/>
+     <text ${D.sml} x="${px+ptk+54}" y="${btop+btf+8}">End plate (partial depth)</text>` +
+    // Weld callout
+    `<line x1="${wwx+8}" y1="${bcy}" x2="${bx+blen-120}" y2="${bbot+30}" stroke="#555" stroke-width="0.7"/>
+     <text ${D.sml} x="${bx+blen-116}" y="${bbot+33}">Double fillet weld, to beam web only</text>` +
+    // Grade note
+    `<text ${D.sml} x="${boltX}" y="${bbot+100}" text-anchor="middle">n bolts, Grade 8.8</text>` +
+    // "Tops level" note — use a horizontal leader to the join
+    `<line x1="${cFaceX+10}" y1="${btop-2}" x2="${cFaceX+140}" y2="${btop-22}" stroke="#3366aa" stroke-width="0.7"/>
+     <text ${D.sml} x="${cFaceX+144}" y="${btop-24}" style="fill:#3366aa">Tops of both beams level</text>`;
 
-  // ─── APPLIED SHEAR V_Ed (vertical on beam) ──────────────
-  const fax=bx+blen-90;
+  // ─── APPLIED SHEAR V_Ed ──────────────────────────────
+  const fax=bx+blen-200;
   const force =
     `<line x1="${fax}" y1="${bcy-80}" x2="${fax}" y2="${bcy+btf/2}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
      <text ${D.grn} x="${fax+10}" y="${bcy-20}">V_Ed</text>`;
 
-  return s + col + beam + plate + wld + bolts + dimsR + dimsL + labs + force + '</svg>';
+  return s + col + beam + plate + wld + bolts + dimsR + dimsT + labs + force + '</svg>';
 }
 
 function diagFDEP(){
   // Full Depth End Plate connection — SCI P358 §4.7 elevation.
-  // Plate is the full depth of the supported beam: welded to web AND to both
-  // flanges (separate web and flange welds), then bolted through the supporting
-  // column flange face. Four bolts typical — P358 §4.7 Check 1.
+  // Full-depth plate welded to web AND both flanges of the secondary beam,
+  // then bolted through primary beam flange face.
   const W=640, H=440;
   const s=svgStart(W,H);
 
-  // ─── SUPPORTING COLUMN ──────────────────────────────────
-  const ccx=70, cbf=110, ctf=18, ctw=16;
-  const cFaceX=ccx+cbf/2;                    // right flange face = 125
+  // ─── PRIMARY BEAM (supporting, end-on) ──────────────────
+  const ccx=100, cbf=160, ctf=20, ctw=14;
+  const cFaceX=ccx+cbf/2;
   const col =
     `<rect x="${ccx-cbf/2}" y="0" width="${cbf}" height="${ctf}" ${D.sec}/>
      <rect x="${ccx-ctw/2}" y="${ctf}" width="${ctw}" height="${H-2*ctf}" ${D.web}/>
      <rect x="${ccx-cbf/2}" y="${H-ctf}" width="${cbf}" height="${ctf}" ${D.sec}/>`;
 
-  // ─── BEAM (UB, full depth) ──────────────────────────────
-  const bcy=H/2;
-  const bd=260, btf=20;
-  const bx=cFaceX;
-  const blen=W-bx-12;
+  // ─── SECONDARY BEAM + PLATE ─────────────────────────────
+  const bcy=H/2, bd=280, btf=20;
   const btop=bcy-bd/2, bbot=bcy+bd/2;
+  const ptk=16, px=cFaceX;                   // plate on RIGHT of primary beam face
+  const bx=cFaceX+ptk;                       // beam starts AFTER plate
+  const blen=W-bx-16;
   const topFlg=`<rect x="${bx}" y="${btop}" width="${blen}" height="${btf}" ${D.sec}/>`;
   const botFlg=`<rect x="${bx}" y="${bbot-btf}" width="${blen}" height="${btf}" ${D.sec}/>`;
   const web    =`<rect x="${bx}" y="${btop+btf}" width="${blen}" height="${bd-2*btf}" ${D.web}/>`;
-
-  // ─── END PLATE (full depth, same as beam) ───────────────
-  const ptk=16, px=cFaceX-ptk;
   const plate=`<rect x="${px}" y="${btop}" width="${ptk}" height="${bd}" ${D.plt}/>`;
 
-  // ─── WELDS ──────────────────────────────────────────────
-  // Web weld (both sides), full length between flanges
-  const wwebTop = btop+btf, wwebBot = bbot-btf;
-  const wldWeb = weldTri(cFaceX, wwebTop, wwebBot, 1) +
-                 weldTri(cFaceX, wwebTop, wwebBot,-1);
-  // Flange welds (along top flange bottom face and bottom flange top face, near plate)
+  // ─── WELDS ──────────────────────────────────────────
+  // Web weld on RIGHT face of plate, between flanges
+  const wwx=px+ptk;
+  const wldWeb = weldTri(wwx, btop+btf, bbot-btf, 1) +
+                 weldTri(wwx, btop+btf, bbot-btf,-1);
+  // Flange welds — along beam flange inner face, next to plate
   const fwLen=70;
-  const wldFlg = weldH(cFaceX, cFaceX+fwLen, btop+btf,-1) +   // top flange
-                 weldH(cFaceX, cFaceX+fwLen, bbot-btf, 1);    // bot flange
+  const wldFlg = weldH(wwx, wwx+fwLen, btop+btf,-1) +
+                 weldH(wwx, wwx+fwLen, bbot-btf, 1);
 
-  // ─── BOLTS (4 off, 2 above + 2 below beam CL) ───────────
-  const e1=35, p1=60, gap_mid=90;            // larger centre gap typical
+  // ─── BOLTS (4 off, 2 above + 2 below CL) ───────────
+  const e1=40, p1=70;
   const boltX=px+ptk/2;
   const bY=[btop+e1, btop+e1+p1, bbot-e1-p1, bbot-e1];
   const bolts=bY.map(y=>bolt(boltX,y)).join('');
 
-  // ─── DIMENSIONS ────────────────────────────────────────
+  // ─── DIMENSIONS ───────────────────────────────────
   const dimsR =
-    dimV(bx+blen+18, btop, bY[0], 'e₁', bx+blen+30) +
-    dimV(bx+blen+18, bY[0], bY[1], 'p₁', bx+blen+30) +
-    dimV(bx+blen+18, bY[1], bY[2], 'p', bx+blen+30) +
-    dimV(bx+blen+18, bY[2], bY[3], 'p₁', bx+blen+30) +
-    dimV(bx+blen+18, bY[3], bbot, 'e₁', bx+blen+30) +
-    dimV(bx+blen+62, btop, bbot, 'h_p = d', bx+blen+82);
-  const dimsL =
-    dimV(ccx-cbf/2-14, btop, btop+btf, 't_f', ccx-cbf/2-28);
+    dimV(bx+blen+20, btop, bY[0], 'e₁', bx+blen+32) +
+    dimV(bx+blen+20, bY[0], bY[1], 'p₁', bx+blen+32) +
+    dimV(bx+blen+20, bY[1], bY[2], 'p', bx+blen+32) +
+    dimV(bx+blen+20, bY[2], bY[3], 'p₁', bx+blen+32) +
+    dimV(bx+blen+20, bY[3], bbot, 'e₁', bx+blen+32) +
+    dimV(bx+blen+64, btop, bbot, 'h_p = d', bx+blen+84);
 
-  // ─── LABELS & CALLOUTS ────────────────────────────────
+  // ─── LABELS & CALLOUTS ───────────────────────────
   const labs =
-    `<text ${D.txt} x="${ccx}" y="${btop/2+4}" text-anchor="middle">Column</text>
-     <text ${D.sml} x="${ccx}" y="${btop/2+18}" text-anchor="middle">(supporting)</text>` +
-    // End plate callout (leader from plate edge out to the left, well below column label)
-    `<line x1="${px-2}" y1="${btop+40}" x2="${ccx-cbf/2-8}" y2="${btop+70}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.txt} x="${ccx-cbf/2-12}" y="${btop+66}" text-anchor="end">End plate</text>
-     <text ${D.sml} x="${ccx-cbf/2-12}" y="${btop+78}" text-anchor="end">(full depth)</text>` +
-    // Beam label
-    label(bx+blen-8, btop-10, 'Beam (supported)', 'end') +
-    // Weld callouts — web weld (below beam), flange weld (above top flange)
-    `<line x1="${cFaceX+2}" y1="${bcy}" x2="${ccx-cbf/2-8}" y2="${H-8}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${ccx-cbf/2-12}" y="${H-22}" text-anchor="end">Web weld</text>
-     <text ${D.sml} x="${ccx-cbf/2-12}" y="${H-10}" text-anchor="end">(double fillet, both sides)</text>` +
-    `<line x1="${cFaceX+fwLen/2}" y1="${btop+btf+4}" x2="${cFaceX+fwLen+40}" y2="${btop-32}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${cFaceX+fwLen+44}" y="${btop-36}">Flange weld</text>
-     <text ${D.sml} x="${cFaceX+fwLen+44}" y="${btop-24}">(top + bottom, one side)</text>` +
-    `<text ${D.sml} x="${boltX+120}" y="${bbot+28}" text-anchor="middle">4 × bolts Grade 8.8</text>`;
+    `<text ${D.txt} x="${ccx}" y="${bbot+60}" text-anchor="middle">Primary beam</text>
+     <text ${D.sml} x="${ccx}" y="${bbot+74}" text-anchor="middle">(supporting)</text>` +
+    `<text ${D.txt} x="${bx+blen-10}" y="${bbot+60}" text-anchor="end">Secondary beam</text>
+     <text ${D.sml} x="${bx+blen-10}" y="${bbot+74}" text-anchor="end">(supported)</text>` +
+    // End plate callout
+    `<line x1="${px+ptk-2}" y1="${btop+bd*0.28}" x2="${px+ptk+80}" y2="${btop+bd*0.15}" stroke="#555" stroke-width="0.7"/>
+     <text ${D.sml} x="${px+ptk+84}" y="${btop+bd*0.15+4}">End plate (full depth)</text>` +
+    // Web weld callout
+    `<line x1="${wwx+4}" y1="${bcy}" x2="${wwx+100}" y2="${bcy+40}" stroke="#555" stroke-width="0.7"/>
+     <text ${D.sml} x="${wwx+104}" y="${bcy+44}">Web weld (both sides)</text>` +
+    // Flange weld callout
+    `<line x1="${wwx+fwLen/2}" y1="${btop+btf+2}" x2="${wwx+fwLen+50}" y2="${btop-26}" stroke="#555" stroke-width="0.7"/>
+     <text ${D.sml} x="${wwx+fwLen+54}" y="${btop-28}">Flange weld</text>` +
+    `<text ${D.sml} x="${boltX+140}" y="${bbot+100}" text-anchor="middle">4 bolts, Grade 8.8</text>`;
 
-  // ─── APPLIED SHEAR V_Ed (vertical) ────────────────────
-  const fax=bx+blen-100;
+  // ─── APPLIED SHEAR V_Ed ─────────────────────────
+  const fax=bx+blen-130;
   const force =
-    `<line x1="${fax}" y1="${bcy-100}" x2="${fax}" y2="${bcy+btf/2}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
+    `<line x1="${fax}" y1="${bcy-110}" x2="${fax}" y2="${bcy+btf/2}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
      <text ${D.grn} x="${fax+10}" y="${bcy-30}">V_Ed</text>`;
 
   return s + col + topFlg + web + botFlg + plate + wldWeb + wldFlg + bolts +
-         dimsR + dimsL + labs + force + '</svg>';
+         dimsR + labs + force + '</svg>';
 }
 
 function diagCleat(){
-  // Double Angle Cleat connection — EC3-1-8 / ECCS Pub.126.
-  // Pair of equal-leg angle cleats: outstanding legs bolted to the column flange,
-  // web legs bolted through the beam web. No site welding. P358 does NOT cover
-  // this connection type — checks based on EC3-1-8.
-  const W=620, H=420;
+  // Double Angle Cleat — pure ELEVATION view (per reference drawing).
+  // Primary beam (supporting) drawn end-on as I-section. Cleats seen edge-on
+  // as two thin vertical rectangles (outstanding leg + web leg edge). The
+  // two bolt columns (support bolts + web bolts) are the main features.
+  // Secondary beam behind, notched top flange. Not covered by P358.
+  const W=620, H=460;
   const s=svgStart(W,H);
 
-  // ─── SUPPORTING COLUMN ─────────────────────────────────
-  const ccx=70, cbf=110, ctf=18, ctw=16;
-  const cFaceX=ccx+cbf/2;                   // right flange face = 125
+  // ─── PRIMARY BEAM (end-on) ─────────────────────────────
+  const ccx=100, cbf=160, ctf=20, ctw=14;
+  const cFaceX=ccx+cbf/2;
   const col =
     `<rect x="${ccx-cbf/2}" y="0" width="${cbf}" height="${ctf}" ${D.sec}/>
      <rect x="${ccx-ctw/2}" y="${ctf}" width="${ctw}" height="${H-2*ctf}" ${D.web}/>
      <rect x="${ccx-cbf/2}" y="${H-ctf}" width="${cbf}" height="${ctf}" ${D.sec}/>`;
 
-  // ─── BEAM (with small clearance from column face) ─────
-  const gh=12, bx=cFaceX+gh;
-  const bcy=H/2;
-  const bd=220, btf=18;
-  const blen=W-bx-12;
+  // ─── CLEAT & BOLT SIZING ─────────────────────────────
+  // Reference shows 4 support bolts + 4 web bolts at same vertical positions
+  const n=4, e1=35, p1=55;
+  const Lout = 2*e1 + (n-1)*p1;              // cleat length = 235
+  const bcy = H/2;
+  const cTop = bcy - Lout/2;
+  const cBot = bcy + Lout/2;
+  const tc = 10;                              // cleat thickness in elevation
+
+  // ─── SECONDARY BEAM (behind, notched) ────────────────
+  const btf=18;
+  const ndn=32;                               // top-flange notch depth
+  const bd = Lout + 2*25 + btf;               // ensure cleats fit with clearance
   const btop=bcy-bd/2, bbot=bcy+bd/2;
-  const topFlg=`<rect x="${bx}" y="${btop}" width="${blen}" height="${btf}" ${D.sec}/>`;
+  const bx=cFaceX;                            // beam flush with primary beam
+  const blen=W-bx-16;
+  const cleatLen = 55;                        // web-leg length (horizontal extent)
+  const nln = cleatLen + 20;                  // notch length just past cleats
+  // Beam web outline with top-flange notch
+  const webPoly =
+    `<polygon points="
+       ${bx},${btop+ndn}
+       ${bx+nln},${btop+ndn}
+       ${bx+nln},${btop+btf}
+       ${bx+blen},${btop+btf}
+       ${bx+blen},${bbot-btf}
+       ${bx},${bbot-btf}" ${D.web}/>`;
+  const topFlg=`<rect x="${bx+nln}" y="${btop}" width="${blen-nln}" height="${btf}" ${D.sec}/>`;
   const botFlg=`<rect x="${bx}" y="${bbot-btf}" width="${blen}" height="${btf}" ${D.sec}/>`;
-  const web    =`<rect x="${bx}" y="${btop+btf}" width="${blen}" height="${bd-2*btf}" ${D.web}/>`;
+  const notchLine =
+    `<polyline points="${bx},${btop+ndn} ${bx+nln},${btop+ndn} ${bx+nln},${btop}"
+       fill="none" stroke="#1a1a1a" stroke-width="1.6"/>`;
+  const beam = topFlg + webPoly + botFlg + notchLine;
 
-  // ─── ANGLE CLEAT (near side, drawn solid) ─────────────
-  // Outstanding leg vertical against column flange; web leg horizontal into the
-  // web gap region. Cleats sit between the flanges.
-  const tc=10;
-  const Lout=130;                            // outstanding leg length (vertical)
-  const Lweb=78;                             // web-leg projection (horizontal)
-  const cTop=bcy-Lout/2;
-  // Outstanding leg: thin vertical rectangle against column flange
-  const outLeg=`<rect x="${cFaceX}" y="${cTop}" width="${tc}" height="${Lout}" ${D.plt}/>`;
-  // Web leg (near-side) — horizontal, ABOVE the beam web centre
-  const webLegN=`<rect x="${cFaceX+tc}" y="${bcy-tc-5}" width="${Lweb}" height="${tc}" ${D.plt}/>`;
-  // Far-side cleat (dashed, offset ×2 for clarity) — BELOW beam CL
-  const outLegFar=
-    `<rect x="${cFaceX+6}" y="${cTop+6}" width="${tc}" height="${Lout}"
-       fill="none" stroke="#888" stroke-width="1" stroke-dasharray="4,3"/>`;
-  const webLegFar=
-    `<rect x="${cFaceX+tc+6}" y="${bcy+5}" width="${Lweb}" height="${tc}"
-       fill="none" stroke="#888" stroke-width="1" stroke-dasharray="4,3"/>`;
+  // ─── CLEAT (elevation: thin rectangle seen edge-on) ───
+  // In pure elevation, you see just the edge of the outstanding leg, which is
+  // a thin vertical rectangle right at the primary beam face.
+  const cleat = `<rect x="${cFaceX}" y="${cTop}" width="${tc}" height="${Lout}" ${D.plt}/>`;
 
-  // ─── BOLTS ────────────────────────────────────────────
-  // Support bolts through outstanding leg + column flange (3 bolts vertical)
-  const sbx=cFaceX+tc/2;
-  const sbY=[cTop+22, cTop+Lout/2, cTop+Lout-22];
-  const sbolts=sbY.map(y=>bolt(sbx,y)).join('');
-  // Web bolts — through BOTH cleats' web legs AND beam web (horizontal, 2 bolts)
-  // Positioned ON beam CL (average of near cleat above CL and far cleat below CL)
-  const wby=bcy;
-  const wbX=[cFaceX+tc+22, cFaceX+tc+Lweb-18];
-  const wbolts=wbX.map(x=>bolt(x,wby)).join('');
+  // ─── TWO BOLT COLUMNS (matches reference) ────────────
+  // Support bolts — go through cleat outstanding leg + primary beam flange
+  const sbx = cFaceX + tc/2;
+  const bY = [];
+  for(let i=0;i<n;i++) bY.push(cTop + e1 + i*p1);
+  const sbolts = bY.map(y=>bolt(sbx,y)).join('');
+  // Web bolts — go through cleat web leg + secondary beam web, offset right
+  const wbx = cFaceX + tc + cleatLen - 18;
+  const wbolts = bY.map(y=>bolt(wbx,y)).join('');
 
-  // ─── DIMENSIONS ──────────────────────────────────────
-  // Left side of column: e1, p1, p1, e1 between support bolts + L_out overall
-  const dimsR =
-    dimV(cFaceX-22, cTop, sbY[0], 'e₁', cFaceX-36) +
-    dimV(cFaceX-22, sbY[0], sbY[1], 'p₁', cFaceX-36) +
-    dimV(cFaceX-22, sbY[1], sbY[2], 'p₁', cFaceX-36) +
-    dimV(cFaceX-22, sbY[2], cTop+Lout, 'e₁', cFaceX-36) +
-    dimV(cFaceX-58, cTop, cTop+Lout, 'L_out', cFaceX-74);
+  // ─── DIMENSIONS ────────────────────────────────────
+  let dims =
+    dimV(cFaceX-22, cTop, bY[0], 'e₁', cFaceX-34);
+  for(let i=0;i<n-1;i++){
+    dims += dimV(cFaceX-22, bY[i], bY[i+1], 'p₁', cFaceX-34);
+  }
+  dims += dimV(cFaceX-22, bY[n-1], cBot, 'e₁', cFaceX-34) +
+          dimV(cFaceX-64, cTop, cBot, 'L_cleat', cFaceX-80) +
+          dimH(sbx, wbx, bbot+28, 'gauge', bbot+40);
 
-  // ─── LABELS & CALLOUTS ──────────────────────────────
+  // ─── LABELS & CALLOUTS ────────────────────────────
   const labs =
-    `<text ${D.txt} x="${ccx}" y="${btop/2+4}" text-anchor="middle">Column</text>
-     <text ${D.sml} x="${ccx}" y="${btop/2+18}" text-anchor="middle">(supporting)</text>` +
-    label(bx+blen-8, btop-10, 'Beam (supported)', 'end') +
+    // Primary beam label — below everything in clear area
+    `<text ${D.txt} x="${ccx}" y="${H-20}" text-anchor="middle">Primary beam</text>
+     <text ${D.sml} x="${ccx}" y="${H-6}" text-anchor="middle">(supporting)</text>` +
+    label(bx+blen-8, btop-28, 'Secondary beam', 'end') +
+    slabel(bx+blen-8, btop-16, '(notched UB)', 'end') +
     // Cleat callout
-    `<line x1="${cFaceX+tc+Lweb+4}" y1="${bcy-tc/2}" x2="${cFaceX+tc+Lweb+60}" y2="${btop-16}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.txt} x="${cFaceX+tc+Lweb+64}" y="${btop-20}">Angle cleats × 2</text>
-     <text ${D.sml} x="${cFaceX+tc+Lweb+64}" y="${btop-8}">(near side solid,</text>
-     <text ${D.sml} x="${cFaceX+tc+Lweb+64}" y="${btop+3}">far side dashed)</text>` +
-    // Support bolts callout
-    slabel(sbx-30, cTop-6, 'support bolts', 'end') +
-    `<line x1="${sbx-8}" y1="${sbY[0]}" x2="${sbx-28}" y2="${cTop-14}" stroke="#555" stroke-width="0.7"/>` +
+    `<line x1="${cFaceX+tc+2}" y1="${cTop+6}" x2="${cFaceX+tc+90}" y2="${btop-22}" stroke="#555" stroke-width="0.7"/>
+     <text ${D.txt} x="${cFaceX+tc+94}" y="${btop-26}">Angle cleats × 2</text>
+     <text ${D.sml} x="${cFaceX+tc+94}" y="${btop-14}">(N/S and F/S)</text>` +
+    // Support bolts callout — leader going UP-LEFT into clear area above primary beam
+    `<line x1="${sbx-6}" y1="${bY[0]}" x2="${sbx-60}" y2="${btop-40}" stroke="#555" stroke-width="0.7"/>
+     <text ${D.sml} x="${sbx-64}" y="${btop-44}" text-anchor="end">support bolts</text>
+     <text ${D.sml} x="${sbx-64}" y="${btop-32}" text-anchor="end">(cleats to primary beam)</text>` +
     // Web bolts callout
-    slabel(wbX[1]+14, bbot+22, 'web bolts') +
-    `<line x1="${wbX[1]+4}" y1="${wby+6}" x2="${wbX[1]+14}" y2="${bbot+20}" stroke="#555" stroke-width="0.7"/>` +
+    `<line x1="${wbx+6}" y1="${bY[n-1]}" x2="${wbx+60}" y2="${bbot+6}" stroke="#555" stroke-width="0.7"/>
+     <text ${D.sml} x="${wbx+64}" y="${bbot+10}">web bolts</text>
+     <text ${D.sml} x="${wbx+64}" y="${bbot+22}">(cleats to secondary beam)</text>` +
     // "No site welds" pill
-    `<rect x="${bx+blen-130}" y="${bbot+20}" width="120" height="18" rx="3"
+    `<rect x="${bx+blen-130}" y="${bbot+60}" width="120" height="18" rx="3"
        fill="#f0f9f2" stroke="#1a5e28" stroke-width="0.8"/>
-     <text ${D.sml} x="${bx+blen-70}" y="${bbot+33}" text-anchor="middle"
+     <text ${D.sml} x="${bx+blen-70}" y="${bbot+73}" text-anchor="middle"
        style="fill:#1a5e28;font-weight:600">No site welds</text>`;
 
-  // ─── APPLIED SHEAR V_Ed ────────────────────────────
-  const fax=bx+blen-180;
+  // ─── APPLIED SHEAR V_Ed ────────────────────────
+  const fax=bx+blen-200;
   const force =
-    `<line x1="${fax}" y1="${bcy-90}" x2="${fax}" y2="${bcy+btf/2}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
+    `<line x1="${fax}" y1="${bcy-100}" x2="${fax}" y2="${bcy+btf/2}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
      <text ${D.grn} x="${fax+10}" y="${bcy-30}">V_Ed</text>`;
 
-  return s + col + topFlg + web + botFlg + outLegFar + webLegFar + outLeg + webLegN +
-         sbolts + wbolts + dimsR + labs + force + '</svg>';
+  return s + col + beam + cleat + sbolts + wbolts + dims + labs + force + '</svg>';
 }
 
 function diagSCleat(){
@@ -956,167 +975,200 @@ function diagSCleat(){
   // Single angle: outstanding leg bolted to column flange, web leg bolted through
   // beam web. Whole connection carries full V_Ed on a single plane — limits
   // capacity vs double cleat. Not covered by P358.
-  const W=620, H=420;
+  const W=620, H=460;
   const s=svgStart(W,H);
 
-  // ─── SUPPORTING COLUMN ─────────────────────────────────
-  const ccx=70, cbf=110, ctf=18, ctw=16;
+  // ─── PRIMARY BEAM (end-on) ───────────────────────────
+  const ccx=100, cbf=160, ctf=20, ctw=14;
   const cFaceX=ccx+cbf/2;
   const col =
     `<rect x="${ccx-cbf/2}" y="0" width="${cbf}" height="${ctf}" ${D.sec}/>
      <rect x="${ccx-ctw/2}" y="${ctf}" width="${ctw}" height="${H-2*ctf}" ${D.web}/>
      <rect x="${ccx-cbf/2}" y="${H-ctf}" width="${cbf}" height="${ctf}" ${D.sec}/>`;
 
-  // ─── BEAM ──────────────────────────────────────────────
-  const gh=12, bx=cFaceX+gh;
-  const bcy=H/2;
-  const bd=220, btf=18;
-  const blen=W-bx-12;
+  // ─── CLEAT & BOLT SIZING ────────────────────────────
+  const n=4, e1=35, p1=55;
+  const Lout = 2*e1 + (n-1)*p1;
+  const bcy = H/2;
+  const cTop = bcy - Lout/2, cBot = bcy + Lout/2;
+  const tc = 10;
+
+  // ─── SECONDARY BEAM ─────────────────────────────────
+  const btf=18;
+  const ndn=32;
+  const bd = Lout + 2*25 + btf;
   const btop=bcy-bd/2, bbot=bcy+bd/2;
-  const topFlg=`<rect x="${bx}" y="${btop}" width="${blen}" height="${btf}" ${D.sec}/>`;
+  const bx=cFaceX;
+  const blen=W-bx-16;
+  const cleatLen = 55;
+  const nln = cleatLen + 20;
+  const webPoly =
+    `<polygon points="
+       ${bx},${btop+ndn}
+       ${bx+nln},${btop+ndn}
+       ${bx+nln},${btop+btf}
+       ${bx+blen},${btop+btf}
+       ${bx+blen},${bbot-btf}
+       ${bx},${bbot-btf}" ${D.web}/>`;
+  const topFlg=`<rect x="${bx+nln}" y="${btop}" width="${blen-nln}" height="${btf}" ${D.sec}/>`;
   const botFlg=`<rect x="${bx}" y="${bbot-btf}" width="${blen}" height="${btf}" ${D.sec}/>`;
-  const web    =`<rect x="${bx}" y="${btop+btf}" width="${blen}" height="${bd-2*btf}" ${D.web}/>`;
+  const notchLine =
+    `<polyline points="${bx},${btop+ndn} ${bx+nln},${btop+ndn} ${bx+nln},${btop}"
+       fill="none" stroke="#1a1a1a" stroke-width="1.6"/>`;
+  const beam = topFlg + webPoly + botFlg + notchLine;
 
-  // ─── SINGLE ANGLE CLEAT ─────────────────────────────
-  const tc=10, Lout=130, Lweb=78;
-  const cTop=bcy-Lout/2;
-  const outLeg=`<rect x="${cFaceX}" y="${cTop}" width="${tc}" height="${Lout}" ${D.plt}/>`;
-  const webLeg=`<rect x="${cFaceX+tc}" y="${bcy-tc/2}" width="${Lweb}" height="${tc}" ${D.plt}/>`;
+  // ─── SINGLE CLEAT (edge-on in elevation) ────────────
+  const cleat = `<rect x="${cFaceX}" y="${cTop}" width="${tc}" height="${Lout}" ${D.plt}/>`;
 
-  // ─── BOLTS ──────────────────────────────────────────
-  const sbx=cFaceX+tc/2;
-  const sbY=[cTop+22, cTop+Lout/2, cTop+Lout-22];
-  const sbolts=sbY.map(y=>bolt(sbx,y)).join('');
-  const wbY=bcy;
-  const wbX=[cFaceX+tc+22, cFaceX+tc+Lweb-18];
-  const wbolts=wbX.map(x=>bolt(x,wbY)).join('');
+  // ─── TWO BOLT COLUMNS ──────────────────────────────
+  const sbx = cFaceX + tc/2;
+  const bY = [];
+  for(let i=0;i<n;i++) bY.push(cTop + e1 + i*p1);
+  const sbolts = bY.map(y=>bolt(sbx,y)).join('');
+  const wbx = cFaceX + tc + cleatLen - 18;
+  const wbolts = bY.map(y=>bolt(wbx,y)).join('');
 
   // ─── DIMENSIONS ────────────────────────────────────
-  const dimsR =
-    dimV(cFaceX-22, cTop, sbY[0], 'e₁', cFaceX-36) +
-    dimV(cFaceX-22, sbY[0], sbY[1], 'p₁', cFaceX-36) +
-    dimV(cFaceX-22, sbY[1], sbY[2], 'p₁', cFaceX-36) +
-    dimV(cFaceX-22, sbY[2], cTop+Lout, 'e₁', cFaceX-36) +
-    dimV(cFaceX-58, cTop, cTop+Lout, 'L_out', cFaceX-74);
+  let dims =
+    dimV(cFaceX-22, cTop, bY[0], 'e₁', cFaceX-34);
+  for(let i=0;i<n-1;i++){
+    dims += dimV(cFaceX-22, bY[i], bY[i+1], 'p₁', cFaceX-34);
+  }
+  dims += dimV(cFaceX-22, bY[n-1], cBot, 'e₁', cFaceX-34) +
+          dimV(cFaceX-64, cTop, cBot, 'L_cleat', cFaceX-80) +
+          dimH(sbx, wbx, bbot+28, 'gauge', bbot+40);
 
   // ─── LABELS & CALLOUTS ────────────────────────────
   const labs =
-    `<text ${D.txt} x="${ccx}" y="${btop/2+4}" text-anchor="middle">Column</text>
-     <text ${D.sml} x="${ccx}" y="${btop/2+18}" text-anchor="middle">(supporting)</text>` +
-    label(bx+blen-8, btop-10, 'Beam (supported)', 'end') +
-    `<line x1="${cFaceX+tc+Lweb+4}" y1="${bcy}" x2="${cFaceX+tc+Lweb+60}" y2="${btop-16}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.txt} x="${cFaceX+tc+Lweb+64}" y="${btop-20}">Single angle cleat</text>
-     <text ${D.sml} x="${cFaceX+tc+Lweb+64}" y="${btop-8}">(one side only)</text>` +
-    slabel(sbx-30, cTop-6, 'support bolts', 'end') +
-    `<line x1="${sbx-8}" y1="${sbY[0]}" x2="${sbx-28}" y2="${cTop-14}" stroke="#555" stroke-width="0.7"/>` +
-    slabel(wbX[1]+14, bbot+22, 'web bolts') +
-    `<line x1="${wbX[1]+4}" y1="${wbY+6}" x2="${wbX[1]+14}" y2="${bbot+20}" stroke="#555" stroke-width="0.7"/>` +
+    `<text ${D.txt} x="${ccx}" y="${H-20}" text-anchor="middle">Primary beam</text>
+     <text ${D.sml} x="${ccx}" y="${H-6}" text-anchor="middle">(supporting)</text>` +
+    label(bx+blen-8, btop-28, 'Secondary beam', 'end') +
+    slabel(bx+blen-8, btop-16, '(notched UB)', 'end') +
+    `<line x1="${cFaceX+tc+2}" y1="${cTop+6}" x2="${cFaceX+tc+90}" y2="${btop-22}" stroke="#555" stroke-width="0.7"/>
+     <text ${D.txt} x="${cFaceX+tc+94}" y="${btop-26}">Single angle cleat</text>
+     <text ${D.sml} x="${cFaceX+tc+94}" y="${btop-14}">(one side only)</text>` +
+    `<line x1="${sbx-6}" y1="${bY[0]}" x2="${sbx-60}" y2="${btop-40}" stroke="#555" stroke-width="0.7"/>
+     <text ${D.sml} x="${sbx-64}" y="${btop-44}" text-anchor="end">support bolts</text>` +
+    `<line x1="${wbx+6}" y1="${bY[n-1]}" x2="${wbx+60}" y2="${bbot+6}" stroke="#555" stroke-width="0.7"/>
+     <text ${D.sml} x="${wbx+64}" y="${bbot+10}">web bolts</text>` +
     // Capacity warning pill
-    `<rect x="${bx+blen-170}" y="${bbot+18}" width="160" height="18" rx="3"
+    `<rect x="${bx+blen-170}" y="${bbot+60}" width="160" height="18" rx="3"
        fill="#fff8ed" stroke="#c47a0a" stroke-width="0.8"/>
-     <text ${D.sml} x="${bx+blen-90}" y="${bbot+31}" text-anchor="middle"
+     <text ${D.sml} x="${bx+blen-90}" y="${bbot+73}" text-anchor="middle"
        style="fill:#c47a0a;font-weight:600">Full V on one cleat</text>`;
 
   // ─── APPLIED SHEAR V_Ed ─────────────────────────
+  // ─── APPLIED SHEAR V_Ed ─────────────────────────
   const fax=bx+blen-190;
   const force =
-    `<line x1="${fax}" y1="${bcy-90}" x2="${fax}" y2="${bcy+btf/2}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
+    `<line x1="${fax}" y1="${bcy-100}" x2="${fax}" y2="${bcy+btf/2}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
      <text ${D.grn} x="${fax+10}" y="${bcy-30}">V_Ed</text>`;
 
-  return s + col + topFlg + web + botFlg + outLeg + webLeg +
-         sbolts + wbolts + dimsR + labs + force + '</svg>';
+  return s + col + beam + cleat + sbolts + wbolts + dims + labs + force + '</svg>';
 }
 
 function diagSplice(){
-  // Column Splice connection — SCI P358 §6 elevation.
-  // Bolted bearing splice: upper column sits on a finished bearing surface with
-  // a small gap to the lower column. Cover plates bolted to each flange (pair)
-  // and to the web (pair). Transfers axial force, shear and nominal moment from
-  // construction eccentricity.
-  const W=620, H=460;
+  // Column Splice — SCI P358 §6 ELEVATION looking at the column web side.
+  // Column runs vertically. Bearing interface at mid-height (thin horizontal
+  // gap). Flange cover plates visible as thin strips on LEFT & RIGHT of the
+  // column body; Web cover plate visible as a wider plate on the column CL.
+  // Break lines top and bottom indicate column continues.
+  const W=580, H=520;
   const s=svgStart(W,H);
 
+  // ─── COLUMN BODY (as seen on web face — flange depth × height) ──
+  // "Column depth" = horizontal extent (flange-to-flange); flanges seen at
+  // the left and right edges as thin vertical strips.
   const cx=W/2;
-  const ctf=18, ctw=12, cbf=140;
-  const gap=12;                               // bearing gap
-  const upBot=H/2-gap/2;
-  const loTop=H/2+gap/2;
+  const cWidth=160;                          // flange depth (horizontal extent)
+  const ctf=16;                              // flange width (seen edge-on, thin)
+  const cLeft=cx-cWidth/2, cRight=cx+cWidth/2;
+  const colTop=40, colBot=H-40;
+  const gap=12;                              // bearing gap at mid-height
+  const midY=H/2;
+  const upBot=midY-gap/2, loTop=midY+gap/2;
 
-  // ─── UPPER COLUMN ──────────────────────────────────
-  const upper =
-    `<rect x="${cx-cbf/2}" y="10" width="${cbf}" height="${ctf}" ${D.sec}/>
-     <rect x="${cx-ctw/2}" y="${10+ctf}" width="${ctw}" height="${upBot-10-ctf-ctf}" ${D.web}/>
-     <rect x="${cx-cbf/2}" y="${upBot-ctf}" width="${cbf}" height="${ctf}" ${D.sec}/>`;
+  // Column body — draw as solid rectangles (upper + lower, with flanges darker)
+  const colUpper =
+    `<rect x="${cLeft}" y="${colTop}" width="${cWidth}" height="${upBot-colTop}" ${D.web}/>
+     <rect x="${cLeft}" y="${colTop}" width="${ctf}" height="${upBot-colTop}" ${D.sec}/>
+     <rect x="${cRight-ctf}" y="${colTop}" width="${ctf}" height="${upBot-colTop}" ${D.sec}/>`;
+  const colLower =
+    `<rect x="${cLeft}" y="${loTop}" width="${cWidth}" height="${colBot-loTop}" ${D.web}/>
+     <rect x="${cLeft}" y="${loTop}" width="${ctf}" height="${colBot-loTop}" ${D.sec}/>
+     <rect x="${cRight-ctf}" y="${loTop}" width="${ctf}" height="${colBot-loTop}" ${D.sec}/>`;
 
-  // ─── LOWER COLUMN ──────────────────────────────────
-  const lower =
-    `<rect x="${cx-cbf/2}" y="${loTop}" width="${cbf}" height="${ctf}" ${D.sec}/>
-     <rect x="${cx-ctw/2}" y="${loTop+ctf}" width="${ctw}" height="${H-10-loTop-ctf-ctf}" ${D.web}/>
-     <rect x="${cx-cbf/2}" y="${H-10-ctf}" width="${cbf}" height="${ctf}" ${D.sec}/>`;
-
-  // ─── BEARING INTERFACE (between columns) ──────────
+  // ─── BEARING INTERFACE ─────────────────────────────
   const bearing =
-    `<line x1="${cx-cbf/2-14}" y1="${upBot}" x2="${cx+cbf/2+14}" y2="${upBot}"
-       stroke="#555" stroke-width="0.8" stroke-dasharray="6,3"/>
-     <line x1="${cx-cbf/2-14}" y1="${loTop}" x2="${cx+cbf/2+14}" y2="${loTop}"
-       stroke="#555" stroke-width="0.8" stroke-dasharray="6,3"/>`;
+    `<line x1="${cLeft-20}" y1="${upBot}" x2="${cRight+20}" y2="${upBot}"
+       stroke="#444" stroke-width="1"/>
+     <line x1="${cLeft-20}" y1="${loTop}" x2="${cRight+20}" y2="${loTop}"
+       stroke="#444" stroke-width="1"/>`;
 
-  // ─── WEB COVER PLATES (near + far, pair either side of web) ─
-  const wph=110, wpw=10;
-  const wpy=H/2-wph/2;
-  const wpxL=cx-ctw/2-wpw, wpxR=cx+ctw/2;
-  const webPlates=
-    `<rect x="${wpxL}" y="${wpy}" width="${wpw}" height="${wph}" ${D.plt}/>
-     <rect x="${wpxR}" y="${wpy}" width="${wpw}" height="${wph}" ${D.plt}/>`;
-  // Web bolts: 2 above + 2 below splice line, through both plates and web
-  const wbxL=wpxL+wpw/2, wbxR=wpxR+wpw/2;
-  const wbyT1=H/2-35, wbyT2=H/2-15;
-  const wbyB1=H/2+15, wbyB2=H/2+35;
-  const webBolts=[wbyT1,wbyT2,wbyB1,wbyB2].map(y=>bolt(wbxL,y)+bolt(wbxR,y)).join('');
+  // ─── BREAK SYMBOLS at top and bottom of column ─────
+  const brk = (y)=>
+    `<polyline points="${cLeft},${y} ${cLeft+cWidth*0.2},${y-8} ${cLeft+cWidth*0.4},${y+8} ${cLeft+cWidth*0.6},${y-8} ${cLeft+cWidth*0.8},${y+8} ${cRight},${y}"
+      fill="none" stroke="#1a1a1a" stroke-width="1.2"/>`;
+  const breaks = brk(colTop) + brk(colBot);
 
-  // ─── FLANGE COVER PLATES (outside face, top + bottom) ─
-  const fpw=cbf*0.75, fph=10;
-  const fpx1=cx-fpw/2;
-  const fpyT=upBot-ctf-fph-1, fpyB=loTop+ctf+1;
+  // ─── WEB COVER PLATE (centre of column, spans bearing gap) ─
+  const wph=140, wpw=60;
+  const wpy=midY-wph/2;
+  const wpx=cx-wpw/2;
+  const webPlate=`<rect x="${wpx}" y="${wpy}" width="${wpw}" height="${wph}" ${D.plt}/>`;
+  // Web bolts: 2×2 above splice + 2×2 below splice (4 total in 2 columns)
+  const wbxL=wpx+14, wbxR=wpx+wpw-14;
+  const wbYsT=[midY-50, midY-22];
+  const wbYsB=[midY+22, midY+50];
+  const webBolts =
+    wbYsT.concat(wbYsB).map(y=>bolt(wbxL,y)+bolt(wbxR,y)).join('');
+
+  // ─── FLANGE COVER PLATES (on LEFT and RIGHT column edges) ─
+  const fph=wph, fpw=22;
+  const fpy=midY-fph/2;
+  const fpL=cLeft-fpw/2;                     // straddles left flange
+  const fpR=cRight-fpw/2;
   const flgPlates=
-    `<rect x="${fpx1}" y="${fpyT}" width="${fpw}" height="${fph}" ${D.plt}/>
-     <rect x="${fpx1}" y="${fpyB}" width="${fpw}" height="${fph}" ${D.plt}/>`;
-  // Flange bolts: 2 up + 2 down on each plate, symmetric about splice
-  const fbxL=fpx1+18, fbxR=fpx1+fpw-18;
-  const fbyT=fpyT+fph/2, fbyB=fpyB+fph/2;
-  const flgBolts=[[fbxL,fbyT],[fbxR,fbyT],[fbxL,fbyB],[fbxR,fbyB]]
-    .map(([x,y])=>bolt(x,y)).join('');
-
-  // ─── APPLIED FORCES (N at top, V horizontal at splice line) ─
-  const force_N=
-    `<line x1="${cx}" y1="${16}" x2="${cx}" y2="${44}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
-     <text ${D.grn} x="${cx+8}" y="${36}">N_Ed</text>`;
-  const force_V=
-    `<line x1="${cx+cbf/2+90}" y1="${H/2}" x2="${cx+cbf/2+24}" y2="${H/2}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
-     <text ${D.grn} x="${cx+cbf/2+94}" y="${H/2+5}">V_Ed</text>`;
+    `<rect x="${fpL}" y="${fpy}" width="${fpw}" height="${fph}" ${D.plt}/>
+     <rect x="${fpR}" y="${fpy}" width="${fpw}" height="${fph}" ${D.plt}/>`;
+  // Flange bolts: 2 above + 2 below on each plate
+  const fbxL=fpL+fpw/2, fbxR=fpR+fpw/2;
+  const fbYs=[midY-50, midY-22, midY+22, midY+50];
+  const flgBolts=fbYs.map(y=>bolt(fbxL,y)+bolt(fbxR,y)).join('');
 
   // ─── DIMENSIONS ────────────────────────────────
   const dims =
-    dimV(cx+cbf/2+14, upBot, loTop, 'gap', cx+cbf/2+40) +
-    dimV(wpxR+wpw+14, wpy, wpy+wph, 'L_cp', wpxR+wpw+32);
+    dimV(cRight+fpw/2+16, upBot, loTop, 'gap', cRight+fpw/2+36) +
+    dimV(cRight+fpw/2+50, wpy, wpy+wph, 'L_cp', cRight+fpw/2+70);
 
   // ─── LABELS & CALLOUTS ───────────────────────
   const labs =
-    label(cx-cbf/2-80, 80, 'Upper column') +
-    label(cx-cbf/2-80, H-80, 'Lower column') +
+    // Upper / Lower column labels
+    `<text ${D.txt} x="${cLeft-80}" y="${colTop+60}" text-anchor="middle">Upper</text>
+     <text ${D.txt} x="${cLeft-80}" y="${colTop+76}" text-anchor="middle">column</text>` +
+    `<text ${D.txt} x="${cLeft-80}" y="${colBot-76}" text-anchor="middle">Lower</text>
+     <text ${D.txt} x="${cLeft-80}" y="${colBot-60}" text-anchor="middle">column</text>` +
     // Web cover plate callout
-    `<line x1="${wpxL-2}" y1="${wpy+10}" x2="${wpxL-36}" y2="${wpy-12}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${wpxL-40}" y="${wpy-15}" text-anchor="end">Web cover plates</text>
-     <text ${D.sml} x="${wpxL-40}" y="${wpy-4}" text-anchor="end">(×2, both sides)</text>` +
+    `<line x1="${wpx-2}" y1="${wpy+10}" x2="${wpx-38}" y2="${wpy-28}" stroke="#555" stroke-width="0.7"/>
+     <text ${D.sml} x="${wpx-42}" y="${wpy-32}" text-anchor="end">Web cover plate</text>
+     <text ${D.sml} x="${wpx-42}" y="${wpy-20}" text-anchor="end">(both sides of web)</text>` +
     // Flange cover plate callout
-    `<line x1="${fpx1+fpw+2}" y1="${fpyT+fph/2}" x2="${fpx1+fpw+36}" y2="${fpyT-14}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${fpx1+fpw+40}" y="${fpyT-17}">Flange cover plates</text>
-     <text ${D.sml} x="${fpx1+fpw+40}" y="${fpyT-6}">(×4 total)</text>` +
-    // Bearing gap callout
-    slabel(cx-cbf/2-14, H/2+3, 'bearing surface', 'end');
+    `<line x1="${fpR+fpw}" y1="${fpy+20}" x2="${fpR+fpw+40}" y2="${fpy-16}" stroke="#555" stroke-width="0.7"/>
+     <text ${D.sml} x="${fpR+fpw+44}" y="${fpy-20}">Flange cover plate</text>
+     <text ${D.sml} x="${fpR+fpw+44}" y="${fpy-8}">(× 4 total, each flange)</text>` +
+    // Bearing surface note
+    `<line x1="${cLeft-4}" y1="${midY}" x2="${cLeft-40}" y2="${midY+30}" stroke="#555" stroke-width="0.7"/>
+     <text ${D.sml} x="${cLeft-44}" y="${midY+34}" text-anchor="end">bearing surface</text>`;
 
-  return s + upper + lower + bearing + webPlates + webBolts + flgPlates + flgBolts +
-         force_N + force_V + dims + labs + '</svg>';
+  // ─── APPLIED FORCES (N, V) ──────────────────
+  const force =
+    `<line x1="${cx}" y1="${8}" x2="${cx}" y2="${colTop-4}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
+     <text ${D.grn} x="${cx+8}" y="${colTop-10}">N_Ed</text>` +
+    `<line x1="${cRight+120}" y1="${midY}" x2="${cRight+fpw/2+100}" y2="${midY}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
+     <text ${D.grn} x="${cRight+124}" y="${midY+5}">V_Ed</text>`;
+
+  return s + colUpper + colLower + bearing + breaks + webPlate + webBolts +
+         flgPlates + flgBolts + dims + labs + force + '</svg>';
 }
 
 function diagBase(){
@@ -1182,152 +1234,186 @@ function diagBase(){
     dimH(bpx, bpx+bpw, cony+conh+22, 'B_p', cony+conh+34) +
     // Base plate thickness (left of plate)
     dimV(bpx-22, bpy, bpy+bph, 't_p', bpx-36) +
-    // Bolt edge distance (ex) — above the base plate
-    dimH(bpx, hdx1, bpy-18, 'e_x', bpy-8);
-
-  // ─── APPLIED FORCES (N, V) ────────────────────────
-  const forces =
-    // Axial N — vertical down at top of column
-    `<line x1="${cx}" y1="4" x2="${cx}" y2="${colTopY-4}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
-     <text ${D.grn} x="${cx+8}" y="${colTopY-8}">N_Ed</text>` +
-    // Shear V — horizontal, applied on column
-    `<line x1="${cx+cbf/2+70}" y1="${colTopY+60}" x2="${cx+cbf/2+10}" y2="${colTopY+60}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
-     <text ${D.grn} x="${cx+cbf/2+74}" y="${colTopY+64}">V_Ed</text>`;
+    // Grout thickness
+    dimV(bpx+bpw+16, grty, grty+grth, '25 grout', bpx+bpw+46);
 
   // ─── LABELS & CALLOUTS ───────────────────────────
   const labs =
     // Column label — mid-column on the left
     label(cx-cbf/2-90, colTopY+100, 'Column') +
-    // Base plate callout — leader from plate top-right, out to the right side
+    // Top-of-foundation symbol (▽ level) + label to the right of foundation
+    `<polygon points="${bpx+bpw+12},${grty+grth+2} ${bpx+bpw+20},${grty+grth+2} ${bpx+bpw+16},${grty+grth+10}"
+       fill="#1a1a1a"/>
+     <line x1="${bpx+bpw+2}" y1="${grty+grth+6}" x2="${bpx+bpw+26}" y2="${grty+grth+6}" stroke="#1a1a1a" stroke-width="0.8"/>
+     <text ${D.sml} x="${bpx+bpw+30}" y="${grty+grth+9}">top of foundation</text>` +
+    // Base plate callout
     `<line x1="${bpx+bpw-20}" y1="${bpy+2}" x2="${bpx+bpw+40}" y2="${bpy-18}" stroke="#555" stroke-width="0.7"/>
      <text ${D.txt} x="${bpx+bpw+44}" y="${bpy-22}">Base plate</text>` +
-    // HD bolt callout — leader from an HD shaft inside concrete out to the left
-    `<line x1="${hdx1-8}" y1="${cony+30}" x2="${hdx1-50}" y2="${cony+50}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${hdx1-54}" y="${cony+54}" text-anchor="end">HD bolts,</text>
-     <text ${D.sml} x="${hdx1-54}" y="${cony+66}" text-anchor="end">cast-in anchors</text>` +
-    // Fillet weld callout — leader from weld corner out to the left, above base plate
+    // HD bolt callout
+    `<line x1="${hdx1-8}" y1="${cony+40}" x2="${hdx1-60}" y2="${cony+60}" stroke="#555" stroke-width="0.7"/>
+     <text ${D.sml} x="${hdx1-64}" y="${cony+64}" text-anchor="end">HD bolts (cast-in),</text>
+     <text ${D.sml} x="${hdx1-64}" y="${cony+76}" text-anchor="end">anchor plate at foot</text>` +
+    // Fillet weld callout
     `<line x1="${cx-cbf/2-2}" y1="${colBotY-2}" x2="${cx-cbf/2-50}" y2="${colBotY-30}" stroke="#555" stroke-width="0.7"/>
      <text ${D.sml} x="${cx-cbf/2-54}" y="${colBotY-34}" text-anchor="end">Fillet weld,</text>
      <text ${D.sml} x="${cx-cbf/2-54}" y="${colBotY-22}" text-anchor="end">leg a_w</text>`;
 
   return s + col + wldCol + basePlate + grout + conc + hdBolts +
-         dims + forces + labs + '</svg>';
+         dims + labs + '</svg>';
 }
 
 function diagBrace(){
-  // Bracing Connection — SCI P358 §8 elevation.
-  // Corner gusset plate welded to the supporting column (vertical) and the
-  // supporting beam (horizontal). Diagonal brace member (flat bar or angle)
-  // bolted to the gusset in a single row at 45°. Eccentricity e taken from the
-  // bolt-group centroid to the intersection of member working axes.
-  const W=640, H=460;
+  // Bracing Connection — per reference drawing.
+  // Column (vertical) on LEFT, beam (horizontal) comes in at the TOP from the
+  // right and is bolted to the column with 3 bolts through a simple shear
+  // connection. Gusset plate sits below the beam bottom flange, welded to the
+  // beam bottom flange and column flange, with a chamfered corner where the
+  // brace (SHS) attaches. SHS brace bolted to gusset with 4 bolts in 2×2.
+  // S.O.P. (Setting Out Point) marked at the intersection of member working
+  // lines (column CL × beam CL × brace CL).
+  const W=680, H=540;
   const s=svgStart(W,H);
 
-  // ─── SUPPORTING BEAM (horizontal, bottom) ─────────────
-  const btf=18, bWeb=40;
-  const bTopY=H-90;                           // top of beam top-flange
-  const bBotY=bTopY+btf+bWeb+btf;             // bottom of beam bottom-flange
-  const beamH =
-    `<rect x="0" y="${bTopY}" width="${W}" height="${btf}" ${D.sec}/>
-     <rect x="0" y="${bTopY+btf}" width="${W}" height="${bWeb}" ${D.web}/>
-     <rect x="0" y="${bTopY+btf+bWeb}" width="${W}" height="${btf}" ${D.sec}/>`;
+  // ─── COLUMN (vertical, left — simple rectangle w/ break lines) ──
+  const ccx=100, cWidth=110;
+  const cLeft=ccx-cWidth/2, cRight=ccx+cWidth/2;
+  const col =
+    `<rect x="${cLeft}" y="0" width="${cWidth}" height="${H}" ${D.web}/>
+     <rect x="${cLeft}" y="0" width="14" height="${H}" ${D.sec}/>
+     <rect x="${cRight-14}" y="0" width="14" height="${H}" ${D.sec}/>`;
+  // Break lines at top & bottom of column
+  const brk = (y)=>
+    `<polyline points="${cLeft-6},${y} ${cLeft+cWidth*0.25},${y-10} ${cLeft+cWidth*0.5},${y+10} ${cLeft+cWidth*0.75},${y-10} ${cRight+6},${y+4}"
+      fill="none" stroke="#1a1a1a" stroke-width="1.2"/>`;
+  const breaks = brk(50) + brk(H-50);
 
-  // ─── SUPPORTING COLUMN (vertical, left) ───────────────
-  const ctf=18, cWeb=44;
-  const cRightX=ctf+cWeb+ctf;                 // right face of column = 80
-  const colV =
-    `<rect x="0" y="0" width="${ctf}" height="${bTopY}" ${D.sec}/>
-     <rect x="${ctf}" y="0" width="${cWeb}" height="${bTopY}" ${D.web}/>
-     <rect x="${ctf+cWeb}" y="0" width="${ctf}" height="${bTopY}" ${D.sec}/>`;
+  // ─── BEAM (horizontal at TOP, coming in from right) ──
+  const btf=18, bd=120;
+  const bTop=140, bBot=bTop+bd;
+  const bcy=(bTop+bBot)/2;
+  const bLeft=cRight;                          // beam flush with column right face
+  const bRight=W-30;                           // beam break at right edge
+  const topFlg=`<rect x="${bLeft}" y="${bTop}" width="${bRight-bLeft}" height="${btf}" ${D.sec}/>`;
+  const botFlg=`<rect x="${bLeft}" y="${bBot-btf}" width="${bRight-bLeft}" height="${btf}" ${D.sec}/>`;
+  const bweb   =`<rect x="${bLeft}" y="${bTop+btf}" width="${bRight-bLeft}" height="${bd-2*btf}" ${D.web}/>`;
+  // Break line on right end of beam
+  const brkB =
+    `<polyline points="${bRight-20},${bTop} ${bRight-14},${bcy-8} ${bRight-2},${bcy+8} ${bRight-14},${bBot}"
+      fill="none" stroke="#1a1a1a" stroke-width="1.2"/>`;
 
-  // ─── GUSSET PLATE (triangle in corner, 45° hypotenuse) ─
-  const gSize=200;                            // equal extents along beam & column
-  const gAx=cRightX,       gAy=bTopY;         // inner corner
-  const gBx=cRightX+gSize, gBy=bTopY;         // along beam
-  const gCx=cRightX,       gCy=bTopY-gSize;   // along column
-  const gusset=`<polygon points="${gAx},${gAy} ${gBx},${gBy} ${gCx},${gCy}" ${D.plt}/>`;
+  // ─── BEAM-TO-COLUMN CONNECTION (3 bolts through column flange) ──
+  const bcBoltX = cRight - 7;                  // bolts in column flange centre
+  const bcBoltsY = [bTop+25, bcy, bBot-25];
+  const bcBolts = bcBoltsY.map(y=>bolt(bcBoltX, y)).join('');
 
-  // ─── GUSSET WELDS ───────────────────────────────────
-  // Fillet weld along beam interface (gusset bottom edge)
-  const wldBeam = weldH(gAx+8, gBx-8, gAy, -1);
-  // Fillet weld along column interface (gusset left edge)
-  const wldCol  = weldTri(gAx, gCy+8, gAy-8, 1);
+  // ─── SETTING OUT POINT (S.O.P.) at column CL × beam CL ──
+  const sopX=ccx, sopY=bcy;
+  const sop =
+    `<circle cx="${sopX}" cy="${sopY}" r="5" fill="white" stroke="#1a1a1a" stroke-width="1.2"/>
+     <line x1="${sopX-7}" y1="${sopY}" x2="${sopX+7}" y2="${sopY}" stroke="#1a1a1a" stroke-width="0.8"/>
+     <line x1="${sopX}" y1="${sopY-7}" x2="${sopX}" y2="${sopY+7}" stroke="#1a1a1a" stroke-width="0.8"/>`;
+  // Column CL (dash-dot vertical) through SOP
+  const colCL =
+    `<line x1="${ccx}" y1="10" x2="${ccx}" y2="${H-10}"
+       stroke="#1a1a1a" stroke-width="0.6" stroke-dasharray="16,3,2,3"/>`;
+  // Beam CL (dash-dot horizontal) through SOP
+  const beamCL =
+    `<line x1="${cLeft-10}" y1="${bcy}" x2="${W-6}" y2="${bcy}"
+       stroke="#1a1a1a" stroke-width="0.6" stroke-dasharray="16,3,2,3"/>`;
 
-  // ─── BRACE AXIS (45° up-right from hypotenuse midpoint) ─
-  // Midpoint of hypotenuse BC, working axis passes through this point.
-  const hmX=(gBx+gCx)/2, hmY=(gBy+gCy)/2;     // hypotenuse midpoint = (200, 270)
-  const cosA=Math.SQRT1_2, sinA=Math.SQRT1_2; // 45°
-  const axDX=cosA, axDY=-sinA;                 // axis unit vector (up-right)
-  const pDX=sinA,  pDY=cosA;                   // perpendicular unit vector
+  // ─── GUSSET PLATE (chamfered rectangle below beam) ──
+  const gTop = bBot;                           // on beam bottom flange
+  const gLeft = cRight;                        // on column right face
+  const gBot = gTop + 180;                     // extent below beam
+  const gRight = gLeft + 220;
+  const chamfer = 100;                          // chamfer on bottom-right corner
+  const gusset =
+    `<polygon points="
+       ${gLeft},${gTop}
+       ${gRight},${gTop}
+       ${gRight},${gBot-chamfer}
+       ${gRight-chamfer},${gBot}
+       ${gLeft},${gBot}" ${D.plt}/>`;
 
-  // ─── BRACE MEMBER ───────────────────────────────────
-  // Flat bar centred on axis, starts just inside gusset, extends up-right.
-  const bw=28, bl=260;
-  // Start 24mm inside the gusset (overlap, so the end is covered)
-  const sX=hmX-24*axDX, sY=hmY-24*axDY;
-  const eX=sX+bl*axDX,  eY=sY+bl*axDY;
-  const c1x=sX+pDX*bw/2, c1y=sY+pDY*bw/2;
-  const c2x=sX-pDX*bw/2, c2y=sY-pDY*bw/2;
-  const c3x=eX-pDX*bw/2, c3y=eY-pDY*bw/2;
-  const c4x=eX+pDX*bw/2, c4y=eY+pDY*bw/2;
-  const brace=`<polygon points="${c1x},${c1y} ${c2x},${c2y} ${c3x},${c3y} ${c4x},${c4y}" ${D.sec}/>`;
+  // ─── GUSSET WELDS (along beam bottom flange + along column face) ──
+  const wldBeam = weldH(gLeft+8, gRight-8, gTop, -1);
+  const wldCol  = weldTri(gLeft, gTop+8, gBot-8, 1);
 
-  // ─── BOLTS (3 off, single row along brace axis) ────
-  // First bolt at e1 from the brace end inside the gusset, then p1 apart.
-  const e1=36, p1=56;
-  const b0x=hmX+e1*axDX,     b0y=hmY+e1*axDY;
-  const b1x=b0x+p1*axDX,     b1y=b0y+p1*axDY;
-  const b2x=b1x+p1*axDX,     b2y=b1y+p1*axDY;
-  const bolts=bolt(b0x,b0y)+bolt(b1x,b1y)+bolt(b2x,b2y);
+  // ─── BRACE (SHS at 45°, connects to chamfered corner) ──
+  const cosA=Math.SQRT1_2, sinA=Math.SQRT1_2;
+  // Chamfer midpoint
+  const chamMidX = gRight - chamfer/2;
+  const chamMidY = gBot - chamfer/2;
+  // Brace axis: passes through SOP at 45° down-right
+  // Start brace from just inside chamfer face, extend down-right
+  const axDX = cosA, axDY = sinA;             // axis unit vector (down-right)
+  const pDX  = -sinA, pDY = cosA;             // perpendicular
+  const brW=40;                                // SHS size (as drawn)
+  const brLen=160;                             // length shown
+  // Start brace on chamfer face, extend down-right
+  const bsX = chamMidX, bsY = chamMidY;
+  const beX = bsX + brLen*axDX;
+  const beY = bsY + brLen*axDY;
+  const bp1x = bsX + pDX*brW/2, bp1y = bsY + pDY*brW/2;
+  const bp2x = bsX - pDX*brW/2, bp2y = bsY - pDY*brW/2;
+  const bp3x = beX - pDX*brW/2, bp3y = beY - pDY*brW/2;
+  const bp4x = beX + pDX*brW/2, bp4y = beY + pDY*brW/2;
+  const brace =
+    `<polygon points="${bp1x},${bp1y} ${bp2x},${bp2y} ${bp3x},${bp3y} ${bp4x},${bp4y}" ${D.sec}/>`;
+  // Break line on brace far end
+  const brkBrace =
+    `<polyline points="${beX-8*axDX+10*pDX},${beY-8*axDY+10*pDY} ${beX-14*axDX+4*pDX},${beY-14*axDY+4*pDY} ${beX-2*axDX-4*pDX},${beY-2*axDY-4*pDY} ${beX-8*axDX-10*pDX},${beY-8*axDY-10*pDY}"
+      fill="none" stroke="#1a1a1a" stroke-width="1.2"/>`;
 
-  // ─── APPLIED AXIAL FORCE (along brace, up-right) ───
-  const fX=eX+16*axDX, fY=eY+16*axDY;
-  const fStartX=fX+54*axDX, fStartY=fY+54*axDY;
-  const force =
-    `<line x1="${fStartX}" y1="${fStartY}" x2="${fX}" y2="${fY}"
-       stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
-     <text ${D.grn} x="${fStartX+16}" y="${fStartY+4}">N_Ed</text>`;
+  // ─── BOLTS: 4 in 2×2 pattern on the gusset (on brace axis) ──
+  // Distance along axis from chamfer centre, two rows × two columns (p1 apart)
+  const eAx=30, pAx=40, pTr=24;                // edge, along-axis pitch, transverse pitch
+  // Bolt positions in gusset: two columns perpendicular to brace axis, two rows along
+  const rowsA = [eAx, eAx+pAx];
+  const colsT = [-pTr/2, pTr/2];
+  const boltPts = [];
+  rowsA.forEach(a => colsT.forEach(t => {
+    const bx = chamMidX - a*axDX + t*pDX;     // go INTO gusset (opposite brace direction)
+    const by = chamMidY - a*axDY + t*pDY;
+    boltPts.push([bx,by]);
+  }));
+  const braceBolts = boltPts.map(([x,y])=>bolt(x,y)).join('');
 
-  // ─── ECCENTRICITY e (bolt-group centroid to column CL) ───
-  // Working point on column = column CL at beam top face.
-  const wpX2=ctf+cWeb/2;
-  // Centroid = middle bolt (b1). Drop vertical guide from centroid down to beam.
-  const ecc =
-    `<line x1="${b1x}" y1="${b1y}" x2="${b1x}" y2="${bTopY-6}"
-       stroke="#555" stroke-width="0.7" stroke-dasharray="4,3"/>
-     <line x1="${wpX2}" y1="${bTopY-16}" x2="${b1x}" y2="${bTopY-16}"
-       stroke="#555" stroke-width="0.8" marker-start="url(#darrr)" marker-end="url(#darr)"/>
-     <text ${D.sml} x="${(wpX2+b1x)/2}" y="${bTopY-20}" text-anchor="middle">e</text>`;
+  // ─── Brace CL (dash-dot, through SOP along brace axis) ──
+  const braceCL_len = 360;
+  const bcl_x1 = sopX - 60*axDX, bcl_y1 = sopY - 60*axDY;   // upper-left end
+  const bcl_x2 = sopX + braceCL_len*axDX, bcl_y2 = sopY + braceCL_len*axDY;
+  const braceCLdash =
+    `<line x1="${bcl_x1}" y1="${bcl_y1}" x2="${bcl_x2}" y2="${bcl_y2}"
+       stroke="#1a1a1a" stroke-width="0.6" stroke-dasharray="16,3,2,3"/>`;
 
   // ─── DIMENSIONS ────────────────────────────────
-  // h_g outside the column (far left of everything)
   const dims =
-    dimV(gAx-40, gCy, gAy, 'h_g', gAx-56) +
-    dimH(gAx, gBx, bBotY+30, 'l_g', bBotY+42);
+    dimH(cRight, gLeft+14, gBot+28, 'Y', gBot+40);
 
   // ─── LABELS & CALLOUTS ───────────────────────
   const labs =
-    // Column label — on its top area
-    `<text ${D.txt} x="${cRightX/2}" y="100" text-anchor="middle">Column</text>` +
-    // Beam label — far right, below beam bottom flange
-    `<text ${D.txt} x="${W-60}" y="${bBotY+26}" text-anchor="middle">Beam</text>` +
-    // Gusset callout — leader from gusset centroid to clear area top-right,
-    // above the brace member exit point
-    `<line x1="${gAx+gSize*0.4}" y1="${gAy-gSize*0.3}" x2="${gBx+50}" y2="${gAy-60}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.txt} x="${gBx+54}" y="${gAy-60}">Gusset plate</text>` +
-    // Brace callout — leader from LOWER side of brace out to top-left clear area
-    `<line x1="${c3x-40}" y1="${c3y+20}" x2="${c3x-80}" y2="${c3y-24}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.txt} x="${c3x-84}" y="${c3y-28}" text-anchor="end">Bracing member</text>
-     <text ${D.sml} x="${c3x-84}" y="${c3y-16}" text-anchor="end">(flat bar / angle)</text>` +
-    // Weld callouts — leaders from weld triangles out to clear areas outside gusset
-    `<line x1="${gAx+gSize/2}" y1="${gAy+8}" x2="${gAx+gSize/2+40}" y2="${bBotY+btf-6}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${gAx+gSize/2+44}" y="${bBotY+btf-4}">fillet weld (beam)</text>` +
-    `<line x1="${gAx-8}" y1="${(gAy+gCy)/2}" x2="${gAx-44}" y2="${(gAy+gCy)/2-30}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${gAx-48}" y="${(gAy+gCy)/2-32}" text-anchor="end">fillet weld</text>
-     <text ${D.sml} x="${gAx-48}" y="${(gAy+gCy)/2-20}" text-anchor="end">(column)</text>`;
+    // SOP label
+    `<line x1="${sopX+8}" y1="${sopY-4}" x2="${sopX-44}" y2="${sopY-44}" stroke="#555" stroke-width="0.7"/>
+     <text ${D.sml} x="${sopX-48}" y="${sopY-48}" text-anchor="end" style="font-weight:600">S.O.P.</text>` +
+    // Beam label
+    `<line x1="${bLeft+90}" y1="${bTop-2}" x2="${bLeft+140}" y2="${bTop-30}" stroke="#555" stroke-width="0.7"/>
+     <text ${D.txt} x="${bLeft+144}" y="${bTop-32}">Beam (per plan)</text>` +
+    // Column label
+    `<text ${D.txt} x="${ccx}" y="30" text-anchor="middle" style="font-weight:600">Column</text>` +
+    // Gusset callout
+    `<line x1="${gLeft+40}" y1="${gBot-20}" x2="${gLeft+40}" y2="${gBot+50}" stroke="#555" stroke-width="0.7"/>
+     <text ${D.txt} x="${gLeft+44}" y="${gBot+54}">Gusset plate</text>` +
+    // Brace callout — leader from brace side to clear area above-right
+    `<line x1="${beX+20*pDX-20*axDX}" y1="${beY+20*pDY-20*axDY}" x2="${W-120}" y2="${H-100}" stroke="#555" stroke-width="0.7"/>
+     <text ${D.txt} x="${W-116}" y="${H-100}">SHS bracing</text>
+     <text ${D.sml} x="${W-116}" y="${H-88}">(CL OF SHS)</text>`;
 
-  return s + beamH + colV + gusset + wldBeam + wldCol + brace + bolts +
-         ecc + dims + force + labs + '</svg>';
+  return s + colCL + beamCL + col + breaks +
+         topFlg + bweb + botFlg + brkB + bcBolts +
+         gusset + wldBeam + wldCol +
+         braceCLdash + brace + brkBrace + braceBolts +
+         sop + dims + labs + '</svg>';
 }
 
 const DIAGRAMS={
