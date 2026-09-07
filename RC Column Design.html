@@ -173,18 +173,16 @@ tr.kr td{color:var(--grn);} tr.bal td{color:var(--cyn);}
       <div class="f"><label>Concrete</label>
         <select id="rfck">
           <option value="20">C20/25</option><option value="25">C25/30</option>
-          <option value="30" selected>C30/37</option><option value="35">C35/45</option>
-          <option value="40">C40/50</option><option value="50">C50/60</option>
+          <option value="30" selected>C30/37</option><option value="32">C32/40</option>
+          <option value="35">C35/45</option><option value="40">C40/50</option>
+          <option value="50">C50/60</option>
         </select>
       </div>
       <div class="f"><label>Steel f<sub>yk</sub></label>
-        <select id="rfyk">
-          <option value="400">B400</option>
-          <option value="500" selected>B500</option>
-          <option value="600">B600</option>
-        </select>
+        <input type="number" id="rfyk" value="500" min="100" max="700" step="10" list="fyk-grades">
         <span class="u">MPa</span>
       </div>
+      <p class="note">f<sub>yk</sub> accepts any value - 500 for B500, or e.g. 250 MPa for historic mild steel.</p>
       <div class="f"><label>Cover c</label><input type="number" id="rcov" value="35" min="20" step="5"><span class="u">mm</span></div>
       <div class="f"><label>Link dia.</label><input type="number" id="rlink" value="10" min="6" step="2"><span class="u">mm</span></div>
     </div>
@@ -220,16 +218,13 @@ tr.kr td{color:var(--grn);} tr.bal td{color:var(--cyn);}
     <div class="grp">
       <div class="gl">Materials</div>
       <div class="f"><label>Concrete</label>
-        <select id="cfck"><option value="20">C20/25</option><option value="25">C25/30</option><option value="30" selected>C30/37</option><option value="35">C35/45</option><option value="40">C40/50</option><option value="50">C50/60</option></select>
+        <select id="cfck"><option value="20">C20/25</option><option value="25">C25/30</option><option value="30" selected>C30/37</option><option value="32">C32/40</option><option value="35">C35/45</option><option value="40">C40/50</option><option value="50">C50/60</option></select>
       </div>
       <div class="f"><label>Steel f<sub>yk</sub></label>
-        <select id="cfyk">
-          <option value="400">B400</option>
-          <option value="500" selected>B500</option>
-          <option value="600">B600</option>
-        </select>
+        <input type="number" id="cfyk" value="500" min="100" max="700" step="10" list="fyk-grades">
         <span class="u">MPa</span>
       </div>
+      <p class="note">f<sub>yk</sub> accepts any value - 500 for B500, or e.g. 250 MPa for historic mild steel.</p>
       <div class="f"><label>Cover c</label><input type="number" id="ccov" value="35" min="20" step="5"><span class="u">mm</span></div>
       <div class="f"><label>Link dia.</label><input type="number" id="clink" value="8" min="6" step="2"><span class="u">mm</span></div>
     </div>
@@ -390,6 +385,18 @@ tr.kr td{color:var(--grn);} tr.bal td{color:var(--cyn);}
 </div>
 </div>
 
+<!-- Suggested f_yk values for the Materials inputs. A datalist only offers
+     these as shortcuts - any value may be typed, e.g. 250 MPa for historic
+     mild steel to CP 114 / BS 4449 grade 250 (plain round bar). -->
+<datalist id="fyk-grades">
+  <option value="250" label="250 - mild steel (plain round, pre-1970s)"></option>
+  <option value="410" label="410 - hot-rolled high yield (BS 4449:1969)"></option>
+  <option value="425" label="425 - cold-worked high yield (BS 4461)"></option>
+  <option value="460" label="460 - Type 2 deformed (BS 4449:1988)"></option>
+  <option value="500" label="500 - B500A/B/C (BS 4449:2005)"></option>
+  <option value="600" label="600 - B600"></option>
+</datalist>
+
 <script>
 // ════════════════════════════════════════════════════════════
 // EC2 / MOSLEY CONSTANTS
@@ -400,25 +407,52 @@ tr.kr td{color:var(--grn);} tr.bal td{color:var(--cyn);}
 const ECU  = 0.0035;    // Concrete ultimate strain (top fibre, Case A)
 const E175 = 0.00175;   // Pivot strain at h/2 (Case B - full section compression)
 const ES   = 200000;    // N/mm²  (EC2 §3.2.7, Es for reinforcement)
-// Reinforcement strength is user-selectable (B400 / B500 / B600). These are
-// refreshed from the active tab's fyk input by refreshSteel() before every
-// calculation, so all downstream call sites keep using the plain names.
-let FYK    = 500;
+// Reinforcement strength is typed in by the user (any value), so the tool can
+// assess historic bar as well as modern B500 - e.g. fyk = 250 MPa for pre-1970s
+// mild steel. These are refreshed from the active tab's fyk input by
+// refreshSteel() before every calculation, so all downstream call sites keep
+// using the plain names.
+const FYK_DEFAULT = 500;
+const FYK_MIN     = 100;   // sanity bounds - outside these the user is warned
+const FYK_MAX     = 700;
+let FYK    = FYK_DEFAULT;
 let FYD    = FYK / 1.15;        // = 434.8 N/mm²  (γs=1.15)
 let FYD_87 = 0.87 * FYK;        // = 435 N/mm²    (Mosley simplified: 1/1.15 ≈ 0.87)
 let EY     = FYD / ES;          // Steel yield strain εyd = fyd/Es (0.00217 at fyk=500)
 
 // Pull fyk from whichever section tab is active and recompute derived values.
+// Returns the raw entry so callers can warn on a blank / out-of-range value
+// rather than silently designing to the fallback.
 function refreshSteel(){
-  const el = document.getElementById(currentTab==='rect' ? 'rfyk' : 'cfyk');
-  const v  = el ? +el.value : 500;
-  FYK    = (v>0 ? v : 500);
+  const el  = document.getElementById(currentTab==='rect' ? 'rfyk' : 'cfyk');
+  const raw = el ? el.value.trim() : '';
+  const v   = +raw;
+  const ok  = raw !== '' && isFinite(v) && v >= FYK_MIN && v <= FYK_MAX;
+  FYK    = ok ? v : FYK_DEFAULT;
   FYD    = FYK / 1.15;
   FYD_87 = 0.87 * FYK;
   EY     = FYD / ES;
+  return { ok, raw };
+}
+
+// Guard used by the two entry points: stop if fyk is blank or implausible.
+function checkSteelInput(){
+  const { ok, raw } = refreshSteel();
+  if(!ok){
+    alert(`Steel f_yk = "${raw}" is blank or outside ${FYK_MIN}-${FYK_MAX} MPa.\n\n`
+        + `Enter the characteristic yield strength in MPa `
+        + `(e.g. 500 for B500, 250 for historic mild steel).`);
+    return false;
+  }
+  return true;
 }
 
 function fcd(fck){ return 0.567 * fck; }   // design concrete stress [N/mm²]
+
+// EC2 Table 3.1 strength classes - fck (cylinder) → full C(cyl)/(cube) name.
+const CONC_CLASS = {20:'C20/25',25:'C25/30',30:'C30/37',32:'C32/40',
+                    35:'C35/45',40:'C40/50',50:'C50/60'};
+function concClass(fck){ return CONC_CLASS[fck] || ('C'+fck); }
 
 // Steel stress (signed: +ve = compression)
 function fsteel(eps){
@@ -456,9 +490,10 @@ function rectPt(x, b, h, layers, fc){
 
 function rectN0(b,h,layers,fc){
   // Pure compression: EC2 Fig 6.1 limit C - uniform strain εc3 = 0.00175
-  // For Grade 500 steel: σ0 = min(εc3·Es, fyd) = min(350, 434.8) = 350 N/mm²
+  // σ0 = min(εc3·Es, fyd): 350 N/mm² for B500, but fyd governs for weaker bar
+  // (e.g. 217 N/mm² at fyk = 250 MPa mild steel).
   // Net steel force deducts fcd (displaced concrete): σ0 − fcd
-  const sigma0 = Math.min(E175 * ES, FYD);   // = 350 N/mm²
+  const sigma0 = Math.min(E175 * ES, FYD);
   const As = layers.reduce((s,l)=>s+l.A, 0);
   return fc*(b*h - As) + sigma0*As;           // = (Ac−As)·fcd + As·σ0
 }
@@ -498,7 +533,8 @@ function circPt(x, R, bars, fc){
 
 function circN0(R,bars,fc){
   // Pure compression: EC2 Fig 6.1 limit C - uniform strain εc3 = 0.00175
-  const sigma0 = Math.min(E175 * ES, FYD);   // = 350 N/mm²
+  // σ0 = min(εc3·Es, fyd) - fyd governs for bar weaker than ~fyk 400 MPa
+  const sigma0 = Math.min(E175 * ES, FYD);
   const As = bars.reduce((s,b)=>s+b.A, 0);
   const Ac = Math.PI * R * R;
   return fc*(Ac - As) + sigma0*As;
@@ -557,7 +593,7 @@ function getRectSection(){
     pts, type:'rect',
     key:{N0:rectN0(b,h,layers,fc)/1e3,Nt:rectPt(0,b,h,layers,fc).N/1e3,Nbal:balPt.N,Mbal:balPt.M,Mmax,xbal},
     props:{b,h,fck,fc,As,Ac,rho:As/Ac*100,layers,d_eff:d_tens,d_comp:dc_X,i_gyr:h/Math.sqrt(12)},
-    label:`${b}×${h} C${fck} (${(nX*2+nY_int*2)}T)`
+    label:`${b}×${h} ${concClass(fck)} (${(nX*2+nY_int*2)}T)`
   };
 }
 
@@ -595,7 +631,7 @@ function getRectSectionYY(){
     pts, type:'rect',
     key:{N0:rectN0(h,b,layers,fc)/1e3,Nt:rectPt(0,h,b,layers,fc).N/1e3,Nbal:balPt.N,Mbal:balPt.M,Mmax,xbal},
     props:{b,h,fck,fc,As,Ac,rho:As/Ac*100,layers,d_eff:d_tens,d_comp:dc_Y,i_gyr:b/Math.sqrt(12)},
-    label:`${b}×${h} C${fck} Y-Y`
+    label:`${b}×${h} ${concClass(fck)} Y-Y`
   };
 }
 
@@ -726,7 +762,7 @@ function getCircSection(){
     pts, type:'circ',
     key:{N0:circN0(R,bars,fc)/1e3,Nt:circPt(0,R,bars,fc).N/1e3,Nbal:balPt.N,Mbal:balPt.M,Mmax,xbal},
     props:{D,R,Rbar,fck,fc,As,Ac,rho:As/Ac*100,bars,d_eff:d_tens,d_comp:R-Rbar,i_gyr:R/2},
-    label:`Ø${D} C${fck} (${nb}T)`
+    label:`Ø${D} ${concClass(fck)} (${nb}T)`
   };
 }
 
@@ -959,14 +995,14 @@ function showCapacity(key, props, isRect){
   let txt='';
   if(isRect){
     txt=`b = <span class="v">${props.b}</span> mm   h = <span class="v">${props.h}</span> mm\n`
-       +`fck = <span class="v">${props.fck}</span>   fcd = <span class="a">${props.fc.toFixed(2)}</span> MPa\n`
+       +`fck = <span class="v">${props.fck}</span> (${concClass(props.fck)})   fcd = <span class="a">${props.fc.toFixed(2)}</span> MPa\n`
        +`fyd = <span class="a">${FYD.toFixed(0)}</span> MPa  (fyk=${FYK}, γs=1.15)\n`
        +`As = <span class="v">${props.As.toFixed(0)}</span> mm²  Ac = <span class="v">${(props.Ac/1e4).toFixed(1)}</span> cm²\n`
        +`xbal = <span class="a">${key.xbal.toFixed(0)}</span> mm  i = <span class="a">${props.i_gyr.toFixed(1)}</span> mm`;
   } else {
     txt=`D = <span class="v">${props.D}</span> mm   R = <span class="v">${props.R}</span> mm\n`
-       +`fck = <span class="v">${props.fck}</span>   fcd = <span class="a">${props.fc.toFixed(2)}</span> MPa\n`
-       +`fyd = <span class="a">${FYD.toFixed(0)}</span> MPa\n`
+       +`fck = <span class="v">${props.fck}</span> (${concClass(props.fck)})   fcd = <span class="a">${props.fc.toFixed(2)}</span> MPa\n`
+       +`fyd = <span class="a">${FYD.toFixed(0)}</span> MPa  (fyk=${FYK}, γs=1.15)\n`
        +`As = <span class="v">${props.As.toFixed(0)}</span> mm²   ρ = <span class="a">${props.rho.toFixed(2)}</span>%\n`
        +`xbal = <span class="a">${key.xbal.toFixed(0)}</span> mm  i = <span class="a">${props.i_gyr.toFixed(1)}</span> mm`;
   }
@@ -1096,7 +1132,7 @@ function showTable(pts){
 // ════════════════════════════════════════════════════════════
 function calculate(){
   if(!chart){ alert('Chart not initialised - check that Chart.js CDN loaded.'); return; }
-  refreshSteel();
+  if(!checkSteelInput()) return;
   const isRect=currentTab==='rect';
   const sec=isRect?getRectSection():getCircSection();
   const {rho}=sec.props;
@@ -1114,7 +1150,7 @@ function calculate(){
 
 function checkDesign(){
   if(!chart){ alert('Chart not initialised - check that Chart.js CDN loaded.'); return; }
-  refreshSteel();
+  if(!checkSteelInput()) return;
   const isRect = currentTab==='rect';
   const sec    = isRect ? getRectSection() : getCircSection();
   const NEd    = +V('ned');
@@ -1462,7 +1498,7 @@ async function exportPDF(){
 
   // ── Summary rows
   const sectionDesc=isRect?`Rectangular ${n0(p.b)}×${n0(p.h)} mm`:`Circular Ø${n0(p.D)} mm`;
-  row('Section',`${sectionDesc}, C${n0(p.fck)}/__ concrete`,'');
+  row('Section',`${sectionDesc}, ${concClass(p.fck)} concrete`,'');
   row('Reinforcement',`As = ${n0(As)} mm²  (ρ = ${rho.toFixed(2)}%)`,'');
   row('Applied NEd',`${n1(NEd)} kN`,'');
   row('Design moment X-X',`MEd = ${n1(rx.MEd)} kNm  ${passXX?'✓':'✗'}`,'');
@@ -1481,7 +1517,7 @@ async function exportPDF(){
   } else {
     await frow('Section type', `\\text{Circular}\\quad D = ${n0(p.D)}\\,\\text{mm}`, '');
   }
-  await frow('Concrete class',
+  await frow(`Concrete class (${concClass(fck)})`,
     `f_{ck} = ${n0(fck)}\\,\\text{MPa},\\quad f_{cd} = \\frac{\\alpha_{cc}\\,f_{ck}}{\\gamma_c} = \\frac{0.85 \\times ${n0(fck)}}{1.5} = ${n1(fcd_v)}\\,\\text{MPa}`,
     '§3.1.6');
   await frow('Reinforcement',
