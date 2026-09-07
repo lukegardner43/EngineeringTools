@@ -115,6 +115,18 @@ th:first-child{text-align:left;}
 td{text-align:right;padding:4px 4px;border-bottom:1px solid var(--bdr);color:var(--txt);}
 td:first-child{text-align:left;color:var(--mut);}
 tr.kr td{color:var(--grn);} tr.bal td{color:var(--cyn);}
+
+/* design check summary */
+.sumchk{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:10px;}
+.sumchk th{text-align:right;padding:4px;color:var(--faint);border-bottom:1px solid var(--bdr);font-weight:400;text-transform:uppercase;letter-spacing:.5px;font-size:9px;}
+.sumchk th:first-child{text-align:left;}
+.sumchk td{text-align:right;padding:5px 4px;border-bottom:1px solid var(--bdr);color:var(--txt);}
+.sumchk td:first-child{text-align:left;color:var(--mut);}
+.sumchk td.unit{text-align:left;color:var(--faint);width:36px;}
+.sumchk td.util{font-weight:700;}
+.sumchk td.st{width:18px;text-align:center;font-weight:700;}
+.sumchk tr.pass td.util,.sumchk tr.pass td.st{color:var(--pass);}
+.sumchk tr.fail td.util,.sumchk tr.fail td.st{color:var(--fail);}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;}}
 </style>
 </head>
@@ -165,6 +177,14 @@ tr.kr td{color:var(--grn);} tr.bal td{color:var(--cyn);}
           <option value="40">C40/50</option><option value="50">C50/60</option>
         </select>
       </div>
+      <div class="f"><label>Steel f<sub>yk</sub></label>
+        <select id="rfyk">
+          <option value="400">B400</option>
+          <option value="500" selected>B500</option>
+          <option value="600">B600</option>
+        </select>
+        <span class="u">MPa</span>
+      </div>
       <div class="f"><label>Cover c</label><input type="number" id="rcov" value="35" min="20" step="5"><span class="u">mm</span></div>
       <div class="f"><label>Link dia.</label><input type="number" id="rlink" value="10" min="6" step="2"><span class="u">mm</span></div>
     </div>
@@ -201,6 +221,14 @@ tr.kr td{color:var(--grn);} tr.bal td{color:var(--cyn);}
       <div class="gl">Materials</div>
       <div class="f"><label>Concrete</label>
         <select id="cfck"><option value="20">C20/25</option><option value="25">C25/30</option><option value="30" selected>C30/37</option><option value="35">C35/45</option><option value="40">C40/50</option><option value="50">C50/60</option></select>
+      </div>
+      <div class="f"><label>Steel f<sub>yk</sub></label>
+        <select id="cfyk">
+          <option value="400">B400</option>
+          <option value="500" selected>B500</option>
+          <option value="600">B600</option>
+        </select>
+        <span class="u">MPa</span>
       </div>
       <div class="f"><label>Cover c</label><input type="number" id="ccov" value="35" min="20" step="5"><span class="u">mm</span></div>
       <div class="f"><label>Link dia.</label><input type="number" id="clink" value="8" min="6" step="2"><span class="u">mm</span></div>
@@ -240,20 +268,31 @@ tr.kr td{color:var(--grn);} tr.bal td{color:var(--cyn);}
   <!-- COLUMN HEIGHT & END CONDITIONS -->
   <div class="grp">
     <div class="gl">Column Height &amp; End Conditions (EC2 §5.8.3.2)</div>
-    <div class="f"><label>Clear height l</label><input type="number" id="clen" value="4400" step="100"><span class="u">mm</span></div>
+    <div class="f"><label>Height l x-x</label><input type="number" id="clen" value="4400" step="100"><span class="u">mm</span></div>
+    <div class="f"><label>Height l y-y</label><input type="number" id="cleny" value="4400" step="100"><span class="u">mm</span></div>
+    <p class="note">Separate clear heights let you model restraint about one axis only (e.g. a beam framing in one direction, or a mid-height brace).</p>
     <div class="f"><label>Structure</label>
       <div class="tog-wrap" id="togBrace">
         <button class="on" onclick="setBraced(true)">Braced</button>
         <button onclick="setBraced(false)">Unbraced</button>
       </div>
     </div>
-    <div style="font-size:9px;color:var(--cyn);font-family:var(--mono);letter-spacing:1px;text-transform:uppercase;margin:4px 0 3px;">X-X axis end flexibility (k = EI_col/l ÷ Σ2EI_beam/l)</div>
-    <div class="f"><label>k₁ top x-x</label><input type="number" id="ktop"  value="0.15" min="0.1" step="0.05"><span class="u">≥0.1</span></div>
-    <div class="f"><label>k₂ bot x-x</label><input type="number" id="kbot"  value="0.15" min="0.1" step="0.05"><span class="u">≥0.1</span></div>
-    <div style="font-size:9px;color:var(--amb);font-family:var(--mono);letter-spacing:1px;text-transform:uppercase;margin:6px 0 3px;">Y-Y axis end flexibility</div>
-    <div class="f"><label>k₁ top y-y</label><input type="number" id="ktopy" value="0.10" min="0.1" step="0.05"><span class="u">≥0.1</span></div>
-    <div class="f"><label>k₂ bot y-y</label><input type="number" id="kboty" value="0.10" min="0.1" step="0.05"><span class="u">≥0.1</span></div>
-    <p class="note">Typical values: fixed base k≈0.1, beam/column joint k=EIc/lc ÷ Σ(2EIb/lb), pin k→∞ (use 10). PD 6687: k≥0.1.</p>
+    <div class="f"><label>End restraint</label>
+      <div class="tog-wrap" id="togEnd">
+        <button class="on" onclick="setPinned(false)">Framed (k)</button>
+        <button onclick="setPinned(true)">Pinned</button>
+      </div>
+    </div>
+    <div id="kBlock">
+      <div style="font-size:9px;color:var(--cyn);font-family:var(--mono);letter-spacing:1px;text-transform:uppercase;margin:4px 0 3px;">X-X axis end flexibility (k = EI_col/l ÷ Σ2EI_beam/l)</div>
+      <div class="f"><label>k₁ top x-x</label><input type="number" id="ktop"  value="0.15" min="0.1" step="0.05"><span class="u">≥0.1</span></div>
+      <div class="f"><label>k₂ bot x-x</label><input type="number" id="kbot"  value="0.15" min="0.1" step="0.05"><span class="u">≥0.1</span></div>
+      <div style="font-size:9px;color:var(--amb);font-family:var(--mono);letter-spacing:1px;text-transform:uppercase;margin:6px 0 3px;">Y-Y axis end flexibility</div>
+      <div class="f"><label>k₁ top y-y</label><input type="number" id="ktopy" value="0.10" min="0.1" step="0.05"><span class="u">≥0.1</span></div>
+      <div class="f"><label>k₂ bot y-y</label><input type="number" id="kboty" value="0.10" min="0.1" step="0.05"><span class="u">≥0.1</span></div>
+      <p class="note">Typical values: fixed base k≈0.1, beam/column joint k=EIc/lc ÷ Σ(2EIb/lb), pin k→∞ (use 10). PD 6687: k≥0.1.</p>
+    </div>
+    <p class="note" id="pinNote" style="display:none">Pinned both ends: l₀ = 1.0 l about both axes, so the k factors are not used.</p>
     <div class="f"><label>φef (creep)</label><input type="number" id="phief" value="0" min="0" max="3" step="0.1"><span class="u">-</span></div>
   </div>
 
@@ -279,6 +318,16 @@ tr.kr td{color:var(--grn);} tr.bal td{color:var(--cyn);}
 
 <!-- ══ RESULTS PANEL ══════════════════════════════════════════ -->
 <div class="res">
+
+  <!-- DESIGN CHECK SUMMARY -->
+  <div id="sumSection" style="display:none">
+    <p class="rh">Design Check Summary</p>
+    <table class="sumchk">
+      <thead><tr><th>Check</th><th></th><th>Allowable</th><th>Actual</th><th>Utilisation</th><th></th></tr></thead>
+      <tbody id="sumBody"></tbody>
+    </table>
+    <hr class="divider" style="margin:12px 0;">
+  </div>
 
   <p class="rh">Capacity Summary</p>
   <div class="kvg">
@@ -350,11 +399,24 @@ tr.kr td{color:var(--grn);} tr.bal td{color:var(--cyn);}
 // ════════════════════════════════════════════════════════════
 const ECU  = 0.0035;    // Concrete ultimate strain (top fibre, Case A)
 const E175 = 0.00175;   // Pivot strain at h/2 (Case B - full section compression)
-const EY   = 0.00217;   // Steel yield strain (fyk=500, Es=200000)
-const ES   = 200000;    // N/mm²
-const FYK  = 500;
-const FYD  = FYK / 1.15;        // = 434.8 N/mm²  (γs=1.15)
-const FYD_87 = 0.87 * FYK;      // = 435 N/mm²    (Mosley simplified: 1/1.15 ≈ 0.87)
+const ES   = 200000;    // N/mm²  (EC2 §3.2.7, Es for reinforcement)
+// Reinforcement strength is user-selectable (B400 / B500 / B600). These are
+// refreshed from the active tab's fyk input by refreshSteel() before every
+// calculation, so all downstream call sites keep using the plain names.
+let FYK    = 500;
+let FYD    = FYK / 1.15;        // = 434.8 N/mm²  (γs=1.15)
+let FYD_87 = 0.87 * FYK;        // = 435 N/mm²    (Mosley simplified: 1/1.15 ≈ 0.87)
+let EY     = FYD / ES;          // Steel yield strain εyd = fyd/Es (0.00217 at fyk=500)
+
+// Pull fyk from whichever section tab is active and recompute derived values.
+function refreshSteel(){
+  const el = document.getElementById(currentTab==='rect' ? 'rfyk' : 'cfyk');
+  const v  = el ? +el.value : 500;
+  FYK    = (v>0 ? v : 500);
+  FYD    = FYK / 1.15;
+  FYD_87 = 0.87 * FYK;
+  EY     = FYD / ES;
+}
 
 function fcd(fck){ return 0.567 * fck; }   // design concrete stress [N/mm²]
 
@@ -677,7 +739,10 @@ function V(id){ return document.getElementById(id).value; }
 // Braced: l0 = 0.5l √[(1+k1/(0.45+k1))(1+k2/(0.45+k2))]
 // Unbraced: l0 = l × max{√[1+10k1k2/(k1+k2)], (1+k1/(1+k1))(1+k2/(1+k2))}
 // ════════════════════════════════════════════════════════════
-function effectiveLength(l, braced, k1, k2){
+function effectiveLength(l, braced, k1, k2, pinned){
+  // Pinned both ends: rotation is free and position is held, so l0 = 1.0 l
+  // (the k-factor route tends to this as k -> infinity). EC2 §5.8.3.2 Fig 5.7b.
+  if(pinned) return l;
   if(braced){
     return 0.5*l*Math.sqrt((1+k1/(0.45+k1))*(1+k2/(0.45+k2)));
   } else {
@@ -692,12 +757,12 @@ function effectiveLength(l, braced, k1, k2){
 // EC2 §5.2, §5.8.3.1, §5.8.8  PD 6687 §2.10
 // Lecture 7 - Concrete Centre webinar (Autumn 2017)
 // ════════════════════════════════════════════════════════════
-function slendernessAndMoments(sec, NEd_kN, Mtop_kNm, Mbot_kNm, l_mm, braced, k1, k2, phief){
+function slendernessAndMoments(sec, NEd_kN, Mtop_kNm, Mbot_kNm, l_mm, braced, k1, k2, phief, pinned){
   const {fc, fck, As, Ac, d_eff, i_gyr} = sec.props;
   const h_or_D = sec.type==='rect' ? sec.props.h : sec.props.D;
 
   // ── 1. Effective length  EC2 §5.8.3.2
-  const l0 = effectiveLength(l_mm, braced, k1, k2);
+  const l0 = effectiveLength(l_mm, braced, k1, k2, pinned);
 
   // ── 2. Slenderness  λ = l0/i   (i = h/√12 rect, D/4 circ)
   const lambda = l0 / i_gyr;
@@ -812,7 +877,7 @@ function getMcap(NEd_kN, pts){
 // ════════════════════════════════════════════════════════════
 // CHART
 // ════════════════════════════════════════════════════════════
-let chart=null, nSeries=0, isBraced=true;
+let chart=null, nSeries=0, isBraced=true, isPinned=false;
 const PAL=['#3ecf8e','#4cc9f0','#ffb000','#ff5d5d','#5b8def','#cdd5e0'];
 
 function initChart(){
@@ -871,6 +936,7 @@ function plotDesignPoint(NEd_kN, MEd_kNm, isSlender, pass){
 function clearAll(){
   chart.data.datasets=[]; chart.update(); nSeries=0;
   document.getElementById('legend').innerHTML='';
+  document.getElementById('sumSection').style.display='none';
   document.getElementById('slenSection').style.display='none';
   document.getElementById('slenSectionYY').style.display='none';
   document.getElementById('biaxSection').style.display='none';
@@ -894,7 +960,7 @@ function showCapacity(key, props, isRect){
   if(isRect){
     txt=`b = <span class="v">${props.b}</span> mm   h = <span class="v">${props.h}</span> mm\n`
        +`fck = <span class="v">${props.fck}</span>   fcd = <span class="a">${props.fc.toFixed(2)}</span> MPa\n`
-       +`fyd = <span class="a">${FYD.toFixed(0)}</span> MPa  (fyk=500, γs=1.15)\n`
+       +`fyd = <span class="a">${FYD.toFixed(0)}</span> MPa  (fyk=${FYK}, γs=1.15)\n`
        +`As = <span class="v">${props.As.toFixed(0)}</span> mm²  Ac = <span class="v">${(props.Ac/1e4).toFixed(1)}</span> cm²\n`
        +`xbal = <span class="a">${key.xbal.toFixed(0)}</span> mm  i = <span class="a">${props.i_gyr.toFixed(1)}</span> mm`;
   } else {
@@ -921,10 +987,12 @@ function showSlenderness(r, NEd, MEd, pass, i_gyr,
   const axis = isYY ? 'Y-Y' : 'X-X';
   const k1_disp = isYY ? (+V('ktopy')).toFixed(2) : (+V('ktop')).toFixed(2);
   const k2_disp = isYY ? (+V('kboty')).toFixed(2) : (+V('kbot')).toFixed(2);
+  const l_disp  = isYY ? (+V('cleny') || +V('clen')) : (+V('clen'));
 
   document.getElementById(idEff).innerHTML =
-    row(`Clear height l`, `${(+V('clen')).toFixed(0)} mm`)+
-    row('End conditions k₁ / k₂', `${k1_disp} / ${k2_disp}`)+
+    row(`Clear height l (${axis})`, `${l_disp.toFixed(0)} mm`)+
+    row('End restraint', isPinned ? 'Pinned both ends (l₀ = 1.0 l)'
+                                  : `Framed, k₁ / k₂ = ${k1_disp} / ${k2_disp}`)+
     row('Effective length l₀', `${r.l0.toFixed(0)} mm`)+
     row(`Radius of gyration i (${axis})`, `${i_gyr.toFixed(1)} mm`)+
     row('Slenderness λ = l₀/i', `${r.lambda.toFixed(1)}`,'hi')+
@@ -986,6 +1054,30 @@ function showSlenderness(r, NEd, MEd, pass, i_gyr,
   document.getElementById(idSection).style.display='block';
 }
 
+// ── Design check summary table (top of results panel)
+// Allowable = capacity from the M-N envelope at NEd, Actual = design moment
+// including imperfections and any second-order moment.
+function showSummary(s){
+  const f1 = v => (v==null || !isFinite(v)) ? '-' : v.toFixed(1);
+  const f2 = v => (v==null || !isFinite(v)) ? '-' : v.toFixed(2);
+  const line = (name, unit, allow, actual, util, ok) =>
+     `<tr class="${ok?'pass':'fail'}">`
+    +`<td>${name}</td><td class="unit">${unit}</td>`
+    +`<td>${allow}</td><td>${actual}</td>`
+    +`<td class="util">${f2(util)}</td>`
+    +`<td class="st">${ok?'✓':'✗'}</td></tr>`;
+
+  let h = line('Moment capacity (x-x)','kNm', f1(s.McapXX), f1(s.MEdXX),
+               s.McapXX>0 ? s.MEdXX/s.McapXX : Infinity, s.passXX);
+  if(s.biaxial){
+    h += line('Moment capacity (y-y)','kNm', f1(s.McapYY), f1(s.MEdYY),
+              s.McapYY>0 ? s.MEdYY/s.McapYY : Infinity, s.passYY);
+    h += line('Biaxial bending','', '', '', s.biaxUtil, s.passBiax);
+  }
+  document.getElementById('sumBody').innerHTML = h;
+  document.getElementById('sumSection').style.display = 'block';
+}
+
 function showTable(pts){
   const tbl=document.getElementById('tbl'); tbl.innerHTML='';
   pts.filter(p=>p.label).forEach(p=>{
@@ -1004,6 +1096,7 @@ function showTable(pts){
 // ════════════════════════════════════════════════════════════
 function calculate(){
   if(!chart){ alert('Chart not initialised - check that Chart.js CDN loaded.'); return; }
+  refreshSteel();
   const isRect=currentTab==='rect';
   const sec=isRect?getRectSection():getCircSection();
   const {rho}=sec.props;
@@ -1021,12 +1114,13 @@ function calculate(){
 
 function checkDesign(){
   if(!chart){ alert('Chart not initialised - check that Chart.js CDN loaded.'); return; }
+  refreshSteel();
   const isRect = currentTab==='rect';
   const sec    = isRect ? getRectSection() : getCircSection();
   const NEd    = +V('ned');
   const Mtop   = +V('mtop'),  Mbot  = +V('mbot');
   const MtopY  = +V('mtopy'), MbotY = +V('mboty');
-  const l=+V('clen'), phief=+V('phief');
+  const lx=+V('clen'), ly=+V('cleny')||+V('clen'), phief=+V('phief');
   const k1xx=Math.max(0.1,+V('ktop')),  k2xx=Math.max(0.1,+V('kbot'));
   const k1yy=Math.max(0.1,+V('ktopy')), k2yy=Math.max(0.1,+V('kboty'));
   const biaxial = (MtopY !== 0 || MbotY !== 0);
@@ -1058,12 +1152,12 @@ function checkDesign(){
   }
 
   // ── X-X slenderness & design moment
-  const rx = slendernessAndMoments(sec,   NEd, Mtop,  Mbot,  l, isBraced, k1xx, k2xx, phief);
+  const rx = slendernessAndMoments(sec,   NEd, Mtop,  Mbot,  lx, isBraced, k1xx, k2xx, phief, isPinned);
   const McapXX = getMcap(NEd, sec.pts);
   const passXX = rx.MEd <= McapXX;
 
   // ── Y-Y slenderness & design moment
-  const ry = slendernessAndMoments(secYY, NEd, MtopY, MbotY, l, isBraced, k1yy, k2yy, phief);
+  const ry = slendernessAndMoments(secYY, NEd, MtopY, MbotY, ly, isBraced, k1yy, k2yy, phief, isPinned);
   const McapYY = getMcap(NEd, secYY.pts);
   const passYY = ry.MEd <= McapYY;
 
@@ -1101,6 +1195,7 @@ function checkDesign(){
   }
 
   // ── Biaxial check (EC2 §5.8.9)
+  let biaxUtil = null, passBiax = true;
   if(biaxial){
     const fck  = sec.props.fck;
     const As   = sec.props.As;
@@ -1114,7 +1209,8 @@ function checkDesign(){
     const MEz  = rx.MEd;
     const MEy  = ry.MEd;
     const util = Math.pow(MEz/MRdz, a) + Math.pow(MEy/MRdy, a);
-    const passBiax = util <= 1.0;
+    passBiax = util <= 1.0;
+    biaxUtil = util;
 
     document.getElementById('biaxBlock').innerHTML =
       row('NRd = Ac·fcd + As·fyd', `${(NRd/1000).toFixed(0)} kN`)+
@@ -1137,15 +1233,24 @@ function checkDesign(){
 
   // ── Fire resistance - Method A (BS EN 1992-1-2 §5.3.2(4))
   const mufi      = Math.max(0.1, Math.min(1.0, +V('mufi') || 0.7));
-  const storey_m  = (+V('clen')) / 1000;
+  const storey_m  = Math.max(lx, ly) / 1000;   // governing storey height
   const fr = computeFireResistance(sec, mufi, storey_m);
   showFireResults(fr);
+
+  // ── Design check summary (top of results)
+  showSummary({
+    isRect, biaxial,
+    McapXX, MEdXX: rx.MEd, passXX,
+    McapYY, MEdYY: ry.MEd, passYY,
+    biaxUtil, passBiax
+  });
 
   // ── Store for report
   window.lastCalc = {
     sec, secYY, isRect, NEd, Mtop, Mbot, MtopY, MbotY,
     rx, ry, biaxial, McapXX, McapYY, passXX, passYY,
-    fr, mufi, storey_m, k1xx, k2xx, k1yy, k2yy, phief, l
+    fr, mufi, storey_m, k1xx, k2xx, k1yy, k2yy, phief,
+    lx, ly, l: lx, isPinned, FYK
   };
   const rptBtn = document.getElementById('rpt-btn');
   if(rptBtn) rptBtn.style.display = 'block';
@@ -1159,6 +1264,16 @@ function setBraced(val){
   const btns=document.getElementById('togBrace').querySelectorAll('button');
   btns[0].classList.toggle('on',val);
   btns[1].classList.toggle('on',!val);
+}
+
+// Pinned both ends -> l0 = 1.0 l, so the k inputs no longer apply and are hidden.
+function setPinned(val){
+  isPinned=val;
+  const btns=document.getElementById('togEnd').querySelectorAll('button');
+  btns[0].classList.toggle('on',!val);
+  btns[1].classList.toggle('on',val);
+  document.getElementById('kBlock').style.display  = val ? 'none'  : 'block';
+  document.getElementById('pinNote').style.display = val ? 'block' : 'none';
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1234,7 +1349,7 @@ async function exportPDF(){
   const C = window.lastCalc;
   const { sec, secYY, isRect, NEd, Mtop, Mbot, MtopY, MbotY,
           rx, ry, biaxial, McapXX, McapYY, passXX, passYY,
-          fr, mufi, storey_m, k1xx, k2xx, k1yy, k2yy, phief, l } = C;
+          fr, mufi, storey_m, k1xx, k2xx, k1yy, k2yy, phief, l, lx, ly } = C;
   const p  = sec.props;
 
   const {jsPDF} = window.jspdf;
@@ -1370,7 +1485,7 @@ async function exportPDF(){
     `f_{ck} = ${n0(fck)}\\,\\text{MPa},\\quad f_{cd} = \\frac{\\alpha_{cc}\\,f_{ck}}{\\gamma_c} = \\frac{0.85 \\times ${n0(fck)}}{1.5} = ${n1(fcd_v)}\\,\\text{MPa}`,
     '§3.1.6');
   await frow('Reinforcement',
-    `f_{yk} = 500\\,\\text{MPa},\\quad f_{yd} = \\frac{f_{yk}}{\\gamma_s} = \\frac{500}{1.15} = ${n1(fyd_v)}\\,\\text{MPa}`,
+    `f_{yk} = ${n0(FYK)}\\,\\text{MPa},\\quad f_{yd} = \\frac{f_{yk}}{\\gamma_s} = \\frac{${n0(FYK)}}{1.15} = ${n1(fyd_v)}\\,\\text{MPa}`,
     '§3.2.7');
   await frow('Gross cross-section area', `A_c = ${n0(Ac)}\\,\\text{mm}^2`, '');
   await frow('Longitudinal reinforcement',
@@ -1393,10 +1508,16 @@ async function exportPDF(){
     const h_ax = isYY ? (isRect?p.b:p.D) : (isRect?p.h:p.D);
     h1(`${secNum}. Slenderness & Design Moments \u2014 ${axisLabel}`);
     await frow('Column clear height', `l = ${n0(l)}\\,\\text{mm}`, '');
-    await frow('End fixity factors', `k_1 = ${n2(k1)},\\quad k_2 = ${n2(k2)}`, 'PD6687');
-    await frow('Effective length (braced)',
-      `l_0 = 0.5\\,l\\sqrt{\\left(1+\\frac{k_1}{0.45+k_1}\\right)\\!\\left(1+\\frac{k_2}{0.45+k_2}\\right)} = ${n0(r.l0)}\\,\\text{mm}`,
-      '§5.8.3.2');
+    await frow('Clear height', `l_{${isYY?'y-y':'x-x'}} = ${n0(isYY?ly:lx)}\\,\\text{mm}`, '');
+    if(C.isPinned){
+      await frow('Effective length (pinned both ends)',
+        `l_0 = 1.0\\,l = ${n0(r.l0)}\\,\\text{mm}`, '§5.8.3.2');
+    } else {
+      await frow('End fixity factors', `k_1 = ${n2(k1)},\\quad k_2 = ${n2(k2)}`, 'PD6687');
+      await frow('Effective length (braced)',
+        `l_0 = 0.5\\,l\\sqrt{\\left(1+\\frac{k_1}{0.45+k_1}\\right)\\!\\left(1+\\frac{k_2}{0.45+k_2}\\right)} = ${n0(r.l0)}\\,\\text{mm}`,
+        '§5.8.3.2');
+    }
     await frow('Radius of gyration',
       isRect
         ? `i = \\frac{${isYY?'b':'h'}}{\\sqrt{12}} = \\frac{${n0(h_ax)}}{\\sqrt{12}} = ${n1(r.i)}\\,\\text{mm}`
