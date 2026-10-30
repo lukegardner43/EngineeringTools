@@ -147,7 +147,10 @@ table.t th:first-child,table.t td:first-child{text-align:left;}
         <div class="section-title">Section &amp; material</div>
         <div class="grid2">
           <div class="form-group"><label>Series</label>
-            <select id="series"><option value="UKB">UKB</option><option value="UKC">UKC</option><option value="CUSTOM">Custom I-section</option></select></div>
+            <select id="series"><option value="UKB">UKB</option><option value="UKC">UKC</option><option value="PFC">PFC (channel)</option>
+              <option value="SHS-H">SHS hot-finished</option><option value="RHS-H">RHS hot-finished</option><option value="CHS-H">CHS hot-finished</option>
+              <option value="SHS-C">SHS cold-formed</option><option value="RHS-C">RHS cold-formed</option><option value="CHS-C">CHS cold-formed</option>
+              <option value="CUSTOM">Custom I-section</option></select></div>
           <div class="form-group"><label>Grade</label>
             <select id="grade"><option>S275</option><option selected>S355</option><option>S460</option></select></div>
         </div>
@@ -439,6 +442,21 @@ const SECTION_DATA=[
 ['356×406×592 UKC',592,465,421,45,72.3,20,756,250519,90184,10775,4284,13162,6578,11530,34.8],
 ['356×406×634 UKC',633.9,474.6,424,47.6,77,20,809,275191,98138,11597,4629,14258,7112,13920,38.8]
 ];
+// PFC: as above + cy (cm, centroid from back of web)
+const PFC_DATA=[
+['150×75×18 PFC',17.9,150,75,5.5,10,12,22.8,861,131,115,26.6,132,47.3,6.1,0.0047,2.58],
+['150×90×24 PFC',23.9,150,90,6.5,12,12,30.4,1162,253,155,44.4,179,77,11.8,0.0089,3.3],
+['180×75×20 PFC',20.3,180,75,6,10.5,12,25.9,1370,146,152,28.8,176,52,7.34,0.0075,2.41],
+['180×90×26 PFC',26.1,180,90,6.5,12.5,12,33.2,1817,277,202,47.4,232,83.5,13.3,0.0141,3.17],
+['200×75×23 PFC',23.4,200,75,6,12.5,12,29.9,1963,170,196,33.8,227,60.8,11.1,0.0107,2.48],
+['200×90×30 PFC',29.7,200,90,7,14,12,37.9,2523,314,252,53.4,291,94.6,18.3,0.0197,3.12],
+['230×75×26 PFC',25.7,230,75,6.5,12.5,12,32.7,2748,181,239,34.8,278,63.2,11.8,0.0153,2.3],
+['230×90×32 PFC',32.2,230,90,7.5,14,12,41,3518,334,306,55,355,99.2,19.3,0.0279,2.92],
+['260×75×28 PFC',27.6,260,75,7,12,12,35.1,3619,185,278,34.4,328,62,11.7,0.0203,2.1],
+['260×90×35 PFC',34.8,260,90,8,14,12,44.4,4728,353,364,56.3,425,102.1,20.6,0.0379,2.74],
+['300×90×41 PFC',41.4,300,90,9,15.5,12,52.7,7218,404,481,63.1,568,114,28.8,0.0581,2.6],
+['300×100×46 PFC',45.5,300,100,9,16.5,15,58,8229,568,549,81.7,641,148.3,36.8,0.0813,3.05]
+];
 const SECTION_SOURCE = "British Steel UK sections datasheets, July 2026";
 </script>
 <script id="engine">
@@ -708,15 +726,31 @@ const EC3 = (() => {
   }
 
   // ---------- Sections ----------
+  // shape: 'I' (rolled UKB/UKC or welded), 'PFC' (rolled parallel flange channel), 'RHS' (SHS/RHS), 'CHS'.
+  // Axes: y-y major (horizontal), z-z minor. For RHS and CHS tw/tf hold the wall thickness t; nw = number of webs.
   function fromRow(r) {
     const [name, mass, h, b, tw, tf, rr, A, Iy, Iz, Wely, Welz, Wply, Wplz, It, Iw] = r;
-    return { name, mass, h, b, tw, tf, r: rr, A: A * 1e2, Iy: Iy * 1e4, Iz: Iz * 1e4, Wely: Wely * 1e3, Welz: Welz * 1e3,
-      Wply: Wply * 1e3, Wplz: Wplz * 1e3, It: It * 1e4, Iw: Iw * 1e12, rolled: true };
+    return { shape: 'I', nw: 1, name, mass, h, b, tw, tf, r: rr, A: A * 1e2, Iy: Iy * 1e4, Iz: Iz * 1e4, Wely: Wely * 1e3, Welz: Welz * 1e3,
+      Wply: Wply * 1e3, Wplz: Wplz * 1e3, It: It * 1e4, Iw: Iw * 1e12, rolled: true, productStd: 'BS EN 10025-2 (S460: -4)' };
+  }
+  // Rolled parallel flange channel from a datasheet row (+ centroid cy from the back of the web, cm).
+  // Shear centre: thin-walled result e = 3b'^2 tf / (6b' tf + h' tw) from the web centreline, on the side away from the flanges.
+  function fromRowPFC(r) {
+    const [name, mass, h, b, tw, tf, rr, A, Iy, Iz, Wely, Welz, Wply, Wplz, It, Iw, cy] = r;
+    const bp = b - tw / 2, hp = h - tf, e = 3 * bp * bp * tf / (6 * bp * tf + hp * tw);
+    return { shape: 'PFC', nw: 1, name, mass, h, b, tw, tf, r: rr, A: A * 1e2, Iy: Iy * 1e4, Iz: Iz * 1e4, Wely: Wely * 1e3, Welz: Welz * 1e3,
+      Wply: Wply * 1e3, Wplz: Wplz * 1e3, It: It * 1e4, Iw: Iw * 1e12, cy: cy * 10, eSC: e, y0: cy * 10 - tw / 2 + e,
+      rolled: true, productStd: 'BS EN 10025-2 (S460: -4)' };
+  }
+  // Spandrel (square r x r minus the quarter disc centred at the far corner): area, centroid offset from the corner,
+  // second moment about its own centroid (verified by direct integration).
+  function spandrel(r) {
+    const As = (1 - Math.PI / 4) * r * r, e = r ? r * (10 - 3 * Math.PI) / (12 - 3 * Math.PI) : 0;
+    return { As, e, Ic: (1 - 5 * Math.PI / 16) * r ** 4 - As * e * e };
   }
   // Doubly symmetric I-section from dimensions (root radius r for rolled, 0 for welded). SCI P363 formulae.
   function customI({ name = 'Custom I', h, b, tw, tf, r = 0, rolled = false }) {
-    const As = (1 - Math.PI / 4) * r * r, e = r ? r * (10 - 3 * Math.PI) / (12 - 3 * Math.PI) : 0;
-    const Ic = (1 / 3 - Math.PI / 16) * r ** 4 - As * e * e;
+    const { As, e, Ic } = spandrel(r);
     const hw = h - 2 * tf, A = 2 * b * tf + hw * tw + 4 * As;
     const yf = h / 2 - tf - e, zf = tw / 2 + e;
     const Iy = (b * h ** 3 - (b - tw) * hw ** 3) / 12 + 4 * (Ic + As * yf * yf);
@@ -727,117 +761,258 @@ const EC3 = (() => {
       const D1 = ((tf + r) ** 2 + tw * (r + tw / 4)) / (2 * r + tf);
       It = 2 / 3 * b * tf ** 3 + 1 / 3 * hw * tw ** 3 + 2 * a1 * D1 ** 4 - 0.420 * tf ** 4;
     } else It = (2 * b * tf ** 3 + (h - tf) * tw ** 3) / 3;
-    return { name, mass: A * 7850e-6, h, b, tw, tf, r, A, Iy, Iz, Wely: Iy / (h / 2), Welz: Iz / (b / 2),
+    return { shape: 'I', nw: 1, name, mass: A * 7850e-6, h, b, tw, tf, r, A, Iy, Iz, Wely: Iy / (h / 2), Welz: Iz / (b / 2),
       Wply: b * tf * (h - tf) + tw * hw * hw / 4 + 4 * As * yf, Wplz: tf * b * b / 2 + hw * tw * tw / 4 + 4 * As * zf,
-      It, Iw: Iz * (h - tf) ** 2 / 4, rolled };
+      It, Iw: Iz * (h - tf) ** 2 / 4, rolled, productStd: rolled ? 'BS EN 10025-2' : 'BS EN 10025-2 (plate)' };
   }
+  // Hollow sections from nominal dimensions. Corner radii: hot-finished BS EN 10210-2 ro = 1.5t, ri = t;
+  // cold-formed BS EN 10219-2 ro = 2t (t <= 6), 2.5t (t <= 10), 3t (t > 10), ri = ro - t. It, Wt per those standards.
+  function hollowRadii(t, cold) {
+    if (!cold) return [1.5 * t, t];
+    const ro = t <= 6 ? 2 * t : t <= 10 ? 2.5 * t : 3 * t;
+    return [ro, ro - t];
+  }
+  function roundedRect(H, B, r) {               // solid rectangle H (along z) x B with four corners of radius r
+    const { As, e, Ic } = spandrel(r), zc = H / 2 - e, yc = B / 2 - e;
+    return { A: B * H - 4 * As, Iy: B * H ** 3 / 12 - 4 * (Ic + As * zc * zc), Iz: H * B ** 3 / 12 - 4 * (Ic + As * yc * yc),
+      Sy: B * H * H / 8 - 2 * As * zc, Sz: H * B * B / 8 - 2 * As * yc };    // S = first moment of the half area
+  }
+  function rhs({ h, b, t, cold = false, name }) {
+    const [ro, ri] = hollowRadii(t, cold);
+    const o = roundedRect(h, b, ro), i = roundedRect(h - 2 * t, b - 2 * t, ri);
+    const A = o.A - i.A, Iy = o.Iy - i.Iy, Iz = o.Iz - i.Iz;
+    const Rc = (ro + ri) / 2, hp = 2 * ((b - t) + (h - t)) - 2 * Rc * (4 - Math.PI), Ah = (b - t) * (h - t) - Rc * Rc * (4 - Math.PI);
+    const K = 2 * Ah * t / hp, It = t ** 3 * hp / 3 + 2 * K * Ah;
+    const kind = Math.abs(h - b) < 1e-9 ? 'SHS' : 'RHS';
+    return { shape: 'RHS', nw: 2, cold, name: name || `${h}×${b}×${t} ${kind}`, mass: A * 7850e-6, h, b, t, tw: t, tf: t, r: ro, ro, ri,
+      A, Iy, Iz, Wely: Iy / (h / 2), Welz: Iz / (b / 2), Wply: 2 * (o.Sy - i.Sy), Wplz: 2 * (o.Sz - i.Sz), It, Wt: It / (t + K / t), Iw: 0,
+      rolled: !cold, productStd: cold ? 'BS EN 10219-1' : 'BS EN 10210-1' };
+  }
+  function chs({ d, t, cold = false, name }) {
+    const di = d - 2 * t, I = Math.PI / 64 * (d ** 4 - di ** 4), A = Math.PI / 4 * (d * d - di * di), Wpl = (d ** 3 - di ** 3) / 6;
+    return { shape: 'CHS', nw: 0, cold, name: name || `${d}×${t} CHS`, mass: A * 7850e-6, h: d, b: d, d, t, tw: t, tf: t, r: 0,
+      A, Iy: I, Iz: I, Wely: 2 * I / d, Welz: 2 * I / d, Wply: Wpl, Wplz: Wpl, It: 2 * I, Wt: 4 * I / d, Iw: 0,
+      rolled: !cold, productStd: cold ? 'BS EN 10219-1' : 'BS EN 10210-1' };
+  }
+  const isHollow = s => s.shape === 'RHS' || s.shape === 'CHS';
 
   // ---------- Classification, Table 5.2 ----------
-  function classify(s, fy, N, bending) {
+  function internalLimits(alpha, psi, eps) {    // Table 5.2 sheet 1, internal compression parts
+    if (alpha <= 0) return [Infinity, Infinity, Infinity];
+    return [alpha > 0.5 ? 396 * eps / (13 * alpha - 1) : 36 * eps / alpha,
+      alpha > 0.5 ? 456 * eps / (13 * alpha - 1) : 41.5 * eps / alpha,
+      psi > -1 ? 42 * eps / (0.67 + 0.33 * psi) : 62 * eps * (1 - psi) * Math.sqrt(-psi)];
+  }
+  const clsOf = (ratio, lim) => ratio <= lim[0] ? 1 : ratio <= lim[1] ? 2 : ratio <= lim[2] ? 3 : 4;
+  // bending: major-axis bending present; biax: minor-axis bending present as well (walls then taken in compression)
+  function classify(s, fy, N, bending, biax = false) {
     const eps = Math.sqrt(235 / fy);
-    const cf = (s.b - s.tw - 2 * s.r) / 2, rf = cf / s.tf;
+    if (s.shape === 'CHS') {                      // Table 5.2 sheet 3
+      const ratio = s.d / s.t, lim = [50 * eps * eps, 70 * eps * eps, 90 * eps * eps], c = clsOf(ratio, lim);
+      const tube = { c: s.d, ratio, lim, cls: c, kind: 'tube' };
+      return { eps, tube, flange: tube, web: tube, cls: c };
+    }
+    if (s.shape === 'RHS') {                      // c = b - 3t, h - 3t (Table 5.2 note for hollow sections)
+      const cf = s.b - 3 * s.t, cw = s.h - 3 * s.t;
+      const fl = internalLimits(1, 1, eps), rf = cf / s.t;
+      let alpha, psi;
+      if (!bending || biax) { alpha = N > 0 ? 1 : 0; psi = N > 0 ? 1 : -1; if (biax) { alpha = 1; psi = 1; } }
+      else { alpha = Math.min(1, 0.5 + N / (2 * fy * 2 * s.t * cw)); psi = Math.max(-3, Math.min(1, 2 * N / (s.A * fy) - 1)); }
+      const wl = internalLimits(alpha, psi, eps), rw = cw / s.t;
+      const fcls = (!bending && !(N > 0) && !biax) ? 1 : clsOf(rf, fl), wcls = clsOf(rw, wl);
+      return { eps, flange: { c: cf, ratio: rf, lim: fl, cls: fcls, kind: 'internal' }, web: { c: cw, ratio: rw, alpha, psi, lim: wl, cls: wcls }, cls: Math.max(fcls, wcls) };
+    }
+    const cf = s.shape === 'PFC' ? s.b - s.tw - s.r : (s.b - s.tw - 2 * s.r) / 2, rf = cf / s.tf;
     const fl = [9 * eps, 10 * eps, 14 * eps];
-    const fcls = rf <= fl[0] ? 1 : rf <= fl[1] ? 2 : rf <= fl[2] ? 3 : 4;
+    const fcls = clsOf(rf, fl);
     const cw = s.h - 2 * s.tf - 2 * s.r, rw = cw / s.tw;
     let alpha, psi;
     if (!bending) { alpha = N > 0 ? 1 : 0; psi = N > 0 ? 1 : -1; }
     else { alpha = Math.min(1, 0.5 + N / (2 * s.tw * fy * cw)); psi = Math.max(-3, Math.min(1, 2 * N / (s.A * fy) - 1)); }
-    let wl;
-    if (alpha <= 0) wl = [Infinity, Infinity, Infinity];
-    else wl = [
-      alpha > 0.5 ? 396 * eps / (13 * alpha - 1) : 36 * eps / alpha,
-      alpha > 0.5 ? 456 * eps / (13 * alpha - 1) : 41.5 * eps / alpha,
-      psi > -1 ? 42 * eps / (0.67 + 0.33 * psi) : 62 * eps * (1 - psi) * Math.sqrt(-psi)];
-    const wcls = rw <= wl[0] ? 1 : rw <= wl[1] ? 2 : rw <= wl[2] ? 3 : 4;
-    return { eps, flange: { c: cf, ratio: rf, lim: fl, cls: fcls }, web: { c: cw, ratio: rw, alpha, psi, lim: wl, cls: wcls }, cls: Math.max(fcls, wcls) };
+    const wl = internalLimits(alpha, psi, eps);
+    const wcls = clsOf(rw, wl);
+    return { eps, flange: { c: cf, ratio: rf, lim: fl, cls: fcls, kind: 'outstand' }, web: { c: cw, ratio: rw, alpha, psi, lim: wl, cls: wcls }, cls: Math.max(fcls, wcls) };
   }
 
-  // Effective area under uniform compression, EN 1993-1-5 4.4 (only elements that are Class 4 are reduced)
+  // ---------- Effective sections, EN 1993-1-5 4.4 ----------
+  function kSigmaInternal(psi) {                // Table 4.1 (tabulated values at psi = 1, 0, -1)
+    if (Math.abs(psi - 1) < 1e-9) return 4.0;
+    if (Math.abs(psi) < 1e-9) return 7.81;
+    if (Math.abs(psi + 1) < 1e-9) return 23.9;
+    if (psi >= 0) return 8.2 / (1.05 + psi);
+    if (psi >= -1) return 7.81 - 6.29 * psi + 9.78 * psi * psi;
+    return 5.98 * (1 - psi) ** 2;
+  }
+  function rhoInternal(cb, t, eps, psi) {
+    const ks = kSigmaInternal(psi), lp = (cb / t) / (28.4 * eps * Math.sqrt(ks));
+    const rho = lp <= 0.5 + Math.sqrt(0.085 - 0.055 * psi) ? 1 : Math.min(1, (lp - 0.055 * (3 + psi)) / (lp * lp));
+    return { ks, lp, rho };
+  }
+  function rhoOutstand(c, t, eps) {             // Table 4.2, uniform compression (k_sigma = 0.43)
+    const lp = (c / t) / (28.4 * eps * Math.sqrt(0.43));
+    return { ks: 0.43, lp, rho: lp <= 0.748 ? 1 : Math.min(1, (lp - 0.188) / (lp * lp)) };
+  }
+  // Effective area under uniform compression (only Class 4 elements are reduced)
   function aeffCompression(s, fy) {
     const k = classify(s, fy, 1, false), eps = k.eps;
+    if (s.shape === 'CHS') {
+      if (k.cls === 4) throw new Error('Class 4 CHS (BS EN 1993-1-6) is outside the scope of this tool');
+      return { Aeff: s.A, rhoW: 1, rhoF: 1, cls: k.cls };
+    }
     let Aeff = s.A, rhoW = 1, rhoF = 1;
-    if (k.web.cls === 4) {
-      const lp = k.web.ratio / (28.4 * eps * 2);                    // k_sigma = 4
-      rhoW = lp <= 0.673 ? 1 : Math.min(1, (lp - 0.055 * 4) / (lp * lp)); // psi = 1
-      Aeff -= (1 - rhoW) * k.web.c * s.tw;
+    if (s.shape === 'RHS') {
+      if (k.web.cls === 4) { rhoW = rhoInternal(k.web.c, s.t, eps, 1).rho; Aeff -= 2 * (1 - rhoW) * k.web.c * s.t; }
+      if (k.flange.cls === 4) { rhoF = rhoInternal(k.flange.c, s.t, eps, 1).rho; Aeff -= 2 * (1 - rhoF) * k.flange.c * s.t; }
+      return { Aeff, rhoW, rhoF, cls: k.cls };
     }
-    if (k.flange.cls === 4) {
-      const lp = k.flange.ratio / (28.4 * eps * Math.sqrt(0.43));  // outstand, k_sigma = 0.43
-      rhoF = lp <= 0.748 ? 1 : Math.min(1, (lp - 0.188) / (lp * lp));
-      Aeff -= 4 * (1 - rhoF) * k.flange.c * s.tf;
-    }
+    if (k.web.cls === 4) { rhoW = rhoInternal(k.web.c, s.tw, eps, 1).rho; Aeff -= (1 - rhoW) * k.web.c * s.tw; }
+    if (k.flange.cls === 4) { rhoF = rhoOutstand(k.flange.c, s.tf, eps).rho; Aeff -= (s.shape === 'PFC' ? 2 : 4) * (1 - rhoF) * k.flange.c * s.tf; }
     return { Aeff, rhoW, rhoF, cls: k.cls };
   }
-
-  // Effective section modulus for major-axis bending with a Class 4 web, EN 1993-1-5 4.4 and Table 4.1.
-  // Stress ratio from the gross section (4.4(3): effective compression flange + gross web; flanges are Class 1-3 here),
-  // so psi = -1 for this doubly symmetric section. The ineffective strip lies in the compression half of the web.
+  // Holes (ineffective strips) removed from the gross section: [{A, z, I}], z from the gross centroid (+ = compression side)
+  function withHoles(s, holes) {
+    const Ah = holes.reduce((a, h) => a + h.A, 0), Aeff = s.A - Ah;
+    const shift = -holes.reduce((a, h) => a + h.A * h.z, 0) / Aeff;
+    const I0 = s.Iy - holes.reduce((a, h) => a + h.I + h.A * h.z * h.z, 0);
+    const Ieff = I0 - Aeff * shift * shift;
+    return { Aeff, shift, Ieff, Weff: Ieff / (s.h / 2 - shift) };   // compression fibre is the further one (shift < 0)
+  }
+  // Web strip that is ineffective for a stress ratio psi (Table 4.1), web element spanning z in [-c/2 + zb, c/2 + zb]
+  function webHole(c, t, eps, psi) {
+    const r = rhoInternal(c, t, eps, psi);
+    let be1, beff, bc;
+    if (psi < 0) { bc = c / (1 - psi); beff = r.rho * bc; be1 = 0.4 * beff; }
+    else { bc = c; beff = r.rho * c; be1 = 2 * beff / (5 - psi); }
+    return { ...r, psi, bc, beff, be1, be2: beff - be1, hole: bc - beff };
+  }
+  // Effective section modulus for major-axis bending (EN 1993-1-5 4.4). Stress ratio of the web from the effective
+  // compression flange and gross web (4.4(3)).
   function weffBending(s, fy) {
     const k = classify(s, fy, 0, true), eps = k.eps;
-    if (k.web.cls < 4) return { Weff: s.Wely, Ieff: s.Iy, rho: 1, lp: null, shift: 0, reduced: false };
-    const c = k.web.c, t = s.tw, psi = -1, ks = 23.9;
-    const lp = (c / t) / (28.4 * eps * Math.sqrt(ks));
-    const rho = lp <= 0.5 + Math.sqrt(0.085 - 0.055 * psi) ? 1 : Math.min(1, (lp - 0.055 * (3 + psi)) / (lp * lp));
-    const bc = c / (1 - psi), beff = rho * bc, be1 = 0.4 * beff, hole = bc - beff;
-    // z measured from the gross centroid, positive towards the compression flange; web element spans +-c/2
-    const zh = c / 2 - be1 - hole / 2, Ah = hole * t;
-    const Aeff = s.A - Ah, shift = -Ah * zh / Aeff;          // centroid moves towards the tension side
-    const Ieff = s.Iy - t * hole ** 3 / 12 - Ah * zh * zh - Aeff * shift * shift;
-    const Weff = Ieff / (s.h / 2 - shift);                  // extreme compression fibre (furthest from the new centroid)
-    return { Weff, Ieff, rho, lp, ks, psi, beff, be1, be2: 0.6 * beff, hole, shift, reduced: rho < 1 };
+    if (k.cls < 4) return { Weff: s.Wely, Ieff: s.Iy, rho: 1, lp: null, shift: 0, reduced: false };
+    if (s.shape === 'CHS') throw new Error('Class 4 CHS (BS EN 1993-1-6) is outside the scope of this tool');
+    const holes = [];
+    let fl = null;
+    if (s.shape === 'RHS' && k.flange.cls === 4) {
+      fl = rhoInternal(k.flange.c, s.t, eps, 1);
+      const hf = (1 - fl.rho) * k.flange.c;
+      holes.push({ A: hf * s.t, z: s.h / 2 - s.t / 2, I: hf * s.t ** 3 / 12 });
+    }
+    const z0 = holes.length ? withHoles(s, holes).shift : 0;
+    const c = k.web.c, t = s.tw, nw = s.nw;
+    const psi = Math.max(-3, (-c / 2 - z0) / (c / 2 - z0));
+    const w = webHole(c, t, eps, psi);
+    if (w.hole > 0) holes.push({ A: nw * w.hole * t, z: c / 2 - w.be1 - w.hole / 2, I: nw * t * w.hole ** 3 / 12 });
+    const r = withHoles(s, holes);
+    return { ...r, rho: w.rho, lp: w.lp, ks: w.ks, psi, beff: w.beff, be1: w.be1, be2: w.be2, hole: w.hole, flange: fl, reduced: r.Weff < s.Wely - 1e-6 };
   }
   // Section modulus for bending resistance by class (6.2.5(2))
   function wyByClass(s, fy, cls) { return cls <= 2 ? s.Wply : cls === 3 ? s.Wely : weffBending(s, fy).Weff; }
 
   // ---------- Shear, 6.2.6 and EN 1993-1-5 5 ----------
+  // Load parallel to the web (z direction)
   function shear(s, fy) {
-    const eps = Math.sqrt(235 / fy), hw = s.h - 2 * s.tf;
-    const Av = s.rolled ? Math.max(s.A - 2 * s.b * s.tf + (s.tw + 2 * s.r) * s.tf, ETA * hw * s.tw) : ETA * hw * s.tw;
+    const eps = Math.sqrt(235 / fy);
+    if (s.shape === 'CHS') { const Av = 2 * s.A / Math.PI, Vpl = Av * fy / Math.sqrt(3) / GM0; return { Av, Vpl, hw: s.d, slender: false, Vb: Infinity, VRd: Vpl }; }
+    const hw = s.h - 2 * s.tf, tw = s.tw, nw = s.nw;
+    let Av;
+    if (s.shape === 'RHS') Av = s.A * s.h / (s.b + s.h);                                     // 6.2.6(3)(f)
+    else if (s.shape === 'PFC') Av = Math.max(s.A - 2 * s.b * s.tf + (tw + s.r) * s.tf, ETA * hw * tw);   // (b)
+    else Av = s.rolled ? Math.max(s.A - 2 * s.b * s.tf + (tw + 2 * s.r) * s.tf, ETA * hw * tw) : ETA * hw * tw;  // (a), (d)
     const Vpl = Av * fy / Math.sqrt(3) / GM0;
-    const slender = hw / s.tw > 72 * eps / ETA;
+    const slender = hw / tw > 72 * eps / ETA;
     let Vb = Infinity, lw = null, chiw = null;
-    if (slender) {   // unstiffened web, stiffeners at supports only, non-rigid end post, flange contribution ignored
-      lw = hw / (86.4 * s.tw * eps);
+    if (slender) {   // unstiffened web(s), stiffeners at supports only, non-rigid end post, flange contribution ignored
+      lw = hw / (86.4 * tw * eps);
       chiw = lw < 0.83 / ETA ? ETA : 0.83 / lw;
-      Vb = Math.min(chiw * fy * hw * s.tw / (Math.sqrt(3) * GM1), ETA * fy * hw * s.tw / (Math.sqrt(3) * GM1));
+      Vb = nw * Math.min(chiw * fy * hw * tw / (Math.sqrt(3) * GM1), ETA * fy * hw * tw / (Math.sqrt(3) * GM1));
     }
     return { Av, Vpl, hw, slender, lw, chiw, Vb, VRd: Math.min(Vpl, Vb) };
   }
+  // Load parallel to the flanges (y direction), 6.2.6(3)(e)-(g)
+  function shearZ(s, fy) {
+    let Av;
+    if (s.shape === 'CHS') Av = 2 * s.A / Math.PI;
+    else if (s.shape === 'RHS') Av = s.A * s.b / (s.b + s.h);
+    else Av = s.A - (s.h - 2 * s.tf) * s.tw;
+    const Vpl = Av * fy / Math.sqrt(3) / GM0;
+    return { Av, Vpl, VRd: Vpl };
+  }
+
+  // Exact plastic N-M interaction of a CHS (stress blocks either side of a straight neutral axis): MN for given n
+  function chsMN(s, fyr, N) {
+    const Ro = s.d / 2, Ri = Ro - s.t;
+    const seg = (R, z) => { if (z >= R) return { A: 0, S: 0 }; if (z <= -R) return { A: Math.PI * R * R, S: 0 };
+      return { A: R * R * Math.acos(z / R) - z * Math.sqrt(R * R - z * z), S: 2 / 3 * (R * R - z * z) ** 1.5 }; };
+    const above = z => { const o = seg(Ro, z), i = seg(Ri, z); return { A: o.A - i.A, S: o.S - i.S }; };
+    const Ntot = s.A * fyr;
+    if (Math.abs(N) >= Ntot) return 0;
+    let lo = -Ro, hi = Ro;                       // compression above z0: N = fyr (2 A_above - A)
+    for (let it = 0; it < 80; it++) { const m = (lo + hi) / 2; if (fyr * (2 * above(m).A - s.A) > Math.abs(N)) lo = m; else hi = m; }
+    return 2 * fyr * above((lo + hi) / 2).S;
+  }
 
   // ---------- Cross-section resistance at one station, 6.2 ----------
-  function sectionCheck(s, fy, N, My, V, Mz = 0) {
-    const bending = Math.abs(My) > 1e-6 || Math.abs(Mz) > 1e-6;
-    const cl = classify(s, fy, N, bending);
-    if (cl.flange.cls === 4) throw new Error('Class 4 flange: outside the scope of this tool');
-    const sh = shear(s, fy);
+  // N (+ compression), My (major), V (parallel to web), Mz (minor), Vz (parallel to flanges)
+  function sectionCheck(s, fy, N, My, V, Mz = 0, Vz = 0) {
+    const bending = Math.abs(My) > 1e-6 || Math.abs(Mz) > 1e-6, biax = Math.abs(Mz) > 1e-6;
+    const cl = classify(s, fy, N, bending, biax);
+    if (!isHollow(s) && cl.flange.cls === 4) throw new Error('Class 4 flange: outside the scope of this tool');
+    if (s.shape === 'CHS' && cl.cls === 4) throw new Error('Class 4 CHS (BS EN 1993-1-6) is outside the scope of this tool');
+    const sh = shear(s, fy), shz = shearZ(s, fy);
     const comp = aeffCompression(s, fy);
-    const hw = s.h - 2 * s.tf, Aw = hw * s.tw;
-    const uV = Math.abs(V) / sh.VRd;
+    const hw = s.h - 2 * s.tf, Aw = s.shape === 'CHS' ? sh.Av : s.nw * hw * s.tw;
+    const uV = Math.max(Math.abs(V) / sh.VRd, Math.abs(Vz) / shz.VRd);
     // 6.2.8 reduction for stocky webs; webs susceptible to shear buckling use EN 1993-1-5 7.1 instead (below)
-    const rho = !sh.slender && Math.abs(V) > 0.5 * sh.VRd ? (2 * Math.abs(V) / sh.VRd - 1) ** 2 : 0;
+    const Vres = s.shape === 'CHS' ? Math.hypot(V, Vz) : Math.abs(V);
+    const rho = !sh.slender && Vres > 0.5 * sh.VRd ? (2 * Vres / sh.VRd - 1) ** 2 : 0;
+    const rhoZ = s.shape !== 'CHS' && Math.abs(Vz) > 0.5 * shz.VRd ? (2 * Math.abs(Vz) / shz.VRd - 1) ** 2 : 0;
     const NRd = N > 0 ? (comp.cls === 4 ? comp.Aeff : s.A) * fy / GM0 : s.A * fy / GM0;
-    const out = { cls: cl, shear: sh, rho, uV, NRd, uN: Math.abs(N) / NRd };
+    const out = { cls: cl, shear: sh, shearZ: shz, rho, rhoZ, uV, NRd, uN: Math.abs(N) / NRd };
+    const sd = (m, r) => m <= 1e-6 ? 0 : r <= 0 ? Infinity : m / r;
     if (cl.cls <= 2) {
-      const Ar = s.A - rho * Aw;                       // 6.2.10: reduced yield strength on shear area
-      const Npl = Ar * fy / GM0;
-      const Mply = Math.min(s.Wply, s.Wply - rho * Aw * Aw / (4 * s.tw)) * fy / GM0;
-      const Mplz = s.Wplz * fy / GM0;
-      const n = Math.abs(N) / Npl;
-      const a = Math.min(0.5, (Ar - 2 * s.b * s.tf) / Ar);
-      const allowY = Math.abs(N) <= 0.25 * Npl && Math.abs(N) <= 0.5 * hw * s.tw * (1 - rho) * fy / GM0; // 6.2.9.1(4)
-      const MNy = Math.max(0, allowY ? Mply : Math.min(Mply, Mply * (1 - n) / (1 - 0.5 * a)));
-      const MNz = Math.max(0, n <= a ? Mplz : n >= 1 ? 0 : Mplz * (1 - ((n - a) / (1 - a)) ** 2));
-      const ay = 2, bz = Math.max(1, 5 * n);
-      const sd = (m, r) => m <= 1e-6 ? 0 : r <= 0 ? Infinity : m / r;
-      const uMy = sd(Math.abs(My), MNy), uMz = sd(Math.abs(Mz), MNz);
-      const uNM = Math.abs(Mz) > 1e-6 ? uMy ** ay + uMz ** bz : uMy;          // 6.2.9.1(6), eq. 6.41
-      Object.assign(out, { method: 'plastic', Mply, Mplz, MNy, MNz, n, a, allowY, uMy: Math.abs(My) / Mply, uNM, uM: Math.max(uNM, n) });
+      const An = Math.abs(N);
+      if (s.shape === 'CHS') {                       // reduced yield strength on the whole section for shear (conservative)
+        const fyr = (1 - rho) * fy / GM0, Mpl = s.Wply * fyr, MN = chsMN(s, fyr, An), M = Math.hypot(My, Mz);
+        const n = An / (s.A * fyr);
+        Object.assign(out, { method: 'plastic', Mply: Mpl, Mplz: Mpl, MNy: MN, MNz: MN, n, uMy: Math.abs(My) / Mpl, uNM: sd(M, MN), interaction: 'CHS: resultant moment, exact plastic N-M' });
+        out.uM = Math.max(out.uNM, n);
+      } else {
+        const Ar = s.A - rho * Aw;                    // 6.2.10: reduced yield strength on the shear area
+        const Npl = Ar * fy / GM0, n = An / Npl;
+        const Mply = Math.min(s.Wply, s.Wply - rho * Aw * Aw / (4 * s.nw * s.tw)) * fy / GM0;
+        const Mplz = (1 - rhoZ) * s.Wplz * fy / GM0;
+        let MNy, MNz, ay, bz, a = null, allowY = false, rule;
+        if (s.shape === 'RHS') {                     // (6.39), (6.40), 6.2.9.1(6)
+          const aw = Math.min(0.5, (s.A - 2 * s.b * s.t) / s.A), af = Math.min(0.5, (s.A - 2 * s.h * s.t) / s.A);
+          MNy = Math.max(0, Math.min(Mply, Mply * (1 - n) / (1 - 0.5 * aw)));
+          MNz = Math.max(0, Math.min(Mplz, Mplz * (1 - n) / (1 - 0.5 * af)));
+          ay = bz = Math.min(6, 1.66 / (1 - 1.13 * n * n)); a = aw; rule = 'RHS (6.39)/(6.40)';
+        } else if (s.shape === 'PFC') {              // plastic neutral axis in the web while N <= web capacity, then linear
+          const twr = s.tw * (1 - rho), Nw = (hw - 2 * s.r) * twr * fy / GM0;
+          const Mw = Math.max(0, Mply - Nw * Nw / (4 * twr * fy / GM0));
+          MNy = An <= Nw ? Mply - An * An / (4 * twr * fy / GM0) : Math.max(0, Mw * (1 - (An - Nw) / (Npl - Nw)));
+          MNz = Math.max(0, Mplz * (1 - n));          // linear (6.2.1(7)), conservative
+          ay = bz = 1; rule = 'channel: web stress block, linear about z, unity exponents';
+        } else {                                     // I and H: 6.2.9.1(4), (5)
+          a = Math.min(0.5, (Ar - 2 * s.b * s.tf) / Ar);
+          allowY = An <= 0.25 * Npl && An <= 0.5 * hw * s.tw * (1 - rho) * fy / GM0;
+          MNy = Math.max(0, allowY ? Mply : Math.min(Mply, Mply * (1 - n) / (1 - 0.5 * a)));
+          MNz = Math.max(0, n <= a ? Mplz : n >= 1 ? 0 : Mplz * (1 - ((n - a) / (1 - a)) ** 2));
+          ay = 2; bz = Math.max(1, 5 * n); rule = 'I/H (6.36)-(6.38)';
+        }
+        const uMy = sd(Math.abs(My), MNy), uMz = sd(Math.abs(Mz), MNz);
+        const uNM = Math.abs(Mz) > 1e-6 ? uMy ** ay + uMz ** bz : uMy;          // 6.2.9.1(6), eq. 6.41
+        Object.assign(out, { method: 'plastic', Mply, Mplz, MNy, MNz, n, a, allowY, ay, bz, rule, uMy: Math.abs(My) / Mply, uNM, uM: Math.max(uNM, n) });
+      }
     } else {
       const W0 = cl.cls === 4 ? weffBending(s, fy).Weff : s.Wely;
-      const Wy = W0 - rho * s.tw * hw ** 3 / (6 * s.h);
+      const Wy = s.shape === 'CHS' ? (1 - rho) * W0 : W0 - rho * s.nw * s.tw * hw ** 3 / (6 * s.h);
+      const Wz = (1 - Math.max(rhoZ, s.shape === 'CHS' ? rho : 0)) * s.Welz;
       const Aeff = N > 0 ? comp.Aeff : s.A;
-      const sig = Math.abs(N) / Aeff + Math.abs(My) / Wy + Math.abs(Mz) / s.Welz;   // 6.2.9.2 / 6.2.9.3, eN = 0
-      Object.assign(out, { method: cl.cls === 4 ? 'effective' : 'elastic', W0, Wy, Aeff, uNM: sig / (fy / GM0), uMy: Math.abs(My) / (Wy * fy / GM0) });
+      const sig = s.shape === 'CHS' ? Math.abs(N) / Aeff + Math.hypot(My, Mz) / Wy
+        : Math.abs(N) / Aeff + Math.abs(My) / Wy + Math.abs(Mz) / Wz;              // 6.2.9.2 / 6.2.9.3, eN = 0
+      Object.assign(out, { method: cl.cls === 4 ? 'effective' : 'elastic', W0, Wy, Wz, Aeff, uNM: sig / (fy / GM0), uMy: Math.abs(My) / (Wy * fy / GM0) });
       out.uM = out.uNM;
     }
     if (sh.slender) {               // EN 1993-1-5 7.1(1): eta1 + (1 - Mf,Rd/Mpl,Rd)(2 eta3 - 1)^2 <= 1 for eta3 > 0.5
@@ -845,7 +1020,7 @@ const EC3 = (() => {
       if (eta3 > 0.5) {
         const Af = 2 * s.b * s.tf, n = Math.abs(N) / (s.A * fy / GM0), a = Math.min(0.5, (s.A - Af) / s.A);
         const Mpl = s.Wply * fy / GM0;                                     // irrespective of class (7.1(1))
-        const MplN = Math.max(0, n <= Math.min(0.25, 0.5 * hw * s.tw / s.A) ? Mpl : Mpl * (1 - n) / (1 - 0.5 * a));   // 6.2.9.1
+        const MplN = Math.max(0, s.shape === 'RHS' || n > Math.min(0.25, 0.5 * s.nw * hw * s.tw / s.A) ? Math.min(Mpl, Mpl * (1 - n) / (1 - 0.5 * a)) : Mpl);   // 6.2.9.1 (6.36)/(6.39), <= Mpl
         const Mf = Math.max(0, s.b * s.tf * (s.h - s.tf) * fy / GM0 * (1 - Math.abs(N) / (Af * fy / GM0)));      // 5.4(2)
         const Mv = MplN - (MplN - Mf) * (2 * Math.min(1, eta3) - 1) ** 2;
         const u71 = Math.abs(My) <= 1e-6 ? 0 : Mv > 0 ? Math.abs(My) / Mv : Infinity;
@@ -860,9 +1035,11 @@ const EC3 = (() => {
   // ---------- Buckling curves ----------
   const ALPHA = { a0: 0.13, a: 0.21, b: 0.34, c: 0.49, d: 0.76 };
   function fbCurves(s, grade) {               // Table 6.2
+    const hi = grade === 'S460';
+    if (isHollow(s)) { const c = s.cold ? 'c' : hi ? 'a0' : 'a'; return { y: c, z: c }; }
+    if (s.shape === 'PFC') return { y: 'c', z: 'c' };            // U-sections
     const hb = s.h / s.b, t = s.tf;
     if (!s.rolled) return t <= 40 ? { y: 'b', z: 'c' } : { y: 'c', z: 'd' };
-    const hi = grade === 'S460';
     if (hb > 1.2) return t <= 40 ? (hi ? { y: 'a0', z: 'a0' } : { y: 'a', z: 'b' }) : (hi ? { y: 'a', z: 'a' } : { y: 'b', z: 'c' });
     return t <= 100 ? (hi ? { y: 'a', z: 'a' } : { y: 'b', z: 'c' }) : (hi ? { y: 'c', z: 'c' } : { y: 'd', z: 'd' });
   }
@@ -871,8 +1048,16 @@ const EC3 = (() => {
     const chi = lam <= 0.2 ? 1 : Math.min(1, 1 / (phi + Math.sqrt(phi * phi - lam * lam)));
     return { alpha: a, phi, chi };
   }
-  function ltbParams(s) {                     // UK NA NA.2.17 for 6.3.2.3; 6.3.2.2 otherwise
+  // UK NA NA.2.17 for 6.3.2.3 (lambda_LT,0 = 0.4, beta = 0.75 for rolled sections and hot-finished and cold-formed hollow
+  // sections; 0.2 / 1.0 for welded) and its curve table; 6.3.2.2 otherwise. CHS: not susceptible to LTB.
+  function ltbParams(s) {
     const hb = s.h / s.b;
+    if (s.shape === 'CHS') return { method: 'none', lam0: Infinity, beta: 1, curve: 'a', none: true };
+    if (s.shape === 'RHS') {
+      if (!s.cold) return { method: '6.3.2.3', lam0: 0.4, beta: 0.75, curve: hb <= 2 ? 'b' : hb <= 3.1 ? 'c' : 'd' };
+      return { method: '6.3.2.3', lam0: 0.4, beta: 0.75, curve: hb <= 2 ? 'c' : 'd' };
+    }
+    if (s.shape === 'PFC') return { method: '6.3.2.3', lam0: 0.4, beta: 0.75, curve: 'd' };   // all other hot-rolled sections
     if (s.rolled) return { method: '6.3.2.3', lam0: 0.4, beta: 0.75, curve: hb <= 2 ? 'b' : hb <= 3.1 ? 'c' : 'd' };
     if (hb <= 3.1) return { method: '6.3.2.3', lam0: 0.2, beta: 1.0, curve: hb <= 2 ? 'c' : 'd' };
     return { method: '6.3.2.2', lam0: 0.2, beta: 1.0, curve: 'd' };
@@ -1160,7 +1345,7 @@ const EC3 = (() => {
     return { kyy, kyz, kzy, kzz };
   }
 
-  return { E, G, GM0, GM1, ETA, GRADES, ALPHA, yieldStrength, fromRow, customI, classify, aeffCompression, weffBending, wyByClass, ncrFE, shear,
+  return { E, G, GM0, GM1, ETA, GRADES, ALPHA, yieldStrength, fromRow, fromRowPFC, customI, rhs, chs, hollowRadii, isHollow, spandrel, classify, internalLimits, kSigmaInternal, rhoInternal, rhoOutstand, aeffCompression, weffBending, wyByClass, ncrFE, shear, shearZ, chsMN,
     sectionCheck, fbCurves, chiFlex, ltbParams, chiLT, ltbModel, mcrFE, mcrUniform, cmFactor, annexB, symEigenvalues };
 })();
 if (typeof module !== 'undefined') module.exports = { EC3 };
@@ -1211,6 +1396,7 @@ const Design = (() => {
   // chi_LT and Mb,Rd from Mcr (6.3.2.2 / 6.3.2.3 with UK NA); C1 (shape-only, loads at shear centre) sets kc = 1/sqrt(C1)
   function ltbResult(sec, fy, cls, Mcr, C1, Mmax) {
     const Wy = EC3.wyByClass(sec, fy, cls), p = EC3.ltbParams(sec);
+    if (p.none) { Mcr = Infinity; C1 = null; }            // CHS: not susceptible to lateral-torsional buckling
     // kc = 1/sqrt(C1); not taken below 0.6, the lowest value in Table 6.6 (conservative where exact C1 > 2.78)
     const kc = C1 && C1 > 1 ? Math.max(0.6, Math.min(1, 1 / Math.sqrt(C1))) : 1;
     const lamLT = Mcr === Infinity ? 0 : Math.sqrt(Wy * fy / Mcr);
@@ -1239,20 +1425,31 @@ const Design = (() => {
     const A = comp.cls === 4 ? comp.Aeff : sec.A, NRk = A * fy;
     const cur = EC3.fbCurves(sec, grade);
     const Ncry = Math.PI ** 2 * E * sec.Iy / Lcry ** 2, Ncrz = Math.PI ** 2 * E * sec.Iz / Lcrz ** 2;
-    const i02 = (sec.Iy + sec.Iz) / sec.A;
-    const NcrT = (G * sec.It + Math.PI ** 2 * E * sec.Iw / LT ** 2) / i02;          // 6.3.1.4, doubly symmetric
-    const ly = Math.sqrt(NRk / Ncry), lz = Math.sqrt(NRk / Ncrz), lT = Math.sqrt(NRk / NcrT);
+    // 6.3.1.4: torsional (doubly symmetric) or torsional-flexural (channel, coupled with minor-axis flexure since the
+    // shear centre lies on the major axis at y0 from the centroid); closed hollow sections are not susceptible
+    let NcrT = Infinity, NcrTF = null, i02 = null;
+    if (!EC3.isHollow(sec)) {
+      const y0 = sec.shape === 'PFC' ? sec.y0 : 0;
+      i02 = (sec.Iy + sec.Iz) / sec.A + y0 * y0;
+      NcrT = (G * sec.It + Math.PI ** 2 * E * sec.Iw / LT ** 2) / i02;
+      if (y0) {
+        const k = y0 * y0 / i02, beta = 1 - k, r = NcrT / Ncrz;
+        NcrTF = Ncrz / (2 * beta) * (1 + r - Math.sqrt((1 - r) ** 2 + 4 * k * r));
+      }
+    }
+    const NcrTor = NcrTF ?? NcrT;
+    const ly = Math.sqrt(NRk / Ncry), lz = Math.sqrt(NRk / Ncrz), lT = Math.sqrt(NRk / NcrTor);
     const cy = EC3.chiFlex(ly, cur.y), cz = EC3.chiFlex(lz, cur.z), cT = EC3.chiFlex(lT, cur.z);
     const chiMin = Math.min(cy.chi, cz.chi, cT.chi);
     const NbRd = chiMin * NRk / EC3.GM1;
-    return { comp, A, NRk, curves: cur, Lcry, Lcrz, LT, Ncry, Ncrz, NcrT, lamY: ly, lamZ: lz, lamT: lT, y: cy, z: cz, T: cT, chiZT: Math.min(cz.chi, cT.chi), NbRd, util: Ncomp > 0 ? Ncomp / NbRd : 0 };
+    return { comp, A, NRk, curves: cur, Lcry, Lcrz, LT, Ncry, Ncrz, NcrT: NcrTor, NcrTpure: NcrT, NcrTF, i02, torsionalMode: EC3.isHollow(sec) ? 'none' : NcrTF ? 'torsional-flexural' : 'torsional', lamY: ly, lamZ: lz, lamT: lT, y: cy, z: cz, T: cT, chiZT: Math.min(cz.chi, cT.chi), NbRd, util: Ncomp > 0 ? Ncomp / NbRd : 0 };
   }
 
   function interaction(sec, fy, cls, N, ab, MyEd, chiLTmod, Cmy, CmLT, MzEd = 0, Cmz = 1) {
     const Wy = EC3.wyByClass(sec, fy, cls), Wz = cls <= 2 ? sec.Wplz : sec.Welz;
     const MyRk = Wy * fy, MzRk = Wz * fy;
     const nY = N / (ab.y.chi * ab.NRk / EC3.GM1), nZ = N / (ab.chiZT * ab.NRk / EC3.GM1);
-    const k = EC3.annexB({ cls, lamY: ab.lamY, lamZ: ab.lamZ, nY, nZ, Cmy, Cmz, CmLT, torsional: true });
+    const k = EC3.annexB({ cls, lamY: ab.lamY, lamZ: ab.lamZ, nY, nZ, Cmy, Cmz, CmLT, torsional: !EC3.isHollow(sec) });   // closed sections: not susceptible to torsional deformations
     const u61 = nY + k.kyy * MyEd / (chiLTmod * MyRk / EC3.GM1) + k.kyz * MzEd / (MzRk / EC3.GM1);
     const u62 = nZ + k.kzy * MyEd / (chiLTmod * MyRk / EC3.GM1) + k.kzz * MzEd / (MzRk / EC3.GM1);
     return { nY, nZ, ...k, Cmy, CmLT, Cmz, MyRk, MzRk, u61, u62, util: Math.max(u61, u62) };
@@ -1524,28 +1721,61 @@ function save() { try { localStorage.setItem(STORE, JSON.stringify(collect())); 
 function load() { try { return JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { return null; } }
 
 // ---------- section lists ----------
+// Hollow section sizes (outside dimensions, mm) from the UK producer's Celsius / Hybox ranges; thicknesses offered where
+// 6.25 <= (smaller side)/t <= 50 (hot-finished) or <= 16 mm (cold-formed). Properties are computed from the nominal
+// geometry of BS EN 10210-2 / BS EN 10219-2: check availability of a particular size with the supplier.
+const HOLLOW = {
+  SHS: [40, 50, 60, 70, 80, 90, 100, 120, 140, 150, 160, 180, 200, 220, 250, 260, 300, 350, 400].map(b => [b, b]),
+  RHS: [[50, 30], [60, 40], [80, 40], [90, 50], [100, 50], [100, 60], [120, 60], [120, 80], [150, 100], [160, 80], [180, 100], [200, 100], [200, 120],
+    [200, 150], [250, 100], [250, 150], [260, 140], [260, 180], [300, 100], [300, 150], [300, 200], [350, 150], [350, 250], [400, 200], [400, 300],
+    [450, 250], [500, 200], [500, 300]],
+  CHS: [42.4, 48.3, 60.3, 76.1, 88.9, 114.3, 139.7, 168.3, 193.7, 219.1, 244.5, 273, 323.9, 355.6, 406.4, 457, 508],
+  T: [3.2, 3.6, 4, 5, 6.3, 8, 10, 12.5, 14.2, 16, 20],
+};
+function hollowList(ser) {
+  const [kind, hc] = ser.split('-'), cold = hc === 'C', out = [];
+  const tOK = (min, t) => min / t >= 6.25 && min / t <= (kind === 'CHS' ? 100 : 50) && (!cold || t <= 16);
+  if (kind === 'CHS') HOLLOW.CHS.forEach(d => HOLLOW.T.forEach(t => { if (tOK(d, t)) out.push(`${d}×${t}`); }));
+  else HOLLOW[kind].forEach(([h, b]) => HOLLOW.T.forEach(t => { if (tOK(Math.min(h, b), t)) out.push(`${h}×${b}×${t}`); }));
+  return out;
+}
 function fillSections() {
   const ser = $('series').value;
   $('custom').classList.toggle('hidden', ser !== 'CUSTOM');
   $('secPick').classList.toggle('hidden', ser === 'CUSTOM');
   if (ser === 'CUSTOM') { secInfo(); return; }
   const cur = $('section').value;
-  $('section').innerHTML = SECTION_DATA.filter(r => r[0].endsWith(ser)).map(r => `<option${r[0] === cur ? ' selected' : ''}>${r[0]}</option>`).join('');
-  if (!$('section').value || !$('section').value.endsWith(ser)) $('section').selectedIndex = Math.min(30, $('section').options.length - 1);
+  const names = ser === 'PFC' ? PFC_DATA.map(r => r[0]) : ser.includes('-') ? hollowList(ser) : SECTION_DATA.filter(r => r[0].endsWith(ser)).map(r => r[0]);
+  $('section').innerHTML = names.map(n => `<option${n === cur ? ' selected' : ''}>${n}</option>`).join('');
+  if (!names.includes(cur)) $('section').selectedIndex = Math.min(ser === 'PFC' ? 6 : ser.includes('-') ? Math.floor(names.length / 3) : 30, names.length - 1);
   secInfo();
 }
 function currentSection() {
-  if ($('series').value === 'CUSTOM') {
+  const ser = $('series').value;
+  if (ser === 'CUSTOM') {
     return EC3.customI({ name: `Custom ${$('cRolled').value === '1' ? 'rolled' : 'welded'} I ${$('cH').value}×${$('cB').value}×${$('cTw').value}/${$('cTf').value}`,
       h: +$('cH').value, b: +$('cB').value, tw: +$('cTw').value, tf: +$('cTf').value, r: +$('cR').value, rolled: $('cRolled').value === '1' });
   }
+  if (ser === 'PFC') return EC3.fromRowPFC(PFC_DATA.find(r => r[0] === $('section').value));
+  if (ser.includes('-')) {
+    const [kind, hc] = ser.split('-'), cold = hc === 'C', v = $('section').value.split('×').map(Number);
+    const suffix = `${kind} ${cold ? 'cold-formed' : 'hot-finished'}`;
+    return kind === 'CHS' ? EC3.chs({ d: v[0], t: v[1], cold, name: `${$('section').value} ${suffix}` })
+      : EC3.rhs({ h: v[0], b: v[1], t: v[2], cold, name: `${$('section').value} ${suffix}` });
+  }
   return EC3.fromRow(SECTION_DATA.find(r => r[0] === $('section').value));
+}
+function sectionSource(s, ser) {
+  if (ser === 'CUSTOM') return 'computed from the entered dimensions (SCI P363 formulae)';
+  if (EC3.isHollow(s)) return `computed from the nominal geometry of ${s.cold ? 'BS EN 10219-2 (cold-formed)' : 'BS EN 10210-2 (hot-finished)'}, corner radii r<sub>o</sub> = ${(s.ro || 0).toFixed(1)} mm, r<sub>i</sub> = ${(s.ri || 0).toFixed(1)} mm; availability to be confirmed with the supplier`;
+  return `British Steel ${s.shape === 'PFC' ? 'parallel flange channels' : 'UK sections'} datasheet (July 2026)`;
 }
 function secInfo() {
   try {
     const s = currentSection();
-    $('secInfo').innerHTML = `${s.mass.toFixed(1)} kg/m &nbsp;·&nbsp; h/b = ${(s.h / s.b).toFixed(2)} &nbsp;·&nbsp; W<sub>pl,y</sub> ${(s.Wply / 1e3).toFixed(0)} cm³ &nbsp;·&nbsp; I<sub>y</sub> ${(s.Iy / 1e4).toFixed(0)} cm⁴` +
-      (s.rolled && $('series').value !== 'CUSTOM' ? ' &nbsp;·&nbsp; British Steel datasheet (Jul 2026)' : '');
+    $('secInfo').innerHTML = `${s.mass.toFixed(1)} kg/m &nbsp;·&nbsp; ${s.shape === 'CHS' ? 'd/t = ' + (s.d / s.t).toFixed(1) : 'h/b = ' + (s.h / s.b).toFixed(2)} &nbsp;·&nbsp; W<sub>pl,y</sub> ${(s.Wply / 1e3).toFixed(0)} cm³ &nbsp;·&nbsp; I<sub>y</sub> ${(s.Iy / 1e4).toFixed(0)} cm⁴` +
+      (EC3.isHollow(s) ? ' &nbsp;·&nbsp; nominal geometry, ' + (s.cold ? 'BS EN 10219-2' : 'BS EN 10210-2') : s.rolled && $('series').value !== 'CUSTOM' ? ' &nbsp;·&nbsp; British Steel datasheet (Jul 2026)' : '') +
+      (s.shape === 'PFC' ? ` &nbsp;·&nbsp; shear centre ${s.eSC.toFixed(1)} mm behind the web centreline` : '');
   } catch (e) { $('secInfo').textContent = ''; }
 }
 
@@ -1770,9 +2000,9 @@ function renderB(R, inp, ms) {
   h += `<div class="dlabel">Flexural and torsional buckling</div><table class="t"><tr><th>Mode</th><th>L<sub>cr</sub> (m)</th><th>N<sub>cr</sub> (kN)</th><th>&lambda;</th><th>Curve</th><th>&chi;</th></tr>
     <tr><td>y-y</td><td>${(inp.ky * inp.L / 1000).toFixed(2)}</td><td>${fmt(kN(ab.Ncry), 0)}</td><td>${ab.lamY.toFixed(3)}</td><td>${ab.curves.y}</td><td>${ab.y.chi.toFixed(3)}</td></tr>
     <tr><td>z-z</td><td>${(inp.kz * inp.L / 1000).toFixed(2)}</td><td>${fmt(kN(ab.Ncrz), 0)}</td><td>${ab.lamZ.toFixed(3)}</td><td>${ab.curves.z}</td><td>${ab.z.chi.toFixed(3)}</td></tr>
-    <tr><td>Torsional</td><td>${(inp.L / inp.nLT / 1000).toFixed(2)}</td><td>${fmt(kN(ab.NcrT), 0)}</td><td>${ab.lamT.toFixed(3)}</td><td>${ab.curves.z}</td><td>${ab.T.chi.toFixed(3)}</td></tr></table>`;
+    ${ab.torsionalMode === 'none' ? '' : `<tr><td>${ab.torsionalMode === 'torsional-flexural' ? 'Tors.-flexural' : 'Torsional'}</td><td>${(inp.L / inp.nLT / 1000).toFixed(2)}</td><td>${fmt(kN(ab.NcrT), 0)}</td><td>${ab.lamT.toFixed(3)}</td><td>${ab.curves.z}</td><td>${ab.T.chi.toFixed(3)}</td></tr>`}</table>`;
   if (R.segResults.length) h += `<div class="dlabel">Lateral-torsional buckling by segment</div><table class="t"><tr><th>Segment</th><th>M<sub>Ed</sub></th><th>C<sub>1</sub></th><th>M<sub>cr</sub></th><th>&lambda;<sub>LT</sub></th><th>&chi;<sub>LT,mod</sub></th><th>M<sub>b,Rd</sub></th><th>Util.</th></tr>` +
-    R.segResults.map(r => `<tr><td>${r.seg + 1}</td><td>${fmt(kNm(r.Mmax))}</td><td>${r.C1.toFixed(2)}</td><td>${fmt(kNm(r.Mcr), 0)}</td><td>${r.lamLT.toFixed(3)}</td><td>${r.chiMod.toFixed(3)}</td><td>${fmt(kNm(r.MbRd))}</td><td>${ufmt(r.util)}</td></tr>`).join('') + `</table>`;
+    R.segResults.map(r => `<tr><td>${r.seg + 1}</td><td>${fmt(kNm(r.Mmax))}</td><td>${r.C1 ? r.C1.toFixed(2) : '&ndash;'}</td><td>${fmt(kNm(r.Mcr), 0)}</td><td>${r.lamLT.toFixed(3)}</td><td>${r.chiMod.toFixed(3)}</td><td>${fmt(kNm(r.MbRd))}</td><td>${ufmt(r.util)}</td></tr>`).join('') + `</table>`;
   if (R.gov.interaction) { const ir = R.gov.interaction.ir; h += `<div class="dlabel">Interaction, Annex B</div><table class="t"><tr><th>C<sub>my</sub></th><th>C<sub>mz</sub></th><th>C<sub>mLT</sub></th><th>k<sub>yy</sub></th><th>k<sub>yz</sub></th><th>k<sub>zy</sub></th><th>k<sub>zz</sub></th><th>(6.61)</th><th>(6.62)</th></tr><tr><td>${ir.Cmy.toFixed(3)}</td><td>${ir.Cmz.toFixed(3)}</td><td>${ir.CmLT.toFixed(3)}</td><td>${ir.kyy.toFixed(3)}</td><td>${ir.kyz.toFixed(3)}</td><td>${ir.kzy.toFixed(3)}</td><td>${ir.kzz.toFixed(3)}</td><td>${ir.u61.toFixed(3)}</td><td>${ir.u62.toFixed(3)}</td></tr></table>`; }
   h += notesHTML(R, inp);
   h += `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
@@ -1803,10 +2033,18 @@ function reportHTML(R, inp, s) {
   const head = `<div class="rh"><div><b>Project</b>${esc(s.proj.name) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.proj.job) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.proj.by) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.proj.ref) || '&nbsp;'}</div>
     <div class="ttl">Steel member design to BS EN 1993-1-1 &mdash; ${esc(sec.name)} ${inp.grade}</div></div>`;
   let b = '';
-  b += `<div class="rs"><h2>1 Design basis</h2><p class="rp">BS EN 1990:2002+A1:2005 and UK NA; BS EN 1993-1-1:2005+A1:2014 and UK NA; BS EN 1993-1-5:2006 and UK NA. Partial factors &gamma;<sub>M0</sub> = 1.00, &gamma;<sub>M1</sub> = 1.00 (UK NA NA.2.15). E = 210 000 N/mm², G = 81 000 N/mm² (3.2.6). Section data: ${sec.rolled && s.series !== 'CUSTOM' ? 'British Steel UK sections datasheet (July 2026)' : 'computed from the entered dimensions'}.</p></div>`;
-  b += `<div class="rs"><h2>2 Section and material</h2><table class="rt"><tr><th>${esc(sec.name)}</th><th>h</th><th>b</th><th>t<sub>w</sub></th><th>t<sub>f</sub></th><th>r</th><th>A</th><th>I<sub>y</sub></th><th>I<sub>z</sub></th><th>W<sub>pl,y</sub></th><th>W<sub>el,y</sub></th><th>I<sub>t</sub></th><th>I<sub>w</sub></th></tr>
-    <tr><td>${sec.mass.toFixed(1)} kg/m</td><td>${sec.h}</td><td>${sec.b}</td><td>${sec.tw}</td><td>${sec.tf}</td><td>${sec.r}</td><td>${(sec.A / 100).toFixed(1)} cm²</td><td>${(sec.Iy / 1e4).toFixed(0)} cm⁴</td><td>${(sec.Iz / 1e4).toFixed(0)} cm⁴</td><td>${(sec.Wply / 1e3).toFixed(0)} cm³</td><td>${(sec.Wely / 1e3).toFixed(0)} cm³</td><td>${(sec.It / 1e4).toFixed(1)} cm⁴</td><td>${(sec.Iw / 1e12).toFixed(3)} dm⁶</td></tr></table>`;
-  b += rl(`Yield strength for t = ${Math.max(sec.tf, sec.tw)} mm, ${EC3.GRADES[inp.grade].std} via UK NA NA.2.4`, 'f<sub>y</sub>', `${fy} N/mm²`);
+  b += `<div class="rs"><h2>1 Design basis</h2><p class="rp">BS EN 1990:2002+A1:2005 and UK NA; BS EN 1993-1-1:2005+A1:2014 and UK NA; BS EN 1993-1-5:2006 and UK NA. Partial factors &gamma;<sub>M0</sub> = 1.00, &gamma;<sub>M1</sub> = 1.00 (UK NA NA.2.15). E = 210 000 N/mm², G = 81 000 N/mm² (3.2.6). Section data: ${sectionSource(sec, s.series)}.</p></div>`;
+  const cm = (v, k, d = 0) => `${(v / k).toFixed(d)}`;
+  const geo = sec.shape === 'CHS' ? [['d', sec.d], ['t', sec.t]] : sec.shape === 'RHS' ? [['h', sec.h], ['b', sec.b], ['t', sec.t], ['r<sub>o</sub>', +sec.ro.toFixed(1)]]
+    : [['h', sec.h], ['b', sec.b], ['t<sub>w</sub>', sec.tw], ['t<sub>f</sub>', sec.tf], ['r', sec.r]];
+  const props = [['A', cm(sec.A, 100, 1) + ' cm²'], ['I<sub>y</sub>', cm(sec.Iy, 1e4) + ' cm⁴'], ['I<sub>z</sub>', cm(sec.Iz, 1e4) + ' cm⁴'], ['W<sub>pl,y</sub>', cm(sec.Wply, 1e3) + ' cm³'],
+    ['W<sub>el,y</sub>', cm(sec.Wely, 1e3) + ' cm³'], ['I<sub>t</sub>', cm(sec.It, 1e4, 1) + ' cm⁴']];
+  if (sec.shape === 'I' || sec.shape === 'PFC') props.push(['I<sub>w</sub>', (sec.Iw / 1e12).toFixed(3) + ' dm⁶']);
+  if (sec.shape === 'PFC') props.push(['c<sub>y</sub> / e<sub>0</sub>', `${sec.cy.toFixed(1)} / ${sec.eSC.toFixed(1)} mm`]);
+  b += `<div class="rs"><h2>2 Section and material</h2><table class="rt"><tr><th>${esc(sec.name)}</th>${geo.map(g => `<th>${g[0]}</th>`).join('')}${props.map(g => `<th>${g[0]}</th>`).join('')}</tr>
+    <tr><td>${sec.mass.toFixed(1)} kg/m</td>${geo.map(g => `<td>${g[1]}</td>`).join('')}${props.map(g => `<td>${g[1]}</td>`).join('')}</tr></table>`;
+  if (sec.shape === 'PFC') b += `<p class="rp">c<sub>y</sub>: centroid from the back of the web (datasheet); e<sub>0</sub>: shear centre from the web centreline, away from the flanges (thin-walled formula). Loads applied in the plane of the web are eccentric to the shear centre; the resulting torsion is not checked here (see the torsion tool).</p>`;
+  b += rl(`Yield strength for t = ${Math.max(sec.tf, sec.tw)} mm, ${EC3.isHollow(sec) ? sec.productStd + ' (' + inp.grade + (sec.cold ? 'J2H' : 'NH/J2H') + ')' : EC3.GRADES[inp.grade].std} via UK NA NA.2.4`, 'f<sub>y</sub>', `${fy} N/mm²`);
   b += rl('&epsilon; = &radic;(235 / f<sub>y</sub>)', 'Table 5.2', eps.toFixed(3)) + `</div>`;
 
   if (mode === 'A') {
@@ -1828,22 +2066,26 @@ function reportHTML(R, inp, s) {
 
   // classification and cross-section at the governing bending location
   const gb = R.gov.bending, sc = gb.sc, cl = sc.cls;
-  b += `<div class="rs"><h2>4 Classification (Table 5.2) at the governing bending location</h2>` +
-    rl(`Flange outstand c = (b &minus; t<sub>w</sub> &minus; 2r)/2 = ${cl.flange.c.toFixed(1)} mm; c/t<sub>f</sub> = ${cl.flange.ratio.toFixed(2)}; limits 9&epsilon; ${cl.flange.lim[0].toFixed(2)}, 10&epsilon; ${cl.flange.lim[1].toFixed(2)}, 14&epsilon; ${cl.flange.lim[2].toFixed(2)}`, 'Table 5.2', `Class ${cl.flange.cls}`) +
-    rl(`Web c = h &minus; 2t<sub>f</sub> &minus; 2r = ${cl.web.c.toFixed(1)} mm; c/t<sub>w</sub> = ${cl.web.ratio.toFixed(2)}; &alpha; = ${cl.web.alpha.toFixed(3)}, &psi; = ${cl.web.psi.toFixed(3)}; limits ${cl.web.lim.map(v => Number.isFinite(v) ? v.toFixed(1) : '&ndash;').join(' / ')}`, 'Table 5.2', `Class ${cl.web.cls}`) +
-    rl('Cross-section class', '5.5.2', `Class ${cl.cls}`, 'rv') + `</div>`;
+  const lim3 = l => l.map(v => Number.isFinite(v) ? v.toFixed(1) : '&ndash;').join(' / ');
+  b += `<div class="rs"><h2>4 Classification (Table 5.2) at the governing bending location</h2>`;
+  if (sec.shape === 'CHS') b += rl(`Tube d/t = ${cl.tube.ratio.toFixed(1)}; limits 50&epsilon;², 70&epsilon;², 90&epsilon;² = ${lim3(cl.tube.lim)}`, 'Table 5.2 sheet 3', `Class ${cl.tube.cls}`);
+  else b += rl(sec.shape === 'RHS' ? `Flange (internal, compression) c = b &minus; 3t = ${cl.flange.c.toFixed(1)} mm; c/t = ${cl.flange.ratio.toFixed(2)}; limits 33&epsilon;, 38&epsilon;, 42&epsilon; = ${lim3(cl.flange.lim)}`
+      : `Flange outstand c = ${sec.shape === 'PFC' ? 'b &minus; t<sub>w</sub> &minus; r' : '(b &minus; t<sub>w</sub> &minus; 2r)/2'} = ${cl.flange.c.toFixed(1)} mm; c/t<sub>f</sub> = ${cl.flange.ratio.toFixed(2)}; limits 9&epsilon;, 10&epsilon;, 14&epsilon; = ${lim3(cl.flange.lim)}`, 'Table 5.2', `Class ${cl.flange.cls}`) +
+    rl(`Web c = ${sec.shape === 'RHS' ? 'h &minus; 3t' : 'h &minus; 2t<sub>f</sub> &minus; 2r'} = ${cl.web.c.toFixed(1)} mm; c/t = ${cl.web.ratio.toFixed(2)}; &alpha; = ${cl.web.alpha.toFixed(3)}, &psi; = ${cl.web.psi.toFixed(3)}; limits ${lim3(cl.web.lim)}`, 'Table 5.2', `Class ${cl.web.cls}`);
+  b += rl('Cross-section class', '5.5.2', `Class ${cl.cls}`, 'rv') + `</div>`;
   const sh = sc.shear, hw = sec.h - 2 * sec.tf;
   b += `<div class="rs"><h2>5 Cross-section resistance</h2><h3>Shear</h3>` +
-    rl(`A<sub>v</sub> = A &minus; 2bt<sub>f</sub> + (t<sub>w</sub> + 2r)t<sub>f</sub> &ge; &eta;h<sub>w</sub>t<sub>w</sub> (&eta; = 1.0, UK NA)`, '6.2.6(3)', `${sh.Av.toFixed(0)} mm²`) +
+    rl(sec.shape === 'CHS' ? 'A<sub>v</sub> = 2A/&pi;' : sec.shape === 'RHS' ? 'A<sub>v</sub> = A h/(b + h)' : sec.shape === 'PFC' ? 'A<sub>v</sub> = A &minus; 2bt<sub>f</sub> + (t<sub>w</sub> + r)t<sub>f</sub> &ge; &eta;h<sub>w</sub>t<sub>w</sub> (&eta; = 1.0, UK NA)'
+      : sec.rolled ? 'A<sub>v</sub> = A &minus; 2bt<sub>f</sub> + (t<sub>w</sub> + 2r)t<sub>f</sub> &ge; &eta;h<sub>w</sub>t<sub>w</sub> (&eta; = 1.0, UK NA)' : 'A<sub>v</sub> = &eta;h<sub>w</sub>t<sub>w</sub> (&eta; = 1.0, UK NA)', '6.2.6(3)', `${sh.Av.toFixed(0)} mm²`) +
     rl('V<sub>pl,Rd</sub> = A<sub>v</sub> f<sub>y</sub> / (&radic;3 &gamma;<sub>M0</sub>)', '6.2.6(2)', `${fmt(kN(sh.Vpl))} kN`) +
-    rl(`h<sub>w</sub>/t<sub>w</sub> = ${(hw / sec.tw).toFixed(1)} ${sh.slender ? '&gt;' : '&le;'} 72&epsilon;/&eta; = ${(72 * eps).toFixed(1)}` + (sh.slender ? `: &lambda;<sub>w</sub> = ${sh.lw.toFixed(3)}, &chi;<sub>w</sub> = ${sh.chiw.toFixed(3)}, V<sub>b,Rd</sub> = ${fmt(kN(sh.Vb))} kN` : ': no shear buckling check needed'), sh.slender ? 'EN 1993-1-5 5.2' : '6.2.6(6)', sh.slender ? `${fmt(kN(sh.VRd))} kN` : 'OK') +
+    (sec.shape === 'CHS' ? '' : rl(`h<sub>w</sub>/t<sub>w</sub> = ${(hw / sec.tw).toFixed(1)} ${sh.slender ? '&gt;' : '&le;'} 72&epsilon;/&eta; = ${(72 * eps).toFixed(1)}${sec.shape === 'RHS' ? ' (each of two webs)' : ''}` + (sh.slender ? `: &lambda;<sub>w</sub> = ${sh.lw.toFixed(3)}, &chi;<sub>w</sub> = ${sh.chiw.toFixed(3)}, V<sub>b,Rd</sub> = ${fmt(kN(sh.Vb))} kN` : ': no shear buckling check needed'), sh.slender ? 'EN 1993-1-5 5.2' : '6.2.6(6)', sh.slender ? `${fmt(kN(sh.VRd))} kN` : 'OK')) +
     rl(`Governing V<sub>Ed</sub> = ${fmt(Math.abs(kN(R.gov.shear.V ?? 0)))} kN${R.gov.shear.combo ? ' (' + R.gov.shear.combo + ')' : ''}`, 'V<sub>Ed</sub>/V<sub>Rd</sub>', okng(R.gov.shear.util));
   b += `<h3>Bending${(inp.N || 0) ? ', shear and axial' : ' and shear'} at the governing location${gb.x !== undefined ? ' (x = ' + (gb.x / 1000).toFixed(2) + ' m)' : ''}</h3>` +
     rl(`M<sub>y,Ed</sub> = ${fmt(Math.abs(kNm(gb.M ?? 0)))} kNm, coexisting V<sub>Ed</sub> = ${fmt(Math.abs(kN(gb.V ?? (gb.sc ? 0 : 0))))} kN${gb.combo ? '; ' + gb.combo : ''}`, '', '');
   if (sc.method === 'plastic') {
     b += (sc.shear.slender ? rl('Web susceptible to shear buckling: bending and shear interaction by BS EN 1993-1-5 7.1 instead of 6.2.8', '6.2.8(1), 6.2.6(6)', '') : rl(`V<sub>Ed</sub> ${sc.rho > 0 ? '&gt;' : '&le;'} 0.5 V<sub>Rd</sub>${sc.rho > 0 ? ': &rho; = (2V<sub>Ed</sub>/V<sub>Rd</sub> &minus; 1)² = ' + sc.rho.toFixed(3) : ': no reduction for shear'}`, '6.2.8(2),(3)', sc.rho.toFixed(3))) +
       rl('M<sub>pl,y,Rd</sub> (reduced for shear: W<sub>pl,y</sub> &minus; &rho;A<sub>w</sub>²/4t<sub>w</sub>)', '6.2.5, 6.2.8(5)', `${fmt(kNm(sc.Mply))} kNm`);
-    if ((inp.N || 0)) b += rl(`n = N<sub>Ed</sub>/N<sub>pl,Rd</sub> = ${sc.n.toFixed(3)}, a = ${sc.a.toFixed(3)}${sc.allowY ? '; 6.2.9.1(4) criteria met, no reduction of M<sub>pl,y</sub>' : ''}`, '6.2.9.1', `M<sub>N,y,Rd</sub> = ${fmt(kNm(sc.MNy))} kNm`);
+    if ((inp.N || 0)) b += rl(`n = N<sub>Ed</sub>/N<sub>pl,Rd</sub> = ${sc.n.toFixed(3)}${sc.a != null ? ', a = ' + sc.a.toFixed(3) : ''}${sc.allowY ? '; 6.2.9.1(4) criteria met, no reduction of M<sub>pl,y</sub>' : ''}; ${sc.rule || sc.interaction || ''}`, '6.2.9.1', `M<sub>N,y,Rd</sub> = ${fmt(kNm(sc.MNy))} kNm`);
   } else {
     if (sc.method === 'effective') { const wb = EC3.weffBending(sec, fy);
       b += rl(`Web Class 4 in bending: &psi; = &minus;1, k<sub>&sigma;</sub> = 23.9, &lambda;&#772;<sub>p</sub> = ${wb.lp.toFixed(3)}, &rho; = ${wb.rho.toFixed(3)}; b<sub>e1</sub> = ${wb.be1.toFixed(0)} mm, b<sub>e2</sub> = ${wb.be2.toFixed(0)} mm`, 'EN 1993-1-5 4.4, Table 4.1', `W<sub>eff,y</sub> = ${(wb.Weff / 1e3).toFixed(0)} cm³`); }
@@ -1859,12 +2101,17 @@ function reportHTML(R, inp, s) {
   const abx = mode === 'B' ? R.ab : R.gov.flexural?.ab;
   if (abx && (inp.N || 0) > 0) {
     b += `<h3>Flexural and torsional buckling (6.3.1)${mode === 'A' && R.gov.flexural.free ? ' &mdash; free cantilever segment' : ''}</h3><table class="rt"><tr><th>Mode</th><th>L<sub>cr</sub> (m)</th><th>N<sub>cr</sub> (kN)</th><th>&lambda;&#772;</th><th>Curve (Table 6.2)</th><th>&alpha;</th><th>&Phi;</th><th>&chi;</th></tr>` +
-      [['y-y', abx.Lcry, abx.Ncry, abx.lamY, abx.curves.y, abx.y], ['z-z', abx.Lcrz, abx.Ncrz, abx.lamZ, abx.curves.z, abx.z], ['torsional (6.3.1.4)', abx.LT, abx.NcrT, abx.lamT, abx.curves.z, abx.T]].map(([m, Lc, Ncr, l, c, o]) => `<tr><td>${m}</td><td>${isFinite(Lc) ? (Lc / 1000).toFixed(2) : '&ndash;'}</td><td>${fmt(kN(Ncr), 0)}</td><td>${l.toFixed(3)}</td><td>${c}</td><td>${o.alpha.toFixed(2)}</td><td>${o.phi.toFixed(3)}</td><td>${o.chi.toFixed(3)}</td></tr>`).join('') + `</table>` +
+      [['y-y', abx.Lcry, abx.Ncry, abx.lamY, abx.curves.y, abx.y], ['z-z', abx.Lcrz, abx.Ncrz, abx.lamZ, abx.curves.z, abx.z], ...(abx.torsionalMode === 'none' ? [] : [[abx.torsionalMode + ' (6.3.1.4)', abx.LT, abx.NcrT, abx.lamT, abx.curves.z, abx.T]])].map(([m, Lc, Ncr, l, c, o]) => `<tr><td>${m}</td><td>${isFinite(Lc) ? (Lc / 1000).toFixed(2) : '&ndash;'}</td><td>${fmt(kN(Ncr), 0)}</td><td>${l.toFixed(3)}</td><td>${c}</td><td>${o.alpha.toFixed(2)}</td><td>${o.phi.toFixed(3)}</td><td>${o.chi.toFixed(3)}</td></tr>`).join('') + `</table>` +
       rl(`N<sub>b,Rd</sub> = &chi;<sub>min</sub> ${abx.comp.cls === 4 ? 'A<sub>eff</sub>' : 'A'} f<sub>y</sub> / &gamma;<sub>M1</sub> = ${fmt(kN(abx.NbRd))} kN`, '6.3.1.1', okng(R.gov.flexural.util));
   }
   const lt = R.gov.ltb;
-  if (lt) {
+  if (lt && sec.shape === 'CHS') {
+    b += `<h3>Lateral-torsional buckling</h3>` + rl('Circular hollow section: not susceptible to lateral-torsional buckling', '6.3.2', '&chi;<sub>LT</sub> = 1.0') +
+      rl(`M<sub>b,Rd</sub> = M<sub>c,Rd</sub> = ${fmt(kNm(lt.MbRd))} kNm, M<sub>Ed</sub> = ${fmt(kNm(lt.Mmax))} kNm`, '(6.55)', okng(lt.util));
+  } else if (lt) {
     b += `<h3>Lateral-torsional buckling (6.3.2.3, UK NA NA.2.17)</h3>`;
+    if (sec.shape === 'RHS') b += `<p class="rp">Closed section: warping constant taken as zero in M<sub>cr</sub> (conservative); ${sec.cold ? 'cold-formed' : 'hot-finished'} hollow section parameters from UK NA NA.2.17.</p>`;
+    if (sec.shape === 'PFC') b += `<p class="rp">Channel: curve d (&lsquo;other hot-rolled sections&rsquo;, UK NA NA.2.17); M<sub>cr</sub> about the shear centre with I<sub>w</sub> from the datasheet; load height measured from the shear centre (mid-height).</p>`;
     b += `<p class="rp">M<sub>cr</sub> by finite elements on the thin-walled beam (Vlasov) model for the actual moment diagram of each segment and combination; forks at restraints; loads at ${inp.destab ? 'the top flange (destabilising)' : 'the shear centre'}. C<sub>1</sub> = M<sub>cr</sub>(loads at shear centre) / M<sub>cr</sub>(uniform moment).</p>`;
     b += rl(`Governing segment L = ${((lt.Lseg ?? (inp.L / (inp.nLT || 1))) / 1000).toFixed(2)} m, M<sub>Ed</sub> = ${fmt(kNm(lt.Mmax))} kNm${lt.combo ? '; ' + lt.combo : ''}`, '', '') +
       rl(`Elastic critical moment${lt.C1 ? ', C<sub>1</sub> = ' + lt.C1.toFixed(3) : ''}${lt.free ? ' (cantilever modelled with its backspan segment)' : ''}`, 'M<sub>cr</sub>', `${fmt(kNm(lt.Mcr))} kNm`) +
