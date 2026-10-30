@@ -203,6 +203,13 @@ table.t th:first-child,table.t td:first-child{text-align:left;}
           <div class="form-group"><label>Axial force N<sub>Ed</sub>, constant (kN, compression +)</label><input type="number" id="NA" value="0" step="10"></div>
           <div id="restrRows" class="rows"></div>
           <label class="chk"><input type="checkbox" id="destab"> Destabilising loads (applied to the top flange and free to move laterally)</label>
+          <div class="section-title" style="margin-top:14px">Web bearing <span class="aux">EN 1993-1-5 &sect;6, mm</span></div>
+          <div class="grid3">
+            <div class="form-group"><label>s<sub>s</sub> at supports</label><input type="number" id="ssS" value="100" step="10" min="0"></div>
+            <div class="form-group"><label>s<sub>s</sub> under point loads</label><input type="number" id="ssP" value="50" step="10" min="0"></div>
+            <div class="form-group"><label>c at end supports</label><input type="number" id="cEnd" value="0" step="5" min="0"></div>
+          </div>
+          <div class="help">Stiff bearing length s<sub>s</sub> (6.3, 45&deg; dispersion through solid packs) and the distance c from the beam end to the bearing. Unstiffened webs; I sections and channels only.</div>
           <div class="form-group"><label>Deflection limit, imposed (UK NA NA.2.23)</label>
             <select id="defl"><option value="1">Span/360, beams carrying brittle finishes</option><option value="0">Span/200, other beams</option></select></div>
         </div>
@@ -1032,6 +1039,32 @@ const EC3 = (() => {
     return out;
   }
 
+  // ---------- Resistance to transverse forces, EN 1993-1-5 section 6 (unstiffened webs of I sections and channels) ----------
+  // type 'a': force applied through one flange and resisted by shear in the web (internal supports, point loads);
+  // type 'c': force near an unstiffened end, c = distance from the end of the member to the edge of the bearing.
+  // ss: stiff bearing length (6.3). fyf = fyw. Flange width for m1 limited to 15 eps tf each side of the web (6.5(1)).
+  function webBearing(s, fy, { ss, c = 0, type = 'a' }) {
+    if (isHollow(s)) throw new Error('Web bearing to BS EN 1993-1-5 section 6 is for I sections and channels');
+    const eps = Math.sqrt(235 / fy), hw = s.h - 2 * s.tf, tw = s.tw, tf = s.tf;
+    const bfEff = s.shape === 'PFC' ? Math.min(s.b, tw + 15 * eps * tf) : Math.min(s.b, tw + 30 * eps * tf);
+    const kF = type === 'c' ? Math.min(6, 2 + 6 * (ss + c) / hw) : 6;          // 6.4, no transverse stiffeners
+    const Fcr = 0.9 * kF * E * tw ** 3 / hw;                                 // (6.5)
+    const m1 = bfEff / tw;                                                   // (6.8), fyf = fyw
+    const calc = m2 => {
+      const lyA = ss + 2 * tf * (1 + Math.sqrt(m1 + m2));                     // (6.10)
+      let ly = lyA, le = null;
+      if (type === 'c') {
+        le = Math.min(kF * E * tw * tw / (2 * fy * hw), ss + c);             // (6.13)
+        ly = Math.min(lyA, le + tf * Math.sqrt(m1 / 2 + (le / tf) ** 2 + m2), le + tf * Math.sqrt(m1 + m2));   // (6.11), (6.12)
+      }
+      return { ly, le, lamF: Math.sqrt(ly * tw * fy / Fcr) };                // (6.4)
+    };
+    let m2 = 0.02 * (hw / tf) ** 2, r = calc(m2);                            // (6.9): m2 applies only if lambda_F > 0.5
+    if (r.lamF <= 0.5) { m2 = 0; r = calc(0); }
+    const chiF = Math.min(1, 0.5 / r.lamF), Leff = chiF * r.ly;              // (6.3), (6.2)
+    return { type, ss, c, hw, bfEff, kF, Fcr, m1, m2, ly: r.ly, le: r.le, lamF: r.lamF, chiF, Leff, FRd: fy * Leff * tw / GM1 };   // (6.1)
+  }
+
   // ---------- Buckling curves ----------
   const ALPHA = { a0: 0.13, a: 0.21, b: 0.34, c: 0.49, d: 0.76 };
   function fbCurves(s, grade) {               // Table 6.2
@@ -1345,7 +1378,7 @@ const EC3 = (() => {
     return { kyy, kyz, kzy, kzz };
   }
 
-  return { E, G, GM0, GM1, ETA, GRADES, ALPHA, yieldStrength, fromRow, fromRowPFC, customI, rhs, chs, hollowRadii, isHollow, spandrel, classify, internalLimits, kSigmaInternal, rhoInternal, rhoOutstand, aeffCompression, weffBending, wyByClass, ncrFE, shear, shearZ, chsMN,
+  return { E, G, GM0, GM1, ETA, GRADES, ALPHA, yieldStrength, fromRow, fromRowPFC, customI, rhs, chs, hollowRadii, isHollow, spandrel, classify, webBearing, internalLimits, kSigmaInternal, rhoInternal, rhoOutstand, aeffCompression, weffBending, wyByClass, ncrFE, shear, shearZ, chsMN,
     sectionCheck, fbCurves, chiFlex, ltbParams, chiLT, ltbModel, mcrFE, mcrUniform, cmFactor, annexB, symEigenvalues };
 })();
 if (typeof module !== 'undefined') module.exports = { EC3 };
@@ -1652,6 +1685,36 @@ const Design = (() => {
       for (const cb of combos) { const c = Beam.combine(res, cb.gG, cb.qFac); Umax = Math.max(Umax, c.reac[i].R); Umin = Math.min(Umin, c.reac[i].R); if (Math.abs(c.reac[i].C) > Math.abs(CUmax)) CUmax = c.reac[i].C; }
       out.reactions.push({ x: s.x, type: s.type, Gk: Gk.R, Qmax, Qmin, Umax, Umin, CGk: Gk.C, CUmax });
     });
+
+    // web bearing and buckling under concentrated forces, EN 1993-1-5 section 6, with the 7.2 interaction
+    out.bearing = [];
+    if (!EC3.isHollow(sec) && inp.bearing !== false) {
+      const ssS = inp.ssSupport ?? 100, ssP = inp.ssPoint ?? 50, cEnd = inp.cEnd ?? 0;
+      const W1 = EC3.wyByClass(sec, fy, Math.max(3, cls));            // eta1 per EN 1993-1-5 4.6: elastic / effective modulus
+      const Mat = x => { let k = 0; res.st.forEach((s, i) => { if (Math.abs(s.x - x) < Math.abs(res.st[k].x - x)) k = i; });
+        return Math.max(Math.abs(envelope.Mmax[k]), Math.abs(envelope.Mmin[k])); };
+      const first = lay.mem[0], last = lay.mem[lay.mem.length - 1];
+      const sites = out.reactions.map(r => {
+        const end = (Math.abs(r.x) < 1e-6 && first.kind === 'span') || (Math.abs(r.x - lay.Ltot) < 1e-6 && last.kind === 'span');
+        return { x: r.x, where: 'support', F: r.Umax, ss: ssS, type: end ? 'c' : 'a', c: end ? cEnd : 0 };
+      });
+      const px = [...new Set([...res.G.pts, ...res.Q.flatMap(g => g.pts)].map(p => +p.x.toFixed(1)))]
+        .filter(x => !lay.sup.some(s => Math.abs(s.x - x) < 1));
+      for (const x of px) {
+        let F = 0;
+        for (const cb of combos) { const c = Beam.combine(res, cb.gG, cb.qFac); F = Math.max(F, c.pts.filter(p => Math.abs(p.x - x) < 0.1).reduce((a, p) => a + p.P, 0)); }
+        const nearEnd = x < sec.h || lay.Ltot - x < sec.h;
+        sites.push({ x, where: 'point load', F, ss: ssP, type: 'a', c: 0, nearEnd });
+      }
+      for (const st of sites) {
+        if (!(st.F > 0)) continue;
+        const wb = EC3.webBearing(sec, fy, st), M = Mat(st.x);
+        const eta2 = st.F / wb.FRd, eta1 = M / (W1 * fy / EC3.GM0), u72 = (eta2 + 0.8 * eta1) / 1.4;
+        const r = { ...st, wb, M, eta1, eta2, u72, util: Math.max(eta2, u72) };
+        out.bearing.push(r);
+        track(out.gov, 'bearing', r.util, { ...r });
+      }
+    }
     out.utilMax = Math.max(...Object.values(out.gov).map(g => g.util));
     return out;
   }
@@ -1857,7 +1920,7 @@ function collect() {
     cantL: +$('cantL').value, cantR: +$('cantR').value, endL: $('endL').value, endR: $('endR').value,
     loads: [...document.querySelectorAll('#loadRows .row')].map(d => ({ case: d.querySelector('.cs').value, member: +d.dataset.member, type: d.querySelector('.ty').value, ...d._vals })),
     sw: $('sw').checked, rule: $('rule').value, psi0: +$('psi0').value, NA: +$('NA').value,
-    restr: [...document.querySelectorAll('#restrRows .row')].map(rowRestraint), destab: $('destab').checked, brittle: $('defl').value === '1',
+    restr: [...document.querySelectorAll('#restrRows .row')].map(rowRestraint), destab: $('destab').checked, brittle: $('defl').value === '1', ssS: +$('ssS').value, ssP: +$('ssP').value, cEnd: +$('cEnd').value,
     B: { L: +$('bL').value, N: +$('bN').value, nLT: +$('bnLT').value, MyT: +$('bMyT').value, MyB: +$('bMyB').value, MzT: +$('bMzT').value, MzB: +$('bMzB').value, ky: +$('bky').value, kz: +$('bkz').value },
   };
 }
@@ -1871,7 +1934,7 @@ function applyState(s) {
   $('loadRows').innerHTML = ''; s.loads.forEach(l => loadRow(l));
   refreshMembers();
   [...document.querySelectorAll('#restrRows .row')].forEach((d, i) => { const p = s.restr[i]; if (!p) return; d.querySelector('.rm').value = p.mode; d.querySelector('.rp').value = p.pts || ''; if (p.tip && d.querySelector('.tip')) d.querySelector('.tip').value = p.tip; if (p.ky && d.querySelector('.ky')) d.querySelector('.ky').value = p.ky; d.querySelector('.rp').disabled = p.mode !== 'points'; });
-  $('sw').checked = s.sw; $('rule').value = s.rule; $('psi0').value = String(s.psi0); $('NA').value = s.NA; $('destab').checked = s.destab; $('defl').value = s.brittle ? '1' : '0';
+  $('sw').checked = s.sw; $('rule').value = s.rule; $('psi0').value = String(s.psi0); $('NA').value = s.NA; $('destab').checked = s.destab; $('defl').value = s.brittle ? '1' : '0'; $('ssS').value = s.ssS ?? 100; $('ssP').value = s.ssP ?? 50; $('cEnd').value = s.cEnd ?? 0;
   Object.entries({ bL: 'L', bN: 'N', bnLT: 'nLT', bMyT: 'MyT', bMyB: 'MyB', bMzT: 'MzT', bMzB: 'MzB', bky: 'ky', bkz: 'kz' }).forEach(([id, k]) => $(id).value = s.B[k]);
   setMode(s.mode);
   return true;
@@ -1905,7 +1968,7 @@ function buildBeamInput(s, sec) {
   if (s.spans.some(L => !(L > 0))) throw new Error('Every span needs a positive length');
   return { sec, grade: s.grade, spans: s.spans.map(L => L * 1000), cantL: s.cantL * 1000, cantR: s.cantR * 1000,
     endLeft: s.endL, endRight: s.endR, loads, selfWeight: s.sw, rule: s.rule, psi0: s.psi0, N: s.NA * 1e3,
-    restraint, tipRestrained, ky, destab: s.destab, defl: { brittle: s.brittle } };
+    restraint, tipRestrained, ky, destab: s.destab, defl: { brittle: s.brittle }, ssSupport: s.ssS ?? 100, ssPoint: s.ssP ?? 50, cEnd: s.cEnd ?? 0 };
 }
 
 // ---------- SVG diagrams ----------
@@ -1963,6 +2026,7 @@ const CHECKS = [
   ['flexural', 'Flexural & torsional buckling', '6.3.1'],
   ['ltb', 'Lateral-torsional buckling', '6.3.2'],
   ['interaction', 'Buckling interaction', '6.3.3, Annex B'],
+  ['bearing', 'Web bearing / buckling', 'EN 1993-1-5 6, 7.2'],
   ['deflection', 'Deflection, imposed', 'UK NA NA.2.23'],
 ];
 function checksHTML(gov) {
@@ -1987,6 +2051,8 @@ function renderA(R, inp, ms) {
     R.segs.map((sg, i) => { const r = R.segResults[i]; if (!r) return ''; return `<tr><td>${mem[sg.mem].name}${R.segs.filter(o => o.mem === sg.mem).length > 1 ? ' / ' + (R.segs.filter(o => o.mem === sg.mem).indexOf(sg) + 1) : ''}${sg.topRestrained ? ' (top rest.)' : sg.free ? ' (free tip)' : ''}</td><td>${(r.Lseg / 1000).toFixed(2)}</td><td>${fmt(kNm(r.Mmax))}</td><td>${r.C1 ? r.C1.toFixed(2) : '&ndash;'}</td><td>${fmt(kNm(r.Mcr), 0)}</td><td>${r.lamLT.toFixed(3)}</td><td>${r.chiMod.toFixed(3)}</td><td>${fmt(kNm(r.MbRd))}</td><td>${ufmt(r.util)}</td></tr>`; }).join('') + `</table>`;
   h += `<div class="dlabel">Deflection (characteristic)</div><table class="t"><tr><th>Member</th><th>&delta;<sub>Q</sub> (mm)</th><th>Limit</th><th>&delta;<sub>G+Q</sub> (mm)</th><th>Util.</th></tr>` +
     R.memDefl.map(d => `<tr><td>${mem[d.mem].name}</td><td>${Math.abs(d.wQ).toFixed(1)}</td><td>L/${d.div} = ${d.lim.toFixed(1)}</td><td>${Math.abs(d.wTot).toFixed(1)}</td><td>${ufmt(d.util)}</td></tr>`).join('') + `</table>`;
+  if (R.bearing && R.bearing.length) h += `<div class="dlabel">Web bearing, EN 1993-1-5 &sect;6</div><table class="t"><tr><th>Location</th><th>Type</th><th>F<sub>Ed</sub></th><th>s<sub>s</sub></th><th>&chi;<sub>F</sub></th><th>F<sub>Rd</sub></th><th>&eta;<sub>2</sub></th><th>(7.2)</th></tr>` +
+    R.bearing.map(b => `<tr><td>${b.where} x = ${(b.x / 1000).toFixed(2)}</td><td>(${b.type})</td><td>${fmt(kN(b.F))}</td><td>${b.ss}</td><td>${b.wb.chiF.toFixed(3)}</td><td>${fmt(kN(b.wb.FRd))}</td><td>${ufmt(b.eta2)}</td><td>${ufmt(b.u72)}</td></tr>`).join('') + `</table>`;
   h += notesHTML(R, inp);
   h += `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
   $('runInfo').textContent = `${ms} ms`;
@@ -2019,7 +2085,7 @@ function notesHTML(R, inp) {
   if (mode === 'A' && (inp.N || 0) > 0 && R.lay.mem.some(m => m.kind !== 'span')) n.push('Cantilever under axial compression: L<sub>cr,y</sub> from the buckling load of the whole beam on its supports; for a free tip, L<sub>cr,z</sub> and the torsional length from the cantilever modelled with its backspan segment. C<sub>my</sub> = 0.9 (sway mode, Table B.3); C<sub>mLT</sub> = 1.0 for a free-tip segment.');
   n.push('M<sub>cr</sub> is computed by finite elements for each lateral-torsional segment and combination (forks at restraints: lateral and torsional displacement prevented, warping and plan rotation free). k<sub>c</sub> = 1/&radic;C<sub>1</sub>, not less than 0.6.');
   if (mode === 'A' && inp.destab) n.push('Destabilising loading: all gravity loads, including self-weight, are applied at the top flange (conservative).');
-  if (mode === 'A') n.push('Internal and end supports are assumed to give lateral and torsional restraint. Web bearing and buckling at supports and under point loads (BS EN 1993-1-5 section 6) are not checked by this tool.');
+  if (mode === 'A') n.push(`Internal and end supports are assumed to give lateral and torsional restraint. Web bearing and buckling: unstiffened webs to BS EN 1993-1-5 section 6 at supports (type (c) at simple end supports, (a) elsewhere) and under point loads (type (a)); point loads directly over supports are not checked separately${EC3.isHollow(R.sec) ? '; local bearing of hollow-section walls is not checked' : ''}.`);
   return `<div class="note">${n.join('<br>')}</div>`;
 }
 
@@ -2094,6 +2160,14 @@ function reportHTML(R, inp, s) {
   if (sc.en71) b += rl(`Web susceptible to shear buckling, &eta;&#772;<sub>3</sub> = V<sub>Ed</sub>/V<sub>bw,Rd</sub> = ${sc.en71.eta3.toFixed(3)} &gt; 0.5: M<sub>f,Rd</sub> = ${fmt(kNm(sc.en71.Mf))} kNm, M<sub>pl,Rd</sub> = ${fmt(kNm(sc.en71.Mpl))} kNm; M<sub>V,Rd</sub> = M<sub>pl,Rd</sub> &minus; (M<sub>pl,Rd</sub> &minus; M<sub>f,Rd</sub>)(2&eta;&#772;<sub>3</sub> &minus; 1)²`, 'EN 1993-1-5 7.1', `${fmt(kNm(sc.en71.Mv))} kNm`);
   b += rl('Bending / combined cross-section utilisation', '', okng(gb.util));
   if (R.gov.axial) b += rl(`Axial: N<sub>Ed</sub> / N<sub>c,Rd</sub> (N<sub>c,Rd</sub> = ${fmt(kN(sc.NRd))} kN)`, '6.2.4', okng(R.gov.axial.util));
+  if (mode === 'A' && R.bearing && R.bearing.length) {
+    const gw = R.gov.bearing, w = gw.wb;
+    b += `<h3>Resistance to transverse forces (BS EN 1993-1-5 section 6), unstiffened web</h3>` +
+      `<table class="rt"><tr><th>Location</th><th>Type</th><th>F<sub>Ed</sub> (kN)</th><th>s<sub>s</sub>, c (mm)</th><th>k<sub>F</sub></th><th>l<sub>y</sub> (mm)</th><th>&lambda;&#772;<sub>F</sub></th><th>&chi;<sub>F</sub></th><th>F<sub>Rd</sub> (kN)</th><th>&eta;<sub>2</sub></th><th>&eta;<sub>2</sub> + 0.8&eta;<sub>1</sub> &le; 1.4</th></tr>` +
+      R.bearing.map(r => `<tr><td>${r.where}, x = ${(r.x / 1000).toFixed(2)} m</td><td>(${r.type})</td><td>${fmt(kN(r.F))}</td><td>${r.ss}${r.type === 'c' ? ', ' + r.c : ''}</td><td>${r.wb.kF.toFixed(2)}</td><td>${r.wb.ly.toFixed(0)}</td><td>${r.wb.lamF.toFixed(3)}</td><td>${r.wb.chiF.toFixed(3)}</td><td>${fmt(kN(r.wb.FRd))}</td><td>${r.eta2.toFixed(3)}</td><td>${(r.eta2 + 0.8 * r.eta1).toFixed(3)}</td></tr>`).join('') + `</table>` +
+      rl(`Governing (${gw.where}, x = ${(gw.x / 1000).toFixed(2)} m): h<sub>w</sub> = ${w.hw.toFixed(1)} mm, m<sub>1</sub> = ${w.m1.toFixed(2)}, m<sub>2</sub> = ${w.m2.toFixed(2)}, F<sub>cr</sub> = 0.9k<sub>F</sub>Et<sub>w</sub>³/h<sub>w</sub> = ${fmt(kN(w.Fcr), 0)} kN; F<sub>Rd</sub> = f<sub>yw</sub>&chi;<sub>F</sub>l<sub>y</sub>t<sub>w</sub>/&gamma;<sub>M1</sub>`, '(6.1)-(6.13)', `${fmt(kN(w.FRd))} kN`) +
+      rl(`&eta;<sub>1</sub> = M<sub>Ed</sub>/(f<sub>y</sub>W/&gamma;<sub>M0</sub>) with the elastic${sc.method === 'effective' ? ' (effective)' : ''} modulus, M<sub>Ed</sub> = max |M| at the location`, '7.2(1), 4.6', okng(gw.util));
+  }
   b += `</div>`;
 
   // buckling

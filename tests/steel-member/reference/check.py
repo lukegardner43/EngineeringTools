@@ -6,7 +6,7 @@ import csv, math, sys, json
 def props(h, b, tw, tf, r):
     As = (1 - math.pi / 4) * r * r              # area of one root fillet (spandrel)
     e = r * (10 - 3 * math.pi) / (12 - 3 * math.pi)  # centroid of spandrel from its corner
-    Ic = (1 / 3 - math.pi / 16) * r**4 - As * e * e  # spandrel I about own centroid
+    Ic = (1 - 5 * math.pi / 16) * r**4 - As * e * e  # spandrel I about own centroid (verified by integration)
     hw = h - 2 * tf
     A = 2 * b * tf + hw * tw + 4 * As
     yf = h / 2 - tf - e
