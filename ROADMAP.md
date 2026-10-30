@@ -48,7 +48,7 @@ Status key: **Done** means it's in this repo with tests. **Partial** means an ex
 | Steel Beam Supporting Hollowcore Slab Design | Hollowcore Support Beam | Done | P385 torsion + EC3; UKB / UKC / ASB / Slimflor |
 | Steel 2D Analysis & Design | Steel Frame Design | Done | portal and multi-bay multi-storey frames; α<sub>cr</sub>, EHF, second-order P-Δ, member design |
 | Crane gantry girder design | Crane girder | Planned | EN 1993-6, EN 1991-3 |
-| Steel member fire resistance design | Steel fire | Planned | EN 1993-1-2 |
+| Steel member fire resistance design | Steel Member Fire Design | Done | EN 1993-1-2: incremental heating (unprotected / board / spray), restrained and unrestrained beams, columns; intumescents not covered |
 | Steel sheet piling design | Sheet piling | Planned | EN 1997-1, EN 1993-5 |
 
 Steel Member Design covers:
@@ -158,6 +158,7 @@ Steel Masonry Support and Windpost limits:
 - **Windpost Design** (`node tests/windpost/test_windpost.js`): 24 checks: wind load, moments, shear, deflection, reactions and tie forces by hand; M<sub>cr</sub> against the C1 closed form; cantilever, RHS orientation and CHS behaviour.
 - **ConnectionCheck joints engine** (`node tests/connections/test_joints.js`): 112 checks (incl. the published extended end plate example) against `reference/ref_joints.py`: T-stubs and Table 6.4 effective lengths re-implemented; base plate effective area by rasterising the Chebyshev offset of the column; M<sub>j,Rd</sub> (Table 6.7) against proportional loading of the two-component model; fin / end plate tying, anchors (cone, pull-out, pry-out, edge) and the RHS splice by hand. `tests/connections/ui_smoke.js` (jsdom) runs every joint type through the page.
 - **Steel Frame Design** (`node tests/frame/test_frame.js`): 28 checks against `reference/ref_frame.py`: portal sway, moments and reactions by an independent numpy stiffness solver; α<sub>cr</sub> of fixed- and pinned-base portals against the exact stability-function characteristic equation (and a scipy FE eigen solution); second-order cantilever sway and moment against the exact solution; combinations, EHF; the frame member check against the Steel Member Design beam mode.
+- **Steel Member Fire Design** (`node tests/fire/test_fire.js`): 39 checks: section factors; unprotected heating against scipy RK45 integration and protected heating against an independent fine-step loop (`reference/ref_fire.py`); critical temperature (4.22) against Table 4.1; reduction factors, restrained-beam and column resistances by hand; limiting temperature and protection sizing.
 - **Review fixes:** 31 checks (`test_fixes.js`). Most compare against `reference/ref_fixes.py`, which uses its own independent methods; the rest are hand values. They cover:
   - a destabilising tip load on a cantilever (Ritz solution);
   - flexural and torsional buckling of a span with an overhang (exact characteristic equation);
