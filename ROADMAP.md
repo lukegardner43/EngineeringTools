@@ -34,7 +34,8 @@ Status key: **Done** means it's in this repo with tests. **Partial** means an ex
 | Beam Analysis | Beam Analysis | Done | stiffness method; springs, hinges, EI per member; EN 1990 combinations |
 | Section Properties Calculator | Section Properties | Done | exact polygon integrals; plastic moduli; principal axes; It, Iw, shear centre |
 | Steel simple connection design | ConnectionCheck | Done | SCI P358 check lists incl. detailing, supporting element and tying (fin plates, end plates) |
-| Steel beam splice design | ConnectionCheck | Partial (existing) | P358 splices |
+| Steel beam splice design | ConnectionCheck (Moment End Plate, splice) | Done | bolted end plate splices, EN 1993-1-8 6.2.7 |
+| Steel moment connection design (SCI P398) | ConnectionCheck (Moment End Plate) | Done | extended / flush end plates, beam to column flange; plastic row distribution, compression and panel shear limits |
 | Steel column splice design | ConnectionCheck | Partial (existing) | P358 splices |
 | Column Base Plate Design | ConnectionCheck | Done | EN 1993-1-8 6.2.5 effective area, 6.2.8 / Table 6.7 bending, anchors to EN 1992-4 |
 | Steel Column and Base Plate Design | Steel Member Design + base | Planned | |
@@ -76,6 +77,8 @@ ConnectionCheck audit (October 2026):
 - Material f<sub>u</sub> corrected to the BS EN 10025-2 lower bound used by the UK NA (S275 410, S355 470 N/mm²; previously 430 / 490).
 - Added P358 detailing (fin plate ductility t<sub>p</sub> ≤ 0.5d / 0.42d, depth ≥ 0.6h<sub>b</sub>), supporting element (local shear, punching) and structural integrity (tying) checks with γ<sub>Mu</sub> = 1.1: bolts, bearing, plate and web tension, welds, end plate and column flange T-stubs.
 - Base plate rewritten to EN 1993-1-8 6.2.5 / 6.2.8 with EN 1992-4 anchors; new joint types: RHS tension splice and steel to concrete.
+- Section table replaced with the British Steel datasheet (the legacy table had cross-section areas up to 40 % wrong and wrong root radii).
+- Moment end plates (P398): verified against a published worked example (HEB 140 / IPE 220, extended end plate: every component, row forces and M<sub>j,Rd</sub> = 34.91 kNm). α (Figure 6.11) is entered by the engineer; without it the unstiffened yield patterns are used, which is conservative. Joint stiffness S<sub>j,ini</sub> and classification are not yet calculated; stiffened columns are limited to a compression stiffener.
 - Open: column web tying (yield line) for fin plates on column webs is not checked; anchor splitting / blow-out and supplementary reinforcement are not considered.
 
 Steel Masonry Support and Windpost limits:
@@ -148,7 +151,7 @@ Steel Masonry Support and Windpost limits:
   - classification of every UKB / UKC against the EC3 engine, and behaviour (edge beam, bearing errors, warnings, final-stage torsion option).
 - **Steel Masonry Support** (`node tests/masonry/test_masonry.js`): 65 checks against `reference/ref_masonry.py`: angle properties (hot-rolled and cold-formed) by a 2D occupancy grid and the BS EN 10056-1 datasheet; the continuous-angle deflection against a 2D frame FE; the stainless secant modulus by Ramberg-Osgood; spanning angle, plate, weld and fixing forces by hand.
 - **Windpost Design** (`node tests/windpost/test_windpost.js`): 24 checks: wind load, moments, shear, deflection, reactions and tie forces by hand; M<sub>cr</sub> against the C1 closed form; cantilever, RHS orientation and CHS behaviour.
-- **ConnectionCheck joints engine** (`node tests/connections/test_joints.js`): 81 checks against `reference/ref_joints.py`: T-stubs and Table 6.4 effective lengths re-implemented; base plate effective area by rasterising the Chebyshev offset of the column; M<sub>j,Rd</sub> (Table 6.7) against proportional loading of the two-component model; fin / end plate tying, anchors (cone, pull-out, pry-out, edge) and the RHS splice by hand. `tests/connections/ui_smoke.js` (jsdom) runs every joint type through the page.
+- **ConnectionCheck joints engine** (`node tests/connections/test_joints.js`): 112 checks (incl. the published extended end plate example) against `reference/ref_joints.py`: T-stubs and Table 6.4 effective lengths re-implemented; base plate effective area by rasterising the Chebyshev offset of the column; M<sub>j,Rd</sub> (Table 6.7) against proportional loading of the two-component model; fin / end plate tying, anchors (cone, pull-out, pry-out, edge) and the RHS splice by hand. `tests/connections/ui_smoke.js` (jsdom) runs every joint type through the page.
 - **Review fixes:** 31 checks (`test_fixes.js`). Most compare against `reference/ref_fixes.py`, which uses its own independent methods; the rest are hand values. They cover:
   - a destabilising tip load on a cantilever (Ritz solution);
   - flexural and torsional buckling of a span with an overhang (exact characteristic equation);

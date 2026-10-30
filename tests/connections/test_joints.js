@@ -59,5 +59,37 @@ REF.s2c.forEach((r, i) => {
   if (r.VRdc !== null) near(`s2c ${i + 1}: concrete edge`, R.VRdc, r.VRdc, 1e-12); else truth(`s2c ${i + 1}: no edge check when remote`, !Number.isFinite(R.VRdc));
   near(`s2c ${i + 1}: concrete interaction`, R.checks.find(c => c.id === 'A6').dem, r.inter, 1e-12);
 });
+// moment end plate: published worked example (HEB 140 column, IPE 220 beam, S235, extended end plate 140 x 12, 6 M16 8.8,
+// alpha 5.99; masesoft 'Design example of a joint with extended end plate'): component values, distribution and M_j,Rd
+{ J.GR.S235 = { fy: [[16, 235], [40, 225]], fu: 360, bw: 0.8 };
+  const base = { type: 'column', beta: 1, beam: { h: 220, b: 110, tf: 9.2, tw: 5.9, r: 12, Wpl: 285e3, grade: 'S235' }, col: { h: 140, b: 140, tf: 12, tw: 7, r: 12, A: 4300, grade: 'S235' },
+    plate: { bp: 140, tp: 12, ext: 70, grade: 'S235' }, bolt: J.bolt('M16'), rows: [40, 110, 250], w: 80, af: 5, aw: 3, alpha: 5.99, M: 10e6, V: 10e3 };
+  const R = J.momentEndPlate(base), F = (i, j, k) => R.comp(i, j).find(c => c.k === k).F / 1e3;
+  near('P398 example: column flange m = 26.9', R.mC, 26.9, 1e-9); near('P398 example: end plate m = 33.66', R.mP, 33.66, 2e-4); near('P398 example: m_x = 24.34', R.mx, 24.34, 2e-4);
+  near('P398 example: A_vc = 1312', R.Avc, 1312, 1e-9); near('P398 example: V_wp,Rd = 160.2 kN', R.Vwp / 1e3, 160.2, 1e-3); near('P398 example: F_c,fb,Rd = 317.7 kN', R.Ffb / 1e3, 317.7, 1e-3);
+  near('P398 example: row 1 column flange 138.5 kN', F(0, 0, 'cfb'), 138.5, 1e-3); near('P398 example: rows 1-2 column flange 254.7 kN', F(0, 1, 'cfb'), 254.7, 1e-3);
+  near('P398 example: rows 1-3 column flange 391.7 kN', F(0, 2, 'cfb'), 391.7, 1e-3); near('P398 example: row 1 column web 179.0 kN', F(0, 0, 'cwt'), 179.0, 1e-3);
+  near('P398 example: rows 1-3 column web 245.4 kN', F(0, 2, 'cwt'), 245.4, 1e-3); near('P398 example: row 1 end plate (extension) 97.3 kN', F(0, 0, 'epb'), 97.3, 1e-3);
+  near('P398 example: row 2 end plate (alpha m) 138.8 kN', F(1, 1, 'epb'), 138.8, 1e-3); near('P398 example: row 3 end plate 131.0 kN', F(2, 2, 'epb'), 131.0, 1e-3);
+  near('P398 example: rows 2-3 end plate 261.2 kN', F(1, 2, 'epb'), 261.2, 1e-3); near('P398 example: row 2 beam web 279.5 kN', F(1, 1, 'bwt'), 279.5, 1e-3);
+  near('P398 example: rows 2-3 beam web 473.6 kN', F(1, 2, 'bwt'), 473.6, 1e-3);
+  near('P398 example: final row 1 force 97.3 kN', R.rows[0].F / 1e3, 97.3, 1e-3); near('P398 example: final row 2 force 62.9 kN (panel shear)', R.rows[1].F / 1e3, 62.9, 1e-3);
+  near('P398 example: final row 3 force 0', R.rows[2].F, 0, 0); near('P398 example: M_j,Rd = 34.91 kNm', R.MjRd / 1e6, 34.91, 1e-3);
+  near('P398 example: column web compression (published 190.7; b_eff with the weld throat)', R.Fcwc / 1e3, 190.7, 0.02);
+  near('P398 example: V_Rd (rows 1-2 at (1 - 1/1.4) F_v,Rd, row 3 full)', R.VRd / 1e3, 189.48, 1e-3);
+  // behaviour
+  const N = J.momentEndPlate({ ...base, alpha: null });
+  truth('without alpha the first row uses the unstiffened pattern (lower end plate resistance)', N.comp(1, 1).find(c => c.k === 'epb').F < R.comp(1, 1).find(c => c.k === 'epb').F);
+  const B0 = J.momentEndPlate({ ...base, beta: 0 });
+  truth('two-sided balanced (beta = 0): no panel shear limit, omega = 1, higher M_j,Rd', B0.MjRd > R.MjRd && !B0.checks.some(c => c.id === 'M3'));
+  const Sp = J.momentEndPlate({ ...base, type: 'splice', col: null });
+  truth('splice: no column components', Sp.comp(0, 0).every(c => !['cfb', 'cwt'].includes(c.k)));
+  near('splice: limit is the beam flange in compression', Sp.Flim, Sp.Ffb, 1e-12);
+  truth('row forces never exceed the compression limit in total', R.rows.reduce((a, r) => a + r.F, 0) <= R.Flim + 1e-6);
+  const St = J.momentEndPlate({ ...base, beta: 0, stiffComp: true, plate: { ...base.plate, tp: 25 }, bolt: J.bolt('M16', '10.9') });
+  truth('1.9 F_t,Rd rule applied when a row exceeds it (thick plate, beta 0, stiffened)', St.rows.every(r => r.F <= Math.max(...St.rows.map(x => x.F)) + 1e-9) && (St.rows[0].F <= 1.9 * St.Ftb || St.rows.slice(1).every(r => r.F <= St.rows[0].F * r.h / St.rows[0].h + 1e-6)));
+  throws('row inside the flange rejected', () => J.momentEndPlate({ ...base, rows: [40, 75, 250] }), /within the beam flange/);
+  throws('gauge wider than the plate rejected', () => J.momentEndPlate({ ...base, w: 150 }), /gauge/);
+}
 console.log(`\n${n - fails}/${n} joint checks passed`);
 if (fails) process.exit(1);

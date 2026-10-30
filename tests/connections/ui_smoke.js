@@ -7,11 +7,11 @@ const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true
 const w = dom.window, errors = [];
 w.addEventListener('error', e => errors.push(e.message));
 const wait = ms => new Promise(r => setTimeout(r, ms));
-let n = 0, fails = 0;
+let n = 0, fails = 0, near_;
 const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`); if (!c) fails++; };
 (async () => {
   await wait(100);
-  for (const id of ['fin', 'pdep', 'fdep', 'dcleat', 'scleat', 'splice', 'base', 'rsplice', 'conc', 'brace']) {
+  for (const id of ['fin', 'pdep', 'fdep', 'dcleat', 'scleat', 'splice', 'base', 'rsplice', 'conc', 'moment', 'brace']) {
     w.switchJt(id); await wait(120);
     if (id === 'base') { w.document.getElementById('ba-M').value = '60'; }
     w.doCalc(); await wait(50);
@@ -23,8 +23,12 @@ const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`);
     if (id === 'fin') truth('fin: P358 detailing checks reported', /Ductility/.test(txt) && /Torsional Restraint/.test(txt));
     if (id === 'base') truth('base: EN 1993-1-8 / EN 1992-4 checks reported', /Effective Area/.test(txt) && /Table 6.7/.test(txt) && /Concrete Cone/.test(txt));
     if (id === 'rsplice') truth('rsplice: T-stub check reported', /T-stub/.test(txt));
+    if (id === 'moment') truth('moment: M_j,Rd reported', /Moment Resistance M_j,Rd/.test(txt) && /Panel Shear/.test(txt));
     if (id === 'conc') truth('conc: EN 1992-4 anchor checks reported', /Concrete Cone/.test(txt) && /Pry-out/.test(txt));
   }
+  near_ = (nm, a, b, t) => truth(`${nm}: ${a.toFixed(0)} vs ${b}`, Math.abs(a - b) <= t * b);
+  near_('plastic modulus helper, 457x191x67 UKB (datasheet 1481 cm³)', w.eval("wplI(SECTIONS['457×191×67 UKB'])") / 1e3, 1481, 0.01);
+  near_('plastic modulus helper, 254x254x89 UKC (datasheet 1246 cm³)', w.eval("wplI(SECTIONS['254×254×89 UKC'])") / 1e3, 1246, 0.01);
   truth('no script errors', errors.length === 0 || (console.log(errors), false));
   console.log(`\n${n - fails}/${n} ConnectionCheck UI checks passed`);
   process.exit(fails ? 1 : 0);

@@ -236,7 +236,7 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14p
    Units: N, mm. Results are check objects { id, name, ref, lines, cap, dem, unit } (cap and dem in the stated unit). */
 const Joints = (() => {
   'use strict';
-  const GM0 = 1.0, GM2 = 1.25, GMU = 1.1, GM2S = 1.1;      // UK NA: gamma_Mu = 1.1 for tying; 1.1 for net-section fracture (EN 1993-1-1 UK NA)
+  const GM0 = 1.0, GM1 = 1.0, GM2 = 1.25, GMU = 1.1, GM2S = 1.1, EC3_E = 210000;      // UK NA: gamma_Mu = 1.1 for tying; 1.1 for net-section fracture (EN 1993-1-1 UK NA)
   // BS EN 10025-2: fy by thickness; fu = lower bound for 3 <= t <= 100 mm (UK NA: lowest value of the range)
   const GR = { S275: { fy: [[16, 275], [40, 265], [63, 255], [80, 245], [100, 235]], fu: 410, bw: 0.85 },
                S355: { fy: [[16, 355], [40, 345], [63, 335], [80, 325], [100, 315]], fu: 470, bw: 0.90 } };
@@ -518,7 +518,144 @@ const Joints = (() => {
     return { checks: C, rowT, NEdTop, NEdGrp, NRds, VRds, NRdc, NRdp, VRdcp, VRdc, gMsN, gMsV };
   }
 
-  return { GR, mat, BOLTS, bolt, tstub, leffRows, finExtra, endPlateTying, basePlate, rhsSplice, steelToConcrete };
+  // ---------- bolted end plate moment joint (SCI P398 approach, EN 1993-1-8 6.2.6 / 6.2.7) ----------
+  // Effective lengths of a run of rows i..j with pitches between them (T-stub terms). kind per row: 'col' (unstiffened column flange,
+  // continuous column), 'first' (end plate, first row below the tension flange; alpha from Fig. 6.11 if given, else the unstiffened
+  // patterns - conservative), 'other' (end plate, other rows). Returns { l1, l2 } for the run (individual if i == j).
+  function leffRun(rows, i, j, m, e, alpha, kind) {
+    const pAbove = r => r > i ? rows[r].y - rows[r - 1].y : null, pBelow = r => r < j ? rows[r + 1].y - rows[r].y : null;
+    let cp = 0, nc = 0;
+    for (let r = i; r <= j; r++) {
+      const first = kind === 'ep' && rows[r].zone === 'first', single = i === j;
+      const ncInd = first && alpha ? alpha * m : 4 * m + 1.25 * e, cpInd = 2 * Math.PI * m;
+      if (single) { cp += cpInd; nc += ncInd; continue; }
+      const pa = pAbove(r), pb = pBelow(r);
+      if (pa !== null && pb !== null) { cp += pa + pb; nc += 0.5 * (pa + pb); continue; }   // inner row of the group
+      const p = pa ?? pb;                                                                    // end row of the group
+      cp += Math.PI * m + p;
+      nc += first && alpha ? 0.5 * p + alpha * m - (2 * m + 0.625 * e) : 2 * m + 0.625 * e + 0.5 * p;
+    }
+    return { l1: Math.min(cp, nc), l2: nc, cp, nc };
+  }
+  const omega = (beta, beff, tw, Avc) => beta <= 0.25 ? 1 : 1 / Math.sqrt(1 + 1.3 * (beff * tw / Avc) ** 2);   // Table 6.3 (beta = 0 or 1)
+  /* o: { type: 'column'|'splice', beta (1 one-sided, 0 two-sided balanced), beam: { h, b, tf, tw, r, Wpl, grade }, col: { h, b, tf, tw, r, A, grade },
+         plate: { bp, tp, ext (plate top to the top of the beam), grade }, bolt, rows: [y from the plate top], w (gauge), af, aw (weld THROATS),
+         alpha (optional, Fig. 6.11 for the first row below the flange), stiffComp (column web compression stiffener), Ncol (column compression, N),
+         M, V } */
+  function momentEndPlate(o) {
+    const bm = o.beam, pl = o.plate, b = o.bolt, Ftb = 0.9 * b.fub * b.As / GM2, Fvb = b.av * b.fub * b.As / GM2;
+    const fyb = mat(bm.grade, bm.tf).fy, fyp = mat(pl.grade, pl.tp).fy, fup = mat(pl.grade, pl.tp).fu;
+    const yTop = pl.ext, yTfb = pl.ext + bm.tf, yC = pl.ext + bm.h - bm.tf / 2;            // beam top face, underside of top flange, compression centre
+    const ys = [...o.rows].sort((a, c) => a - c);
+    if (ys.some(y => y <= 0)) throw new Error('Bolt rows are measured down from the top of the end plate');
+    let seenFirst = false;
+    const rows = ys.map(y => {
+      const zone = y < yTop ? 'ext' : y <= yTfb ? 'flange' : y < yC - bm.tf / 2 ? (seenFirst ? 'other' : (seenFirst = true, 'first')) : 'comp';
+      return { y, zone, h: yC - y };
+    });
+    if (rows.some(r => r.zone === 'flange')) throw new Error('A bolt row lies within the beam flange thickness');
+    if (rows.filter(r => r.zone === 'ext').length > 1) throw new Error('One bolt row in the end plate extension is supported');
+    const T = rows.filter(r => r.zone !== 'comp');                                       // rows that may carry tension
+    const ep = (pl.bp - o.w) / 2;
+    if (!(ep > 0)) throw new Error('End plate: the gauge must be less than the plate width');
+    // end plate T-stubs
+    const mP = (o.w - bm.tw) / 2 - 0.8 * o.aw * Math.SQRT2;
+    if (!(mP > 0)) throw new Error('End plate: the bolts lie inside the web weld (m ≤ 0)');
+    const extRow = T.find(r => r.zone === 'ext');
+    const mx = extRow ? (yTop - extRow.y) - 0.8 * o.af * Math.SQRT2 : null, exP = extRow ? extRow.y : null;
+    if (extRow && !(mx > 0)) throw new Error('End plate extension: the bolt row lies inside the flange weld');
+    // column side
+    const isCol = o.type !== 'splice', c = o.col;
+    let mC = null, eC = null, Avc = null, fyc = null, fuc = null;
+    if (isCol) {
+      fyc = mat(c.grade, c.tf).fy; fuc = mat(c.grade, c.tf).fu;
+      mC = (o.w - c.tw) / 2 - 0.8 * c.r; eC = (c.b - o.w) / 2;
+      if (!(mC > 0) || !(eC > 0)) throw new Error('Column flange: the gauge must lie between the root radii and the flange tips');
+      Avc = Math.max(c.A - 2 * c.b * c.tf + (c.tw + 2 * c.r) * c.tf, (c.h - 2 * c.tf) * c.tw);
+    }
+    const eMin = isCol ? Math.min(eC, ep) : ep;
+    const beta = isCol ? (o.beta ?? 1) : 0;
+    // component resistance of a run of tension rows (indices into T)
+    const comp = (i, j) => {
+      const out = [], run = T.slice(i, j + 1), allBelow = run.every(r => r.zone !== 'ext'), nb = 2 * run.length;
+      if (isCol) {
+        const L = leffRun(T, i, j, mC, eC, null, 'col');
+        const ts = tstub({ leff1: L.l1, leff2: L.l2, tf: c.tf, f: fyc, m: mC, n: eMin, Ft: Ftb, nb });
+        out.push({ k: 'cfb', nm: 'column flange in bending', F: ts.F, leff: L.l1, mode: ts.mode });
+        out.push({ k: 'cwt', nm: 'column web in tension', F: omega(beta, L.l1, c.tw, Avc) * L.l1 * c.tw * fyc / GM0, leff: L.l1 });
+      }
+      if (run.length === 1 && run[0].zone === 'ext') {
+        const lcp = Math.min(2 * Math.PI * mx, Math.PI * mx + o.w, Math.PI * mx + 2 * ep);
+        const lnc = Math.min(4 * mx + 1.25 * exP, ep + 2 * mx + 0.625 * exP, 0.5 * pl.bp, 0.5 * o.w + 2 * mx + 0.625 * exP);
+        const ts = tstub({ leff1: Math.min(lcp, lnc), leff2: lnc, tf: pl.tp, f: fyp, m: mx, n: Math.min(exP, eMin), Ft: Ftb, nb: 2 });
+        out.push({ k: 'epb', nm: 'end plate in bending (extension)', F: ts.F, leff: Math.min(lcp, lnc), mode: ts.mode });
+      } else if (allBelow) {
+        const L = leffRun(T, i, j, mP, ep, o.alpha || null, 'ep');
+        const ts = tstub({ leff1: L.l1, leff2: L.l2, tf: pl.tp, f: fyp, m: mP, n: eMin, Ft: Ftb, nb });
+        out.push({ k: 'epb', nm: 'end plate in bending', F: ts.F, leff: L.l1, mode: ts.mode });
+        out.push({ k: 'bwt', nm: 'beam web in tension', F: L.l1 * bm.tw * fyb / GM0, leff: L.l1 });
+      }
+      out.push({ k: 'bt', nm: 'bolts in tension', F: nb * Ftb });
+      return out;
+    };
+    // compression and shear limits
+    const McRd = bm.Wpl * fyb / GM0, Ffb = McRd / (bm.h - bm.tf);
+    let Fcwc = Infinity, Vwp = Infinity, cw = null;
+    if (isCol) {
+      const sp = 2 * pl.tp, beffc = bm.tf + 2 * Math.SQRT2 * o.af + 5 * (c.tf + c.r) + sp, dwc = c.h - 2 * (c.tf + c.r);
+      const lp = 0.932 * Math.sqrt(beffc * dwc * fyc / (EC3_E * c.tw * c.tw)), rho = lp <= 0.72 ? 1 : (lp - 0.2) / (lp * lp);
+      const sig = (o.Ncol || 0) / c.A, kwc = sig <= 0.7 * fyc ? 1 : Math.max(0, 1.7 - sig / fyc), w = omega(beta, beffc, c.tw, Avc);
+      Fcwc = o.stiffComp ? Infinity : Math.min(w * kwc * beffc * c.tw * fyc / GM0, w * kwc * rho * beffc * c.tw * fyc / GM1);
+      Vwp = 0.9 * fyc * Avc / (Math.sqrt(3) * GM0);
+      cw = { beffc, dwc, lp, rho, kwc, w, sp };
+    }
+    const Flim = Math.min(Ffb, Fcwc, beta > 0 ? Vwp / beta : Infinity);
+    // plastic distribution, top row first (6.2.7.2)
+    const F = [];
+    T.forEach((r, j) => {
+      let best = { F: Infinity };
+      for (let i = 0; i <= j; i++) {
+        const prev = F.slice(i, j).reduce((a, x) => a + x.F, 0);
+        for (const cpn of comp(i, j)) {
+          if (i < j && (cpn.k === 'bt')) continue;                                   // bolts act per row
+          const v = cpn.F - prev;
+          if (v < best.F) best = { F: v, by: cpn.nm + (i < j ? ` (rows ${i + 1}–${j + 1} as a group)` : ''), leff: cpn.leff, mode: cpn.mode };
+        }
+      }
+      F.push({ ...r, F: Math.max(0, best.F), Fpot: Math.max(0, best.F), by: best.by });
+    });
+    // compression / shear limit: reduce from the bottom
+    let sum = 0;
+    for (const r of F) { if (sum + r.F > Flim) { r.F = Math.max(0, Flim - sum); r.by += r.F === 0 ? ' → 0 (compression / panel shear)' : ' → reduced (compression / panel shear)'; } sum += r.F; }
+    // 6.2.7.2(9): a row above 1.9 F_t,Rd limits the rows below to a triangular distribution
+    const big = F.find(r => r.F > 1.9 * Ftb);
+    if (big) for (const r of F) if (r.h < big.h && r.F > big.F * r.h / big.h) { r.F = big.F * r.h / big.h; r.by += ' → triangular (6.2.7.2(9))'; }
+    const MjRd = F.reduce((a, r) => a + r.F * r.h, 0), sumF = F.reduce((a, r) => a + r.F, 0), z = sumF > 0 ? MjRd / sumF : 0;
+    // shear: rows in tension keep (1 - 1/1.4) of the bolt shear resistance; bearing on plate and column flange
+    const d0 = b.d0, fbRd = (t, fu) => 2.5 * Math.min(fu ? b.fub / fu : 1, 1) * fu * b.d * t / GM2;      // k1 = 2.5 (edge e2 >= 1.5 d0 checked), alpha_b <= 1
+    const bear = Math.min(fbRd(pl.tp, fup), isCol ? fbRd(c.tf, fuc) : Infinity);
+    const VRd = rows.reduce((a, r) => { const t = F.find(x => x.y === r.y && x.F > 0); return a + 2 * Math.min(t ? Fvb * (1 - 1 / 1.4) : Fvb, bear); }, 0);
+    // welds: full strength in tension (two fillets, transverse): a >= t fy sqrt2 beta_w gamma_M2 / (2 fu)
+    const bw = mat(bm.grade, bm.tf).bw, fub_ = mat(bm.grade, bm.tf).fu;
+    const aReqF = bm.tf * fyb * Math.SQRT2 * bw * GM2 / (2 * Math.min(fub_, fup)), aReqW = bm.tw * fyb * Math.SQRT2 * bw * GM2 / (2 * Math.min(fub_, fup));
+    const C = [];
+    const rowLines = F.map((r, k) => `row ${k + 1} (${r.zone === 'ext' ? 'extension' : r.zone === 'first' ? 'first below flange' : 'below flange'}), h = ${r1(r.h)} mm: F = ${kN(r.F)} kN — ${r.by}`);
+    C.push(chk('M1', `Moment Resistance M_j,Rd (${isCol ? 'beam to column flange' : 'beam splice'})`, 'EN 1993-1-8 6.2.7.2 / SCI P398', [
+      `F_t,Rd per bolt = ${kN(Ftb)} kN; end plate m = ${r1(mP)} mm, e = ${r1(ep)} mm${extRow ? `, m_x = ${r1(mx)} mm, e_x = ${r1(exP)} mm` : ''}${isCol ? `; column flange m = ${r1(mC)} mm, e = ${r1(eC)} mm` : ''}; α = ${o.alpha ? o.alpha : 'not used (unstiffened patterns)'}`,
+      ...rowLines,
+      `compression: beam flange F_c,fb,Rd = M_c,Rd/(h − t_f) = ${kN(Ffb)} kN${isCol ? `; column web F_c,wc,Rd = ${o.stiffComp ? 'stiffened' : kN(Fcwc) + ' kN (b_eff = ' + r1(cw.beffc) + ' mm, ω = ' + r2(cw.w) + ', ρ = ' + r2(cw.rho) + ', k_wc = ' + r2(cw.kwc) + ')'}; panel shear V_wp,Rd = ${kN(Vwp)} kN (β = ${beta})` : ''}`,
+      `ΣF_t,r = ${kN(sumF)} kN; M_j,Rd = Σ h_r F_t,r = ${r1(MjRd / 1e6)} kNm`], MjRd / 1e6, Math.abs(o.M) / 1e6, 'kNm'));
+    C.push(chk('M2', 'Vertical Shear (bolts and bearing)', 'EN 1993-1-8 Table 3.4, 3.6.1', [`F_v,Rd = ${kN(Fvb)} kN per bolt; rows in tension keep (1 − 1/1.4) F_v,Rd = ${kN(Fvb * (1 - 1 / 1.4))} kN (Table 3.4 interaction)`,
+      `bearing (k₁ = 2.5, α_b ≤ 1) on the plate${isCol ? ' / column flange' : ''}: ${kN(bear)} kN per bolt`, `V_Rd = ${kN(VRd)} kN`], VRd / 1e3, Math.abs(o.V) / 1e3, 'kN'));
+    if (isCol && beta > 0) C.push(chk('M3', 'Column Web Panel Shear', 'EN 1993-1-8 6.2.6.1', [`V_wp,Ed = β M_Ed/z = ${beta} × ${r1(Math.abs(o.M) / 1e6)}/${r1(z)} mm = ${kN(beta * Math.abs(o.M) / Math.max(z, 1e-9))} kN`, `V_wp,Rd = 0.9 f_y A_vc/(√3 γ_M0) = ${kN(Vwp)} kN (A_vc = ${r1(Avc)} mm²)`], Vwp / 1e3, beta * Math.abs(o.M) / Math.max(z, 1e-9) / 1e3, 'kN'));
+    C.push(chk('M4', 'Tension Flange Welds - Full Strength', 'EN 1993-1-8 4.5.3.2 (P398 recommendation)', [`two transverse fillets develop the flange: a ≥ t_f f_y √2 β_w γ_M2/(2 f_u) = ${r2(aReqF)} mm (throat)`, `provided a_f = ${o.af} mm`], o.af, aReqF, 'mm'));
+    C.push(chk('M5', 'Web Welds - Full Strength', 'EN 1993-1-8 4.5.3.2', [`a ≥ t_w f_y √2 β_w γ_M2/(2 f_u) = ${r2(aReqW)} mm (throat)`, `provided a_w = ${o.aw} mm`], o.aw, aReqW, 'mm'));
+    const minEdge = Math.min(ep, isCol ? eC : Infinity);
+    C.push(chk('M6', 'Detailing - Edge Distance across the Plate', 'EN 1993-1-8 Table 3.3', [`e₂ ≥ 1.2 d₀ = ${r1(1.2 * d0)} mm; e = ${r1(minEdge)} mm`], minEdge, 1.2 * d0, 'mm'));
+    return { checks: C, rows: F, MjRd, VRd, Ftb, Fvb, Ffb, Fcwc, Vwp, Flim, mP, mx, mC, eC, ep, Avc, cw, z, comp, T };
+  }
+
+  return { GR, mat, BOLTS, bolt, tstub, leffRows, leffRun, finExtra, endPlateTying, basePlate, rhsSplice, steelToConcrete, momentEndPlate };
 })();
 if (typeof module !== 'undefined') module.exports = { Joints };
 
@@ -531,74 +668,203 @@ const GM0=1,GM2=1.25;
 
 // UKB/UKC section database: {d, b, tf, tw, r, Av (shear area mm²)}
 // d=depth, b=flange width, tf=flange thickness, tw=web thickness, r=root radius
-const SECTIONS={
-// ── UKB (Universal Beams) ──────────────────────────────────────────────────────────
-  '133×102×25 UKB': {d:133,b:102,tf:7.8,tw:5.7,r:7.6,A:3200},
-  '178×102×19 UKB': {d:177,b:102,tf:7.9,tw:4.8,r:7.6,A:2390},
-  '203×133×25 UKB': {d:203,b:133,tf:7.8,tw:5.8,r:7.6,A:3280},
-  '203×133×30 UKB': {d:207,b:134,tf:9.6,tw:6.4,r:7.6,A:3670},
-  '254×102×22 UKB': {d:254,b:102,tf:6.8,tw:5.8,r:7.6,A:3910},
-  '254×102×25 UKB': {d:257,b:102,tf:8.4,tw:6.1,r:7.6,A:4200},
-  '254×102×28 UKB': {d:260,b:102,tf:10.0,tw:6.4,r:7.6,A:4490},
-  '254×146×31 UKB': {d:251,b:146,tf:8.6,tw:6.1,r:7.6,A:4210},
-  '254×146×37 UKB': {d:256,b:146,tf:10.9,tw:6.4,r:7.6,A:4680},
-  '305×102×25 UKB': {d:305,b:102,tf:7.0,tw:5.8,r:7.6,A:4600},
-  '305×102×28 UKB': {d:309,b:102,tf:8.9,tw:6.1,r:7.6,A:4980},
-  '305×102×33 UKB': {d:313,b:102,tf:10.8,tw:6.6,r:7.6,A:5520},
-  '305×127×37 UKB': {d:304,b:124,tf:10.7,tw:7.2,r:8.9,A:5900},
-  '305×127×42 UKB': {d:307,b:124,tf:12.1,tw:8.0,r:8.9,A:6660},
-  '305×127×48 UKB': {d:311,b:125,tf:14.0,tw:9.0,r:8.9,A:7500},
-  '305×165×40 UKB': {d:303,b:165,tf:10.2,tw:6.1,r:8.9,A:5360},
-  '305×165×46 UKB': {d:307,b:165,tf:11.8,tw:6.7,r:8.9,A:5840},
-  '305×165×54 UKB': {d:310,b:166,tf:13.7,tw:7.9,r:8.9,A:7000},
-  '356×127×33 UKB': {d:349,b:125,tf:8.5,tw:6.0,r:10.2,A:5680},
-  '356×127×39 UKB': {d:353,b:126,tf:10.7,tw:6.5,r:10.2,A:6790},
-  '356×171×45 UKB': {d:352,b:171,tf:9.7,tw:7.0,r:10.2,A:7230},
-  '356×171×51 UKB': {d:355,b:172,tf:11.5,tw:7.4,r:10.2,A:7520},
-  '356×171×57 UKB': {d:358,b:172,tf:13.0,tw:8.0,r:10.2,A:8360},
-  '356×171×67 UKB': {d:364,b:174,tf:15.7,tw:9.1,r:10.2,A:9890},
-  '406×140×39 UKB': {d:398,b:142,tf:8.6,tw:6.4,r:10.2,A:7080},
-  '406×140×46 UKB': {d:402,b:142,tf:11.2,tw:6.9,r:10.2,A:8050},
-  '406×178×54 UKB': {d:403,b:178,tf:10.9,tw:7.7,r:10.2,A:9080},
-  '406×178×60 UKB': {d:407,b:178,tf:12.8,tw:7.9,r:10.2,A:9860},
-  '406×178×67 UKB': {d:410,b:179,tf:14.3,tw:8.8,r:10.2,A:11100},
-  '406×178×74 UKB': {d:413,b:179,tf:16.0,tw:9.5,r:10.2,A:12200},
-  '457×152×52 UKB': {d:449,b:152,tf:10.9,tw:7.6,r:10.2,A:9870},
-  '457×152×60 UKB': {d:455,b:153,tf:13.3,tw:8.1,r:10.2,A:11100},
-  '457×152×67 UKB': {d:458,b:153,tf:15.0,tw:9.0,r:10.2,A:12600},
-  '457×191×67 UKB': {d:454,b:190,tf:12.7,tw:8.5,r:10.2,A:11800},
-  '457×191×74 UKB': {d:457,b:190,tf:14.5,tw:9.0,r:10.2,A:12700},
-  '457×191×82 UKB': {d:460,b:191,tf:16.0,tw:9.9,r:10.2,A:14000},
-  '457×191×89 UKB': {d:463,b:192,tf:17.7,tw:10.5,r:10.2,A:15400},
-  '457×191×98 UKB': {d:467,b:193,tf:19.6,tw:11.4,r:10.2,A:17200},
-  '533×210×82 UKB': {d:528,b:209,tf:13.2,tw:9.6,r:12.7,A:16200},
-  '533×210×92 UKB': {d:533,b:209,tf:15.6,tw:10.2,r:12.7,A:17600},
-  '533×210×101 UKB':{d:536,b:210,tf:17.4,tw:10.8,r:12.7,A:19600},
-  '610×229×101 UKB':{d:603,b:228,tf:14.8,tw:10.6,r:12.7,A:20900},
-  '610×229×113 UKB':{d:607,b:228,tf:17.3,tw:11.2,r:12.7,A:22500},
-  '610×229×125 UKB':{d:612,b:229,tf:19.6,tw:11.9,r:12.7,A:24500},
-  '610×229×140 UKB':{d:617,b:230,tf:22.1,tw:13.1,r:12.7,A:27600},
-  '686×254×125 UKB':{d:677,b:253,tf:16.2,tw:11.7,r:15.2,A:27200},
-  '686×254×140 UKB':{d:683,b:253,tf:19.0,tw:12.4,r:15.2,A:29600},
-  '762×267×134 UKB':{d:750,b:265,tf:15.5,tw:12.0,r:16.5,A:30200},
-  '762×267×147 UKB':{d:754,b:265,tf:17.5,tw:12.8,r:16.5,A:33300},
-// ── UKC (Universal Columns) ───────────────────────────────────────────────────────
-  '152×152×23 UKC': {d:152,b:152,tf:6.8,tw:6.1,r:7.6,A:2990},
-  '152×152×30 UKC': {d:158,b:153,tf:9.4,tw:6.6,r:7.6,A:3680},
-  '152×152×37 UKC': {d:162,b:154,tf:11.5,tw:8.0,r:7.6,A:4680},
-  '203×203×46 UKC': {d:203,b:203,tf:11.0,tw:7.3,r:10.2,A:5100},
-  '203×203×52 UKC': {d:206,b:204,tf:12.5,tw:8.0,r:10.2,A:5930},
-  '203×203×60 UKC': {d:210,b:206,tf:14.2,tw:9.4,r:10.2,A:7120},
-  '203×203×71 UKC': {d:216,b:206,tf:17.3,tw:10.3,r:10.2,A:8050},
-  '254×254×73 UKC': {d:254,b:254,tf:14.2,tw:8.6,r:12.7,A:7870},
-  '254×254×89 UKC': {d:260,b:256,tf:17.3,tw:10.4,r:12.7,A:10300},
-  '254×254×107 UKC':{d:267,b:258,tf:20.5,tw:13.0,r:12.7,A:13100},
-  '305×305×97 UKC': {d:308,b:305,tf:15.4,tw:9.9,r:15.2,A:11200},
-  '305×305×118 UKC':{d:314,b:307,tf:18.7,tw:12.0,r:15.2,A:14300},
-  '305×305×137 UKC':{d:320,b:309,tf:21.7,tw:13.8,r:15.2,A:17000},
-  '356×368×129 UKC':{d:355,b:368,tf:17.5,tw:10.4,r:15.2,A:13400},
-  '356×368×153 UKC':{d:362,b:370,tf:20.7,tw:12.3,r:15.2,A:16300},
-  '356×368×177 UKC':{d:368,b:372,tf:23.8,tw:14.4,r:15.2,A:19700},
+const SECTIONS={   // British Steel UK sections datasheet (July 2026): d, b, tf, tw, r (mm), A (mm²)
+  '127×76×13 UKB': {d:127,b:76,tf:7.6,tw:4,r:7.6,A:1650},
+  '152×89×16 UKB': {d:152.4,b:88.7,tf:7.7,tw:4.5,r:7.6,A:2030},
+  '178×102×19 UKB': {d:177.8,b:101.2,tf:7.9,tw:4.8,r:7.6,A:2430},
+  '203×102×23 UKB': {d:203.2,b:101.8,tf:9.3,tw:5.4,r:7.6,A:2940},
+  '203×133×25 UKB': {d:203.2,b:133.2,tf:7.8,tw:5.7,r:7.6,A:3200},
+  '203×133×30 UKB': {d:206.8,b:133.9,tf:9.6,tw:6.4,r:7.6,A:3820},
+  '254×102×22 UKB': {d:254,b:101.6,tf:6.8,tw:5.7,r:7.6,A:2800},
+  '254×102×25 UKB': {d:257.2,b:101.9,tf:8.4,tw:6,r:7.6,A:3200},
+  '254×102×28 UKB': {d:260.4,b:102.2,tf:10,tw:6.3,r:7.6,A:3610},
+  '254×146×31 UKB': {d:251.4,b:146.1,tf:8.6,tw:6,r:7.6,A:3970},
+  '254×146×37 UKB': {d:256,b:146.4,tf:10.9,tw:6.3,r:7.6,A:4720},
+  '254×146×43 UKB': {d:259.6,b:147.3,tf:12.7,tw:7.2,r:7.6,A:5480},
+  '305×102×25 UKB': {d:305.1,b:101.6,tf:7,tw:5.8,r:7.6,A:3160},
+  '305×102×28 UKB': {d:308.7,b:101.8,tf:8.8,tw:6,r:7.6,A:3590},
+  '305×102×33 UKB': {d:312.7,b:102.4,tf:10.8,tw:6.6,r:7.6,A:4180},
+  '305×127×37 UKB': {d:304.4,b:123.4,tf:10.7,tw:7.1,r:8.9,A:4720},
+  '305×127×42 UKB': {d:307.2,b:124.3,tf:12.1,tw:8,r:8.9,A:5340},
+  '305×127×48 UKB': {d:311,b:125.3,tf:14,tw:9,r:8.9,A:6120},
+  '305×165×40 UKB': {d:303.4,b:165,tf:10.2,tw:6,r:8.9,A:5130},
+  '305×165×46 UKB': {d:306.6,b:165.7,tf:11.8,tw:6.7,r:8.9,A:5870},
+  '305×165×54 UKB': {d:310.4,b:166.9,tf:13.7,tw:7.9,r:8.9,A:6880},
+  '356×171×45 UKB': {d:351.4,b:171.1,tf:9.7,tw:7,r:12.7,A:5780},
+  '356×171×51 UKB': {d:355,b:171.5,tf:11.5,tw:7.4,r:12.7,A:6540},
+  '356×171×57 UKB': {d:358,b:172.2,tf:13,tw:8.1,r:12.7,A:7300},
+  '356×171×67 UKB': {d:363.4,b:173.2,tf:15.7,tw:9.1,r:12.7,A:8600},
+  '406×140×39 UKB': {d:398,b:141.8,tf:8.6,tw:6.4,r:12.7,A:5010},
+  '406×140×46 UKB': {d:403.2,b:142.2,tf:11.2,tw:6.8,r:12.7,A:5910},
+  '406×140×53 UKB': {d:406.6,b:143.3,tf:12.9,tw:7.9,r:12.7,A:6840},
+  '406×178×54 UKB': {d:402.6,b:177.7,tf:10.9,tw:7.7,r:12.7,A:6940},
+  '406×178×60 UKB': {d:406.4,b:177.9,tf:12.8,tw:7.9,r:12.7,A:7700},
+  '406×178×67 UKB': {d:409.4,b:178.8,tf:14.3,tw:8.8,r:12.7,A:8600},
+  '406×178×74 UKB': {d:412.8,b:179.5,tf:16,tw:9.5,r:12.7,A:9500},
+  '406×178×85 UKB': {d:417.2,b:181.9,tf:18.2,tw:10.9,r:12.7,A:10900},
+  '406×260×100 UKB': {d:415,b:260,tf:16.9,tw:10,r:12.7,A:12700},
+  '406×260×114 UKB': {d:420,b:261,tf:19.3,tw:11.6,r:12.7,A:14600},
+  '406×260×149 UKB': {d:431,b:265,tf:25,tw:14.9,r:12.7,A:19100},
+  '457×152×52 UKB': {d:449.8,b:152.4,tf:10.9,tw:7.6,r:12.7,A:6710},
+  '457×152×60 UKB': {d:454.6,b:152.9,tf:13.3,tw:8.1,r:12.7,A:7670},
+  '457×152×67 UKB': {d:458,b:153.8,tf:15,tw:9,r:12.7,A:8600},
+  '457×152×74 UKB': {d:462,b:154.4,tf:17,tw:9.6,r:12.7,A:9500},
+  '457×152×82 UKB': {d:465.8,b:155.3,tf:18.9,tw:10.5,r:12.7,A:10500},
+  '457×191×67 UKB': {d:453.4,b:189.9,tf:12.7,tw:8.5,r:12.7,A:8600},
+  '457×191×74 UKB': {d:457,b:190.4,tf:14.5,tw:9,r:12.7,A:9510},
+  '457×191×82 UKB': {d:460,b:191.3,tf:16,tw:9.9,r:12.7,A:10500},
+  '457×191×89 UKB': {d:463.4,b:191.9,tf:17.7,tw:10.5,r:12.7,A:11400},
+  '457×191×98 UKB': {d:467.2,b:192.8,tf:19.6,tw:11.4,r:12.7,A:12600},
+  '457×191×106 UKB': {d:469.2,b:194,tf:20.6,tw:12.6,r:12.7,A:13500},
+  '457×191×133 UKB': {d:480.6,b:196.7,tf:26.3,tw:15.3,r:12.7,A:17000},
+  '457×191×161 UKB': {d:492,b:199.4,tf:32,tw:18,r:12.7,A:20600},
+  '457×280×113 UKB': {d:463,b:280,tf:17.3,tw:10.8,r:20,A:14700},
+  '457×280×128 UKB': {d:467,b:282,tf:19.6,tw:12.2,r:20,A:16600},
+  '457×280×144 UKB': {d:472,b:283,tf:22.1,tw:13.6,r:20,A:18700},
+  '457×280×158 UKB': {d:476,b:284,tf:23.9,tw:15,r:20,A:20300},
+  '457×280×177 UKB': {d:482,b:286,tf:26.9,tw:16.6,r:20,A:22800},
+  '457×280×193 UKB': {d:489,b:283,tf:30.5,tw:17,r:20,A:24900},
+  '457×280×213 UKB': {d:495,b:285,tf:33.5,tw:18.5,r:20,A:27400},
+  '457×280×235 UKB': {d:501,b:287,tf:36.6,tw:20.6,r:20,A:30200},
+  '457×280×260 UKB': {d:509,b:289,tf:40.4,tw:22.6,r:20,A:33400},
+  '457×280×286 UKB': {d:517,b:291,tf:44.4,tw:24.4,r:20,A:36600},
+  '457×280×315 UKB': {d:525,b:293,tf:48.5,tw:26.9,r:20,A:40300},
+  '533×165×66 UKB': {d:524.7,b:165.1,tf:11.4,tw:8.9,r:12.7,A:8370},
+  '533×165×74 UKB': {d:529.1,b:165.9,tf:13.6,tw:9.7,r:12.7,A:9520},
+  '533×165×85 UKB': {d:534.9,b:166.5,tf:16.5,tw:10.3,r:12.7,A:10800},
+  '533×210×82 UKB': {d:528.3,b:208.8,tf:13.2,tw:9.6,r:12.7,A:10500},
+  '533×210×92 UKB': {d:533.1,b:209.3,tf:15.6,tw:10.1,r:12.7,A:11700},
+  '533×210×101 UKB': {d:536.7,b:210,tf:17.4,tw:10.8,r:12.7,A:12900},
+  '533×210×109 UKB': {d:539.5,b:210.8,tf:18.8,tw:11.6,r:12.7,A:13900},
+  '533×210×122 UKB': {d:544.5,b:211.9,tf:21.3,tw:12.7,r:12.7,A:15500},
+  '533×210×138 UKB': {d:549.1,b:213.9,tf:23.6,tw:14.7,r:12.7,A:17600},
+  '533×312×150 UKB': {d:542.5,b:312,tf:20.3,tw:12.7,r:12.7,A:19200},
+  '533×312×165 UKB': {d:546,b:313,tf:22.2,tw:14,r:12.7,A:21100},
+  '533×312×182 UKB': {d:550.7,b:314.5,tf:24.4,tw:15.2,r:12.7,A:23100},
+  '533×312×196 UKB': {d:554,b:316,tf:26.3,tw:16.5,r:12.7,A:25000},
+  '533×312×219 UKB': {d:560.3,b:317.4,tf:29.2,tw:18.3,r:12.7,A:27900},
+  '533×312×248 UKB': {d:571,b:315,tf:34.5,tw:19,r:12.7,A:31400},
+  '533×312×272 UKB': {d:577.1,b:320.2,tf:37.6,tw:21.1,r:12.7,A:34800},
+  '610×178×82 UKB': {d:598.6,b:177.9,tf:12.8,tw:10,r:20,A:10600},
+  '610×178×92 UKB': {d:603,b:178.8,tf:15,tw:10.9,r:20,A:12000},
+  '610×178×100 UKB': {d:607.4,b:179.2,tf:17.2,tw:11.3,r:20,A:13000},
+  '610×229×101 UKB': {d:602.6,b:227.6,tf:14.8,tw:10.5,r:20,A:13100},
+  '610×229×113 UKB': {d:607.6,b:228.2,tf:17.3,tw:11.1,r:20,A:14600},
+  '610×229×125 UKB': {d:612.2,b:229,tf:19.6,tw:11.9,r:20,A:16100},
+  '610×229×140 UKB': {d:617.2,b:230.2,tf:22.1,tw:13.1,r:20,A:18000},
+  '610×305×149 UKB': {d:612.4,b:304.8,tf:19.7,tw:11.8,r:20,A:19100},
+  '610×305×179 UKB': {d:620.2,b:307.1,tf:23.6,tw:14.1,r:20,A:22900},
+  '610×305×238 UKB': {d:635.8,b:311.4,tf:31.4,tw:18.4,r:20,A:30400},
+  '610×324×155 UKB': {d:611,b:324,tf:19,tw:12.7,r:20,A:19900},
+  '610×324×174 UKB': {d:616,b:325,tf:21.6,tw:14,r:20,A:22400},
+  '610×324×195 UKB': {d:622,b:327,tf:24.4,tw:15.4,r:20,A:25100},
+  '610×324×217 UKB': {d:628,b:328,tf:27.7,tw:16.5,r:20,A:28000},
+  '610×324×241 UKB': {d:635,b:329,tf:31,tw:17.9,r:20,A:31000},
+  '610×324×262 UKB': {d:641,b:327,tf:34,tw:19,r:20,A:33500},
+  '610×324×285 UKB': {d:647,b:329,tf:37.1,tw:20.6,r:20,A:36600},
+  '610×324×307 UKB': {d:653,b:330,tf:39.9,tw:22.1,r:20,A:39300},
+  '610×324×341 UKB': {d:661,b:333,tf:43.9,tw:24.4,r:20,A:43600},
+  '610×324×372 UKB': {d:669,b:335,tf:48,tw:26.4,r:20,A:47600},
+  '686×254×125 UKB': {d:677.9,b:253,tf:16.2,tw:11.7,r:20,A:16100},
+  '686×254×140 UKB': {d:683.5,b:253.7,tf:19,tw:12.4,r:20,A:18000},
+  '686×254×152 UKB': {d:687.5,b:254.5,tf:21,tw:13.2,r:20,A:19600},
+  '686×254×170 UKB': {d:692.9,b:255.8,tf:23.7,tw:14.5,r:20,A:21800},
+  '686×254×192 UKB': {d:702,b:254,tf:27.9,tw:15.5,r:20,A:24500},
+  '762×267×134 UKB': {d:750,b:264.4,tf:15.5,tw:12,r:20,A:17200},
+  '762×267×147 UKB': {d:754,b:265.2,tf:17.5,tw:12.8,r:20,A:18800},
+  '762×267×161 UKB': {d:758,b:266,tf:19.3,tw:13.8,r:20,A:20500},
+  '762×267×173 UKB': {d:762.2,b:266.7,tf:21.6,tw:14.3,r:20,A:22100},
+  '762×267×185 UKB': {d:766,b:267,tf:23.6,tw:14.9,r:20,A:23700},
+  '762×267×197 UKB': {d:769.8,b:268,tf:25.4,tw:15.6,r:20,A:25200},
+  '838×292×176 UKB': {d:834.9,b:291.7,tf:18.8,tw:14,r:20,A:22500},
+  '838×292×194 UKB': {d:840.7,b:292.4,tf:21.7,tw:14.7,r:20,A:24800},
+  '838×292×210 UKB': {d:846,b:293,tf:24.4,tw:15.4,r:20,A:26900},
+  '838×292×226 UKB': {d:850.9,b:293.8,tf:26.8,tw:16.1,r:20,A:28900},
+  '838×292×252 UKB': {d:859,b:292.1,tf:31,tw:17,r:20,A:32000},
+  '914×305×201 UKB': {d:903,b:303.3,tf:20.2,tw:15.1,r:19.1,A:25600},
+  '914×305×224 UKB': {d:910.4,b:304.1,tf:23.9,tw:15.9,r:19.1,A:28600},
+  '914×305×239 UKB': {d:915,b:305,tf:25.9,tw:16.5,r:19.1,A:30400},
+  '914×305×253 UKB': {d:918.4,b:305.5,tf:27.9,tw:17.3,r:19.1,A:32300},
+  '914×305×271 UKB': {d:923,b:307,tf:30,tw:18.4,r:19.1,A:34600},
+  '914×305×289 UKB': {d:926.6,b:307.7,tf:32,tw:19.5,r:19.1,A:36800},
+  '914×305×313 UKB': {d:932,b:309,tf:34.5,tw:21.1,r:19.1,A:39800},
+  '914×305×345 UKB': {d:943,b:308,tf:39.9,tw:22.1,r:19.1,A:44000},
+  '914×305×381 UKB': {d:950.7,b:310.3,tf:43.9,tw:24.4,r:20,A:48600},
+  '914×419×343 UKB': {d:911.8,b:418.5,tf:32,tw:19.4,r:24.1,A:43700},
+  '914×419×388 UKB': {d:921,b:420.5,tf:36.6,tw:21.4,r:24.1,A:49400},
+  '1016×305×222 UKB': {d:970.3,b:300,tf:21.1,tw:16,r:30,A:28300},
+  '1016×305×249 UKB': {d:980.1,b:300,tf:26,tw:16.5,r:30,A:31700},
+  '1016×305×272 UKB': {d:990.1,b:300,tf:31,tw:16.5,r:30,A:34700},
+  '1016×305×314 UKB': {d:999.9,b:300,tf:35.9,tw:19.1,r:30,A:40000},
+  '1016×305×350 UKB': {d:1008,b:302,tf:40,tw:21.1,r:30,A:44500},
+  '1016×305×393 UKB': {d:1015.9,b:303,tf:43.9,tw:24.4,r:30,A:50000},
+  '1016×305×415 UKB': {d:1020,b:304,tf:46,tw:26,r:30,A:52900},
+  '1016×305×437 UKB': {d:1026.1,b:305.4,tf:49,tw:26.9,r:30,A:55700},
+  '1016×305×487 UKB': {d:1036.3,b:308.5,tf:54.1,tw:30,r:30,A:62000},
+  '1016×305×494 UKB': {d:1036,b:309,tf:54,tw:31,r:30,A:62900},
+  '1016×305×584 UKB': {d:1056,b:314,tf:64,tw:36,r:30,A:74400},
+  '152×152×23 UKC': {d:152.4,b:152.2,tf:6.8,tw:5.8,r:7.6,A:2920},
+  '152×152×30 UKC': {d:157.6,b:152.9,tf:9.4,tw:6.5,r:7.6,A:3830},
+  '152×152×37 UKC': {d:161.8,b:154.4,tf:11.5,tw:8,r:7.6,A:4710},
+  '152×152×44 UKC': {d:166,b:155.9,tf:13.6,tw:9.5,r:7.6,A:5610},
+  '152×152×51 UKC': {d:170.2,b:157.4,tf:15.7,tw:11,r:7.6,A:6520},
+  '203×203×46 UKC': {d:203.2,b:203.6,tf:11,tw:7.2,r:12.7,A:5920},
+  '203×203×52 UKC': {d:206.2,b:204.3,tf:12.5,tw:7.9,r:12.7,A:6680},
+  '203×203×60 UKC': {d:209.6,b:205.8,tf:14.2,tw:9.4,r:12.7,A:7690},
+  '203×203×71 UKC': {d:215.8,b:206.4,tf:17.3,tw:10,r:12.7,A:9090},
+  '203×203×86 UKC': {d:222.2,b:209.1,tf:20.5,tw:12.7,r:12.7,A:11000},
+  '203×203×100 UKC': {d:228.6,b:210.3,tf:23.7,tw:14.5,r:12.7,A:12700},
+  '203×203×113 UKC': {d:235,b:212.1,tf:26.9,tw:16.3,r:12.7,A:14500},
+  '203×203×127 UKC': {d:241.4,b:213.9,tf:30.1,tw:18.1,r:12.7,A:16300},
+  '254×254×73 UKC': {d:254.1,b:254.6,tf:14.2,tw:8.6,r:20,A:9520},
+  '254×254×81 UKC': {d:256,b:255,tf:15.6,tw:9.4,r:20,A:10400},
+  '254×254×89 UKC': {d:260.3,b:256.3,tf:17.3,tw:10.3,r:20,A:11500},
+  '254×254×101 UKC': {d:264,b:257,tf:19.6,tw:11.9,r:20,A:13100},
+  '254×254×107 UKC': {d:266.7,b:258.8,tf:20.5,tw:12.8,r:20,A:13800},
+  '254×254×115 UKC': {d:269,b:259,tf:22.1,tw:13.5,r:20,A:14800},
+  '254×254×132 UKC': {d:276.3,b:261.3,tf:25.3,tw:15.3,r:20,A:17000},
+  '254×254×149 UKC': {d:282,b:263,tf:28.4,tw:17.3,r:20,A:19200},
+  '254×254×167 UKC': {d:289.1,b:265.2,tf:31.7,tw:19.2,r:20,A:21500},
+  '305×305×97 UKC': {d:307.9,b:305.3,tf:15.4,tw:9.9,r:20,A:12500},
+  '305×305×107 UKC': {d:311,b:306,tf:17,tw:10.9,r:20,A:13800},
+  '305×305×118 UKC': {d:314.5,b:307.4,tf:18.7,tw:12,r:20,A:15200},
+  '305×305×129 UKC': {d:318,b:308,tf:20.6,tw:13.1,r:20,A:16700},
+  '305×305×137 UKC': {d:320.5,b:309.2,tf:21.7,tw:13.8,r:20,A:17600},
+  '305×305×143 UKC': {d:323,b:309,tf:22.9,tw:14,r:20,A:18400},
+  '305×305×158 UKC': {d:327.1,b:311.2,tf:25,tw:15.8,r:20,A:20300},
+  '305×305×179 UKC': {d:333,b:313,tf:28.1,tw:18,r:20,A:22900},
+  '305×305×198 UKC': {d:339.9,b:314.5,tf:31.4,tw:19.1,r:20,A:25400},
+  '305×305×202 UKC': {d:341,b:315,tf:31.8,tw:20.1,r:20,A:26000},
+  '305×305×226 UKC': {d:348,b:317,tf:35.6,tw:22.1,r:20,A:29000},
+  '305×305×240 UKC': {d:352.5,b:318.4,tf:37.7,tw:23,r:20,A:30700},
+  '305×305×253 UKC': {d:356,b:319,tf:39.6,tw:24.4,r:20,A:32400},
+  '305×305×283 UKC': {d:365.3,b:322.2,tf:44.1,tw:26.8,r:20,A:36200},
+  '356×368×129 UKC': {d:355.6,b:368.6,tf:17.5,tw:10.4,r:20,A:16600},
+  '356×368×134 UKC': {d:356,b:369,tf:18,tw:11.2,r:20,A:17200},
+  '356×368×147 UKC': {d:360,b:370,tf:19.8,tw:12.3,r:20,A:18900},
+  '356×368×153 UKC': {d:362,b:370.5,tf:20.7,tw:12.3,r:20,A:19600},
+  '356×368×162 UKC': {d:364,b:371,tf:21.8,tw:13.3,r:20,A:20800},
+  '356×368×177 UKC': {d:368.2,b:372.6,tf:23.8,tw:14.4,r:20,A:22700},
+  '356×368×179 UKC': {d:368,b:374,tf:23.9,tw:15,r:20,A:23000},
+  '356×368×196 UKC': {d:372,b:374,tf:26.2,tw:16.4,r:20,A:25200},
+  '356×368×202 UKC': {d:374.6,b:374.7,tf:27,tw:16.5,r:20,A:25900},
+  '356×406×216 UKC': {d:375,b:394,tf:27.7,tw:17.3,r:20,A:27700},
+  '356×406×235 UKC': {d:381,b:394.8,tf:30.2,tw:18.4,r:20,A:30100},
+  '356×406×237 UKC': {d:380,b:395,tf:30.2,tw:18.9,r:20,A:30200},
+  '356×406×262 UKC': {d:387,b:398,tf:33.3,tw:21.1,r:20,A:33600},
+  '356×406×287 UKC': {d:393.6,b:399,tf:36.5,tw:22.6,r:20,A:36700},
+  '356×406×314 UKC': {d:399,b:401,tf:39.6,tw:24.9,r:20,A:40100},
+  '356×406×340 UKC': {d:406.4,b:403,tf:42.9,tw:26.6,r:20,A:43400},
+  '356×406×347 UKC': {d:407,b:404,tf:43.7,tw:27.2,r:20,A:44300},
+  '356×406×382 UKC': {d:416,b:406,tf:48,tw:29.8,r:20,A:48900},
+  '356×406×393 UKC': {d:419,b:407,tf:49.2,tw:30.6,r:20,A:50200},
+  '356×406×421 UKC': {d:425,b:409,tf:52.6,tw:32.8,r:20,A:53900},
+  '356×406×463 UKC': {d:435,b:412,tf:57.4,tw:35.8,r:20,A:59100},
+  '356×406×467 UKC': {d:436.6,b:412.2,tf:58,tw:35.8,r:20,A:59600},
+  '356×406×509 UKC': {d:446,b:416,tf:62.7,tw:39.1,r:20,A:65000},
+  '356×406×551 UKC': {d:455.6,b:418.5,tf:67.5,tw:42.1,r:20,A:70300},
+  '356×406×592 UKC': {d:465,b:421,tf:72.3,tw:45,r:20,A:75600},
+  '356×406×634 UKC': {d:474.6,b:424,tf:77,tw:47.6,r:20,A:80900},
 };
 
 // Build select options HTML
@@ -649,6 +915,8 @@ const JOINTS=[
    desc:'Bolted end plates welded to the ends of two RHS / SHS lengths, bolts on two opposite sides. Each side acts as a T-stub (modes 1, 2 and 3 with prying); hollow section, welds and edge distances are checked.'},
   {id:'conc',   label:'Steel to Concrete',      ready:true,  ref:'BS EN 1992-4',
    desc:'Steel plate fixed to a concrete wall or column with cast-in headed anchors, carrying the beam shear at an eccentricity and a tying force. Anchor steel, concrete cone, pull-out, pry-out and concrete edge failure, with the EN 1992-4 interactions.'},
+  {id:'moment', label:'Moment End Plate (P398)', ready:true,  ref:'SCI P398 / EN 1993-1-8 6.2.7',
+   desc:'Bolted extended or flush end plate, beam to column flange or beam splice. Plastic distribution of bolt-row forces (rows individually and in groups), compression and column web panel shear limits, M_j,Rd, shear, full-strength welds.'},
   {id:'brace',  label:'Bracing Connection',       ready:true,  ref:'P358 §8',
    desc:'Bolted gusset plate connection for a diagonal flat bar or angle bracing member. Gusset welded to supporting frame, bracing bolted through gusset.'},
 ];
@@ -2203,6 +2471,64 @@ function diagConc(){
   <line x1="215" y1="60" x2="215" y2="98" stroke="#c33" stroke-width="2"/><polygon points="211,92 219,92 215,100" fill="#c33"/><text x="222" y="70" font-size="11" fill="#c33" font-family="monospace">V</text>
   <text x="180" y="226" text-anchor="middle" font-size="10" fill="#999" font-family="monospace">plate on cast-in headed anchors</text></svg>`;
 }
+function formMoment(){return`
+<div class="card"><div class="card-title">Joint and Loads</div>
+  <div class="g2">
+    <div class="field"><label>Joint</label><div class="iw"><select id="mo-type"><option value="column" selected>Beam to column flange</option><option value="splice">Beam splice (two end plates)</option></select></div></div>
+    <div class="field"><label>Column configuration</label><div class="iw"><select id="mo-beta"><option value="1" selected>One-sided (β = 1)</option><option value="0">Two-sided, balanced (β = 0)</option></select></div></div>
+    <div class="field"><label>Moment M_Ed <em>hogging</em></label><div class="iw"><input type="number" id="mo-M" value="150"><span class="unit">kN·m</span></div></div>
+    <div class="field"><label>Shear V_Ed</label><div class="iw"><input type="number" id="mo-V" value="150"><span class="unit">kN</span></div></div>
+  </div>
+</div>
+<div class="card"><div class="card-title">Members</div>
+  <div class="g2">
+    <div class="field"><label>Beam</label><div class="iw"><select id="mo-beam">${secOpts('457×191×67 UKB')}</select></div></div>
+    <div class="field"><label>Beam grade</label><div class="iw"><select id="mo-beamGrade"><option>S275</option><option selected>S355</option></select></div></div>
+    <div class="field"><label>Column</label><div class="iw"><select id="mo-col">${secOpts('254×254×89 UKC')}</select></div></div>
+    <div class="field"><label>Column grade</label><div class="iw"><select id="mo-colGrade"><option>S275</option><option selected>S355</option></select></div></div>
+    <div class="field"><label>Column web stiffener <em>compression</em></label><div class="iw"><select id="mo-stiff"><option value="0" selected>None</option><option value="1">Provided</option></select></div></div>
+    <div class="field"><label>Column axial N <em>compression</em></label><div class="iw"><input type="number" id="mo-Nc" value="500"><span class="unit">kN</span></div></div>
+  </div>
+</div>
+<div class="card"><div class="card-title">End Plate, Bolts and Welds</div>
+  <div class="g2">
+    <div class="field"><label>Plate width b_p</label><div class="iw"><input type="number" id="mo-bp" value="200"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Plate thickness t_p</label><div class="iw"><input type="number" id="mo-tp" value="20"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Plate top to beam top <em>0 = flush</em></label><div class="iw"><input type="number" id="mo-ext" value="90"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Plate grade</label><div class="iw"><select id="mo-plGrade"><option selected>S275</option><option>S355</option></select></div></div>
+    <div class="field"><label>Bolt</label><div class="iw"><select id="mo-bolt"><option>M16</option><option>M20</option><option selected>M24</option><option>M27</option><option>M30</option></select></div></div>
+    <div class="field"><label>Class</label><div class="iw"><select id="mo-cls"><option selected>8.8</option><option>10.9</option></select></div></div>
+    <div class="field"><label>Gauge w</label><div class="iw"><input type="number" id="mo-w" value="100"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Bolt rows <em>mm from plate top</em></label><div class="iw"><input type="text" id="mo-rows" value="45, 160, 250, 470"></div></div>
+    <div class="field"><label>Flange weld throat a_f</label><div class="iw"><input type="number" id="mo-af" value="10"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Web weld throat a_w</label><div class="iw"><input type="number" id="mo-aw" value="6"><span class="unit">mm</span></div></div>
+    <div class="field"><label>α, Fig. 6.11 <em>0 = not used</em></label><div class="iw"><input type="number" id="mo-alpha" value="0" step="0.05"></div></div>
+  </div>
+  <div class="ibox">Rows in the compression zone (at the bottom flange) carry shear only. α applies to the first row below the tension flange; without it the unstiffened yield patterns are used (conservative).</div>
+</div>`;}
+function wplI(s){return s.b*s.tf*(s.d-s.tf)+s.tw*(s.d-2*s.tf)**2/4+(4-Math.PI)*s.r*s.r*(s.d/2-s.tf-0.2234*s.r);}
+function readMoment(){return{type:gv('mo-type'),beta:gv('mo-beta'),M:gv('mo-M'),V:gv('mo-V'),beam:gv('mo-beam'),beamGrade:gv('mo-beamGrade'),col:gv('mo-col'),colGrade:gv('mo-colGrade'),
+  stiff:gv('mo-stiff'),Nc:gv('mo-Nc'),bp:gv('mo-bp'),tp:gv('mo-tp'),ext:gv('mo-ext'),plGrade:gv('mo-plGrade'),bolt:gv('mo-bolt'),cls:gv('mo-cls'),w:gv('mo-w'),rows:gv('mo-rows'),
+  af:gv('mo-af'),aw:gv('mo-aw'),alpha:gv('mo-alpha')};}
+function momentSum(g){return[['M_Ed',g.M+' kN·m'],['V_Ed',g.V+' kN'],['Joint',g.type==='splice'?'beam splice':'beam to column flange'],['Beam',g.beam+' '+g.beamGrade],
+  ['Column',g.type==='splice'?'-':g.col+' '+g.colGrade],['End plate',g.bp+'×'+g.tp+' '+g.plGrade+', top +'+g.ext],['Bolts',g.bolt+' '+g.cls+' @ '+g.w+'; rows '+g.rows],['Welds','a_f '+g.af+', a_w '+g.aw]];}
+function calcMoment(g){
+  const bs=SECTIONS[g.beam], cs=SECTIONS[g.col]; if(!bs||(g.type!=='splice'&&!cs)) throw new Error('Choose the beam and column sections');
+  const rows=String(g.rows).split(/[,;\s]+/).filter(Boolean).map(Number);
+  if(!rows.length||rows.some(x=>!(x>0))) throw new Error('Enter the bolt row positions in mm from the top of the end plate');
+  const R=Joints.momentEndPlate({type:g.type,beta:+g.beta,beam:{h:bs.d,b:bs.b,tf:bs.tf,tw:bs.tw,r:bs.r,Wpl:wplI(bs),grade:g.beamGrade},
+    col:cs?{h:cs.d,b:cs.b,tf:cs.tf,tw:cs.tw,r:cs.r,A:cs.A,grade:g.colGrade}:null,plate:{bp:fv(g.bp),tp:fv(g.tp),ext:fv(g.ext),grade:g.plGrade},
+    bolt:Joints.bolt(g.bolt,g.cls),rows,w:fv(g.w),af:fv(g.af),aw:fv(g.aw),alpha:fv(g.alpha)>0?fv(g.alpha):null,stiffComp:g.stiff==='1',Ncol:fv(g.Nc)*1e3,M:fv(g.M)*1e6,V:fv(g.V)*1e3});
+  const C=jchk(R.checks);
+  return{checks:C,allPass:C.every(c=>c.pass),maxR:Math.max(...C.map(c=>c.r))};
+}
+function diagMoment(){
+  const s=svgStart(360,260);
+  return s+`<rect x="60" y="10" width="40" height="240" fill="#ddd" stroke="#888"/><rect x="100" y="30" width="12" height="200" fill="#666"/>
+  <rect x="112" y="60" width="200" height="10" fill="#999"/><rect x="112" y="180" width="200" height="10" fill="#999"/><rect x="112" y="70" width="200" height="110" fill="#eee" stroke="#bbb"/>
+  ${[45,85,120,165].map(y=>`<line x1="70" y1="${y}" x2="118" y2="${y}" stroke="#ffb000" stroke-width="3"/>`).join('')}
+  <text x="200" y="252" text-anchor="middle" font-size="10" fill="#999" font-family="monospace">extended end plate: tension rows, compression at the bottom flange</text></svg>`;
+}
 function formBrace(){return`
 <div class="card"><div class="card-title">Applied Loads <em style="font-weight:400;letter-spacing:0;text-transform:none;font-size:10px">in bracing member</em></div>
   <div class="g2">
@@ -3284,6 +3610,7 @@ function switchJt(id){
   else if(id==='brace') pan.innerHTML=formBrace();
   else if(id==='rsplice') pan.innerHTML=formRSplice();
   else if(id==='conc') pan.innerHTML=formConc();
+  else if(id==='moment') pan.innerHTML=formMoment();
   showDiag(jt);
   document.getElementById('results').style.display='none';
   if(id==='fin')    setTimeout(()=>{attachFin();initSecFill('fin');},50);
@@ -3296,7 +3623,7 @@ function switchJt(id){
 
 function showDiag(jt){
   const diagFns={fin:diagFin,pdep:diagPDEP,fdep:diagFDEP,
-    dcleat:diagCleat,scleat:diagSCleat,splice:diagSplice,base:diagBase,brace:diagBrace,rsplice:diagRSplice,conc:diagConc};
+    dcleat:diagCleat,scleat:diagSCleat,splice:diagSplice,base:diagBase,brace:diagBrace,rsplice:diagRSplice,conc:diagConc,moment:diagMoment};
   const notP358=['dcleat','scleat'];
   const disclaimer=notP358.includes(jt.id)?
     `<div style="background:var(--accent-dim);border:1px solid var(--bdr2);border-radius:4px;padding:7px 10px;font-size:10.5px;color:var(--mut);margin-top:8px">
@@ -3328,6 +3655,7 @@ function doCalc(){
     else if(activeId==='brace'){g=readBrace();res=calcBrace(g);sum=braceSum(g);}
     else if(activeId==='rsplice'){g=readRSplice();res=calcRSplice(g);sum=rspliceSum(g);}
     else if(activeId==='conc'){g=readConc();res=calcConc(g);sum=concSum(g);}
+    else if(activeId==='moment'){g=readMoment();res=calcMoment(g);sum=momentSum(g);}
     else{g=readPDEP();res=calcPDEP(g);sum=pdepSum(g);}
     document.getElementById('diag-area').innerHTML='';
     renderRes(res,jt.label,sum);
