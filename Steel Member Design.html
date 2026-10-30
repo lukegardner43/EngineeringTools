@@ -154,6 +154,8 @@ table.t th:first-child,table.t td:first-child{text-align:left;}
           <div class="form-group"><label>Grade</label>
             <select id="grade"><option>S275</option><option selected>S355</option><option>S460</option></select></div>
         </div>
+        <div class="form-group"><label>Interaction factors, 6.3.3</label>
+          <select id="annex"><option value="B">Annex B (Method 2)</option><option value="A">Annex A (Method 1)</option></select></div>
         <div class="form-group" id="secPick"><label>Section</label><select id="section"></select></div>
         <div id="custom" class="hidden">
           <div class="grid3">
@@ -1378,8 +1380,58 @@ const EC3 = (() => {
     return { kyy, kyz, kzy, kzz };
   }
 
+  // ---------- Interaction factors, Annex A (Method 1) ----------
+  // o: { cls, N, My, Mz, NRk, chiY, chiZ, lamY, lamZ, Ncry, Ncrz, NcrT, NcrTF, Cmy0, Cmz0, lam0, C1, chiLT, aLT,
+  //      Wply, Wely, Wplz, Welz, fy, epsY (My/N A/Wel, or Aeff/Weff for Class 4), torsional (open section) }
+  function annexA(o) {
+    const n = o.N, ry = n / o.Ncry, rz = n / o.Ncrz;
+    const muY = (1 - ry) / (1 - o.chiY * ry), muZ = (1 - rz) / (1 - o.chiZ * rz);
+    const aLT = o.torsional ? Math.max(0, o.aLT) : 0;
+    // Table A.2: Cm factors; lam0 limit with C1 and the torsional(-flexural) critical forces
+    const NcrTF = o.NcrTF ?? o.NcrT;
+    const lim0 = 0.2 * Math.sqrt(o.C1 || 1) * Math.pow(Math.max(0, (1 - rz) * (1 - (Number.isFinite(NcrTF) ? n / NcrTF : 0))), 0.25);
+    let Cmy, Cmz = o.Cmz0, CmLT, small = !(o.lam0 > lim0);
+    if (small || !o.torsional) { Cmy = o.Cmy0; CmLT = 1.0; }
+    else {
+      const se = Number.isFinite(o.epsY) ? Math.sqrt(o.epsY) * aLT : Infinity;
+      Cmy = se === Infinity ? 1 : o.Cmy0 + (1 - o.Cmy0) * se / (1 + se);
+      const tT = Number.isFinite(o.NcrT) ? n / o.NcrT : 0;
+      CmLT = Math.max(1, Cmy * Cmy * aLT / Math.sqrt(Math.max(1e-12, (1 - rz) * (1 - tT))));
+    }
+    const chiLT = o.torsional ? o.chiLT : 1;
+    let kyy, kyz, kzy, kzz, C = null;
+    if (o.cls <= 2) {
+      const wy = Math.min(1.5, o.Wply / o.Wely), wz = Math.min(1.5, o.Wplz / o.Welz);
+      const npl = n / (o.NRk / GM1), lmax = Math.max(o.lamY, o.lamZ);
+      const MplyRd = o.Wply * o.fy / GM1, MplzRd = o.Wplz * o.fy / GM1, l0 = o.lam0 || 0, lz4 = o.lamZ ** 4;
+      const bLT = 0.5 * aLT * l0 * l0 * (o.My / (chiLT * MplyRd)) * (o.Mz / MplzRd);
+      const cLT = 10 * aLT * l0 * l0 / (5 + lz4) * o.My / (Cmy * chiLT * MplyRd);
+      const dLT = 2 * aLT * l0 / (0.1 + lz4) * o.My / (Cmy * chiLT * MplyRd) * o.Mz / (Cmz * MplzRd);
+      const eLT = 1.7 * aLT * l0 / (0.1 + lz4) * o.My / (Cmy * chiLT * MplyRd);
+      const Cyy = Math.max(o.Wely / o.Wply, 1 + (wy - 1) * ((2 - 1.6 / wy * Cmy * Cmy * lmax - 1.6 / wy * Cmy * Cmy * lmax * lmax) * npl - bLT));
+      const Cyz = Math.max(0.6 * Math.sqrt(wz / wy) * o.Welz / o.Wplz, 1 + (wz - 1) * ((2 - 14 * Cmz * Cmz * lmax * lmax / wz ** 5) * npl - cLT));
+      const Czy = Math.max(0.6 * Math.sqrt(wy / wz) * o.Wely / o.Wply, 1 + (wy - 1) * ((2 - 14 * Cmy * Cmy * lmax * lmax / wy ** 5) * npl - dLT));
+      // Czz as corrected by EN 1993-1-1:2005/AC:2009 (eLT inside the bracket multiplied by npl)
+      const Czz = Math.max(o.Welz / o.Wplz, 1 + (wz - 1) * (2 - 1.6 / wz * Cmz * Cmz * lmax - 1.6 / wz * Cmz * Cmz * lmax * lmax - eLT) * npl);
+      kyy = Cmy * CmLT * muY / (1 - ry) / Cyy;
+      kyz = Cmz * muY / (1 - rz) / Cyz * 0.6 * Math.sqrt(wz / wy);          // Table A.1: kyz with Cyz, kzy with Czy
+      kzy = Cmy * CmLT * muZ / (1 - ry) / Czy * 0.6 * Math.sqrt(wy / wz);
+      kzz = Cmz * muZ / (1 - rz) / Czz;
+      C = { wy, wz, npl, lmax, bLT, cLT, dLT, eLT, Cyy, Cyz, Czy, Czz };
+    } else {
+      kyy = Cmy * CmLT * muY / (1 - ry);
+      kyz = Cmz * muY / (1 - rz);
+      kzy = Cmy * CmLT * muZ / (1 - ry);
+      kzz = Cmz * muZ / (1 - rz);
+    }
+    return { kyy, kyz, kzy, kzz, Cmy, Cmz, CmLT, muY, muZ, aLT, lim0, lam0: o.lam0, C1: o.C1, smallLam0: small, C };
+  }
+  // Table A.2 Cmi,0: end moments only (psi = ratio of end moments) or transverse loading (general expression)
+  function cm0Linear(psi, N, Ncr) { return 0.79 + 0.21 * psi + 0.36 * (psi - 0.33) * N / Ncr; }
+  function cm0Transverse(EI, L, delta, Mmax, N, Ncr) { return Mmax > 0 ? 1 + (Math.PI ** 2 * EI * Math.abs(delta) / (L * L * Math.abs(Mmax)) - 1) * N / Ncr : 1; }
+
   return { E, G, GM0, GM1, ETA, GRADES, ALPHA, yieldStrength, fromRow, fromRowPFC, customI, rhs, chs, hollowRadii, isHollow, spandrel, classify, webBearing, internalLimits, kSigmaInternal, rhoInternal, rhoOutstand, aeffCompression, weffBending, wyByClass, ncrFE, shear, shearZ, chsMN,
-    sectionCheck, fbCurves, chiFlex, ltbParams, chiLT, ltbModel, mcrFE, mcrUniform, cmFactor, annexB, symEigenvalues };
+    sectionCheck, fbCurves, chiFlex, ltbParams, chiLT, ltbModel, mcrFE, mcrUniform, cmFactor, annexB, annexA, cm0Linear, cm0Transverse, symEigenvalues };
 })();
 if (typeof module !== 'undefined') module.exports = { EC3 };
 
@@ -1478,14 +1530,26 @@ const Design = (() => {
     return { comp, A, NRk, curves: cur, Lcry, Lcrz, LT, Ncry, Ncrz, NcrT: NcrTor, NcrTpure: NcrT, NcrTF, i02, torsionalMode: EC3.isHollow(sec) ? 'none' : NcrTF ? 'torsional-flexural' : 'torsional', lamY: ly, lamZ: lz, lamT: lT, y: cy, z: cz, T: cT, chiZT: Math.min(cz.chi, cT.chi), NbRd, util: Ncomp > 0 ? Ncomp / NbRd : 0 };
   }
 
-  function interaction(sec, fy, cls, N, ab, MyEd, chiLTmod, Cmy, CmLT, MzEd = 0, Cmz = 1) {
+  // 6.3.3, eqs (6.61)/(6.62). Interaction factors from Annex B, or from Annex A when A = { Cmy0, Cmz0, lam0, C1 } is given.
+  function interaction(sec, fy, cls, N, ab, MyEd, chiLTmod, Cmy, CmLT, MzEd = 0, Cmz = 1, A = null) {
     const Wy = EC3.wyByClass(sec, fy, cls), Wz = cls <= 2 ? sec.Wplz : sec.Welz;
     const MyRk = Wy * fy, MzRk = Wz * fy;
     const nY = N / (ab.y.chi * ab.NRk / EC3.GM1), nZ = N / (ab.chiZT * ab.NRk / EC3.GM1);
+    if (A) {
+      const torsional = !EC3.isHollow(sec);
+      const Wel = cls === 4 ? EC3.weffBending(sec, fy).Weff : sec.Wely;
+      const k = EC3.annexA({ cls, N, My: MyEd, Mz: MzEd, NRk: ab.NRk, chiY: ab.y.chi, chiZ: ab.z.chi, lamY: ab.lamY, lamZ: ab.lamZ,
+        Ncry: ab.Ncry, Ncrz: ab.Ncrz, NcrT: ab.NcrTpure, NcrTF: ab.NcrTF ?? ab.NcrTpure, Cmy0: A.Cmy0, Cmz0: A.Cmz0, lam0: A.lam0, C1: A.C1,
+        chiLT: chiLTmod, aLT: 1 - sec.It / sec.Iy, Wply: sec.Wply, Wely: sec.Wely, Wplz: sec.Wplz, Welz: sec.Welz, fy,
+        epsY: N > 0 ? MyEd / N * ab.A / Wel : Infinity, torsional });
+      const u61 = nY + k.kyy * MyEd / (chiLTmod * MyRk / EC3.GM1) + k.kyz * MzEd / (MzRk / EC3.GM1);
+      const u62 = nZ + k.kzy * MyEd / (chiLTmod * MyRk / EC3.GM1) + k.kzz * MzEd / (MzRk / EC3.GM1);
+      return { method: 'A', nY, nZ, ...k, Cmy0: A.Cmy0, Cmz0: A.Cmz0, MyRk, MzRk, u61, u62, util: Math.max(u61, u62) };
+    }
     const k = EC3.annexB({ cls, lamY: ab.lamY, lamZ: ab.lamZ, nY, nZ, Cmy, Cmz, CmLT, torsional: !EC3.isHollow(sec) });   // closed sections: not susceptible to torsional deformations
     const u61 = nY + k.kyy * MyEd / (chiLTmod * MyRk / EC3.GM1) + k.kyz * MzEd / (MzRk / EC3.GM1);
     const u62 = nZ + k.kzy * MyEd / (chiLTmod * MyRk / EC3.GM1) + k.kzz * MzEd / (MzRk / EC3.GM1);
-    return { nY, nZ, ...k, Cmy, CmLT, Cmz, MyRk, MzRk, u61, u62, util: Math.max(u61, u62) };
+    return { method: 'B', nY, nZ, ...k, Cmy, CmLT, Cmz, MyRk, MzRk, u61, u62, util: Math.max(u61, u62) };
   }
 
   // keep the worst utilisation; on a tie prefer the location with the larger moment (clearer reporting)
@@ -1580,7 +1644,9 @@ const Design = (() => {
         const tw = NcrT * i02 - EC3.G * sec.It;
         axial = { Lcrz: Ncrz > 0 ? Math.PI * Math.sqrt(EC3.E * sec.Iz / Ncrz) : Infinity, LT: tw > 0 ? Math.PI * Math.sqrt(EC3.E * sec.Iw / tw) : Infinity };
       }
-      return { md, CM, CQ, forkFork, L, restraints, muG: muGexact, axial };
+      const mcr0 = {};                // uniform-moment critical moment of this segment model (Annex A lambda_0), by sign
+      const Mcr0 = sign => (mcr0[sign] ??= md.lambda(md.toC(md.kg(() => sign, null, null, 0))));
+      return { md, CM, CQ, forkFork, L, restraints, muG: muGexact, axial, Mcr0 };
     });
 
     // In-plane buckling length of a cantilever under axial compression: the tip is free to sway vertically, so
@@ -1618,6 +1684,25 @@ const Design = (() => {
     // cannot exceed the governing value already found for that segment.
     const cls = EC3.classify(sec, fy, N, true, hasH).cls;
     const Nc = Math.max(N, 0), doInt = N > 0 || hasH;      // 6.3.3 with compression and/or biaxial bending
+    const annexA = inp.annex === 'A';
+    // Annex A Table A.2 Cmi,0 for a member in a combination: general expression with the member's own deflection when it
+    // carries transverse load, end-moment expression otherwise; cantilevers (sway) outside the table: 1.0
+    const cm0 = (rs, cmb, m, EI, Ncr) => {
+      if (m.kind !== 'span') return 1;
+      const d = segmentData(rs, cmb, m.x0, m.x1);
+      const transverse = d.qs.some(v => Math.abs(v) > 1e-9) || d.P.some(p => Math.abs(p.P) > 1e-9);
+      if (!transverse) { const a = d.Ms[0], b = d.Ms[d.Ms.length - 1], big = Math.abs(a) >= Math.abs(b) ? a : b, sm = big === a ? b : a; return EC3.cm0Linear(big ? sm / big : 1, Nc, Ncr); }
+      let delta = 0; rs.st.forEach((s, k) => { if (s.x >= m.x0 - 1e-6 && s.x <= m.x1 + 1e-6 && Math.abs(cmb.W[k]) > Math.abs(delta)) delta = cmb.W[k]; });
+      return EC3.cm0Transverse(EI, m.L, delta, d.Mmax, Nc, Ncr);
+    };
+    const annexAParams = (sm, own, sg, m, ci, abk, CMlam) => {
+      const sign = own.Ms.reduce((a, v) => Math.abs(v) > Math.abs(a) ? v : a, 0) >= 0 ? 1 : -1;
+      const Mcr0 = lp.none ? Infinity : sm.Mcr0(sign);
+      const lam0 = Number.isFinite(Mcr0) ? Math.sqrt(Wy * fy / Mcr0) : 0;
+      const C1 = CMlam && Number.isFinite(Mcr0) && own.Mmax > 0 ? CMlam * own.Mmax / Mcr0 : 1;
+      return { Cmy0: (ky[sg.mem] > 1 + 1e-9) ? 1 : cm0(res, combRes[ci], m, EC3.E * sec.Iy, abk.Ncry),
+        Cmz0: hasH ? cm0(resH, combResH[ci], m, EC3.E * sec.Iz, abk.Ncrz) : 1, lam0, C1 };
+    };
     const Wy = EC3.wyByClass(sec, fy, cls), lp = EC3.ltbParams(sec);
     out.ltbStats = { candidates: 0, solved: 0 };
     segs.forEach((sg, si) => {
@@ -1654,10 +1739,10 @@ const Design = (() => {
         const chiLb = EC3.chiLT(lamUb, 1, lp, 1).chiMod;           // f = 1 and no 'ignore' allowance -> lower bound
         const uLTub = own.Mmax / (chiLb * Wy * fy / EC3.GM1);
         const uIntub = doInt ? interaction(sec, fy, cls, Nc, abk, own.Mmax, chiLb, Cmy, CmLT, MzEd, Cmz).util : -Infinity;
-        if (!inp.noScreen && uLTub <= bestLT && uIntub <= bestInt) continue;
+        if (!inp.noScreen && uLTub <= bestLT && (annexA ? !doInt : uIntub <= bestInt)) continue;   // Annex A factors are not monotonic in chi_LT
         if (own.Mmax < 1) {          // minor-axis bending only in this segment and combination: no lateral-torsional buckling
           out.ltbStats.solved++;
-          const ir = interaction(sec, fy, cls, Nc, abk, own.Mmax, 1, Cmy, CmLT, MzEd, Cmz);
+          const ir = interaction(sec, fy, cls, Nc, abk, own.Mmax, 1, Cmy, CmLT, MzEd, Cmz, annexA ? annexAParams(sm, own, sg, m, ci, abk, null) : null);
           track(out.gov, 'interaction', ir.util, { combo: cb.label, seg: si, ir, ab: abk, chiLT: 1, swayY: m.kind !== 'span' || ky[sg.mem] > 1 + 1e-9, freeLT: !!sg.free, MzEd });
           bestInt = Math.max(bestInt, ir.util);
           continue;
@@ -1676,7 +1761,7 @@ const Design = (() => {
         if (!out.segResults[si] || r.util > out.segResults[si].util) out.segResults[si] = r;
         track(out.gov, 'ltb', r.util, { ...r });
         if (doInt) {
-          const ir = interaction(sec, fy, cls, Nc, abk, own.Mmax, lt.chiMod, Cmy, CmLT, MzEd, Cmz);
+          const ir = interaction(sec, fy, cls, Nc, abk, own.Mmax, lt.chiMod, Cmy, CmLT, MzEd, Cmz, annexA ? annexAParams(sm, own, sg, m, ci, abk, sm.CQ ? sm.md.lambda(CM) : lam) : null);
           track(out.gov, 'interaction', ir.util, { combo: cb.label, seg: si, ir, ab: abk, chiLT: lt.chiMod, swayY: m.kind !== 'span' || ky[sg.mem] > 1 + 1e-9, freeLT: !!sg.free, MzEd });
           bestInt = Math.max(bestInt, ir.util);
         }
@@ -1778,6 +1863,9 @@ const Design = (() => {
     // Table B.3 note: sway buckling mode -> Cm = 0.9. A buckling length above the member length implies a sway mode.
     const swayY = inp.ky > 1 + 1e-9, swayZ = inp.kz > 1 + 1e-9;
     const Cmy = swayY ? 0.9 : EC3.cmFactor(xs, xs.map(My), false, false).Cm, Cmz = swayZ ? 0.9 : EC3.cmFactor(xs, xs.map(Mz), false, false).Cm;
+    // Annex A, Table A.2: Cmi,0 for end moments (psi = smaller / larger end moment); sway modes are outside the table: 1.0 taken
+    const psiOf = (a, b) => { const big = Math.abs(a) >= Math.abs(b) ? a : b, sm = big === a ? b : a; return big ? sm / big : 1; };
+    const annexA = inp.annex === 'A';
     for (let i = 0; i < nLT; i++) {
       const xa = i * Lseg, Ma = My(xa), Mb = My(xa + Lseg), Mmax = Math.max(Math.abs(Ma), Math.abs(Mb));
       const sxs = Array.from({ length: 11 }, (_, k) => Lseg * k / 10);
@@ -1791,7 +1879,13 @@ const Design = (() => {
       const chiLT = lt ? lt.chiMod : 1;
       const MzMax = Math.max(Math.abs(Mz(xa)), Math.abs(Mz(xa + Lseg)));
       if (N > 0 || hasMz) {           // 6.3.3 with compression and/or biaxial bending
-        const ir = interaction(sec, fy, cls, Nc, ab, Mmax, chiLT, Cmy, CmLT, MzMax, Cmz);
+        let A = null;
+        if (annexA) {
+          const Wy = EC3.wyByClass(sec, fy, cls), Mcr0 = EC3.mcrUniform(sec, Lseg);
+          A = { Cmy0: swayY ? 1 : EC3.cm0Linear(psiOf(inp.MyB, inp.MyT), Nc, ab.Ncry), Cmz0: swayZ ? 1 : EC3.cm0Linear(psiOf(inp.MzB, inp.MzT), Nc, ab.Ncrz),
+            lam0: EC3.ltbParams(sec).none ? 0 : Math.sqrt(Wy * fy / Mcr0), C1: lt && lt.C1 ? lt.C1 : 1 };
+        }
+        const ir = interaction(sec, fy, cls, Nc, ab, Mmax, chiLT, Cmy, CmLT, MzMax, Cmz, A);
         track(out.gov, 'interaction', ir.util, { seg: i, ir, chiLT, swayY, swayZ });
       }
     }
@@ -1949,7 +2043,7 @@ function rowRestraint(d) {
 // ---------- collect inputs ----------
 function collect() {
   return {
-    v: 1, mode, series: $('series').value, section: $('section').value, grade: $('grade').value,
+    v: 1, mode, series: $('series').value, section: $('section').value, grade: $('grade').value, annex: $('annex').value,
     custom: { h: $('cH').value, b: $('cB').value, tw: $('cTw').value, tf: $('cTf').value, r: $('cR').value, rolled: $('cRolled').value },
     proj: { name: $('pName').value, job: $('pJob').value, ref: $('pRef').value, by: $('pBy').value },
     spans: [...document.querySelectorAll('#spanRows .row')].map(r => +r.querySelector('.L').value),
@@ -1962,7 +2056,7 @@ function collect() {
 }
 function applyState(s) {
   if (!s || s.v !== 1) return false;
-  $('series').value = s.series; fillSections(); if (s.section) $('section').value = s.section; $('grade').value = s.grade;
+  $('series').value = s.series; fillSections(); if (s.section) $('section').value = s.section; $('annex').value = s.annex || 'B'; $('grade').value = s.grade;
   Object.entries({ cH: 'h', cB: 'b', cTw: 'tw', cTf: 'tf', cR: 'r', cRolled: 'rolled' }).forEach(([id, k]) => $(id).value = s.custom[k]);
   $('pName').value = s.proj.name || ''; $('pJob').value = s.proj.job || ''; $('pRef').value = s.proj.ref || ''; $('pBy').value = s.proj.by || '';
   $('cantL').value = s.cantL; $('cantR').value = s.cantR; $('endL').value = s.endL; $('endR').value = s.endR;
@@ -2002,7 +2096,7 @@ function buildBeamInput(s, sec) {
   const ky = mem.map((m, i) => m.kind === 'span' ? +(s.restr[i]?.ky || 1) : 2.0);
   const tipRestrained = { L: s.restr[0]?.tip === 'restr', R: s.restr[mem.length - 1]?.tip === 'restr' };
   if (s.spans.some(L => !(L > 0))) throw new Error('Every span needs a positive length');
-  return { sec, grade: s.grade, spans: s.spans.map(L => L * 1000), cantL: s.cantL * 1000, cantR: s.cantR * 1000,
+  return { sec, grade: s.grade, annex: s.annex || 'B', spans: s.spans.map(L => L * 1000), cantL: s.cantL * 1000, cantR: s.cantR * 1000,
     endLeft: s.endL, endRight: s.endR, loads, selfWeight: s.sw, rule: s.rule, psi0: s.psi0, N: s.NA * 1e3,
     restraint, tipRestrained, ky, destab: s.destab, defl: { brittle: s.brittle }, ssSupport: s.ssS ?? 100, ssPoint: s.ssP ?? 50, cEnd: s.cEnd ?? 0 };
 }
@@ -2108,7 +2202,7 @@ function renderB(R, inp, ms) {
     ${ab.torsionalMode === 'none' ? '' : `<tr><td>${ab.torsionalMode === 'torsional-flexural' ? 'Tors.-flexural' : 'Torsional'}</td><td>${(inp.L / inp.nLT / 1000).toFixed(2)}</td><td>${fmt(kN(ab.NcrT), 0)}</td><td>${ab.lamT.toFixed(3)}</td><td>${ab.curves.z}</td><td>${ab.T.chi.toFixed(3)}</td></tr>`}</table>`;
   if (R.segResults.length) h += `<div class="dlabel">Lateral-torsional buckling by segment</div><table class="t"><tr><th>Segment</th><th>M<sub>Ed</sub></th><th>C<sub>1</sub></th><th>M<sub>cr</sub></th><th>&lambda;<sub>LT</sub></th><th>&chi;<sub>LT,mod</sub></th><th>M<sub>b,Rd</sub></th><th>Util.</th></tr>` +
     R.segResults.map(r => `<tr><td>${r.seg + 1}</td><td>${fmt(kNm(r.Mmax))}</td><td>${r.C1 ? r.C1.toFixed(2) : '&ndash;'}</td><td>${fmt(kNm(r.Mcr), 0)}</td><td>${r.lamLT.toFixed(3)}</td><td>${r.chiMod.toFixed(3)}</td><td>${fmt(kNm(r.MbRd))}</td><td>${ufmt(r.util)}</td></tr>`).join('') + `</table>`;
-  if (R.gov.interaction) { const ir = R.gov.interaction.ir; h += `<div class="dlabel">Interaction, Annex B</div><table class="t"><tr><th>C<sub>my</sub></th><th>C<sub>mz</sub></th><th>C<sub>mLT</sub></th><th>k<sub>yy</sub></th><th>k<sub>yz</sub></th><th>k<sub>zy</sub></th><th>k<sub>zz</sub></th><th>(6.61)</th><th>(6.62)</th></tr><tr><td>${ir.Cmy.toFixed(3)}</td><td>${ir.Cmz.toFixed(3)}</td><td>${ir.CmLT.toFixed(3)}</td><td>${ir.kyy.toFixed(3)}</td><td>${ir.kyz.toFixed(3)}</td><td>${ir.kzy.toFixed(3)}</td><td>${ir.kzz.toFixed(3)}</td><td>${ir.u61.toFixed(3)}</td><td>${ir.u62.toFixed(3)}</td></tr></table>`; }
+  if (R.gov.interaction) { const ir = R.gov.interaction.ir; h += `<div class="dlabel">Interaction, Annex ${ir.method || 'B'}</div><table class="t"><tr><th>C<sub>my</sub></th><th>C<sub>mz</sub></th><th>C<sub>mLT</sub></th><th>k<sub>yy</sub></th><th>k<sub>yz</sub></th><th>k<sub>zy</sub></th><th>k<sub>zz</sub></th><th>(6.61)</th><th>(6.62)</th></tr><tr><td>${ir.Cmy.toFixed(3)}</td><td>${ir.Cmz.toFixed(3)}</td><td>${ir.CmLT.toFixed(3)}</td><td>${ir.kyy.toFixed(3)}</td><td>${ir.kyz.toFixed(3)}</td><td>${ir.kzy.toFixed(3)}</td><td>${ir.kzz.toFixed(3)}</td><td>${ir.u61.toFixed(3)}</td><td>${ir.u62.toFixed(3)}</td></tr></table>`; }
   h += notesHTML(R, inp);
   h += `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
   $('runInfo').textContent = `${ms} ms`;
@@ -2243,10 +2337,19 @@ function reportHTML(R, inp, s) {
   }
   if (R.gov.interaction) {
     const g = R.gov.interaction, ir = g.ir;
-    b += `<h3>Bending and axial compression (6.3.3, Method 2, Annex B Table B.2)</h3>` +
-      rl(`C<sub>my</sub> = ${ir.Cmy.toFixed(3)}${g.swayY ? ' (sway mode, Table B.3 note)' : ''}, C<sub>mLT</sub> = ${ir.CmLT.toFixed(3)}${g.freeLT ? ' (free tip: outside Table B.3, upper limit taken)' : ''}${ir.MzRk && (inp.MzT || inp.MzB) ? ', C<sub>mz</sub> = ' + ir.Cmz.toFixed(3) + (g.swayZ ? ' (sway mode)' : '') : ''} (Table B.3)`, 'Annex B', '') +
-      rl(`n<sub>y</sub> = ${ir.nY.toFixed(3)}, n<sub>z</sub> = ${ir.nZ.toFixed(3)}; k<sub>yy</sub> = ${ir.kyy.toFixed(3)}, k<sub>yz</sub> = ${ir.kyz.toFixed(3)}, k<sub>zy</sub> = ${ir.kzy.toFixed(3)}, k<sub>zz</sub> = ${ir.kzz.toFixed(3)}`, 'Table B.2', '') +
-      rl(`N<sub>Ed</sub>/(&chi;<sub>y</sub>N<sub>Rk</sub>/&gamma;<sub>M1</sub>) + k<sub>yy</sub>M<sub>y,Ed</sub>/(&chi;<sub>LT</sub>M<sub>y,Rk</sub>/&gamma;<sub>M1</sub>) + k<sub>yz</sub>M<sub>z,Ed</sub>/(M<sub>z,Rk</sub>/&gamma;<sub>M1</sub>)`, '(6.61)', ir.u61.toFixed(3)) +
+    if (ir.method === 'A') {
+      const C = ir.C;
+      b += `<h3>Bending and axial compression (6.3.3, Method 1, Annex A Tables A.1 and A.2)</h3>` +
+        rl(`C<sub>my,0</sub> = ${ir.Cmy0.toFixed(3)}, C<sub>mz,0</sub> = ${ir.Cmz0.toFixed(3)} (Table A.2${g.swayY ? '; sway: 1.0 taken' : ''}); &lambda;&#772;<sub>0</sub> = ${(ir.lam0 || 0).toFixed(3)}, C<sub>1</sub> = ${(ir.C1 || 1).toFixed(3)}, limit 0.2&radic;C<sub>1</sub>&#8308;&radic;(&hellip;) = ${ir.lim0.toFixed(3)}`, 'Table A.2', '') +
+        rl(`C<sub>my</sub> = ${ir.Cmy.toFixed(3)}, C<sub>mz</sub> = ${ir.Cmz.toFixed(3)}, C<sub>mLT</sub> = ${ir.CmLT.toFixed(3)}; a<sub>LT</sub> = ${ir.aLT.toFixed(3)}; &mu;<sub>y</sub> = ${ir.muY.toFixed(3)}, &mu;<sub>z</sub> = ${ir.muZ.toFixed(3)}`, 'Table A.2, A.1', '') +
+        (C ? rl(`w<sub>y</sub> = ${C.wy.toFixed(3)}, w<sub>z</sub> = ${C.wz.toFixed(3)}, n<sub>pl</sub> = ${C.npl.toFixed(3)}; C<sub>yy</sub> = ${C.Cyy.toFixed(3)}, C<sub>yz</sub> = ${C.Cyz.toFixed(3)}, C<sub>zy</sub> = ${C.Czy.toFixed(3)}, C<sub>zz</sub> = ${C.Czz.toFixed(3)} (C<sub>zz</sub> per AC:2009)`, 'Table A.1', '') : rl('Class 3/4: C<sub>ij</sub> = 1, w = 1', 'Table A.1', '')) +
+        rl(`n<sub>y</sub> = ${ir.nY.toFixed(3)}, n<sub>z</sub> = ${ir.nZ.toFixed(3)}; k<sub>yy</sub> = ${ir.kyy.toFixed(3)}, k<sub>yz</sub> = ${ir.kyz.toFixed(3)}, k<sub>zy</sub> = ${ir.kzy.toFixed(3)}, k<sub>zz</sub> = ${ir.kzz.toFixed(3)}`, 'Table A.1', '');
+    } else {
+      b += `<h3>Bending and axial compression (6.3.3, Method 2, Annex B Table B.2)</h3>` +
+        rl(`C<sub>my</sub> = ${ir.Cmy.toFixed(3)}${g.swayY ? ' (sway mode, Table B.3 note)' : ''}, C<sub>mLT</sub> = ${ir.CmLT.toFixed(3)}${g.freeLT ? ' (free tip: outside Table B.3, upper limit taken)' : ''}${ir.MzRk && (inp.MzT || inp.MzB || R.hasH) ? ', C<sub>mz</sub> = ' + ir.Cmz.toFixed(3) + (g.swayZ ? ' (sway mode)' : '') : ''} (Table B.3)`, 'Annex B', '') +
+        rl(`n<sub>y</sub> = ${ir.nY.toFixed(3)}, n<sub>z</sub> = ${ir.nZ.toFixed(3)}; k<sub>yy</sub> = ${ir.kyy.toFixed(3)}, k<sub>yz</sub> = ${ir.kyz.toFixed(3)}, k<sub>zy</sub> = ${ir.kzy.toFixed(3)}, k<sub>zz</sub> = ${ir.kzz.toFixed(3)}`, 'Table B.2', '');
+    }
+    b +=       rl(`N<sub>Ed</sub>/(&chi;<sub>y</sub>N<sub>Rk</sub>/&gamma;<sub>M1</sub>) + k<sub>yy</sub>M<sub>y,Ed</sub>/(&chi;<sub>LT</sub>M<sub>y,Rk</sub>/&gamma;<sub>M1</sub>) + k<sub>yz</sub>M<sub>z,Ed</sub>/(M<sub>z,Rk</sub>/&gamma;<sub>M1</sub>)`, '(6.61)', ir.u61.toFixed(3)) +
       rl(`N<sub>Ed</sub>/(&chi;<sub>z</sub>N<sub>Rk</sub>/&gamma;<sub>M1</sub>) + k<sub>zy</sub>M<sub>y,Ed</sub>/(&chi;<sub>LT</sub>M<sub>y,Rk</sub>/&gamma;<sub>M1</sub>) + k<sub>zz</sub>M<sub>z,Ed</sub>/(M<sub>z,Rk</sub>/&gamma;<sub>M1</sub>)`, '(6.62)', ir.u62.toFixed(3)) +
       rl(`Governing interaction${g.combo ? ' (' + g.combo + ')' : ''}`, '', okng(g.util));
   }
@@ -2278,7 +2381,7 @@ function run() {
       } else {
         const B = s.B;
         if (!(B.L > 0)) throw new Error('Length must be positive');
-        inp = { sec, grade: s.grade, L: B.L * 1000, N: B.N * 1e3, MyT: B.MyT * 1e6, MyB: B.MyB * 1e6, MzT: B.MzT * 1e6, MzB: B.MzB * 1e6, ky: B.ky, kz: B.kz, nLT: Math.max(1, Math.round(B.nLT)) };
+        inp = { sec, grade: s.grade, annex: s.annex || 'B', L: B.L * 1000, N: B.N * 1e3, MyT: B.MyT * 1e6, MyB: B.MyB * 1e6, MzT: B.MzT * 1e6, MzB: B.MzB * 1e6, ky: B.ky, kz: B.kz, nLT: Math.max(1, Math.round(B.nLT)) };
         R = Design.designMember(inp);
         html = renderB(R, inp, Math.round(performance.now() - t0));
       }

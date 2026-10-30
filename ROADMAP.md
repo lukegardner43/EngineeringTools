@@ -26,11 +26,11 @@ Status key: **Done** means it's in this repo with tests. **Partial** means an ex
 
 | Tedds entry | Module | Status | Basis |
 |---|---|---|---|
-| Steel Member Design | Steel Member Design | Done (I/H) | EN 1993-1-1 6.2, 6.3 + UK NA |
-| Steel Member Analysis & Design | Steel Member Design | Done (I/H) | + EN 1990 combinations |
-| Steel Beam Analysis & Design | Steel Member Design | Done (I/H) | continuous spans, cantilevers, pattern loading |
-| Steel Column Design | Steel Member Design (member mode) | Done (I/H) | 6.3.1, 6.3.3 Annex B |
-| Steel section classification | Steel Member Design | Done (I/H) | Table 5.2 |
+| Steel Member Design | Steel Member Design | Done | EN 1993-1-1 6.2, 6.3, Annex A/B + UK NA; EN 1993-1-5 4.4, 5, 6, 7 |
+| Steel Member Analysis & Design | Steel Member Design | Done | + EN 1990 combinations, vertical and horizontal loads |
+| Steel Beam Analysis & Design | Steel Member Design | Done | continuous spans, cantilevers, pattern loading, web bearing |
+| Steel Column Design | Steel Member Design (member mode) | Done | 6.3.1, 6.3.3 Annex A or B |
+| Steel section classification | Steel Member Design | Done | Table 5.2 sheets 1-3 |
 | Beam Analysis | Steel Member Design (engine) | Done, not yet standalone | stiffness method |
 | Section Properties Calculator | Steel Member Design (custom I) | Partial | SCI P363 formulae |
 | Steel simple connection design | ConnectionCheck | Partial (existing) | SCI P358, EN 1993-1-8 |
@@ -50,12 +50,16 @@ Status key: **Done** means it's in this repo with tests. **Partial** means an ex
 | Steel member fire resistance design | Steel fire | Planned | EN 1993-1-2 |
 | Steel sheet piling design | Sheet piling | Planned | EN 1997-1, EN 1993-5 |
 
-Next items for Steel Member Design:
+Steel Member Design covers:
 
-- Hollow sections (SHS, RHS, CHS) and PFC/angles.
-- Web bearing and buckling under concentrated loads (EN 1993-1-5 section 6).
-- Minor-axis loading in beam mode.
-- Annex A as an alternative to Annex B.
+- **Sections:** UKB, UKC, PFC (British Steel datasheets); SHS/RHS/CHS, hot-finished (BS EN 10210-2) and cold-formed (BS EN 10219-2); custom welded or rolled I.
+- **Checks:** Class 4 effective sections, web bearing and buckling (EN 1993-1-5 section 6), horizontal (minor-axis) loads in beam mode, and Annex A or Annex B interaction.
+
+Limits:
+- Angles and tees are not covered.
+- Class 4 flanges of I sections and channels, and Class 4 CHS (EN 1993-1-6), are rejected rather than designed.
+- Hollow-section wall bearing is not checked.
+- Torsion from eccentric loading (for example channels loaded in the web plane) belongs to the torsion module.
 
 ## Batch 2: Concrete and precast, EN 1992
 
@@ -106,6 +110,10 @@ Next items for Steel Member Design:
 - **EC3 clause chain:** 1980 comparisons against an independent Python implementation (`reference/ref_ec3.py`) covering 400 random cross-section states, 100 flexural buckling cases and 40 LTB cases. Plus four hand-calculated design cases.
 - **Screening:** the Mcr screening bound gives results identical to exhaustive solution on 40 random continuous beams.
 - **Section data:** `reference/check.py` recomputes every tabulated property from the dimensions. 406x260x132 UKB is excluded because its tabulated mass contradicts its geometry.
+- **Shapes:** 2653 checks (`test_shapes.js`) against `reference/ref_shapes.py`. The reference uses exact polygon and polar integration and independent implementations of Class 4 sections and N-M interaction. Published data checks: Tata Celsius SHS and British Steel PFC.
+- **Web bearing:** 154 checks (`test_bearing.js`) against `reference/ref_bearing.py`, plus a hand calculation.
+- **Biaxial / horizontal loads:** 19 hand-value checks (`test_biaxial.js`).
+- **Annex A:** 32 checks (`test_annexA.js`) against the published intermediate values of ECCS TC8 No. 119 Worked Example 5, IPE 500 (as reproduced in SCIA benchmark 21). This includes Czz as corrected by AC:2009.
 - **Review fixes:** 31 checks (`test_fixes.js`). Most compare against `reference/ref_fixes.py`, which uses its own independent methods; the rest are hand values. They cover:
   - a destabilising tip load on a cantilever (Ritz solution);
   - flexural and torsional buckling of a span with an overhang (exact characteristic equation);
