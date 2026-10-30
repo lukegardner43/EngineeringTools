@@ -42,8 +42,8 @@ Status key: **Done** means it's in this repo with tests. **Partial** means an ex
 | Steel to Concrete Simple Connection Design | Steel to concrete | Planned | EN 1993-1-8, EN 1992-4 |
 | Bolt Group Analysis | Bolt Group Analysis | Done | elastic and ICR methods; EN 1993-1-8 Table 3.4 |
 | Steel Beam Torsion Design | Steel Beam Torsion | Done | SCI P385; EN 1993-6 Annex A interaction |
-| Steel Masonry Support | Masonry support | Planned | EN 1993-1-1, -1-5 |
-| Windpost design | Windpost | Planned | EN 1993-1-1, EN 1991-1-4 |
+| Steel Masonry Support | Steel Masonry Support | Done | EN 1993-1-1, -1-4, -1-8; continuous angle, spanning angle, welded plate |
+| Windpost design | Windpost Design | Done | EN 1993-1-1; carbon steel (stainless windposts not covered) |
 | Steel Beam Supporting Hollowcore Slab Design | Hollowcore Support Beam | Done | P385 torsion + EC3; UKB / UKC / ASB / Slimflor |
 | Steel 2D Analysis & Design | 2D frame + EC3 | Planned | frame solver, 5.2 imperfections |
 | Crane gantry girder design | Crane girder | Planned | EN 1993-6, EN 1991-3 |
@@ -71,6 +71,11 @@ Limits:
 - Simply supported single spans with uniform plank loads; no point loads on the beam.
 - Non-composite; composite action (P359) is a separate module.
 - Slimflor weld prying uses a simple elastic estimate (Q = 6m/b) and should be confirmed by the engineer for unusual plate proportions.
+
+Steel Masonry Support and Windpost limits:
+- Fixings into the frame (channels, anchors) and wall ties are checked against the manufacturer's design resistances entered by the engineer.
+- Stainless partial factors default to the EN 1993-1-4 recommended values (1.1 / 1.1 / 1.25) and are editable; confirm against the UK NA in use.
+- Spanning masonry angles are carbon steel only; windposts are carbon steel only (stainless member buckling to EN 1993-1-4 is not implemented).
 
 ## Batch 2: Concrete and precast, EN 1992
 
@@ -135,6 +140,8 @@ Limits:
   - the transverse plastic moment of a plate under longitudinal stress against linear programming over fibres;
   - a full UKB design case (final stage, deflections, stage 1 torsion against the closed-form ODE solution, local flange bending) and the Slimflor weld forces by hand;
   - classification of every UKB / UKC against the EC3 engine, and behaviour (edge beam, bearing errors, warnings, final-stage torsion option).
+- **Steel Masonry Support** (`node tests/masonry/test_masonry.js`): 65 checks against `reference/ref_masonry.py`: angle properties (hot-rolled and cold-formed) by a 2D occupancy grid and the BS EN 10056-1 datasheet; the continuous-angle deflection against a 2D frame FE; the stainless secant modulus by Ramberg-Osgood; spanning angle, plate, weld and fixing forces by hand.
+- **Windpost Design** (`node tests/windpost/test_windpost.js`): 24 checks: wind load, moments, shear, deflection, reactions and tie forces by hand; M<sub>cr</sub> against the C1 closed form; cantilever, RHS orientation and CHS behaviour.
 - **Review fixes:** 31 checks (`test_fixes.js`). Most compare against `reference/ref_fixes.py`, which uses its own independent methods; the rest are hand values. They cover:
   - a destabilising tip load on a cantilever (Ritz solution);
   - flexural and torsional buckling of a span with an overhang (exact characteristic equation);
