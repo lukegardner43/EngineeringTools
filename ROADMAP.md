@@ -31,7 +31,7 @@ Status key: **Done** means it's in this repo with tests. **Partial** means an ex
 | Steel Beam Analysis & Design | Steel Member Design | Done | continuous spans, cantilevers, pattern loading, web bearing |
 | Steel Column Design | Steel Member Design (member mode) | Done | 6.3.1, 6.3.3 Annex A or B |
 | Steel section classification | Steel Member Design | Done | Table 5.2 sheets 1-3 |
-| Beam Analysis | Steel Member Design (engine) | Done, not yet standalone | stiffness method |
+| Beam Analysis | Beam Analysis | Done | stiffness method; springs, hinges, EI per member; EN 1990 combinations |
 | Section Properties Calculator | Steel Member Design (custom I) | Partial | SCI P363 formulae |
 | Steel simple connection design | ConnectionCheck | Partial (existing) | SCI P358, EN 1993-1-8 |
 | Steel beam splice design | ConnectionCheck | Partial (existing) | P358 splices |
@@ -114,6 +114,7 @@ Limits:
 - **Web bearing:** 154 checks (`test_bearing.js`) against `reference/ref_bearing.py`, plus a hand calculation.
 - **Biaxial / horizontal loads:** 19 hand-value checks (`test_biaxial.js`).
 - **Annex A:** 32 checks (`test_annexA.js`) against the published intermediate values of ECCS TC8 No. 119 Worked Example 5, IPE 500 (as reproduced in SCIA benchmark 21). This includes Czz as corrected by AC:2009.
+- **Beam Analysis** (`node tests/beam-analysis/test_beam_analysis.js`): 35 closed-form checks. They cover simply supported, cantilever, propped, fixed-fixed and two-span beams; stepped EI; a vertical spring; a Gerber beam with a hinge; a rotational spring; triangular load; mechanism detection; and the EN 1990 combinations and pattern loading.
 - **Review fixes:** 31 checks (`test_fixes.js`). Most compare against `reference/ref_fixes.py`, which uses its own independent methods; the rest are hand values. They cover:
   - a destabilising tip load on a cantilever (Ritz solution);
   - flexural and torsional buckling of a span with an overhang (exact characteristic equation);

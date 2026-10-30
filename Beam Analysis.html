@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Beam Analysis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Saira:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0e1014; --surf:#16191f; --surf2:#1c2027; --bdr:#2a2f38; --bdr2:#3a4250;
+  --txt:#e6e8ec; --mut:#8b93a0; --faint:#59616d;
+  --accent:#ffb000; --accent-dim:#3a2e12;
+  --pass:#3ecf8e; --warn:#ffb000; --fail:#ff5d5d;
+  --r:2px;
+  --sans:'Saira',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --mono:'JetBrains Mono','SF Mono',Consolas,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5;min-height:100vh;padding:20px 16px;
+  background-image:linear-gradient(rgba(255,255,255,.014) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.014) 1px,transparent 1px);
+  background-size:32px 32px;}
+.container{max-width:1280px;margin:0 auto;}
+.page-hdr{margin-bottom:16px;}
+.home-lnk{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--mut);text-decoration:none;margin-bottom:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.5px;transition:color .15s;}
+.home-lnk:hover{color:var(--accent);}
+.home-lnk svg{width:12px;height:12px;}
+.page-hdr h1{font-size:20px;font-weight:600;margin-bottom:2px;}
+.page-hdr p{font-size:12px;color:var(--mut);}
+.main-grid{display:grid;grid-template-columns:minmax(340px,1fr) 1.55fr;gap:16px;align-items:start;}
+@media(max-width:1024px){.main-grid{grid-template-columns:1fr;}}
+.main-grid > div{min-width:0;}
+#results table.t{display:block;overflow-x:auto;white-space:nowrap;}
+.chk{align-items:flex-start;}
+@media(max-width:560px){body{padding:14px 10px;} .card{padding:14px 12px;} .ck{grid-template-columns:1fr 1fr 48px;gap:8px;} .grid3{grid-template-columns:1fr 1fr;}
+  .row.span{grid-template-columns:1fr 28px;} .row.span > div:nth-child(2),.row.span > div:nth-child(3){display:none;} .row.load .vals{grid-template-columns:1fr 1fr;}}
+.card{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--r);padding:16px 18px;margin-bottom:14px;}
+.section-title{font-size:11px;font-weight:600;color:var(--accent);font-family:var(--mono);margin:4px 0 12px;text-transform:uppercase;letter-spacing:1.5px;border-bottom:1px solid var(--bdr);padding-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.section-title .aux{color:var(--faint);letter-spacing:.5px;font-weight:500;}
+.form-group{margin-bottom:10px;}
+.form-group label,.lbl{display:block;font-size:11.5px;margin-bottom:4px;color:var(--mut);font-weight:500;}
+input[type="number"],input[type="text"],select{background:var(--surf2);border:1px solid var(--bdr2);color:var(--txt);padding:0 8px;height:32px;border-radius:var(--r);font-family:var(--mono);font-size:13px;width:100%;transition:border-color .15s,box-shadow .15s;}
+input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-dim);}
+select option{background:var(--surf);color:var(--txt);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+.chk{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut);margin:6px 0;cursor:pointer;}
+.chk input{width:15px;height:15px;accent-color:var(--accent);}
+.help{font-size:10.5px;color:var(--faint);margin-top:3px;line-height:1.45;}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--bdr2);border-radius:var(--r);overflow:hidden;margin-bottom:12px;}
+.seg button{background:var(--surf2);color:var(--mut);border:none;padding:8px;font-family:var(--mono);font-size:11.5px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;}
+.seg button.on{background:var(--accent-dim);color:var(--accent);}
+.rows{display:flex;flex-direction:column;gap:6px;margin-bottom:8px;}
+.row{display:grid;gap:6px;align-items:end;background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--r);padding:8px;}
+.row label{font-size:10px;color:var(--faint);margin-bottom:2px;display:block;font-family:var(--mono);text-transform:uppercase;letter-spacing:.4px;}
+.row input,.row select{height:28px;font-size:12px;padding:0 6px;}
+.row.span{grid-template-columns:1fr 1.6fr 1fr 28px;}
+.row.load{grid-template-columns:52px 64px 1.1fr 1.1fr 28px;}
+.row.load .vals{grid-column:1 / span 3;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+.xbtn{height:28px;width:28px;background:transparent;border:1px solid var(--bdr2);color:var(--faint);border-radius:var(--r);cursor:pointer;font-size:15px;line-height:1;}
+.xbtn:hover{color:var(--fail);border-color:var(--fail);}
+.addbtn{background:transparent;border:1px dashed var(--bdr2);color:var(--mut);border-radius:var(--r);padding:6px 10px;font-family:var(--mono);font-size:11px;cursor:pointer;width:100%;}
+.addbtn:hover{color:var(--accent);border-color:var(--accent);}
+.btn{padding:10px;border:none;border-radius:var(--r);font-weight:700;cursor:pointer;font-family:var(--sans);font-size:14px;width:100%;background:var(--accent);color:#1a1208;text-transform:uppercase;letter-spacing:.8px;}
+.btn:hover{filter:brightness(1.08);}
+.btn2{width:100%;padding:9px;background:var(--surf2);border:1px solid var(--bdr2);border-radius:var(--r);font-size:12.5px;color:var(--mut);cursor:pointer;font-family:var(--mono);letter-spacing:.4px;margin-top:8px;}
+.btn2:hover{border-color:var(--accent);color:var(--accent);}
+.hidden{display:none!important;}
+/* results */
+.placeholder{display:flex;align-items:center;justify-content:center;min-height:260px;color:var(--faint);font-size:13px;text-align:center;}
+.verdict{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--bdr2);border-left:4px solid var(--pass);background:var(--surf2);margin-bottom:14px;}
+.verdict.fail{border-left-color:var(--fail);}
+.verdict .big{font-family:var(--mono);font-size:22px;font-weight:700;}
+.verdict .sub{font-size:11.5px;color:var(--mut);}
+.checks{display:flex;flex-direction:column;gap:6px;margin-bottom:6px;}
+.ck{display:grid;grid-template-columns:1.25fr 2fr 56px;gap:10px;align-items:center;font-size:12px;}
+.ck .nm{color:var(--txt);} .ck .nm small{display:block;color:var(--faint);font-family:var(--mono);font-size:10px;}
+.bar{height:8px;background:var(--surf2);border:1px solid var(--bdr);position:relative;}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--pass);}
+.bar i.hi{background:var(--warn);} .bar i.over{background:var(--fail);}
+.ck .u{font-family:var(--mono);text-align:right;font-weight:600;}
+.ck .u.over{color:var(--fail);}
+.diag{width:100%;height:auto;display:block;margin-bottom:6px;}
+.dlabel{font-family:var(--mono);font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:1px;margin:10px 0 2px;}
+table.t{width:100%;border-collapse:collapse;font-size:11.5px;font-family:var(--mono);margin-bottom:8px;}
+table.t th{color:var(--faint);font-weight:500;text-align:right;padding:4px 6px;border-bottom:1px solid var(--bdr);font-size:10.5px;}
+table.t td{padding:4px 6px;border-bottom:1px solid var(--bdr);text-align:right;}
+table.t th:first-child,table.t td:first-child{text-align:left;}
+.note{font-size:11px;color:var(--mut);background:var(--surf2);border:1px solid var(--bdr);border-left:3px solid var(--bdr2);padding:8px 10px;margin-top:8px;line-height:1.55;}
+.err{color:var(--fail);font-size:12px;padding:10px;border:1px solid var(--fail);margin-bottom:12px;}
+.busy{opacity:.55;pointer-events:none;}
+/* ---------- print: A4 calculation sheet ---------- */
+#report{display:none;}
+@media print{
+  @page{size:A4;margin:12mm 12mm 14mm;}
+  body{background:#fff;color:#000;padding:0;background-image:none;font-size:9.5pt;}
+  .container{display:none;}
+  #report{display:block;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  #report table.wrap{width:100%;border-collapse:collapse;}
+  #report thead td{padding:0 0 3mm;}
+  .rh{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;border:0.6pt solid #000;font-size:8pt;}
+  .rh div{padding:1.2mm 2mm;border-right:0.6pt solid #000;}
+  .rh div:last-child{border-right:none;}
+  .rh b{display:block;font-size:6.5pt;color:#444;font-weight:normal;text-transform:uppercase;letter-spacing:.3pt;}
+  .rh .ttl{grid-column:1 / -1;border-top:0.6pt solid #000;border-right:none;font-weight:bold;font-size:10pt;}
+  .rs{margin:0 0 3.5mm;}
+  .rs h2,.rs h3{break-after:avoid;}
+  .rl,.rt,.rsvg,.rp,.rt tr{break-inside:avoid;}
+  .rs h2{font-size:10pt;margin:3mm 0 1.5mm;padding-bottom:0.8mm;border-bottom:0.8pt solid #000;}
+  .rs h3{font-size:9pt;margin:2mm 0 1mm;}
+  .rl{display:grid;grid-template-columns:1fr 92px 132px;gap:2mm;padding:0.5mm 0;font-size:8.6pt;}
+  .rl .cl{text-align:right;color:#444;font-size:7.5pt;}
+  .rl .rv{text-align:right;font-weight:bold;}
+  .ok{color:#0a7a3e;} .ng{color:#c00;}
+  .rt{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;}
+  .rt th,.rt td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;}
+  .rt th{background:#eee;font-weight:bold;}
+  .rt td:first-child,.rt th:first-child,.rt.lft td,.rt.lft th{text-align:left;}
+  .rp{font-size:8.3pt;line-height:1.45;margin:1mm 0;}
+  .rsvg{width:100%;height:auto;}
+  .rsvg *{vector-effect:non-scaling-stroke;}
+}
+
+.row.mem{grid-template-columns:1fr 1fr 1fr 1.6fr 28px;}
+.row.jnt{grid-template-columns:1.1fr 1.3fr 1fr 1fr 72px;}
+.row.load{grid-template-columns:52px 1.1fr 1.1fr 28px;}
+.row.cmb{grid-template-columns:1.6fr 70px repeat(4,1fr) 28px;}
+.viewsel{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+.viewsel select{flex:1;}
+@media(max-width:560px){.row.mem{grid-template-columns:1fr 1fr 28px;} .row.mem > div:nth-child(3),.row.mem > div:nth-child(4){grid-column:span 1;}
+  .row.jnt{grid-template-columns:1fr 1fr;} .row.cmb{grid-template-columns:1fr 1fr 1fr;}}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="page-hdr">
+    <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
+    <h1>Beam Analysis</h1>
+    <p>Continuous beams with cantilevers, springs and hinges &nbsp;·&nbsp; load cases G, Q, S, W &nbsp;·&nbsp; BS EN 1990 + UK NA combinations</p>
+  </div>
+  <div class="main-grid">
+    <div id="inputs">
+      <div class="card">
+        <div class="section-title">Project</div>
+        <div class="form-group"><label>Project</label><input type="text" id="pName" placeholder="Project name"></div>
+        <div class="grid3">
+          <div class="form-group"><label>Job no.</label><input type="text" id="pJob"></div>
+          <div class="form-group"><label>By</label><input type="text" id="pBy"></div>
+          <div class="form-group"><label>Member ref.</label><input type="text" id="pRef"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">Members <span class="aux">m, kN/mm², cm⁴</span></div>
+        <div id="memRows" class="rows"></div>
+        <button class="addbtn" id="addMem">+ add member</button>
+        <div class="help">Members run left to right. A cantilever is a member whose outer end is free. I can be typed in or taken from a steel section.</div>
+
+        <div class="section-title" style="margin-top:14px">Supports and joints <span class="aux">kN/mm, kNm/rad</span></div>
+        <div id="jntRows" class="rows"></div>
+        <div class="help">Spring k<sub>v</sub> (vertical) and k<sub>&theta;</sub> (rotational); leave k<sub>v</sub> blank for a spring with no vertical restraint. A hinge releases moment at an internal joint.</div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">Loads <span class="aux">kN, kN/m, kNm, m from member start</span></div>
+        <div id="loadRows" class="rows"></div>
+        <button class="addbtn" id="addLoad">+ add load</button>
+        <label class="chk"><input type="checkbox" id="sw"> Add self-weight from the members' sections (permanent)</label>
+        <div class="help">Case G permanent, Q imposed, S snow, W wind. Loads positive downward; couples clockwise positive.</div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">Combinations <span class="aux">BS EN 1990 + UK NA</span></div>
+        <div class="grid2">
+          <div class="form-group"><label>ULS expression</label>
+            <select id="rule"><option value="6.10ab">6.10a and 6.10b (&xi; = 0.925)</option><option value="6.10">6.10</option></select></div>
+          <div class="form-group"><label>&psi;<sub>0</sub> imposed (Q)</label>
+            <select id="psiQ"><option value="0.7">0.7 Cat. A&ndash;D</option><option value="1.0">1.0 Cat. E storage</option><option value="0.7r">0.7 Cat. H roofs (&psi;<sub>0</sub> 0.7)</option></select></div>
+        </div>
+        <div class="grid2">
+          <div class="form-group"><label>&psi;<sub>0</sub> snow (S)</label><select id="psiS"><option value="0.5">0.5 altitude &le; 1000 m</option><option value="0.7">0.7 altitude &gt; 1000 m</option></select></div>
+          <div class="form-group"><label>&psi;<sub>0</sub> wind (W)</label><select id="psiW"><option value="0.5">0.5</option></select></div>
+        </div>
+        <label class="chk"><input type="checkbox" id="pattern" checked> Pattern imposed loads (Q) span by span</label>
+        <div class="section-title" style="margin-top:12px">Additional combinations</div>
+        <div id="cmbRows" class="rows"></div>
+        <button class="addbtn" id="addCmb">+ add custom combination</button>
+      </div>
+      <button class="btn" id="calc">Analyse</button>
+    </div>
+
+    <div>
+      <div class="card" id="results"><div class="placeholder">Define the members, supports and loads, then Analyse.</div></div>
+    </div>
+  </div>
+</div>
+<div id="report"></div>
+
+<script id="sections">
+// [designation, mass kg/m, h, b, tw, tf, r (mm), A cm2, Iy, Iz cm4, Wel,y, Wel,z, Wpl,y, Wpl,z cm3, It cm4, Iw dm6]
+const SECTION_DATA=[
+['127×76×13 UKB',13,127,76,4,7.6,7.6,16.5,473,56,75,15,84,23,2.85,0.002],
+['152×89×16 UKB',16,152.4,88.7,4.5,7.7,7.6,20.3,834,90,109,20,123,31,3.56,0.0047],
+['178×102×19 UKB',19,177.8,101.2,4.8,7.9,7.6,24.3,1356,137,153,27,171,42,4.41,0.0099],
+['203×102×23 UKB',23.1,203.2,101.8,5.4,9.3,7.6,29.4,2105,164,207,32,234,50,7.02,0.0154],
+['203×133×25 UKB',25.1,203.2,133.2,5.7,7.8,7.6,32,2340,308,230,46,258,71,5.96,0.0294],
+['203×133×30 UKB',30,206.8,133.9,6.4,9.6,7.6,38.2,2896,385,280,57,314,88,10.3,0.0374],
+['254×102×22 UKB',22,254,101.6,5.7,6.8,7.6,28,2841,119,224,23,259,37,4.15,0.0182],
+['254×102×25 UKB',25.2,257.2,101.9,6,8.4,7.6,32,3415,149,266,29,306,46,6.42,0.023],
+['254×102×28 UKB',28.3,260.4,102.2,6.3,10,7.6,36.1,4005,179,308,35,353,55,9.57,0.028],
+['254×146×31 UKB',31.1,251.4,146.1,6,8.6,7.6,39.7,4413,448,351,61,393,94,8.55,0.066],
+['254×146×37 UKB',37,256,146.4,6.3,10.9,7.6,47.2,5537,571,433,78,483,119,15.3,0.0857],
+['254×146×43 UKB',43,259.6,147.3,7.2,12.7,7.6,54.8,6544,677,504,92,566,141,23.9,0.103],
+['305×102×25 UKB',24.8,305.1,101.6,5.8,7,7.6,31.6,4455,123,292,24,342,39,4.77,0.0273],
+['305×102×28 UKB',28.2,308.7,101.8,6,8.8,7.6,35.9,5366,155,348,31,403,48,7.4,0.0349],
+['305×102×33 UKB',32.8,312.7,102.4,6.6,10.8,7.6,41.8,6501,194,416,38,481,60,12.2,0.0442],
+['305×127×37 UKB',37,304.4,123.4,7.1,10.7,8.9,47.2,7171,336,471,54,539,85,14.8,0.0725],
+['305×127×42 UKB',41.9,307.2,124.3,8,12.1,8.9,53.4,8196,389,534,63,614,98,21.1,0.0846],
+['305×127×48 UKB',48.1,311,125.3,9,14,8.9,61.2,9575,461,616,74,711,116,31.8,0.102],
+['305×165×40 UKB',40.3,303.4,165,6,10.2,8.9,51.3,8503,764,560,93,623,142,14.7,0.164],
+['305×165×46 UKB',46.1,306.6,165.7,6.7,11.8,8.9,58.7,9899,896,646,108,720,166,22.2,0.195],
+['305×165×54 UKB',54,310.4,166.9,7.9,13.7,8.9,68.8,11696,1063,754,127,846,196,34.8,0.234],
+['356×171×45 UKB',45,351.4,171.1,7,9.7,12.7,57.8,12195,811,694,95,783,147,16.9,0.237],
+['356×171×51 UKB',51,355,171.5,7.4,11.5,12.7,65.4,14265,969,804,113,904,174,25.1,0.286],
+['356×171×57 UKB',57,358,172.2,8.1,13,12.7,73,16168,1109,903,129,1018,199,34.9,0.33],
+['356×171×67 UKB',67.1,363.4,173.2,9.1,15.7,12.7,86,19592,1362,1078,157,1219,243,57.7,0.412],
+['406×140×39 UKB',39,398,141.8,6.4,8.6,12.7,50.1,12679,410,637,58,733,91,11.6,0.155],
+['406×140×46 UKB',46,403.2,142.2,6.8,11.2,12.7,59.1,15856,538,787,76,897,118,20.2,0.207],
+['406×140×53 UKB',53.3,406.6,143.3,7.9,12.9,12.7,68.4,18454,635,908,89,1040,139,30.4,0.246],
+['406×178×54 UKB',54.1,402.6,177.7,7.7,10.9,12.7,69.4,18893,1022,939,115,1064,179,24.3,0.392],
+['406×178×60 UKB',60.1,406.4,177.9,7.9,12.8,12.7,77,21767,1203,1071,135,1209,209,34.8,0.466],
+['406×178×67 UKB',67.1,409.4,178.8,8.8,14.3,12.7,86,24502,1365,1197,153,1355,237,47.9,0.533],
+['406×178×74 UKB',74.2,412.8,179.5,9.5,16,12.7,95,27481,1546,1331,172,1510,267,64.9,0.608],
+['406×178×85 UKB',85.3,417.2,181.9,10.9,18.2,12.7,109,31874,1831,1528,201,1742,313,95.7,0.729],
+['406×260×100 UKB',99.99,415,260,10,16.9,12.7,127,39944,4955,1925,381,2139,582,102,1.96],
+['406×260×114 UKB',114.9,420,261,11.6,19.3,12.7,146,46323,5725,2206,439,2466,671,152,2.3],
+['406×260×149 UKB',149.62,431,265,14.9,25,12.7,191,62026,7766,2878,586,3257,900,327,3.2],
+['457×152×52 UKB',52.3,449.8,152.4,7.6,10.9,12.7,67.1,21586,645,960,85,1106,134,22.6,0.311],
+['457×152×60 UKB',59.8,454.6,152.9,8.1,13.3,12.7,76.7,25717,795,1131,104,1298,163,35.4,0.387],
+['457×152×67 UKB',67.2,458,153.8,9,15,12.7,86,29144,913,1273,119,1463,187,49.6,0.448],
+['457×152×74 UKB',74.2,462,154.4,9.6,17,12.7,95,32891,1047,1424,136,1637,213,68.2,0.518],
+['457×152×82 UKB',82.1,465.8,155.3,10.5,18.9,12.7,105,36806,1185,1580,153,1822,241,92,0.592],
+['457×191×67 UKB',67.1,453.4,189.9,8.5,12.7,12.7,86,29597,1452,1306,153,1481,238,38.7,0.705],
+['457×191×74 UKB',74.3,457,190.4,9,14.5,12.7,95.1,33536,1672,1468,176,1663,272,53.6,0.818],
+['457×191×82 UKB',82,460,191.3,9.9,16,12.7,105,37268,1871,1620,196,1842,304,71.4,0.922],
+['457×191×89 UKB',89.3,463.4,191.9,10.5,17.7,12.7,114,41232,2090,1780,218,2024,339,93.3,1.04],
+['457×191×98 UKB',98.3,467.2,192.8,11.4,19.6,12.7,126,45944,2348,1967,244,2243,379,124,1.18],
+['457×191×106 UKB',105.8,469.2,194,12.6,20.6,12.7,135,49090,2515,2093,259,2399,406,149,1.27],
+['457×191×133 UKB',133.3,480.6,196.7,15.3,26.3,12.7,170,64058,3350,2666,341,3080,535,298,1.73],
+['457×191×161 UKB',161.4,492,199.4,18,32,12.7,206,79996,4251,3252,426,3789,672,524,2.25],
+['457×280×113 UKB',113,463,280,10.8,17.3,20,147,56724,6338,2450,453,2727,694,132,3.15],
+['457×280×128 UKB',128,467,282,12.2,19.6,20,166,64820,7337,2776,520,3103,799,189,3.67],
+['457×280×144 UKB',144,472,283,13.6,22.1,20,187,73727,8362,3124,591,3508,908,266,4.23],
+['457×280×158 UKB',158,476,284,15,23.9,20,203,80756,9142,3393,644,3829,992,337,4.67],
+['457×280×177 UKB',177,482,286,16.6,26.9,20,228,92134,10511,3823,735,4335,1134,473,5.44],
+['457×280×193 UKB',193,489,283,17,30.5,20,249,103476,11545,4232,816,4808,1256,641,6.07],
+['457×280×213 UKB',213,495,285,18.5,33.5,20,274,115446,12954,4664,909,5326,1402,843,6.9],
+['457×280×235 UKB',235,501,287,20.6,36.6,20,302,128452,14459,5128,1008,5893,1557,1106,7.8],
+['457×280×260 UKB',260,509,289,22.6,40.4,20,334,144803,16303,5690,1128,6579,1747,1479,8.95],
+['457×280×286 UKB',286,517,291,24.4,44.4,20,366,162187,18297,6274,1258,7297,1949,1942,10.2],
+['457×280×315 UKB',315,525,293,26.9,48.5,20,403,180967,20414,6894,1393,8076,2165,2537,11.6],
+['533×165×66 UKB',65.7,524.7,165.1,8.9,11.4,12.7,83.7,35028,859,1335,104,1561,166,32,0.566],
+['533×165×74 UKB',74.7,529.1,165.9,9.7,13.6,12.7,95.2,41058,1040,1552,125,1808,200,47.9,0.691],
+['533×165×85 UKB',84.8,534.9,166.5,10.3,16.5,12.7,108,48631,1275,1818,153,2107,243,73.8,0.857],
+['533×210×82 UKB',82.2,528.3,208.8,9.6,13.2,12.7,105,47539,2007,1800,192,2059,300,51.5,1.33],
+['533×210×92 UKB',92.1,533.1,209.3,10.1,15.6,12.7,117,55227,2389,2072,228,2360,355,75.7,1.6],
+['533×210×101 UKB',101,536.7,210,10.8,17.4,12.7,129,61519,2692,2292,256,2612,399,101,1.81],
+['533×210×109 UKB',109,539.5,210.8,11.6,18.8,12.7,139,66822,2943,2477,279,2829,436,126,1.99],
+['533×210×122 UKB',122,544.5,211.9,12.7,21.3,12.7,155,76043,3388,2793,320,3196,500,178,2.32],
+['533×210×138 UKB',138.3,549.1,213.9,14.7,23.6,12.7,176,86088,3864,3136,361,3613,568,250,2.67],
+['533×312×150 UKB',150.6,542.5,312,12.7,20.3,12.7,192,100633,10285,3710,659,4142,1009,216,7.01],
+['533×312×165 UKB',165,546,313,14,22.2,12.7,211,110955,11359,4064,726,4555,1113,283,7.79],
+['533×312×182 UKB',181.5,550.7,314.5,15.2,24.4,12.7,231,123222,12667,4475,806,5030,1237,373,8.77],
+['533×312×196 UKB',196,554,316,16.5,26.3,12.7,250,133993,13852,4837,877,5457,1349,470,9.64],
+['533×312×219 UKB',218.7,560.3,317.4,18.3,29.2,12.7,279,150976,15589,5389,982,6109,1514,642,11],
+['533×312×248 UKB',248,571,315,19,34.5,12.7,314,177499,18003,6217,1143,7062,1759,977,13],
+['533×312×272 UKB',273.2,577.1,320.2,21.1,37.6,12.7,348,198578,20615,6882,1288,7859,1985,1288,15],
+['610×178×82 UKB',81.8,598.6,177.9,10,12.8,20,106,57487,1209,1921,136,2252,220,57,1.04],
+['610×178×92 UKB',92.2,603,178.8,10.9,15,20,120,66195,1439,2196,161,2569,260,81,1.24],
+['610×178×100 UKB',100.3,607.4,179.2,11.3,17.2,20,130,74145,1661,2441,185,2844,298,107,1.45],
+['610×229×101 UKB',101.2,602.6,227.6,10.5,14.8,20,131,77398,2917,2569,256,2939,402,86.7,2.52],
+['610×229×113 UKB',113,607.6,228.2,11.1,17.3,20,146,88936,3437,2927,301,3339,471,123,2.99],
+['610×229×125 UKB',125.1,612.2,229,11.9,19.6,20,161,100228,3935,3274,344,3734,537,168,3.45],
+['610×229×140 UKB',139.9,617.2,230.2,13.1,22.1,20,180,113395,4509,3674,392,4200,614,233,3.99],
+['610×305×149 UKB',149.2,612.4,304.8,11.8,19.7,20,191,126738,9309,4139,611,4625,938,208,8.18],
+['610×305×179 UKB',179,620.2,307.1,14.1,23.6,20,229,153886,11410,4962,743,5578,1145,351,10.2],
+['610×305×238 UKB',238.1,635.8,311.4,18.4,31.4,20,304,210333,15839,6616,1017,7517,1575,803,14.5],
+['610×324×155 UKB',155,611,324,12.7,19,20,199,130552,10785,4273,666,4784,1024,210,9.45],
+['610×324×174 UKB',174,616,325,14,21.6,20,224,148722,12376,4829,762,5418,1172,298,10.9],
+['610×324×195 UKB',195,622,327,15.4,24.4,20,251,169453,14242,5449,871,6130,1342,418,12.7],
+['610×324×217 UKB',217,628,328,16.5,27.7,20,280,192362,16319,6126,995,6904,1533,586,14.7],
+['610×324×241 UKB',241,635,329,17.9,31,20,310,216996,18433,6835,1121,7727,1728,802,16.8],
+['610×324×262 UKB',262,641,327,19,34,20,335,237554,19854,7412,1214,8405,1874,1028,18.3],
+['610×324×285 UKB',285,647,329,20.6,37.1,20,366,262288,22069,8108,1342,9231,2073,1329,20.5],
+['610×324×307 UKB',307,653,330,22.1,39.9,20,393,285235,23958,8736,1452,9985,2248,1646,22.5],
+['610×324×341 UKB',341,661,333,24.4,43.9,20,436,319846,27097,9678,1627,11123,2525,2196,25.8],
+['610×324×372 UKB',372,669,335,26.4,48,20,476,354794,30175,10607,1802,12250,2799,2850,29.1],
+['686×254×125 UKB',125.2,677.9,253,11.7,16.2,20,161,119448,4385,3524,347,4040,544,124,4.8],
+['686×254×140 UKB',140.1,683.5,253.7,12.4,19,20,180,137723,5186,4030,409,4604,640,179,5.72],
+['686×254×152 UKB',152.4,687.5,254.5,13.2,21,20,196,151811,5786,4416,455,5047,712,231,6.43],
+['686×254×170 UKB',170.2,692.9,255.8,14.5,23.7,20,218,171782,6633,4958,519,5677,813,322,7.43],
+['686×254×192 UKB',192.6,702,254,15.5,27.9,20,245,199444,7646,5682,602,6505,943,480,8.69],
+['762×267×134 UKB',133.9,750,264.4,12,15.5,20,172,152061,4790,4055,362,4683,571,125,6.46],
+['762×267×147 UKB',146.9,754,265.2,12.8,17.5,20,188,169871,5457,4506,412,5195,648,166,7.4],
+['762×267×161 UKB',161,758,266,13.8,19.3,20,205,187252,6075,4941,457,5700,721,215,8.29],
+['762×267×173 UKB',173,762.2,266.7,14.3,21.6,20,221,206651,6852,5422,514,6237,809,277,9.4],
+['762×267×185 UKB',185,766,267,14.9,23.6,20,237,224146,7512,5852,563,6725,885,343,10.4],
+['762×267×197 UKB',196.8,769.8,268,15.6,25.4,20,252,241326,8177,6270,610,7206,960,417,11.3],
+['838×292×176 UKB',175.9,834.9,291.7,14,18.8,20,225,247120,7800,5920,535,6836,843,227,13],
+['838×292×194 UKB',193.8,840.7,292.4,14.7,21.7,20,248,280274,9068,6668,620,7668,974,312,15.2],
+['838×292×210 UKB',210,846,293,15.4,24.4,20,269,311719,10259,7369,700,8456,1098,413,17.3],
+['838×292×226 UKB',226.5,850.9,293.8,16.1,26.8,20,289,340802,11361,8010,773,9183,1212,522,19.3],
+['838×292×252 UKB',250.7,859,292.1,17,31,20,320,387599,12916,9024,884,10333,1384,746,22.1],
+['914×305×201 UKB',200.9,903,303.3,15.1,20.2,19.1,256,325254,9423,7204,621,8352,982,291,18.4],
+['914×305×224 UKB',224.2,910.4,304.1,15.9,23.9,19.1,286,376414,11236,8269,739,9535,1163,422,22.1],
+['914×305×239 UKB',238.3,915,305,16.5,25.9,19.1,304,406472,12285,8885,806,10231,1267,515,24.3],
+['914×305×253 UKB',253.4,918.4,305.5,17.3,27.9,19.1,323,436305,13301,9501,871,10942,1370,626,26.4],
+['914×305×271 UKB',271,923,307,18.4,30,19.1,346,471633,14518,10220,946,11785,1491,770,28.9],
+['914×305×289 UKB',289.1,926.6,307.7,19.5,32,19.1,368,504187,15597,10883,1014,12570,1601,926,31.2],
+['914×305×313 UKB',313,932,309,21.1,34.5,19.1,398,548297,17039,11766,1103,13631,1747,1162,34.3],
+['914×305×345 UKB',345.1,943,308,22.1,39.9,19.1,440,625645,19515,13269,1267,15349,2002,1649,39.8],
+['914×305×381 UKB',381.5,950.7,310.3,24.4,43.9,20,486,697408,21975,14671,1416,17042,2247,2208,45.2],
+['914×419×343 UKB',343.3,911.8,418.5,19.4,32,24.1,437,625780,39156,13726,1871,15478,2889,1193,75.8],
+['914×419×388 UKB',388,921,420.5,21.4,36.6,24.1,494,719635,45438,15627,2161,17666,3340,1734,88.9],
+['1016×305×222 UKB',222,970.3,300,16,21.1,30,283,407961,9546,8409,636,9808,1019,390,21.5],
+['1016×305×249 UKB',248.7,980.1,300,16.5,26,30,317,481192,11754,9819,784,11350,1244,582,26.8],
+['1016×305×272 UKB',272.3,990.1,300,16.5,31,30,347,553974,14004,11190,934,12827,1469,835,32.2],
+['1016×305×314 UKB',314.3,999.9,300,19.1,35.9,30,400,644063,16232,12883,1082,14850,1712,1264,37.7],
+['1016×305×350 UKB',349.4,1008,302,21.1,40,30,445,722965,18460,14345,1223,16591,1940,1718,43.2],
+['1016×305×393 UKB',392.7,1015.9,303,24.4,43.9,30,500,807503,20496,15897,1353,18538,2167,2330,48.4],
+['1016×305×415 UKB',415,1020,304,26,46,30,529,853121,21707,16728,1428,19573,2296,2704,51.5],
+['1016×305×437 UKB',437,1026.1,305.4,26.9,49,30,557,910322,23447,17743,1535,20769,2467,3185,56],
+['1016×305×487 UKB',486.7,1036.3,308.5,30,54.1,30,620,1021884,26721,19722,1732,23208,2799,4299,64.4],
+['1016×305×494 UKB',493.9,1036,309,31,54,30,629,1027960,26824,19845,1736,23414,2817,4396,64.7],
+['1016×305×584 UKB',583.8,1056,314,36,64,30,744,1246072,33433,23600,2130,28040,3474,7154,82.3],
+['152×152×23 UKC',23,152.4,152.2,5.8,6.8,7.6,29.2,1250,400,164,53,182,80,4.63,0.0212],
+['152×152×30 UKC',30,157.6,152.9,6.5,9.4,7.6,38.3,1748,560,222,73,248,112,10.5,0.0308],
+['152×152×37 UKC',37,161.8,154.4,8,11.5,7.6,47.1,2210,706,273,91,309,140,19.2,0.0399],
+['152×152×44 UKC',44,166,155.9,9.5,13.6,7.6,56.1,2703,860,326,110,372,169,31.7,0.0499],
+['152×152×51 UKC',51.2,170.2,157.4,11,15.7,7.6,65.2,3227,1022,379,130,438,199,48.8,0.061],
+['203×203×46 UKC',46.1,203.2,203.6,7.2,11,12.7,59.2,4605,1549,453,152,502,231,23.3,0.143],
+['203×203×52 UKC',52,206.2,204.3,7.9,12.5,12.7,66.8,5296,1778,514,174,572,265,33.2,0.167],
+['203×203×60 UKC',60,209.6,205.8,9.4,14.2,12.7,76.9,6162,2065,588,201,660,306,49.1,0.197],
+['203×203×71 UKC',71,215.8,206.4,10,17.3,12.7,90.9,7655,2538,709,246,803,374,82.7,0.25],
+['203×203×86 UKC',86.1,222.2,209.1,12.7,20.5,12.7,110,9486,3128,854,299,981,457,140,0.318],
+['203×203×100 UKC',99.6,228.6,210.3,14.5,23.7,12.7,127,11335,3680,992,350,1153,535,214,0.386],
+['203×203×113 UKC',113.5,235,212.1,16.3,26.9,12.7,145,13338,4286,1135,404,1333,619,311,0.464],
+['203×203×127 UKC',127.5,241.4,213.9,18.1,30.1,12.7,163,15474,4921,1282,460,1521,705,435,0.549],
+['254×254×73 UKC',73.1,254.1,254.6,8.6,14.2,20,95.2,11643,3910,916,307,1014,467,66.1,0.563],
+['254×254×81 UKC',81,256,255,9.4,15.6,20,104,12801,4316,1000,339,1112,515,85.4,0.624],
+['254×254×89 UKC',88.9,260.3,256.3,10.3,17.3,20,115,14504,4860,1114,379,1246,577,114,0.717],
+['254×254×101 UKC',101,264,257,11.9,19.6,20,131,16603,5552,1258,432,1419,658,163,0.829],
+['254×254×107 UKC',107.1,266.7,258.8,12.8,20.5,20,138,17747,5931,1331,458,1507,699,188,0.899],
+['254×254×115 UKC',115,269,259,13.5,22.1,20,148,19171,6409,1425,495,1621,755,231,0.977],
+['254×254×132 UKC',132,276.3,261.3,15.3,25.3,20,170,22765,7535,1648,577,1892,881,341,1.19],
+['254×254×149 UKC',149,282,263,17.3,28.4,20,192,26167,8627,1856,656,2151,1003,479,1.39],
+['254×254×167 UKC',167.1,289.1,265.2,19.2,31.7,20,215,30234,9875,2092,745,2446,1140,661,1.64],
+['305×305×97 UKC',96.9,307.9,305.3,9.9,15.4,20,125,22504,7310,1462,479,1612,727,98.4,1.56],
+['305×305×107 UKC',107,311,306,10.9,17,20,138,25055,8125,1611,531,1785,807,130,1.76],
+['305×305×118 UKC',117.9,314.5,307.4,12,18.7,20,152,27927,9061,1776,590,1977,897,171,1.98],
+['305×305×129 UKC',129,318,308,13.1,20.6,20,167,31035,10041,1952,652,2184,992,224,2.22],
+['305×305×137 UKC',136.9,320.5,309.2,13.8,21.7,20,176,33070,10702,2064,692,2316,1054,261,2.39],
+['305×305×143 UKC',143,323,309,14,22.9,20,184,35029,11272,2169,730,2439,1110,300,2.54],
+['305×305×158 UKC',158.1,327.1,311.2,15.8,25,20,203,39002,12572,2385,808,2700,1232,394,2.87],
+['305×305×179 UKC',179,333,313,18,28.1,20,229,44796,14381,2690,919,3073,1403,558,3.34],
+['305×305×198 UKC',198.1,339.9,314.5,19.1,31.4,20,254,51159,16303,3010,1037,3460,1583,758,3.88],
+['305×305×202 UKC',202,341,315,20.1,31.8,20,260,52247,16592,3064,1053,3530,1610,800,3.97],
+['305×305×226 UKC',226,348,317,22.1,35.6,20,290,59829,18934,3438,1195,3995,1827,1109,4.62],
+['305×305×240 UKC',240,352.5,318.4,23,37.7,20,307,64458,20319,3657,1276,4267,1953,1307,5.03],
+['305×305×253 UKC',253,356,319,24.4,39.6,20,324,68490,21468,3848,1346,4511,2061,1517,5.37],
+['305×305×283 UKC',282.9,365.3,322.2,26.8,44.1,20,362,79127,24641,4332,1530,5125,2345,2084,6.36],
+['356×368×129 UKC',129,355.6,368.6,10.4,17.5,20,166,40591,14613,2283,793,2502,1200,161,4.18],
+['356×368×134 UKC',134,356,369,11.2,18,20,172,41866,15081,2352,817,2585,1239,177,4.31],
+['356×368×147 UKC',147,360,370,12.3,19.8,20,189,46647,16725,2591,904,2862,1371,233,4.84],
+['356×368×153 UKC',152.9,362,370.5,12.3,20.7,20,196,48935,17556,2704,948,2987,1436,261,5.11],
+['356×368×162 UKC',162,364,371,13.3,21.8,20,208,51897,18565,2851,1001,3163,1518,307,5.43],
+['356×368×177 UKC',177,368.2,372.6,14.4,23.8,20,227,57464,20532,3121,1102,3478,1672,396,6.09],
+['356×368×179 UKC',179,368,374,15,23.9,20,230,57940,20853,3149,1115,3514,1693,407,6.17],
+['356×368×196 UKC',196,372,374,16.4,26.2,20,252,63988,22861,3440,1223,3861,1858,531,6.83],
+['356×368×202 UKC',201.9,374.6,374.7,16.5,27,20,259,66607,23692,3556,1265,3994,1921,576,7.16],
+['356×406×216 UKC',216,375,394,17.3,27.7,20,277,71495,28257,3813,1434,4286,2178,652,8.52],
+['356×406×235 UKC',235.1,381,394.8,18.4,30.2,20,301,79431,30997,4170,1570,4709,2385,834,9.54],
+['356×406×237 UKC',237,380,395,18.9,30.2,20,302,79134,31045,4165,1572,4709,2389,842,9.5],
+['356×406×262 UKC',262,387,398,21.1,33.3,20,336,89764,35023,4639,1760,5283,2678,1134,11],
+['356×406×287 UKC',287.1,393.6,399,22.6,36.5,20,367,100221,38682,5093,1939,5835,2951,1474,12.3],
+['356×406×314 UKC',314,399,401,24.9,39.6,20,401,110589,42609,5543,2125,6397,3239,1891,13.8],
+['356×406×340 UKC',339.9,406.4,403,26.6,42.9,20,434,122889,46859,6048,2326,7022,3546,2391,15.5],
+['356×406×347 UKC',347,407,404,27.2,43.7,20,443,125301,48091,6157,2381,7162,3631,2532,15.9],
+['356×406×382 UKC',382,416,406,29.8,48,20,489,141674,53623,6811,2642,7988,4033,3348,18.2],
+['356×406×393 UKC',393,419,407,30.6,49.2,20,502,146964,55374,7015,2721,8245,4156,3611,18.9],
+['356×406×421 UKC',421,425,409,32.8,52.6,20,539,159938,60089,7526,2938,8904,4492,4417,20.8],
+['356×406×463 UKC',463,435,412,35.8,57.4,20,591,180519,67044,8300,3255,9901,4982,5747,23.9],
+['356×406×467 UKC',467,436.6,412.2,35.8,58,20,596,183349,67842,8399,3292,10025,5037,5905,24.3],
+['356×406×509 UKC',509,446,416,39.1,62.7,20,650,204886,75411,9188,3626,11056,5556,7514,27.7],
+['356×406×551 UKC',551,455.6,418.5,42.1,67.5,20,703,227284,82681,9977,3951,12099,6062,9381,31.1],
+['356×406×592 UKC',592,465,421,45,72.3,20,756,250519,90184,10775,4284,13162,6578,11530,34.8],
+['356×406×634 UKC',633.9,474.6,424,47.6,77,20,809,275191,98138,11597,4629,14258,7112,13920,38.8]
+];
+// PFC: as above + cy (cm, centroid from back of web)
+const PFC_DATA=[
+['150×75×18 PFC',17.9,150,75,5.5,10,12,22.8,861,131,115,26.6,132,47.3,6.1,0.0047,2.58],
+['150×90×24 PFC',23.9,150,90,6.5,12,12,30.4,1162,253,155,44.4,179,77,11.8,0.0089,3.3],
+['180×75×20 PFC',20.3,180,75,6,10.5,12,25.9,1370,146,152,28.8,176,52,7.34,0.0075,2.41],
+['180×90×26 PFC',26.1,180,90,6.5,12.5,12,33.2,1817,277,202,47.4,232,83.5,13.3,0.0141,3.17],
+['200×75×23 PFC',23.4,200,75,6,12.5,12,29.9,1963,170,196,33.8,227,60.8,11.1,0.0107,2.48],
+['200×90×30 PFC',29.7,200,90,7,14,12,37.9,2523,314,252,53.4,291,94.6,18.3,0.0197,3.12],
+['230×75×26 PFC',25.7,230,75,6.5,12.5,12,32.7,2748,181,239,34.8,278,63.2,11.8,0.0153,2.3],
+['230×90×32 PFC',32.2,230,90,7.5,14,12,41,3518,334,306,55,355,99.2,19.3,0.0279,2.92],
+['260×75×28 PFC',27.6,260,75,7,12,12,35.1,3619,185,278,34.4,328,62,11.7,0.0203,2.1],
+['260×90×35 PFC',34.8,260,90,8,14,12,44.4,4728,353,364,56.3,425,102.1,20.6,0.0379,2.74],
+['300×90×41 PFC',41.4,300,90,9,15.5,12,52.7,7218,404,481,63.1,568,114,28.8,0.0581,2.6],
+['300×100×46 PFC',45.5,300,100,9,16.5,15,58,8229,568,549,81.7,641,148.3,36.8,0.0813,3.05]
+];
+</script>
+<script id="engine">
+/* ===== CONTINUOUS BEAM ANALYSIS ENGINE (EngineeringTools) =====
+   Linear elastic stiffness method (Euler-Bernoulli, cubic Hermite elements). Members with their own EI; joints between
+   members with supports (free, pinned, fixed, translational/rotational springs) and optional internal hinges.
+   Load cases G, Q, S, W (and custom) with BS EN 1990 + UK NA combinations generated automatically.
+   Units: N, mm. Loads and deflections positive DOWNWARD; reactions positive UPWARD; sagging moment positive;
+   applied couples and moment reactions clockwise positive. */
+const BeamFE = (() => {
+  'use strict';
+
+  // ---------- layout and loads ----------
+  // model: { members: [{ L, EI }], joints: [{ sup: 'free'|'pin'|'fixed'|'spring', kv, kr, hinge }] (members.length + 1),
+  //          loads: [{ case, member, type: 'udl'|'pudl'|'vdl'|'point'|'moment', w, w1, w2, P, M, a, b }] }
+  function layout(model) {
+    let x = 0;
+    const mem = model.members.map((m, i) => { const o = { i, L: m.L, EI: m.EI, x0: x, x1: x + m.L }; x += m.L; return o; });
+    const joints = model.joints.map((j, i) => ({ i, x: i === 0 ? 0 : mem[i - 1].x1, sup: j.sup || 'free', kv: +j.kv || 0, kr: +j.kr || 0,
+      hinge: !!j.hinge && i > 0 && i < mem.length && j.sup !== 'fixed' }));
+    if (joints.length !== mem.length + 1) throw new Error('joints must number members + 1');
+    return { mem, joints, Ltot: x };
+  }
+  function globalLoad(ld, mem) {
+    const m = mem[ld.member];
+    if (!m) throw new Error('load on a missing member');
+    const x0 = m.x0;
+    switch (ld.type) {
+      case 'udl': return { dist: [{ s1: x0, s2: m.x1, q1: ld.w, q2: ld.w }] };
+      case 'pudl': return { dist: [{ s1: x0 + ld.a, s2: x0 + ld.b, q1: ld.w, q2: ld.w }] };
+      case 'vdl': return { dist: [{ s1: x0 + ld.a, s2: x0 + ld.b, q1: ld.w1, q2: ld.w2 }] };
+      case 'point': return { pts: [{ x: x0 + ld.a, P: ld.P }] };
+      case 'moment': return { cpl: [{ x: x0 + ld.a, C: ld.M }] };
+    }
+    throw new Error('unknown load type ' + ld.type);
+  }
+  function collect(loads, mem) {
+    const out = { dist: [], pts: [], cpl: [] };
+    for (const ld of loads) {
+      const g = globalLoad(ld, mem);
+      if (g.dist) out.dist.push(...g.dist.filter(d => d.s2 > d.s1 + 1e-9));
+      if (g.pts) out.pts.push(...g.pts);
+      if (g.cpl) out.cpl.push(...g.cpl);
+    }
+    return out;
+  }
+
+  // ---------- mesh and DOFs ----------
+  function mesh(lay, all, nDiv) {
+    const xs = new Set();
+    for (const m of lay.mem) for (let k = 0; k <= nDiv; k++) xs.add(+(m.x0 + m.L * k / nDiv).toFixed(6));
+    for (const d of all.dist) { xs.add(+d.s1.toFixed(6)); xs.add(+d.s2.toFixed(6)); }
+    for (const p of all.pts) xs.add(+p.x.toFixed(6));
+    for (const c of all.cpl) xs.add(+c.x.toFixed(6));
+    const arr = [...xs].sort((a, b) => a - b), nodes = [];
+    for (const x of arr) if (!nodes.length || x - nodes[nodes.length - 1] > 1e-3) nodes.push(x);
+    // snap joints exactly
+    for (const j of lay.joints) { let k = 0; nodes.forEach((x, i) => { if (Math.abs(x - j.x) < Math.abs(nodes[k] - j.x)) k = i; }); nodes[k] = j.x; }
+    return nodes;
+  }
+  // DOF map: v and theta per node; a hinge joint carries a second rotation (right-hand side)
+  function dofs(nodes, lay) {
+    const map = [];
+    let n = 0;
+    nodes.forEach(x => {
+      const j = lay.joints.find(jj => Math.abs(jj.x - x) < 1e-6);
+      const v = n++, tL = n++, tR = j && j.hinge ? n++ : tL;
+      map.push({ x, v, tL, tR, joint: j || null });
+    });
+    return { map, n };
+  }
+  function memberAt(lay, xm) { return lay.mem.find(m => xm >= m.x0 - 1e-9 && xm <= m.x1 + 1e-9); }
+
+  // ---------- banded LDL^T ----------
+  function solveBanded(n, hb, B, F) {
+    const d0 = B.map(r => Math.abs(r[0]));                  // original diagonal, for a relative pivot test
+    for (let i = 0; i < n; i++) {
+      if (!(Math.abs(B[i][0]) > 1e-9 * d0[i])) throw new Error('The beam is a mechanism (unstable): add supports or remove hinges');
+      for (let k = 1; k <= hb && i + k < n; k++) {
+        const f = B[i][k] / B[i][0];
+        if (f === 0) continue;
+        for (let j = k; j <= hb && i + j < n; j++) B[i + k][j - k] -= f * B[i][j];
+        F[i + k] -= f * F[i];
+      }
+    }
+    const u = new Float64Array(n);
+    for (let i = n - 1; i >= 0; i--) { let s = F[i]; for (let k = 1; k <= hb && i + k < n; k++) s -= B[i][k] * u[i + k]; u[i] = s / B[i][0]; }
+    return u;
+  }
+
+  // ---------- analysis of one load set ----------
+  function distLeft(d, x) {
+    if (x <= d.s1) return [0, 0];
+    const e = Math.min(x, d.s2), L = d.s2 - d.s1, qe = d.q1 + (d.q2 - d.q1) * (e - d.s1) / L, len = e - d.s1;
+    const Q = 0.5 * (d.q1 + qe) * len, cen = (d.q1 + qe) === 0 ? len / 2 : len * (d.q1 + 2 * qe) / (3 * (d.q1 + qe));
+    return [Q, Q * (x - (d.s1 + cen))];
+  }
+  function qAt(dist, x) { let q = 0; for (const d of dist) if (x >= d.s1 - 1e-9 && x <= d.s2 + 1e-9) q += d.q1 + (d.q2 - d.q1) * (x - d.s1) / (d.s2 - d.s1); return q; }
+
+  function solve(lay, nodes, D, L) {
+    const n = D.n, hb = 4;                 // DOFs per node v, theta (+ theta_R at a hinge): element spans <= 4 indices
+    const B = Array.from({ length: n }, () => new Float64Array(hb + 1));     // B[i][k] = K[i][i+k] (beam only)
+    const F = new Float64Array(n);
+    const addK = (i, j, v) => { if (i > j) [i, j] = [j, i]; B[i][j - i] += v; };
+    for (let e = 0; e < nodes.length - 1; e++) {
+      const a = D.map[e], b = D.map[e + 1], le = b.x - a.x, m = memberAt(lay, (a.x + b.x) / 2), EI = m.EI;
+      const d = [a.v, a.tR, b.v, b.tL];
+      const k = [[12, 6 * le, -12, 6 * le], [6 * le, 4 * le * le, -6 * le, 2 * le * le], [-12, -6 * le, 12, -6 * le], [6 * le, 2 * le * le, -6 * le, 4 * le * le]];
+      for (let i = 0; i < 4; i++) for (let j = i; j < 4; j++) addK(d[i], d[j], EI * k[i][j] / le ** 3);
+      for (const q of L.dist) {
+        const xm = (a.x + b.x) / 2;
+        if (xm < q.s1 || xm > q.s2) continue;
+        const q1 = q.q1 + (q.q2 - q.q1) * (a.x - q.s1) / (q.s2 - q.s1), q2 = q.q1 + (q.q2 - q.q1) * (b.x - q.s1) / (q.s2 - q.s1);
+        F[d[0]] += le * (7 * q1 + 3 * q2) / 20; F[d[1]] += le * le * (3 * q1 + 2 * q2) / 60;
+        F[d[2]] += le * (3 * q1 + 7 * q2) / 20; F[d[3]] -= le * le * (2 * q1 + 3 * q2) / 60;
+      }
+    }
+    const nodeAt = x => { let k = 0; D.map.forEach((m, i) => { if (Math.abs(m.x - x) < Math.abs(D.map[k].x - x)) k = i; }); return D.map[k]; };
+    for (const p of L.pts) F[nodeAt(p.x).v] += p.P;
+    for (const c of L.cpl) F[nodeAt(c.x).tR] += c.C;
+    const Kbeam = B.map(r => Float64Array.from(r));
+    // supports and springs
+    const fixed = new Set();
+    for (const j of lay.joints) {
+      const m = D.map.find(mm => mm.joint === j);
+      if (j.sup === 'pin') fixed.add(m.v);
+      else if (j.sup === 'fixed') { fixed.add(m.v); fixed.add(m.tL); fixed.add(m.tR); }
+      else if (j.sup === 'spring') { if (j.kv === Infinity) fixed.add(m.v); else if (j.kv > 0) B[m.v][0] += j.kv; if (j.kr === Infinity) { fixed.add(m.tL); fixed.add(m.tR); } else if (j.kr > 0) { B[m.tL][0] += j.kr; if (m.tR !== m.tL) B[m.tR][0] += j.kr; } }
+    }
+    const Fm = Float64Array.from(F);
+    for (const d of fixed) { Fm[d] = 0; B[d].fill(0); B[d][0] = 1; for (let k = 1; k <= hb && d - k >= 0; k++) B[d - k][k] = 0; }
+    const u = solveBanded(n, hb, B, Fm);
+    const Ku = d => { let s = 0; for (let k = 0; k <= hb; k++) { if (d + k < n) s += Kbeam[d][k] * u[d + k]; if (k > 0 && d - k >= 0) s += Kbeam[d - k][k] * u[d - k]; } return s; };
+    const reac = lay.joints.map(j => {
+      const m = D.map.find(mm => mm.joint === j);
+      if (j.sup === 'free') return { x: j.x, R: 0, C: 0, joint: j.i };
+      const R = F[m.v] - Ku(m.v);
+      let C = 0;
+      if (j.sup === 'fixed' || (j.sup === 'spring' && j.kr > 0)) C = (Ku(m.tL) - F[m.tL]) + (m.tR !== m.tL ? Ku(m.tR) - F[m.tR] : 0);
+      return { x: j.x, R, C, joint: j.i };
+    });
+    return { u, reac };
+  }
+  function forcesAt(x, side, L, reac) {
+    const incl = xx => side === 'R' ? xx <= x + 1e-6 : xx < x - 1e-6;
+    let V = 0, M = 0;
+    for (const r of reac) if (incl(r.x)) { V += r.R; M += r.R * (x - r.x) + r.C; }
+    for (const p of L.pts) if (incl(p.x)) { V -= p.P; M -= p.P * (x - p.x); }
+    for (const c of L.cpl) if (incl(c.x)) M += c.C;
+    for (const d of L.dist) { const [Q, Mq] = distLeft(d, x); V -= Q; M -= Mq; }
+    return [V, M];
+  }
+  function stations(nodes, lay, all) {
+    const jump = new Set();
+    for (const j of lay.joints) jump.add(+j.x.toFixed(3));
+    for (const p of all.pts) jump.add(+p.x.toFixed(3));
+    for (const c of all.cpl) jump.add(+c.x.toFixed(3));
+    const st = [];
+    nodes.forEach((x, i) => {
+      if (jump.has(+x.toFixed(3))) {
+        if (i > 0) st.push({ x, side: 'L', node: i, mem: lay.mem.findIndex(m => x > m.x0 + 1e-6 && x <= m.x1 + 1e-6) });
+        if (i < nodes.length - 1) st.push({ x, side: 'R', node: i, mem: lay.mem.findIndex(m => x >= m.x0 - 1e-6 && x < m.x1 - 1e-6) });
+      } else st.push({ x, side: 'R', node: i, mem: lay.mem.findIndex(m => x >= m.x0 - 1e-6 && x <= m.x1 + 1e-6) });
+    });
+    return st;
+  }
+
+  /* Unit results per load case (and per member for pattern-loaded cases).
+     Returns { lay, nodes, st, units: { key: {V, M, W, q, reac, pts} } } with keys 'G', 'Q', 'S', 'W', ... and 'Q@m' per member. */
+  function analyse(model, opt = {}) {
+    const nDiv = opt.nDiv || 40;
+    const lay = layout(model);
+    const all = collect(model.loads, lay.mem);
+    const nodes = mesh(lay, all, nDiv);
+    const D = dofs(nodes, lay);
+    const st = stations(nodes, lay, all);
+    const run = loads => {
+      const L = collect(loads, lay.mem), { u, reac } = solve(lay, nodes, D, L);
+      const V = new Float64Array(st.length), M = new Float64Array(st.length), W = new Float64Array(st.length), q = new Float64Array(st.length);
+      st.forEach((s, k) => { const f = forcesAt(s.x, s.side, L, reac); V[k] = f[0]; M[k] = f[1]; W[k] = u[D.map[s.node].v]; q[k] = qAt(L.dist, s.x); });
+      return { V, M, W, q, reac, pts: L.pts };
+    };
+    const cases = [...new Set(model.loads.map(l => l.case))];
+    const units = {};
+    for (const c of cases) units[c] = run(model.loads.filter(l => l.case === c));
+    for (const c of opt.pattern || []) lay.mem.forEach((m, i) => { const ls = model.loads.filter(l => l.case === c && l.member === i); if (ls.length) units[`${c}@${i}`] = run(ls); });
+    // stability check even without loads
+    if (!cases.length) solve(lay, nodes, D, { dist: [], pts: [], cpl: [] });
+    return { lay, nodes, st, units, cases };
+  }
+
+  // Linear combination: factors {key: f}
+  function combine(res, factors) {
+    const n = res.st.length, V = new Float64Array(n), M = new Float64Array(n), W = new Float64Array(n), q = new Float64Array(n);
+    const reac = res.lay.joints.map(j => ({ x: j.x, R: 0, C: 0, joint: j.i }));
+    for (const [k, f] of Object.entries(factors)) {
+      const g = res.units[k];
+      if (!g || !f) continue;
+      for (let i = 0; i < n; i++) { V[i] += f * g.V[i]; M[i] += f * g.M[i]; W[i] += f * g.W[i]; q[i] += f * g.q[i]; }
+      g.reac.forEach((r, i) => { reac[i].R += f * r.R; reac[i].C += f * r.C; });
+    }
+    return { V, M, W, q, reac };
+  }
+
+  // ---------- BS EN 1990 combinations (UK NA Table NA.A1.2(B) and A1.4) ----------
+  // cases: present load cases among G (permanent) and variable Q, S, W (+ any other names treated as variable).
+  // psi: { Q: [psi0, psi1, psi2], S: [...], W: [...] }. rule: '6.10' | '6.10ab'. pattern: list of pattern-loaded variable cases.
+  // Returns [{ name, ls: 'ULS'|'SLS-char'|'SLS-qp'|'custom', factors }].
+  function subsets(a) { const out = []; for (let m = 0; m < 1 << a.length; m++) out.push(a.filter((_, k) => m & (1 << k))); return out; }
+  function en1990(res, { rule = '6.10ab', psi = {}, pattern = [], sls = true } = {}) {
+    const vars = res.cases.filter(c => c !== 'G');
+    const hasG = res.cases.includes('G');
+    const ps = c => psi[c] || [0.7, 0.5, 0.3];
+    // each variable case either as a whole or (pattern) as any non-empty subset of its loaded members
+    const variants = c => {
+      if (!pattern.includes(c)) return [{ label: c, f: { [c]: 1 } }];
+      const ms = Object.keys(res.units).filter(k => k.startsWith(c + '@')).map(k => +k.split('@')[1]);
+      return subsets(ms).filter(s => s.length).map(s => ({ label: s.length === ms.length ? c : `${c}[${s.map(i => i + 1).join(',')}]`, f: Object.fromEntries(s.map(i => [`${c}@${i}`, 1])) }));
+    };
+    const out = [];
+    const add = (name, ls, f) => out.push({ name, ls, factors: f });
+    const gSets = rule === '6.10' ? [['1.35G', 1.35], ['1.00G', 1.0]] : null;
+    for (const sub of subsets(vars)) {
+      const leads = sub.length ? sub : [null];
+      const choices = sub.map(variants);
+      // cartesian product of variants of the variables in the subset
+      let prods = [[]];
+      for (const ch of choices) prods = prods.flatMap(p => ch.map(v => [...p, v]));
+      for (const prod of prods) {
+        for (const lead of leads) {
+          const parts = (gF, leadF, accF) => {
+            const f = {}; let txt = [];
+            if (hasG && gF) { f.G = gF; txt.push(`${gF.toFixed(2)}G`); }
+            prod.forEach((v, k) => { const c = sub[k], fac = c === lead ? leadF : accF * ps(c)[0];
+              for (const [kk, vv] of Object.entries(v.f)) f[kk] = (f[kk] || 0) + vv * fac;
+              txt.push(`${fac.toFixed(2)}${v.label}`); });
+            return [f, txt.join(' + ')];
+          };
+          if (rule === '6.10') {
+            for (const [, g] of gSets) { const [f, t] = parts(g, 1.5, 1.5); add(`6.10: ${t}`, 'ULS', f); }
+          } else {
+            if (lead === sub[0] || lead === null) {           // 6.10a does not depend on the leading action
+              const [f, t] = parts(1.35, 1.5 * (lead ? ps(lead)[0] : 1), 1.5); add(`6.10a: ${t}`, 'ULS', f);
+            }
+            for (const g of [0.925 * 1.35, 1.0]) { const [f, t] = parts(g, 1.5, 1.5); add(`6.10b: ${t}`, 'ULS', f); }
+          }
+          if (sls) { const [f, t] = parts(1.0, 1.0, 1.0); add(`SLS char.: ${t}`, 'SLS', f); }
+        }
+      }
+    }
+    // remove exact duplicates
+    const seen = new Set();
+    return out.filter(c => { const k = c.ls + JSON.stringify(Object.entries(c.factors).filter(([, v]) => v).sort()); if (seen.has(k)) return false; seen.add(k); return true; });
+  }
+
+  function envelope(res, combos) {
+    const n = res.st.length, e = { Mmax: new Float64Array(n).fill(-Infinity), Mmin: new Float64Array(n).fill(Infinity), Vmax: new Float64Array(n).fill(-Infinity), Vmin: new Float64Array(n).fill(Infinity),
+      Wmax: new Float64Array(n).fill(-Infinity), Wmin: new Float64Array(n).fill(Infinity), memPeaks: res.lay.mem.map(() => ({ max: -Infinity, min: Infinity, xmax: null, xmin: null })), reac: res.lay.joints.map(j => ({ x: j.x, Rmax: -Infinity, Rmin: Infinity, Cmax: -Infinity, Cmin: Infinity, RmaxBy: null, RminBy: null })), gov: {} };
+    for (const cb of combos) {
+      const c = combine(res, cb.factors);
+      for (let i = 0; i < n; i++) {
+        if (c.M[i] > e.Mmax[i]) e.Mmax[i] = c.M[i]; if (c.M[i] < e.Mmin[i]) e.Mmin[i] = c.M[i];
+        if (c.V[i] > e.Vmax[i]) e.Vmax[i] = c.V[i]; if (c.V[i] < e.Vmin[i]) e.Vmin[i] = c.V[i];
+        if (c.W[i] > e.Wmax[i]) e.Wmax[i] = c.W[i]; if (c.W[i] < e.Wmin[i]) e.Wmin[i] = c.W[i];
+      }
+      peaks(res, c).forEach((p, mi) => { const m = e.memPeaks[mi];
+        if (p.max > m.max) { m.max = p.max; m.xmax = p.xmax; m.maxBy = cb.name; } if (p.min < m.min) { m.min = p.min; m.xmin = p.xmin; m.minBy = cb.name; } });
+      c.reac.forEach((r, i) => { const t = e.reac[i];
+        if (r.R > t.Rmax) { t.Rmax = r.R; t.RmaxBy = cb.name; } if (r.R < t.Rmin) { t.Rmin = r.R; t.RminBy = cb.name; }
+        t.Cmax = Math.max(t.Cmax, r.C); t.Cmin = Math.min(t.Cmin, r.C); });
+    }
+    return e;
+  }
+  // Moment peaks between stations: where V changes sign between two stations of the same member, M(x) is quadratic
+  // (linear V), so M_peak = M_a + V_a (x0 - x_a)/2 exactly for uniform load.
+  function peaks(res, c) {
+    const out = res.lay.mem.map(() => ({ max: -Infinity, xmax: null, min: Infinity, xmin: null }));
+    const st = res.st;
+    for (let k = 0; k < st.length; k++) {
+      const s = st[k], o = out[s.mem];
+      if (!o) continue;
+      if (c.M[k] > o.max) { o.max = c.M[k]; o.xmax = s.x; } if (c.M[k] < o.min) { o.min = c.M[k]; o.xmin = s.x; }
+      const t = st[k + 1];
+      if (!t || t.mem !== s.mem || t.x - s.x < 1e-9) continue;
+      const Va = c.V[k], Vb = c.V[k + 1];
+      if (Va * Vb < 0) {
+        const x0 = s.x + Va / (Va - Vb) * (t.x - s.x), Mp = c.M[k] + Va * (x0 - s.x) / 2;
+        if (Mp > o.max) { o.max = Mp; o.xmax = x0; } if (Mp < o.min) { o.min = Mp; o.xmin = x0; }
+      }
+    }
+    return out;
+  }
+  // maxima per member from a result set (combination or envelope arrays)
+  function memberExtremes(res, arrs) {
+    return res.lay.mem.map((m, mi) => {
+      const o = { mem: mi, Mmax: -Infinity, xMmax: null, Mmin: Infinity, xMmin: null, Vabs: 0, xV: null, Wabs: 0, xW: null };
+      res.st.forEach((s, k) => {
+        if (s.mem !== mi) return;
+        const Mx = arrs.Mmax ? arrs.Mmax[k] : arrs.M[k], Mn = arrs.Mmin ? arrs.Mmin[k] : arrs.M[k];
+        const Vb = arrs.Vmax ? Math.max(Math.abs(arrs.Vmax[k]), Math.abs(arrs.Vmin[k])) : Math.abs(arrs.V[k]);
+        const Wb = arrs.Wmax ? (Math.abs(arrs.Wmax[k]) > Math.abs(arrs.Wmin[k]) ? arrs.Wmax[k] : arrs.Wmin[k]) : arrs.W[k];
+        if (Mx > o.Mmax) { o.Mmax = Mx; o.xMmax = s.x; } if (Mn < o.Mmin) { o.Mmin = Mn; o.xMmin = s.x; }
+        if (Vb > o.Vabs) { o.Vabs = Vb; o.xV = s.x; } if (Math.abs(Wb) > Math.abs(o.Wabs)) { o.Wabs = Wb; o.xW = s.x; }
+      });
+      return o;
+    });
+  }
+  return { layout, analyse, combine, en1990, envelope, memberExtremes, peaks };
+})();
+if (typeof module !== 'undefined') module.exports = { BeamFE };
+
+</script>
+<script id="ui">
+'use strict';
+const $ = id => document.getElementById(id);
+const STORE = 'et-beam-analysis-v1';
+const kN = v => v / 1e3, kNm = v => v / 1e6;
+const fmt = (v, d = 1) => (v === Infinity ? '&infin;' : v === -Infinity ? '&minus;&infin;' : Number.isFinite(v) ? v.toFixed(d) : '&ndash;');
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const SECS = [...SECTION_DATA, ...PFC_DATA];
+const CASES = { G: 'G permanent', Q: 'Q imposed', S: 'S snow', W: 'W wind' };
+
+// ---------- members ----------
+function memRow(m = { L: 6, E: 210, I: 30000, sec: '' }) {
+  const d = document.createElement('div'); d.className = 'row mem';
+  d.innerHTML = `<div><label class="mname">Member</label><input class="L" type="number" step="0.1" min="0.1" value="${m.L}" title="Length (m)"></div>
+    <div><label>E kN/mm²</label><input class="E" type="number" step="1" value="${m.E}"></div>
+    <div><label>I cm⁴</label><input class="I" type="number" step="10" value="${m.I}"></div>
+    <div><label>Steel section (sets I)</label><select class="sec"><option value="">&ndash; none &ndash;</option>${SECS.map(r => `<option${r[0] === m.sec ? ' selected' : ''}>${r[0]}</option>`).join('')}</select></div>
+    <button class="xbtn" title="Remove member">&times;</button>`;
+  d.querySelector('.sec').onchange = e => { const r = SECS.find(x => x[0] === e.target.value); if (r) { d.querySelector('.I').value = r[8]; d.querySelector('.E').value = 210; } };
+  d.querySelector('.xbtn').onclick = () => { if ($('memRows').children.length > 1) { d.remove(); syncJoints(); refreshMembers(); } };
+  d.querySelector('.L').oninput = () => drawPreview();
+  $('memRows').appendChild(d);
+}
+function members() { return [...document.querySelectorAll('#memRows .row')].map(d => ({ L: +d.querySelector('.L').value, E: +d.querySelector('.E').value, I: +d.querySelector('.I').value, sec: d.querySelector('.sec').value })); }
+function memberNames(js = joints()) {
+  const ms = members();
+  return ms.map((m, i) => (js[i] && js[i].sup === 'free' && i === 0) || (js[i + 1] && js[i + 1].sup === 'free' && i === ms.length - 1) ? `Cantilever ${i + 1}` : `Member ${i + 1}`);
+}
+// ---------- joints ----------
+const SUPS = { free: 'Free', pin: 'Pinned', fixed: 'Fixed', spring: 'Spring' };
+function jntRow(j = { sup: 'pin', kv: '', kr: '', hinge: false }, i, internal) {
+  const d = document.createElement('div'); d.className = 'row jnt';
+  d.innerHTML = `<div><label>Joint ${String.fromCharCode(65 + i)}</label><select class="sup">${Object.entries(SUPS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
+    <div><label>&nbsp;</label><span class="help xpos"></span></div>
+    <div><label>k<sub>v</sub></label><input class="kv" type="number" step="1" value="${j.kv ?? ''}" placeholder="&ndash;"></div>
+    <div><label>k<sub>&theta;</sub></label><input class="kr" type="number" step="100" value="${j.kr ?? ''}" placeholder="&ndash;"></div>
+    <div><label>&nbsp;</label>${internal ? `<label class="chk" style="margin:0"><input type="checkbox" class="hinge"${j.hinge ? ' checked' : ''}> hinge</label>` : ''}</div>`;
+  d.querySelector('.sup').value = j.sup;
+  const upd = () => { const sp = d.querySelector('.sup').value === 'spring'; d.querySelector('.kv').disabled = !sp; d.querySelector('.kr').disabled = !sp; refreshMembers(); };
+  d.querySelector('.sup').onchange = upd; upd();
+  return d;
+}
+function joints() { return [...document.querySelectorAll('#jntRows .row')].map(d => ({ sup: d.querySelector('.sup').value, kv: d.querySelector('.kv').value, kr: d.querySelector('.kr').value, hinge: !!d.querySelector('.hinge')?.checked })); }
+function syncJoints(prev = joints()) {
+  const n = members().length + 1, box = $('jntRows');
+  box.innerHTML = '';
+  for (let i = 0; i < n; i++) box.appendChild(jntRow(prev[i] || { sup: 'pin' }, i, i > 0 && i < n - 1));
+  drawPreview();
+}
+// ---------- loads ----------
+const LOAD_TYPES = { udl: 'UDL, full length', pudl: 'Partial UDL', vdl: 'Trapezoidal', point: 'Point load', moment: 'Couple (clockwise +)' };
+function loadRow(l = { case: 'G', member: 0, type: 'udl', w: 5 }) {
+  const d = document.createElement('div'); d.className = 'row load';
+  d.innerHTML = `<div><label>Case</label><select class="cs">${Object.keys(CASES).map(c => `<option value="${c}">${c}</option>`).join('')}</select></div>
+    <div><label>Member</label><select class="mem"></select></div>
+    <div><label>Type</label><select class="ty">${Object.entries(LOAD_TYPES).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
+    <button class="xbtn" title="Remove load">&times;</button><div class="vals"></div>`;
+  d.querySelector('.cs').value = l.case; d.querySelector('.ty').value = l.type; d.dataset.member = l.member;
+  d._vals = { w: l.w ?? 5, w1: l.w1 ?? 0, w2: l.w2 ?? 5, P: l.P ?? 20, M: l.M ?? 10, a: l.a ?? 1, b: l.b ?? 3 };
+  d.querySelector('.ty').onchange = () => renderVals(d);
+  d.querySelector('.mem').onchange = e => { d.dataset.member = e.target.value; drawPreview(); };
+  d.querySelector('.xbtn').onclick = () => { d.remove(); drawPreview(); };
+  $('loadRows').appendChild(d); renderVals(d); refreshMembers();
+}
+function renderVals(d) {
+  const v = d._vals, t = d.querySelector('.ty').value;
+  const f = (k, lab, step = 0.1) => `<div><label>${lab}</label><input data-k="${k}" type="number" step="${step}" value="${v[k]}"></div>`;
+  const map = { udl: [f('w', 'w kN/m')], pudl: [f('w', 'w kN/m'), f('a', 'from a m'), f('b', 'to b m')], vdl: [f('w1', 'w₁ kN/m'), f('w2', 'w₂ kN/m'), f('a', 'from a m'), f('b', 'to b m')],
+    point: [f('P', 'P kN', 1), f('a', 'at a m')], moment: [f('M', 'M kNm', 1), f('a', 'at a m')] };
+  const box = d.querySelector('.vals'); box.innerHTML = map[t].join('');
+  box.querySelectorAll('input').forEach(i => i.oninput = () => { v[i.dataset.k] = +i.value; drawPreview(); });
+  drawPreview();
+}
+function refreshMembers() {
+  const names = memberNames();
+  document.querySelectorAll('#memRows .row').forEach((d, i) => d.querySelector('.mname').textContent = names[i]);
+  let x = 0; const ms = members();
+  document.querySelectorAll('#jntRows .row').forEach((d, i) => { d.querySelector('.xpos').textContent = `x = ${x.toFixed(2)} m`; x += ms[i] ? ms[i].L : 0; });
+  document.querySelectorAll('#loadRows .row').forEach(d => {
+    const sel = d.querySelector('.mem'), cur = Math.min(+d.dataset.member || 0, names.length - 1);
+    sel.innerHTML = names.map((nm, i) => `<option value="${i}">${nm}</option>`).join(''); sel.value = cur; d.dataset.member = cur;
+  });
+  drawPreview();
+}
+// ---------- custom combinations ----------
+function cmbRow(c = { name: 'Custom', ls: 'ULS', G: 1.35, Q: 1.5, S: 0, W: 0 }) {
+  const d = document.createElement('div'); d.className = 'row cmb';
+  d.innerHTML = `<div><label>Name</label><input class="nm" type="text" value="${esc(c.name)}"></div>
+    <div><label>Limit state</label><select class="ls"><option>ULS</option><option>SLS</option></select></div>
+    ${['G', 'Q', 'S', 'W'].map(k => `<div><label>&gamma;${k}</label><input class="f${k}" type="number" step="0.05" value="${c[k]}"></div>`).join('')}
+    <button class="xbtn" title="Remove">&times;</button>`;
+  d.querySelector('.ls').value = c.ls; d.querySelector('.xbtn').onclick = () => d.remove();
+  $('cmbRows').appendChild(d);
+}
+function customs() { return [...document.querySelectorAll('#cmbRows .row')].map(d => ({ name: d.querySelector('.nm').value || 'Custom', ls: d.querySelector('.ls').value, G: +d.querySelector('.fG').value, Q: +d.querySelector('.fQ').value, S: +d.querySelector('.fS').value, W: +d.querySelector('.fW').value })); }
+
+// ---------- state ----------
+function collect() {
+  return { v: 1, proj: { name: $('pName').value, job: $('pJob').value, by: $('pBy').value, ref: $('pRef').value },
+    members: members(), joints: joints(), sw: $('sw').checked,
+    loads: [...document.querySelectorAll('#loadRows .row')].map(d => ({ case: d.querySelector('.cs').value, member: +d.dataset.member, type: d.querySelector('.ty').value, ...d._vals })),
+    rule: $('rule').value, psiQ: $('psiQ').value, psiS: $('psiS').value, psiW: $('psiW').value, pattern: $('pattern').checked, customs: customs() };
+}
+function restore(s) {
+  $('pName').value = s.proj.name || ''; $('pJob').value = s.proj.job || ''; $('pBy').value = s.proj.by || ''; $('pRef').value = s.proj.ref || '';
+  $('memRows').innerHTML = ''; s.members.forEach(memRow); syncJoints(s.joints);
+  $('loadRows').innerHTML = ''; s.loads.forEach(loadRow); $('sw').checked = !!s.sw;
+  $('rule').value = s.rule; $('psiQ').value = s.psiQ; $('psiS').value = s.psiS; $('psiW').value = s.psiW; $('pattern').checked = s.pattern;
+  $('cmbRows').innerHTML = ''; (s.customs || []).forEach(cmbRow); refreshMembers();
+}
+function save() { try { localStorage.setItem(STORE, JSON.stringify(collect())); } catch (e) { /* storage unavailable */ } }
+function loadState() { try { return JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { return null; } }
+
+// ---------- model ----------
+function buildModel(s) {
+  if (!s.members.length) throw new Error('Add at least one member');
+  const ms = s.members.map((m, i) => {
+    if (!(m.L > 0)) throw new Error(`Member ${i + 1}: length must be positive`);
+    if (!(m.E > 0 && m.I > 0)) throw new Error(`Member ${i + 1}: E and I must be positive`);
+    return { L: m.L * 1000, EI: m.E * 1e3 * m.I * 1e4 };
+  });
+  const js = s.joints.map((j, i) => {
+    const o = { sup: j.sup, hinge: j.hinge };
+    if (j.sup === 'spring') {
+      o.kv = j.kv === '' ? 0 : +j.kv * 1e3;                      // kN/mm -> N/mm
+      o.kr = j.kr === '' ? 0 : +j.kr * 1e6;                      // kNm/rad -> N mm/rad
+      if (!(o.kv > 0) && !(o.kr > 0)) throw new Error(`Joint ${String.fromCharCode(65 + i)}: give a spring stiffness`);
+    }
+    return o;
+  });
+  const loads = s.loads.map((l, i) => {
+    const L = s.members[l.member].L * 1000, o = { case: l.case, member: l.member, type: l.type };
+    const pos = (x, nm) => { if (!(x >= -1e-6 && x <= L + 1e-6)) throw new Error(`Load ${i + 1}: ${nm} = ${x / 1000} m is outside member ${l.member + 1} (${L / 1000} m)`); return Math.min(L, Math.max(0, x)); };
+    if (l.type === 'udl') o.w = l.w;
+    if (l.type === 'pudl') { o.w = l.w; o.a = pos(l.a * 1000, 'a'); o.b = pos(l.b * 1000, 'b'); if (o.b <= o.a) throw new Error(`Load ${i + 1}: b must exceed a`); }
+    if (l.type === 'vdl') { o.w1 = l.w1; o.w2 = l.w2; o.a = pos(l.a * 1000, 'a'); o.b = pos(l.b * 1000, 'b'); if (o.b <= o.a) throw new Error(`Load ${i + 1}: b must exceed a`); }
+    if (l.type === 'point') { o.P = l.P * 1e3; o.a = pos(l.a * 1000, 'a'); }
+    if (l.type === 'moment') { o.M = l.M * 1e6; o.a = pos(l.a * 1000, 'a'); }
+    return o;
+  });
+  if (s.sw) s.members.forEach((m, i) => { const r = SECS.find(x => x[0] === m.sec); if (r) loads.push({ case: 'G', member: i, type: 'udl', w: r[1] * 9.80665e-3, sw: true }); });
+  return { members: ms, joints: js, loads };
+}
+function psiOf(s) { return { Q: [s.psiQ === '1.0' ? 1.0 : 0.7, 0.5, 0.3], S: [+s.psiS, 0.2, 0], W: [+s.psiW, 0.2, 0] }; }
+
+// ---------- drawing ----------
+const W = 760, PADL = 46, PADR = 24;
+function xmap(Ltot) { const s = (W - PADL - PADR) / Ltot; return x => PADL + x * s; }
+function svgBeam(lay, loads, light) {
+  const X = xmap(lay.Ltot), y = 62, col = light ? '#000' : 'var(--txt)', acc = light ? '#b06000' : 'var(--accent)', mut = light ? '#555' : 'var(--mut)';
+  const caseCol = { G: col, Q: acc, S: light ? '#0060b0' : '#6cb6ff', W: light ? '#7a3eb0' : '#c792ea' };
+  let g = `<line x1="${X(0)}" y1="${y}" x2="${X(lay.Ltot)}" y2="${y}" stroke="${col}" stroke-width="3"/>`;
+  for (const j of lay.joints) {
+    const x = X(j.x);
+    if (j.sup === 'fixed') g += `<line x1="${x}" y1="${y - 16}" x2="${x}" y2="${y + 16}" stroke="${col}" stroke-width="2"/>` + [...Array(5)].map((_, k) => `<line x1="${x}" y1="${y - 14 + k * 7}" x2="${x + (j.x === 0 ? -7 : 7)}" y2="${y - 19 + k * 7}" stroke="${mut}"/>`).join('');
+    else if (j.sup === 'pin') g += `<path d="M${x} ${y + 2} l-8 13 h16 z" fill="none" stroke="${col}" stroke-width="1.5"/>`;
+    else if (j.sup === 'spring') g += `<path d="M${x} ${y + 2} l0 3 l-5 2 l10 3 l-10 3 l10 3 l-5 2 l0 3 M${x - 8} ${y + 21} h16" fill="none" stroke="${col}" stroke-width="1.2"/>`;
+    if (j.hinge) g += `<circle cx="${x}" cy="${y}" r="4" fill="${light ? '#fff' : 'var(--surf)'}" stroke="${col}" stroke-width="1.5"/>`;
+    g += `<text x="${x}" y="${y + 36}" text-anchor="middle" font-size="10" fill="${mut}" font-family="monospace">${String.fromCharCode(65 + j.i)}</text>`;
+  }
+  lay.mem.forEach(m => { g += `<text x="${(X(m.x0) + X(m.x1)) / 2}" y="${y + 36}" text-anchor="middle" font-size="10" fill="${mut}" font-family="monospace">${(m.L / 1000).toFixed(2)} m</text>`; });
+  const lvl = { G: 0, Q: 1, S: 2, W: 3 };
+  for (const l of loads) {
+    const m = lay.mem[l.member]; if (!m) continue;
+    const c = caseCol[l.case] || col, top = y - 22 - 9 * (lvl[l.case] || 0);
+    if (l.type === 'udl' || l.type === 'pudl' || l.type === 'vdl') {
+      const a = l.type === 'udl' ? 0 : l.a, b = l.type === 'udl' ? m.L : l.b;
+      g += `<rect x="${X(m.x0 + a)}" y="${top}" width="${Math.max(1, X(m.x0 + b) - X(m.x0 + a))}" height="7" fill="none" stroke="${c}" stroke-width="1"/>`;
+    } else if (l.type === 'point') { const x = X(m.x0 + l.a); g += `<line x1="${x}" y1="${y - 52}" x2="${x}" y2="${y - 5}" stroke="${c}" stroke-width="1.5"/><path d="M${x} ${y - 3} l-4 -7 h8 z" fill="${c}"/>`; }
+    else if (l.type === 'moment') { const x = X(m.x0 + l.a); g += `<path d="M${x - 9} ${y - 6} a 10 10 0 1 1 18 0" fill="none" stroke="${c}" stroke-width="1.5"/>`; }
+  }
+  g += Object.entries(CASES).map(([k], i) => `<text x="${PADL + i * 54}" y="12" font-size="10" fill="${caseCol[k]}" font-family="monospace">${k} ▭</text>`).join('');
+  return `<svg class="${light ? 'rsvg' : 'diag'}" viewBox="0 0 ${W} 104">${g}</svg>`;
+}
+function svgPlot(lay, st, hi, lo, unit, scaleTo, light, invert, dec = 1) {
+  const X = xmap(lay.Ltot), H = 150, y0 = 75;
+  const vmax = Math.max(1e-9, ...hi.map(Math.abs), ...lo.map(Math.abs));
+  const sc = (H / 2 - 16) / vmax, Y = v => y0 + (invert ? 1 : -1) * v * sc;
+  const col = light ? '#000' : 'var(--txt)', mut = light ? '#777' : 'var(--faint)', fillHi = light ? 'rgba(0,90,200,.18)' : 'rgba(255,176,0,.22)', fillLo = light ? 'rgba(200,0,0,.14)' : 'rgba(62,207,142,.18)';
+  const path = arr => st.map((s, k) => `${k ? 'L' : 'M'}${X(s.x).toFixed(1)} ${Y(arr[k]).toFixed(1)}`).join(' ');
+  const close = `L${X(st[st.length - 1].x)} ${y0} L${X(st[0].x)} ${y0} Z`;
+  let g = `<line x1="${X(0)}" y1="${y0}" x2="${X(lay.Ltot)}" y2="${y0}" stroke="${mut}"/>`;
+  g += `<path d="${path(hi)} ${close}" fill="${fillHi}" stroke="${col}" stroke-width="1"/>`;
+  if (lo !== hi) g += `<path d="${path(lo)} ${close}" fill="${fillLo}" stroke="${col}" stroke-width="1"/>`;
+  const label = (arr, pick) => { let k = 0; arr.forEach((v, i) => { if (pick(v, arr[k])) k = i; }); const v = arr[k]; if (Math.abs(v) < vmax * 0.02) return '';
+    return `<text x="${X(st[k].x)}" y="${Y(v) + ((invert ? v > 0 : v < 0) ? 12 : -4)}" text-anchor="middle" font-size="10" font-family="monospace" fill="${col}">${(v / scaleTo).toFixed(dec)}</text>`; };
+  g += label(hi, (a, b) => a > b) + label(lo, (a, b) => a < b);
+  g += `<text x="4" y="12" font-size="10" fill="${mut}" font-family="monospace">${unit}</text>`;
+  return `<svg class="${light ? 'rsvg' : 'diag'}" viewBox="0 0 ${W} ${H}">${g}</svg>`;
+}
+function drawPreview() {
+  if (!$('results').dataset.ran) {
+    try { const s = collect(), m = buildModel(s), lay = BeamFE.layout(m); $('results').innerHTML = `<div class="dlabel">Model</div>${svgBeam(lay, m.loads, false)}<div class="placeholder" style="min-height:120px">Analyse to see moments, shears, deflections and reactions.</div>`; } catch (e) { /* incomplete input */ }
+  }
+}
+
+// ---------- analysis ----------
+let LAST = null;
+function run(s) {
+  const model = buildModel(s), t0 = performance.now();
+  const pattern = s.pattern && s.members.length > 1 ? ['Q'] : [];
+  const res = BeamFE.analyse(model, { nDiv: 40, pattern });
+  const psi = psiOf(s);
+  const combos = BeamFE.en1990(res, { rule: s.rule, psi, pattern });
+  for (const c of s.customs) {
+    const f = {};
+    for (const k of ['G', 'Q', 'S', 'W']) if (c[k] && res.units[k]) f[k] = c[k];
+    combos.push({ name: `${c.name}: ${['G', 'Q', 'S', 'W'].filter(k => c[k]).map(k => c[k].toFixed(2) + k).join(' + ')}`, ls: c.ls, factors: f, custom: true });
+  }
+  const uls = combos.filter(c => c.ls === 'ULS'), sls = combos.filter(c => c.ls === 'SLS');
+  const envU = uls.length ? BeamFE.envelope(res, uls) : null, envS = sls.length ? BeamFE.envelope(res, sls) : null;
+  const unit = Object.fromEntries(res.cases.map(c => [c, BeamFE.combine(res, { [c]: 1 })]));
+  return { s, model, res, combos, uls, sls, envU, envS, unit, ms: performance.now() - t0 };
+}
+function viewOptions(R) {
+  const o = [];
+  if (R.envU) o.push(['envU', `ULS envelope (${R.uls.length} combinations)`]);
+  if (R.envS) o.push(['envS', `SLS characteristic envelope (${R.sls.length})`]);
+  R.res.cases.forEach(c => o.push(['case:' + c, `Load case ${CASES[c] || c}, unfactored`]));
+  R.combos.forEach((c, i) => o.push(['cmb:' + i, `${c.ls} ${c.name}`]));
+  return o;
+}
+function viewData(R, key) {
+  if (key === 'envU' || key === 'envS') { const e = R[key]; return { M: [e.Mmax, e.Mmin], V: [e.Vmax, e.Vmin], W: [e.Wmax, e.Wmin], env: e }; }
+  const c = key.startsWith('case:') ? R.unit[key.slice(5)] : BeamFE.combine(R.res, R.combos[+key.slice(4)].factors);
+  return { M: [c.M, c.M], V: [c.V, c.V], W: [c.W, c.W], comb: c };
+}
+function maxTable(R, key, light) {
+  const lay = R.res.lay, names = memberNames(R.s.joints), d = viewData(R, key);
+  let rows;
+  if (d.env) rows = lay.mem.map((m, i) => { const p = d.env.memPeaks[i], x = BeamFE.memberExtremes(R.res, d.env)[i]; return [names[i], p.max, p.xmax, p.min, p.xmin, x.Vabs, x.Wabs]; });
+  else { const pk = BeamFE.peaks(R.res, d.comb), ex = BeamFE.memberExtremes(R.res, d.comb); rows = lay.mem.map((m, i) => [names[i], pk[i].max, pk[i].xmax, pk[i].min, pk[i].xmin, ex[i].Vabs, ex[i].Wabs]); }
+  const cls = light ? 'rt' : 't';
+  return `<table class="${cls}"><tr><th>Member</th><th>M<sub>max</sub> kNm</th><th>at x m</th><th>M<sub>min</sub> kNm</th><th>at x m</th><th>|V|<sub>max</sub> kN</th><th>&delta;<sub>max</sub> mm</th></tr>` +
+    rows.map(r => `<tr><td>${r[0]}</td><td>${fmt(kNm(Math.max(0, r[1])))}</td><td>${r[1] > 1e3 ? fmt(r[2] / 1000, 2) : '&ndash;'}</td><td>${fmt(kNm(Math.min(0, r[3])))}</td><td>${r[3] < -1e3 ? fmt(r[4] / 1000, 2) : '&ndash;'}</td><td>${fmt(kN(r[5]))}</td><td>${fmt(r[6], 2)}</td></tr>`).join('') + `</table>`;
+}
+function reacTable(R, light) {
+  const lay = R.res.lay, cls = light ? 'rt' : 't', sup = lay.joints.filter(j => j.sup !== 'free');
+  const cases = R.res.cases;
+  return `<table class="${cls}"><tr><th>Joint</th><th>x m</th>${cases.map(c => `<th>${c}<sub>k</sub></th>`).join('')}${R.envU ? '<th>ULS max</th><th>ULS min</th>' : ''}${R.envS ? '<th>SLS max</th>' : ''}</tr>` +
+    sup.map(j => `<tr><td>${String.fromCharCode(65 + j.i)} (${SUPS[j.sup].toLowerCase()})</td><td>${fmt(j.x / 1000, 2)}</td>${cases.map(c => `<td>${fmt(kN(R.unit[c].reac[j.i].R))}</td>`).join('')}` +
+      (R.envU ? `<td>${fmt(kN(R.envU.reac[j.i].Rmax))}</td><td>${fmt(kN(R.envU.reac[j.i].Rmin))}</td>` : '') + (R.envS ? `<td>${fmt(kN(R.envS.reac[j.i].Rmax))}</td>` : '') + `</tr>`).join('') + `</table>` +
+    (sup.some(j => j.sup === 'fixed' || (j.sup === 'spring' && j.kr > 0)) ? `<table class="${cls}"><tr><th>Moment reaction (kNm, clockwise +)</th>${cases.map(c => `<th>${c}<sub>k</sub></th>`).join('')}${R.envU ? '<th>ULS max</th><th>ULS min</th>' : ''}</tr>` +
+      sup.filter(j => j.sup === 'fixed' || (j.sup === 'spring' && j.kr > 0)).map(j => `<tr><td>${String.fromCharCode(65 + j.i)}</td>${cases.map(c => `<td>${fmt(kNm(R.unit[c].reac[j.i].C))}</td>`).join('')}${R.envU ? `<td>${fmt(kNm(R.envU.reac[j.i].Cmax))}</td><td>${fmt(kNm(R.envU.reac[j.i].Cmin))}</td>` : ''}</tr>`).join('') + `</table>` : '');
+}
+function render(R, key) {
+  const lay = R.res.lay, st = R.res.st, d = viewData(R, key);
+  let h = `<div class="viewsel"><span class="dlabel" style="margin:0">Show</span><select id="view">${viewOptions(R).map(([k, t]) => `<option value="${k}"${k === key ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`;
+  h += `<div class="dlabel">Model</div>${svgBeam(lay, R.model.loads, false)}`;
+  h += `<div class="dlabel">Bending moment (kNm, sagging plotted below)</div>${svgPlot(lay, st, d.M[0], d.M[1], 'kNm', 1e6, false, true)}`;
+  h += `<div class="dlabel">Shear force (kN)</div>${svgPlot(lay, st, d.V[0], d.V[1], 'kN', 1e3, false, false)}`;
+  h += `<div class="dlabel">Deflection (mm, downward plotted below)</div>${svgPlot(lay, st, d.W[0], d.W[1], 'mm', 1, false, true, 2)}`;
+  h += `<div class="dlabel">Member maxima</div>${maxTable(R, key, false)}`;
+  h += `<div class="dlabel">Reactions (kN, upward +)</div>${reacTable(R, false)}`;
+  h += `<div class="note">${notes(R).join('<br>')}</div>`;
+  h += `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  $('results').innerHTML = h;
+  $('view').onchange = e => render(R, e.target.value);
+  $('printBtn').onclick = () => { $('report').innerHTML = report(R); window.print(); };
+}
+function notes(R) {
+  const n = [`Linear elastic analysis, cubic beam elements (shear deformation neglected); ${R.res.st.length} result stations; peak span moments located exactly where the shear changes sign.`,
+    `ULS: BS EN 1990 ${R.s.rule === '6.10' ? 'expression 6.10' : 'expressions 6.10a and 6.10b (&xi; = 0.925)'} with the UK NA (Table NA.A1.2(B)); every variable action taken in turn as leading, the others at &psi;<sub>0</sub>; permanent actions also at &gamma;<sub>G,inf</sub> = 1.0. SLS: characteristic combination (6.14b).`];
+  if (R.s.pattern && R.s.members.length > 1) n.push('Imposed loads (Q) pattern-loaded member by member.');
+  if (R.combos.some(c => c.custom)) n.push('Custom combinations are included in the envelopes of their limit state.');
+  if (R.s.sw) n.push('Self-weight from the selected steel sections added as permanent load.');
+  return n;
+}
+
+// ---------- A4 calculation sheet ----------
+const rl = (txt, cl, val, cls = '') => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv ${cls}">${val}</div></div>`;
+function report(R) {
+  const s = R.s, lay = R.res.lay, st = R.res.st, today = new Date().toLocaleDateString('en-GB'), names = memberNames(s.joints);
+  const head = `<div class="rh"><div><b>Project</b>${esc(s.proj.name) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.proj.job) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.proj.by) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.proj.ref) || '&nbsp;'}</div>
+    <div class="ttl">Beam analysis &mdash; ${lay.mem.length} member${lay.mem.length > 1 ? 's' : ''}, ${(lay.Ltot / 1000).toFixed(2)} m</div></div>`;
+  let b = `<div class="rs"><h2>1 Model</h2>${svgBeam(lay, R.model.loads, true)}<table class="rt"><tr><th>Member</th><th>L (m)</th><th>E (kN/mm²)</th><th>I (cm⁴)</th><th>Section</th></tr>` +
+    s.members.map((m, i) => `<tr><td>${names[i]}</td><td>${m.L.toFixed(2)}</td><td>${m.E}</td><td>${m.I}</td><td>${esc(m.sec) || '&ndash;'}</td></tr>`).join('') + `</table>` +
+    `<table class="rt"><tr><th>Joint</th><th>x (m)</th><th>Support</th><th>k<sub>v</sub> (kN/mm)</th><th>k<sub>&theta;</sub> (kNm/rad)</th><th>Hinge</th></tr>` +
+    lay.joints.map(j => `<tr><td>${String.fromCharCode(65 + j.i)}</td><td>${(j.x / 1000).toFixed(2)}</td><td>${SUPS[j.sup]}</td><td>${j.sup === 'spring' && j.kv ? fmt(j.kv / 1e3, 1) : '&ndash;'}</td><td>${j.sup === 'spring' && j.kr ? fmt(j.kr / 1e6, 0) : '&ndash;'}</td><td>${j.hinge ? 'yes' : ''}</td></tr>`).join('') + `</table></div>`;
+  b += `<div class="rs"><h2>2 Loads (characteristic)</h2><table class="rt lft"><tr><th>Load</th><th>Case</th><th>Member</th><th>Type</th><th>Value</th><th>Position (m)</th></tr>` +
+    s.loads.map((l, i) => `<tr><td>${i + 1}</td><td>${l.case}</td><td>${names[l.member]}</td><td>${LOAD_TYPES[l.type]}</td><td>${l.type === 'point' ? l.P + ' kN' : l.type === 'moment' ? l.M + ' kNm' : l.type === 'vdl' ? l.w1 + ' &rarr; ' + l.w2 + ' kN/m' : l.w + ' kN/m'}</td><td>${l.type === 'udl' ? 'full' : l.type === 'pudl' || l.type === 'vdl' ? l.a + ' &ndash; ' + l.b : l.a}</td></tr>`).join('') +
+    R.model.loads.filter(l => l.sw).map(l => `<tr><td>&ndash;</td><td>G</td><td>${names[l.member]}</td><td>Self-weight</td><td>${(l.w).toFixed(3)} kN/m</td><td>full</td></tr>`).join('') + `</table></div>`;
+  const psi = psiOf(s);
+  b += `<div class="rs"><h2>3 Combinations</h2><p class="rp">${notes(R).slice(1).join(' ')} &psi;<sub>0</sub>: imposed ${psi.Q[0]}, snow ${psi.S[0]}, wind ${psi.W[0]}. ${R.uls.length} ULS and ${R.sls.length} SLS combinations; governing combinations are listed with the reactions.</p>` +
+    (R.combos.some(c => c.custom) ? rl('Custom combinations', '', R.combos.filter(c => c.custom).map(c => esc(c.name)).join('; ')) : '') + `</div>`;
+  if (R.envU) {
+    b += `<div class="rs"><h2>4 ULS envelope</h2><h3>Bending moment (kNm)</h3>${svgPlot(lay, st, R.envU.Mmax, R.envU.Mmin, 'kNm', 1e6, true, true)}<h3>Shear force (kN)</h3>${svgPlot(lay, st, R.envU.Vmax, R.envU.Vmin, 'kN', 1e3, true, false)}<h3>Member maxima</h3>${maxTable(R, 'envU', true)}` +
+      `<table class="rt lft"><tr><th>Member</th><th>Governing for M<sub>max</sub></th><th>Governing for M<sub>min</sub></th></tr>` + lay.mem.map((m, i) => `<tr><td>${names[i]}</td><td>${esc(R.envU.memPeaks[i].maxBy || '&ndash;')}</td><td>${esc(R.envU.memPeaks[i].minBy || '&ndash;')}</td></tr>`).join('') + `</table></div>`;
+  }
+  if (R.envS) b += `<div class="rs"><h2>5 SLS characteristic envelope</h2><h3>Deflection (mm)</h3>${svgPlot(lay, st, R.envS.Wmax, R.envS.Wmin, 'mm', 1, true, true, 2)}<h3>Member maxima</h3>${maxTable(R, 'envS', true)}</div>`;
+  b += `<div class="rs"><h2>6 Reactions (kN, upward +)</h2>${reacTable(R, true)}` +
+    `<table class="rt lft"><tr><th>Joint</th><th>Governing ULS max</th><th>Governing ULS min</th></tr>` + lay.joints.filter(j => j.sup !== 'free' && R.envU).map(j => `<tr><td>${String.fromCharCode(65 + j.i)}</td><td>${esc(R.envU.reac[j.i].RmaxBy || '')}</td><td>${esc(R.envU.reac[j.i].RminBy || '')}</td></tr>`).join('') + `</table>` +
+    `<h3>Unfactored load cases</h3>` + R.res.cases.map(c => `<p class="rp"><b>${CASES[c] || c}</b></p>${svgPlot(lay, st, R.unit[c].M, R.unit[c].M, 'kNm', 1e6, true, true)}`).join('') +
+    `<p class="rp" style="color:#555">Generated by EngineeringTools &mdash; Beam Analysis. All calculations are the responsibility of the engineer.</p></div>`;
+  return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
+}
+
+// ---------- wiring ----------
+$('addMem').onclick = () => { memRow({ L: 4, E: 210, I: members().slice(-1)[0]?.I || 30000 }); syncJoints(); refreshMembers(); };
+$('addLoad').onclick = () => loadRow({ case: 'Q', member: 0, type: 'udl', w: 5 });
+$('addCmb').onclick = () => cmbRow();
+$('calc').onclick = () => {
+  const s = collect(); save();
+  try { LAST = run(s); $('results').dataset.ran = '1'; render(LAST, LAST.envU ? 'envU' : 'case:' + LAST.res.cases[0]); }
+  catch (e) { $('results').dataset.ran = ''; $('results').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+};
+(function init() {
+  const s = loadState();
+  if (s && s.v === 1) { try { restore(s); return; } catch (e) { /* fall through to defaults */ } }
+  memRow({ L: 6, E: 210, I: 29380, sec: '457×191×67 UKB' }); memRow({ L: 6, E: 210, I: 29380, sec: '457×191×67 UKB' }); memRow({ L: 1.5, E: 210, I: 29380, sec: '457×191×67 UKB' });
+  syncJoints([{ sup: 'pin' }, { sup: 'pin' }, { sup: 'pin' }, { sup: 'free' }]);
+  [0, 1, 2].forEach(m => { loadRow({ case: 'G', member: m, type: 'udl', w: 8 }); loadRow({ case: 'Q', member: m, type: 'udl', w: 10 }); });
+  loadRow({ case: 'W', member: 1, type: 'udl', w: -3 });
+  refreshMembers();
+})();
+</script>
+</body>
+</html>
