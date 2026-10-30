@@ -80,8 +80,11 @@ def section_util(s, fy, N, My, V, Mz=0.0):
     cls = max(flange_class(s, fy), web_class(s, fy, N, bending))
     VRd = shear_res(s, fy)
     uV = abs(V) / VRd
-    rho = (2 * abs(V) / VRd - 1) ** 2 if abs(V) > 0.5 * VRd else 0.0
     hw = s['h'] - 2 * s['tf']
+    eps = math.sqrt(235 / fy)
+    slender = hw / s['tw'] > 72 * eps
+    # 6.2.8 for stocky webs only; webs that need a shear buckling check use EN 1993-1-5 7.1 (below)
+    rho = (2 * abs(V) / VRd - 1) ** 2 if (abs(V) > 0.5 * VRd and not slender) else 0.0
     Aw = hw * s['tw']
     NRd = (aeff(s, fy) if N > 0 else s['A']) * fy
     uN = abs(N) / NRd
@@ -107,6 +110,21 @@ def section_util(s, fy, N, My, V, Mz=0.0):
         Wy = s['Wely'] - rho * s['tw'] * hw ** 3 / (6 * s['h'])
         A = aeff(s, fy) if N > 0 else s['A']
         uM = (abs(N) / A + abs(My) / Wy + abs(Mz) / s['Welz']) / fy
+    if slender:
+        lw = hw / (86.4 * s['tw'] * eps)
+        chiw = 1.0 if lw < 0.83 else 0.83 / lw
+        Vbw = min(chiw, 1.0) * fy * hw * s['tw'] / math.sqrt(3)       # web contribution only
+        eta3 = abs(V) / Vbw
+        if eta3 > 0.5:
+            Af = 2 * s['b'] * s['tf']
+            n = abs(N) / (s['A'] * fy)
+            a = min(0.5, (s['A'] - Af) / s['A'])
+            Mpl = s['Wply'] * fy
+            MplN = Mpl if (abs(N) <= 0.25 * s['A'] * fy and abs(N) <= 0.5 * hw * s['tw'] * fy) else max(0.0, Mpl * (1 - n) / (1 - 0.5 * a))
+            Mf = max(0.0, s['b'] * s['tf'] * (s['h'] - s['tf']) * fy * (1 - abs(N) / (Af * fy)))
+            # eta1 + (1 - Mf/Mpl)(2 eta3 - 1)^2 <= 1, expressed as a utilisation on M
+            Mv = MplN - (MplN - Mf) * (2 * min(1.0, eta3) - 1) ** 2
+            uM = max(uM, 0.0 if abs(My) <= 1e-6 else (abs(My) / Mv if Mv > 0 else math.inf))
     return dict(cls=cls, uV=uV, uM=uM, uN=uN, util=max(uV, uM, uN))
 
 def chi_flex(lam, curve):

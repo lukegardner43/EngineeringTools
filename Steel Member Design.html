@@ -769,6 +769,26 @@ const EC3 = (() => {
     return { Aeff, rhoW, rhoF, cls: k.cls };
   }
 
+  // Effective section modulus for major-axis bending with a Class 4 web, EN 1993-1-5 4.4 and Table 4.1.
+  // Stress ratio from the gross section (4.4(3): effective compression flange + gross web; flanges are Class 1-3 here),
+  // so psi = -1 for this doubly symmetric section. The ineffective strip lies in the compression half of the web.
+  function weffBending(s, fy) {
+    const k = classify(s, fy, 0, true), eps = k.eps;
+    if (k.web.cls < 4) return { Weff: s.Wely, Ieff: s.Iy, rho: 1, lp: null, shift: 0, reduced: false };
+    const c = k.web.c, t = s.tw, psi = -1, ks = 23.9;
+    const lp = (c / t) / (28.4 * eps * Math.sqrt(ks));
+    const rho = lp <= 0.5 + Math.sqrt(0.085 - 0.055 * psi) ? 1 : Math.min(1, (lp - 0.055 * (3 + psi)) / (lp * lp));
+    const bc = c / (1 - psi), beff = rho * bc, be1 = 0.4 * beff, hole = bc - beff;
+    // z measured from the gross centroid, positive towards the compression flange; web element spans +-c/2
+    const zh = c / 2 - be1 - hole / 2, Ah = hole * t;
+    const Aeff = s.A - Ah, shift = -Ah * zh / Aeff;          // centroid moves towards the tension side
+    const Ieff = s.Iy - t * hole ** 3 / 12 - Ah * zh * zh - Aeff * shift * shift;
+    const Weff = Ieff / (s.h / 2 - shift);                  // extreme compression fibre (furthest from the new centroid)
+    return { Weff, Ieff, rho, lp, ks, psi, beff, be1, be2: 0.6 * beff, hole, shift, reduced: rho < 1 };
+  }
+  // Section modulus for bending resistance by class (6.2.5(2))
+  function wyByClass(s, fy, cls) { return cls <= 2 ? s.Wply : cls === 3 ? s.Wely : weffBending(s, fy).Weff; }
+
   // ---------- Shear, 6.2.6 and EN 1993-1-5 5 ----------
   function shear(s, fy) {
     const eps = Math.sqrt(235 / fy), hw = s.h - 2 * s.tf;
@@ -793,7 +813,8 @@ const EC3 = (() => {
     const comp = aeffCompression(s, fy);
     const hw = s.h - 2 * s.tf, Aw = hw * s.tw;
     const uV = Math.abs(V) / sh.VRd;
-    const rho = Math.abs(V) > 0.5 * sh.VRd ? (2 * Math.abs(V) / sh.VRd - 1) ** 2 : 0;
+    // 6.2.8 reduction for stocky webs; webs susceptible to shear buckling use EN 1993-1-5 7.1 instead (below)
+    const rho = !sh.slender && Math.abs(V) > 0.5 * sh.VRd ? (2 * Math.abs(V) / sh.VRd - 1) ** 2 : 0;
     const NRd = N > 0 ? (comp.cls === 4 ? comp.Aeff : s.A) * fy / GM0 : s.A * fy / GM0;
     const out = { cls: cl, shear: sh, rho, uV, NRd, uN: Math.abs(N) / NRd };
     if (cl.cls <= 2) {
@@ -812,11 +833,25 @@ const EC3 = (() => {
       const uNM = Math.abs(Mz) > 1e-6 ? uMy ** ay + uMz ** bz : uMy;          // 6.2.9.1(6), eq. 6.41
       Object.assign(out, { method: 'plastic', Mply, Mplz, MNy, MNz, n, a, allowY, uMy: Math.abs(My) / Mply, uNM, uM: Math.max(uNM, n) });
     } else {
-      const Wy = s.Wely - rho * s.tw * hw ** 3 / (6 * s.h);
+      const W0 = cl.cls === 4 ? weffBending(s, fy).Weff : s.Wely;
+      const Wy = W0 - rho * s.tw * hw ** 3 / (6 * s.h);
       const Aeff = N > 0 ? comp.Aeff : s.A;
       const sig = Math.abs(N) / Aeff + Math.abs(My) / Wy + Math.abs(Mz) / s.Welz;   // 6.2.9.2 / 6.2.9.3, eN = 0
-      Object.assign(out, { method: 'elastic', Wy, Aeff, uNM: sig / (fy / GM0), uMy: Math.abs(My) / (Wy * fy / GM0) });
+      Object.assign(out, { method: cl.cls === 4 ? 'effective' : 'elastic', W0, Wy, Aeff, uNM: sig / (fy / GM0), uMy: Math.abs(My) / (Wy * fy / GM0) });
       out.uM = out.uNM;
+    }
+    if (sh.slender) {               // EN 1993-1-5 7.1(1): eta1 + (1 - Mf,Rd/Mpl,Rd)(2 eta3 - 1)^2 <= 1 for eta3 > 0.5
+      const eta3 = Math.abs(V) / sh.Vb;
+      if (eta3 > 0.5) {
+        const Af = 2 * s.b * s.tf, n = Math.abs(N) / (s.A * fy / GM0), a = Math.min(0.5, (s.A - Af) / s.A);
+        const Mpl = s.Wply * fy / GM0;                                     // irrespective of class (7.1(1))
+        const MplN = Math.max(0, n <= Math.min(0.25, 0.5 * hw * s.tw / s.A) ? Mpl : Mpl * (1 - n) / (1 - 0.5 * a));   // 6.2.9.1
+        const Mf = Math.max(0, s.b * s.tf * (s.h - s.tf) * fy / GM0 * (1 - Math.abs(N) / (Af * fy / GM0)));      // 5.4(2)
+        const Mv = MplN - (MplN - Mf) * (2 * Math.min(1, eta3) - 1) ** 2;
+        const u71 = Math.abs(My) <= 1e-6 ? 0 : Mv > 0 ? Math.abs(My) / Mv : Infinity;
+        out.en71 = { eta3, Mpl: MplN, Mf, Mv, u: u71 };
+        out.uM = Math.max(out.uM, u71);
+      }
     }
     out.util = Math.max(out.uV, out.uM, out.uN);
     return out;
@@ -1026,6 +1061,50 @@ const EC3 = (() => {
     return md.lambda(md.toC(md.kg(o.M, o.q, P, a)));
   }
 
+  /* Critical axial force by finite elements (2 DOF/node Hermite) for EI w_iv + (N i02 - GJ) w_ii = 0.
+     Flexural buckling: EI = EIz (or EIy), GJ = 0, i02 = 1.  Torsional buckling (6.3.1.4): EI = EIw, GJ = GIt, i02 = i0^2.
+     o: { L, EI, GJ, i02, restraints:[{x, type:'pin'|'fork'|'fixed'}], nEl }. Returns Ncr (0 for a mechanism). */
+  function ncrFE(o) {
+    const L = o.L, GJ = o.GJ || 0, i02 = o.i02 || 1, nEl = o.nEl || 40;
+    const keys = [...new Set([0, L, ...o.restraints.map(r => Math.min(L, Math.max(0, r.x)))].map(x => +x.toFixed(3)))].sort((a, b) => a - b);
+    const nodes = [];
+    for (let i = 0; i < keys.length - 1; i++) {
+      const x0 = keys[i], x1 = keys[i + 1], k = Math.max(4, Math.round(nEl * (x1 - x0) / L));
+      for (let j = 0; j < k; j++) nodes.push(x0 + (x1 - x0) * j / k);
+    }
+    nodes.push(L);
+    const nn = nodes.length, nodeOf = x => { let b = 0; for (let i = 1; i < nn; i++) if (Math.abs(nodes[i] - x) < Math.abs(nodes[b] - x)) b = i; return b; };
+    const fixed = new Set();
+    for (const r of o.restraints) { const i = nodeOf(r.x); fixed.add(2 * i); if (r.type === 'fixed') fixed.add(2 * i + 1); }
+    const idx = new Int32Array(2 * nn); let n = 0;
+    for (let g = 0; g < 2 * nn; g++) idx[g] = fixed.has(g) ? -1 : n++;
+    const K = new Float64Array(n * n), Gm = new Float64Array(n * n);
+    for (let e = 0; e < nn - 1; e++) {
+      const le = nodes[e + 1] - nodes[e], l2 = le * le, l3 = l2 * le;
+      const kb = [12, 6 * le, -12, 6 * le, 6 * le, 4 * l2, -6 * le, 2 * l2, -12, -6 * le, 12, -6 * le, 6 * le, 2 * l2, -6 * le, 4 * l2];
+      const ks = [36, 3 * le, -36, 3 * le, 3 * le, 4 * l2, -3 * le, -l2, -36, -3 * le, 36, -3 * le, 3 * le, -l2, -3 * le, 4 * l2];
+      for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+        const p = idx[2 * e + i], q = idx[2 * e + j]; if (p < 0 || q < 0) continue;
+        K[p * n + q] += o.EI * kb[i * 4 + j] / l3 + GJ * ks[i * 4 + j] / (30 * le);
+        Gm[p * n + q] += i02 * ks[i * 4 + j] / (30 * le);
+      }
+    }
+    for (let j = 0; j < n; j++) {               // Cholesky K = L L^T
+      let s = K[j * n + j];
+      for (let k = 0; k < j; k++) s -= K[j * n + k] * K[j * n + k];
+      if (s <= 1e-9 * Math.abs(K[j * n + j] || 1)) return 0;   // mechanism: no stability under any compression
+      const d = Math.sqrt(s); K[j * n + j] = d;
+      for (let i = j + 1; i < n; i++) { let t = K[i * n + j]; for (let k = 0; k < j; k++) t -= K[i * n + k] * K[j * n + k]; K[i * n + j] = t / d; }
+    }
+    const Z = new Float64Array(n * n), C = new Float64Array(n * n);
+    for (let col = 0; col < n; col++) for (let i = 0; i < n; i++) { let s = Gm[i * n + col]; for (let k = 0; k < i; k++) s -= K[i * n + k] * Z[k * n + col]; Z[i * n + col] = s / K[i * n + i]; }
+    for (let row = 0; row < n; row++) for (let i = 0; i < n; i++) { let s = Z[row * n + i]; for (let k = 0; k < i; k++) s -= K[i * n + k] * C[row * n + k]; C[row * n + i] = s / K[i * n + i]; }
+    for (let i = 0; i < n; i++) for (let j = 0; j < i; j++) { const v = 0.5 * (C[i * n + j] + C[j * n + i]); C[i * n + j] = C[j * n + i] = v; }
+    const rows = []; for (let i = 0; i < n; i++) rows.push(C.subarray(i * n, i * n + n));
+    const mu = Math.max(...symEigenvalues(rows));
+    return mu > 0 ? 1 / mu : Infinity;
+  }
+
   // Closed-form Mcr for uniform moment between forks (used for reporting C1)
   function mcrUniform(s, L) {
     return Math.PI / L * Math.sqrt(E * s.Iz * G * s.It * (1 + Math.PI ** 2 * E * s.Iw / (L * L * G * s.It)));
@@ -1056,7 +1135,9 @@ const EC3 = (() => {
     const ah = Mh / Mss;
     let Cm;
     if (ah >= 0 || psi >= 0) Cm = f(0.95 + 0.05 * ah, 0.90 + 0.10 * ah);
-    else Cm = f(0.95 + 0.05 * ah * (1 + 2 * psi), 0.90 + 0.10 * ah * (1 + 2 * psi));
+    // last row, concentrated load: printed copies are reported to read 0.90 - 0.10 ah(1+2psi), which does not join the row
+    // above at psi = 0; until checked against BS EN 1993-1-1 + AC:2009 the larger of the two readings is taken
+    else Cm = f(0.95 + 0.05 * ah * (1 + 2 * psi), 0.90 + 0.10 * Math.abs(ah * (1 + 2 * psi)));
     return { Cm, row: 'alpha_h', psi, alphaH: ah, Ms: Mss, Mh };
   }
 
@@ -1079,7 +1160,7 @@ const EC3 = (() => {
     return { kyy, kyz, kzy, kzz };
   }
 
-  return { E, G, GM0, GM1, ETA, GRADES, ALPHA, yieldStrength, fromRow, customI, classify, aeffCompression, shear,
+  return { E, G, GM0, GM1, ETA, GRADES, ALPHA, yieldStrength, fromRow, customI, classify, aeffCompression, weffBending, wyByClass, ncrFE, shear,
     sectionCheck, fbCurves, chiFlex, ltbParams, chiLT, ltbModel, mcrFE, mcrUniform, cmFactor, annexB, symEigenvalues };
 })();
 if (typeof module !== 'undefined') module.exports = { EC3 };
@@ -1122,12 +1203,14 @@ const Design = (() => {
       return arr[i - 1] + (arr[i] - arr[i - 1]) * t;
     };
     const P = comb.pts.filter(p => p.x > xa + 1e-3 && p.x < xb - 1e-3).map(p => ({ x: p.x - xa, P: p.P }));
-    return { xs, Ms, qs, Mf: interp(Ms), qf: interp(qs), P, Mmax: Math.max(...Ms.map(Math.abs)) };
+    // loads at the segment ends too: they act on the twist at a free cantilever tip (restrained ends have phi = 0)
+    const Pall = comb.pts.filter(p => p.x >= xa - 1e-3 && p.x <= xb + 1e-3).map(p => ({ x: Math.min(xb - xa, Math.max(0, p.x - xa)), P: p.P }));
+    return { xs, Ms, qs, Mf: interp(Ms), qf: interp(qs), P, Pall, Mmax: Math.max(...Ms.map(Math.abs)) };
   }
 
   // chi_LT and Mb,Rd from Mcr (6.3.2.2 / 6.3.2.3 with UK NA); C1 (shape-only, loads at shear centre) sets kc = 1/sqrt(C1)
   function ltbResult(sec, fy, cls, Mcr, C1, Mmax) {
-    const Wy = cls <= 2 ? sec.Wply : sec.Wely, p = EC3.ltbParams(sec);
+    const Wy = EC3.wyByClass(sec, fy, cls), p = EC3.ltbParams(sec);
     // kc = 1/sqrt(C1); not taken below 0.6, the lowest value in Table 6.6 (conservative where exact C1 > 2.78)
     const kc = C1 && C1 > 1 ? Math.max(0.6, Math.min(1, 1 / Math.sqrt(C1))) : 1;
     const lamLT = Mcr === Infinity ? 0 : Math.sqrt(Wy * fy / Mcr);
@@ -1162,11 +1245,11 @@ const Design = (() => {
     const cy = EC3.chiFlex(ly, cur.y), cz = EC3.chiFlex(lz, cur.z), cT = EC3.chiFlex(lT, cur.z);
     const chiMin = Math.min(cy.chi, cz.chi, cT.chi);
     const NbRd = chiMin * NRk / EC3.GM1;
-    return { comp, A, NRk, curves: cur, Ncry, Ncrz, NcrT, lamY: ly, lamZ: lz, lamT: lT, y: cy, z: cz, T: cT, chiZT: Math.min(cz.chi, cT.chi), NbRd, util: Ncomp > 0 ? Ncomp / NbRd : 0 };
+    return { comp, A, NRk, curves: cur, Lcry, Lcrz, LT, Ncry, Ncrz, NcrT, lamY: ly, lamZ: lz, lamT: lT, y: cy, z: cz, T: cT, chiZT: Math.min(cz.chi, cT.chi), NbRd, util: Ncomp > 0 ? Ncomp / NbRd : 0 };
   }
 
   function interaction(sec, fy, cls, N, ab, MyEd, chiLTmod, Cmy, CmLT, MzEd = 0, Cmz = 1) {
-    const Wy = cls <= 2 ? sec.Wply : sec.Wely, Wz = cls <= 2 ? sec.Wplz : sec.Welz;
+    const Wy = EC3.wyByClass(sec, fy, cls), Wz = cls <= 2 ? sec.Wplz : sec.Welz;
     const MyRk = Wy * fy, MzRk = Wz * fy;
     const nY = N / (ab.y.chi * ab.NRk / EC3.GM1), nZ = N / (ab.chiZT * ab.NRk / EC3.GM1);
     const k = EC3.annexB({ cls, lamY: ab.lamY, lamZ: ab.lamZ, nY, nZ, Cmy, Cmz, CmLT, torsional: true });
@@ -1183,7 +1266,7 @@ const Design = (() => {
 
   /* MODE A - beam from spans and loads.
      inp: {sec, grade, spans[mm], cantL, cantR, endLeft, endRight, loads:[{case,member,type,...}] (N, mm),
-           selfWeight, rule, psi0, N (N, + compression), ky[] per member,
+           selfWeight, rule, psi0, N (N, + compression), ky[] per span member (cantilevers: from the whole beam),
            restraint[] per member: {mode:'ends'|'points'|'top', pts:[mm local]}, tipRestrained{L,R}, destab,
            defl:{brittle}} */
   function designBeam(inp) {
@@ -1237,11 +1320,11 @@ const Design = (() => {
       } else restraints = [{ x: sg.xa, type: 'fork' }, { x: sg.xb, type: 'fork' }];
       const L = xb - xa, a = inp.destab ? sec.h / 2 : 0;
       const gd = groups.map(g => segmentData(res, g, xa, xb));
-      const extra = a ? [...new Set(gd.flatMap(d => d.P.map(p => +p.x.toFixed(3))))] : [];
+      const extra = a ? [...new Set(gd.flatMap(d => d.Pall.map(p => +p.x.toFixed(3))))] : [];
       const md = EC3.ltbModel({ L, EIz: EC3.E * sec.Iz, GIt: EC3.G * sec.It, EIw: EC3.E * sec.Iw, hs: sec.h - sec.tf,
         restraints: restraints.map(r => ({ ...r, x: r.x - xa })), topRestrained: sg.topRestrained, nEl: 10, extraNodes: extra });
       const CM = gd.map(d => d.Mmax > 0 ? md.toC(md.kg(d.Mf, null, null, 0)) : null);
-      const CQ = a ? gd.map(d => (d.qs.some(v => v) || d.P.length) ? md.toC(md.kg(null, d.qf, d.P, a)) : null) : null;
+      const CQ = a ? gd.map(d => (d.qs.some(v => v) || d.Pall.length) ? md.toC(md.kg(null, d.qf, d.Pall, a)) : null) : null;
       // per-group largest eigenvalue (moment + load height): Weyl's inequality gives, for factors f >= 0,
       // mu_max(sum f C_g) <= sum f mu_max(C_g), i.e. a guaranteed lower bound on Mcr for any combination
       const muGexact = CM.map((cm, g) => {             // exact max eigenvalue incl. negative values for the bound
@@ -1251,8 +1334,27 @@ const Design = (() => {
         const rows = []; for (let i = 0; i < md.n; i++) rows.push(T.subarray(i * md.n, (i + 1) * md.n));
         return Math.max(...EC3.symEigenvalues(rows));
       });
-      return { md, CM, CQ, forkFork, L, restraints, muG: muGexact };
+      // free cantilever segment under axial compression: minor-axis and torsional buckling of the same sub-model
+      // (free tip, root restraint and backspan segment) instead of a segment-length buckling length
+      let axial = null;
+      if (sg.free && N > 0) {
+        const rs = restraints.map(r => ({ ...r, x: r.x - xa })), i02 = (sec.Iy + sec.Iz) / sec.A;
+        const Ncrz = EC3.ncrFE({ L, EI: EC3.E * sec.Iz, restraints: rs });
+        const NcrT = EC3.ncrFE({ L, EI: EC3.E * sec.Iw, GJ: EC3.G * sec.It, i02, restraints: rs });
+        const tw = NcrT * i02 - EC3.G * sec.It;
+        axial = { Lcrz: Ncrz > 0 ? Math.PI * Math.sqrt(EC3.E * sec.Iz / Ncrz) : Infinity, LT: tw > 0 ? Math.PI * Math.sqrt(EC3.E * sec.Iw / tw) : Infinity };
+      }
+      return { md, CM, CQ, forkFork, L, restraints, muG: muGexact, axial };
     });
+
+    // In-plane buckling length of a cantilever under axial compression: the tip is free to sway vertically, so
+    // Lcr,y comes from the buckling load of the whole beam on its supports (a fixed 2L would be unconservative
+    // where the root is a continuous support rather than a built-in end)
+    let LcryCant = null;
+    if (N > 0 && lay.mem.some(m => m.kind !== 'span')) {
+      const Ncry = EC3.ncrFE({ L: lay.Ltot, EI: EC3.E * sec.Iy, restraints: lay.sup.map(s => ({ x: s.x, type: s.type === 'fixed' ? 'fixed' : 'pin' })), nEl: 80 });
+      LcryCant = Ncry > 0 ? Math.PI * Math.sqrt(EC3.E * sec.Iy / Ncry) : Infinity;
+    }
 
     // Phase 1: combinations, cross-section checks at every station, envelopes
     const combRes = combos.map(cb => {
@@ -1272,7 +1374,7 @@ const Design = (() => {
     // a combination is solved exactly unless its upper-bound utilisation (from the Mcr lower bound, f = 1)
     // cannot exceed the governing value already found for that segment.
     const cls = EC3.classify(sec, fy, N, true).cls;
-    const Wy = cls <= 2 ? sec.Wply : sec.Wely, lp = EC3.ltbParams(sec);
+    const Wy = EC3.wyByClass(sec, fy, cls), lp = EC3.ltbParams(sec);
     out.ltbStats = { candidates: 0, solved: 0 };
     segs.forEach((sg, si) => {
       const m = lay.mem[sg.mem], sm = segModels[si];
@@ -1280,8 +1382,9 @@ const Design = (() => {
         .filter(o => o.own.Mmax >= 1).sort((p, q) => q.own.Mmax - p.own.Mmax);
       let abk = null, memStCache = new Map();
       if (N > 0) {
-        abk = axialBuckling(sec, fy, inp.grade, N, ky[sg.mem] * m.L, sg.xb - sg.xa, sg.xb - sg.xa);
-        track(out.gov, 'flexural', abk.util, { combo: 'N constant along member', mem: sg.mem, seg: si, ab: abk });
+        const Lcry = m.kind === 'span' ? ky[sg.mem] * m.L : LcryCant, ax = sm.axial;
+        abk = axialBuckling(sec, fy, inp.grade, N, Lcry, ax ? ax.Lcrz : sg.xb - sg.xa, ax ? ax.LT : sg.xb - sg.xa);
+        track(out.gov, 'flexural', abk.util, { combo: 'N constant along member', mem: sg.mem, seg: si, ab: abk, cant: m.kind !== 'span', free: !!sg.free });
       }
       let bestLT = -1, bestInt = -1;
       for (const { cb, ci, own } of order) {
@@ -1290,8 +1393,10 @@ const Design = (() => {
         let Cmy = null, CmLT = null;
         if (N > 0) {
           let memSt = memStCache.get(ci); if (!memSt) memStCache.set(ci, memSt = segmentData(res, c, m.x0, m.x1));
-          Cmy = EC3.cmFactor(memSt.xs, memSt.Ms, memSt.qs.some(v => Math.abs(v) > 1e-9), memSt.P.length > 0).Cm;
-          CmLT = EC3.cmFactor(own.xs, own.Ms, own.qs.some(v => Math.abs(v) > 1e-9), own.P.length > 0).Cm;
+          // Table B.3: sway buckling mode (cantilever, or a span with Lcr,y > L) -> Cmy = 0.9. A free-tip LT segment is outside Table B.3:
+          // CmLT = 1.0, the upper limit, is taken (kzy increases with CmLT, so this is the conservative choice)
+          Cmy = (m.kind !== 'span' || ky[sg.mem] > 1 + 1e-9) ? 0.9 : EC3.cmFactor(memSt.xs, memSt.Ms, memSt.qs.some(v => Math.abs(v) > 1e-9), memSt.P.length > 0).Cm;
+          CmLT = sg.free ? 1.0 : EC3.cmFactor(own.xs, own.Ms, own.qs.some(v => Math.abs(v) > 1e-9), own.P.length > 0).Cm;
         }
         // screening bound
         let muUb = 0; fac.forEach((f, g) => { if (f) muUb += f * sm.muG[g]; });
@@ -1316,7 +1421,7 @@ const Design = (() => {
         track(out.gov, 'ltb', r.util, { ...r });
         if (N > 0) {
           const ir = interaction(sec, fy, cls, N, abk, own.Mmax, lt.chiMod, Cmy, CmLT);
-          track(out.gov, 'interaction', ir.util, { combo: cb.label, seg: si, ir, ab: abk, chiLT: lt.chiMod });
+          track(out.gov, 'interaction', ir.util, { combo: cb.label, seg: si, ir, ab: abk, chiLT: lt.chiMod, swayY: m.kind !== 'span' || ky[sg.mem] > 1 + 1e-9, freeLT: !!sg.free });
           bestInt = Math.max(bestInt, ir.util);
         }
       }
@@ -1375,7 +1480,9 @@ const Design = (() => {
     out.ab = ab;
     if (N > 0) track(out.gov, 'flexural', ab.util, { ab });
     const xs = Array.from({ length: 21 }, (_, k) => L * k / 20);
-    const Cmy = EC3.cmFactor(xs, xs.map(My), false, false).Cm, Cmz = EC3.cmFactor(xs, xs.map(Mz), false, false).Cm;
+    // Table B.3 note: sway buckling mode -> Cm = 0.9. A buckling length above the member length implies a sway mode.
+    const swayY = inp.ky > 1 + 1e-9, swayZ = inp.kz > 1 + 1e-9;
+    const Cmy = swayY ? 0.9 : EC3.cmFactor(xs, xs.map(My), false, false).Cm, Cmz = swayZ ? 0.9 : EC3.cmFactor(xs, xs.map(Mz), false, false).Cm;
     for (let i = 0; i < nLT; i++) {
       const xa = i * Lseg, Ma = My(xa), Mb = My(xa + Lseg), Mmax = Math.max(Math.abs(Ma), Math.abs(Mb));
       const sxs = Array.from({ length: 11 }, (_, k) => Lseg * k / 10);
@@ -1390,10 +1497,10 @@ const Design = (() => {
       const MzMax = Math.max(Math.abs(Mz(xa)), Math.abs(Mz(xa + Lseg)));
       if (N > 0) {
         const ir = interaction(sec, fy, cls, N, ab, Mmax, chiLT, Cmy, CmLT, MzMax, Cmz);
-        track(out.gov, 'interaction', ir.util, { seg: i, ir, chiLT });
+        track(out.gov, 'interaction', ir.util, { seg: i, ir, chiLT, swayY, swayZ });
       }
     }
-    out.cls = cls; out.Cmy = Cmy; out.Cmz = Cmz;
+    out.cls = cls; out.Cmy = Cmy; out.Cmz = Cmz; out.swayY = swayY; out.swayZ = swayZ;
     out.utilMax = Math.max(...Object.values(out.gov).map(g => g.util));
     return out;
   }
@@ -1677,7 +1784,11 @@ function notesHTML(R, inp) {
   const sh = EC3.shear(R.sec, R.fy);
   if (sh.slender) n.push(`Web h<sub>w</sub>/t<sub>w</sub> = ${(sh.hw / R.sec.tw).toFixed(1)} exceeds 72&epsilon;/&eta;: shear buckling resistance per BS EN 1993-1-5 5.2 (non-rigid end post, flange contribution ignored) is used.`);
   if (EC3.aeffCompression(R.sec, R.fy).cls === 4 && (inp.N || 0) > 0) n.push('Web is Class 4 under uniform compression: A<sub>eff</sub> (BS EN 1993-1-5 4.4) is used for all axial terms (conservative where the combined stress distribution would give a better class).');
+  const wb = EC3.weffBending(R.sec, R.fy);
+  if (wb.reduced) n.push(`Web is Class 4 in bending: W<sub>eff,y</sub> = ${(wb.Weff / 1e3).toFixed(0)} cm³ (BS EN 1993-1-5 4.4, &rho; = ${wb.rho.toFixed(3)}) replaces W<sub>el,y</sub> in the bending, buckling and interaction checks.`);
+  if (mode === 'A' && (inp.N || 0) > 0 && R.lay.mem.some(m => m.kind !== 'span')) n.push('Cantilever under axial compression: L<sub>cr,y</sub> from the buckling load of the whole beam on its supports; for a free tip, L<sub>cr,z</sub> and the torsional length from the cantilever modelled with its backspan segment. C<sub>my</sub> = 0.9 (sway mode, Table B.3); C<sub>mLT</sub> = 1.0 for a free-tip segment.');
   n.push('M<sub>cr</sub> is computed by finite elements for each lateral-torsional segment and combination (forks at restraints: lateral and torsional displacement prevented, warping and plan rotation free). k<sub>c</sub> = 1/&radic;C<sub>1</sub>, not less than 0.6.');
+  if (mode === 'A' && inp.destab) n.push('Destabilising loading: all gravity loads, including self-weight, are applied at the top flange (conservative).');
   if (mode === 'A') n.push('Internal and end supports are assumed to give lateral and torsional restraint. Web bearing and buckling at supports and under point loads (BS EN 1993-1-5 section 6) are not checked by this tool.');
   return `<div class="note">${n.join('<br>')}</div>`;
 }
@@ -1730,12 +1841,15 @@ function reportHTML(R, inp, s) {
   b += `<h3>Bending${(inp.N || 0) ? ', shear and axial' : ' and shear'} at the governing location${gb.x !== undefined ? ' (x = ' + (gb.x / 1000).toFixed(2) + ' m)' : ''}</h3>` +
     rl(`M<sub>y,Ed</sub> = ${fmt(Math.abs(kNm(gb.M ?? 0)))} kNm, coexisting V<sub>Ed</sub> = ${fmt(Math.abs(kN(gb.V ?? (gb.sc ? 0 : 0))))} kN${gb.combo ? '; ' + gb.combo : ''}`, '', '');
   if (sc.method === 'plastic') {
-    b += rl(`V<sub>Ed</sub> ${sc.rho > 0 ? '&gt;' : '&le;'} 0.5 V<sub>Rd</sub>${sc.rho > 0 ? ': &rho; = (2V<sub>Ed</sub>/V<sub>Rd</sub> &minus; 1)² = ' + sc.rho.toFixed(3) : ': no reduction for shear'}`, '6.2.8(2),(3)', sc.rho.toFixed(3)) +
+    b += (sc.shear.slender ? rl('Web susceptible to shear buckling: bending and shear interaction by BS EN 1993-1-5 7.1 instead of 6.2.8', '6.2.8(1), 6.2.6(6)', '') : rl(`V<sub>Ed</sub> ${sc.rho > 0 ? '&gt;' : '&le;'} 0.5 V<sub>Rd</sub>${sc.rho > 0 ? ': &rho; = (2V<sub>Ed</sub>/V<sub>Rd</sub> &minus; 1)² = ' + sc.rho.toFixed(3) : ': no reduction for shear'}`, '6.2.8(2),(3)', sc.rho.toFixed(3))) +
       rl('M<sub>pl,y,Rd</sub> (reduced for shear: W<sub>pl,y</sub> &minus; &rho;A<sub>w</sub>²/4t<sub>w</sub>)', '6.2.5, 6.2.8(5)', `${fmt(kNm(sc.Mply))} kNm`);
     if ((inp.N || 0)) b += rl(`n = N<sub>Ed</sub>/N<sub>pl,Rd</sub> = ${sc.n.toFixed(3)}, a = ${sc.a.toFixed(3)}${sc.allowY ? '; 6.2.9.1(4) criteria met, no reduction of M<sub>pl,y</sub>' : ''}`, '6.2.9.1', `M<sub>N,y,Rd</sub> = ${fmt(kNm(sc.MNy))} kNm`);
   } else {
-    b += rl(`Class ${cl.cls}: elastic interaction &sigma; = N/A${(inp.N || 0) > 0 && sc.Aeff < sec.A ? '<sub>eff</sub>' : ''} + M<sub>y</sub>/W<sub>el,y</sub> (W reduced for shear where &rho; &gt; 0, &rho; = ${sc.rho.toFixed(3)})`, '6.2.9.2/3', '');
+    if (sc.method === 'effective') { const wb = EC3.weffBending(sec, fy);
+      b += rl(`Web Class 4 in bending: &psi; = &minus;1, k<sub>&sigma;</sub> = 23.9, &lambda;&#772;<sub>p</sub> = ${wb.lp.toFixed(3)}, &rho; = ${wb.rho.toFixed(3)}; b<sub>e1</sub> = ${wb.be1.toFixed(0)} mm, b<sub>e2</sub> = ${wb.be2.toFixed(0)} mm`, 'EN 1993-1-5 4.4, Table 4.1', `W<sub>eff,y</sub> = ${(wb.Weff / 1e3).toFixed(0)} cm³`); }
+    b += rl(`Class ${cl.cls}: ${sc.method === 'effective' ? 'effective' : 'elastic'} interaction &sigma; = N/A${(inp.N || 0) > 0 && sc.Aeff < sec.A ? '<sub>eff</sub>' : ''} + M<sub>y</sub>/W<sub>${sc.method === 'effective' ? 'eff' : 'el'},y</sub> (W reduced for shear where &rho; &gt; 0, &rho; = ${sc.rho.toFixed(3)})`, sc.method === 'effective' ? '6.2.9.3' : '6.2.9.2', '');
   }
+  if (sc.en71) b += rl(`Web susceptible to shear buckling, &eta;&#772;<sub>3</sub> = V<sub>Ed</sub>/V<sub>bw,Rd</sub> = ${sc.en71.eta3.toFixed(3)} &gt; 0.5: M<sub>f,Rd</sub> = ${fmt(kNm(sc.en71.Mf))} kNm, M<sub>pl,Rd</sub> = ${fmt(kNm(sc.en71.Mpl))} kNm; M<sub>V,Rd</sub> = M<sub>pl,Rd</sub> &minus; (M<sub>pl,Rd</sub> &minus; M<sub>f,Rd</sub>)(2&eta;&#772;<sub>3</sub> &minus; 1)²`, 'EN 1993-1-5 7.1', `${fmt(kNm(sc.en71.Mv))} kNm`);
   b += rl('Bending / combined cross-section utilisation', '', okng(gb.util));
   if (R.gov.axial) b += rl(`Axial: N<sub>Ed</sub> / N<sub>c,Rd</sub> (N<sub>c,Rd</sub> = ${fmt(kN(sc.NRd))} kN)`, '6.2.4', okng(R.gov.axial.util));
   b += `</div>`;
@@ -1744,8 +1858,8 @@ function reportHTML(R, inp, s) {
   b += `<div class="rs"><h2>6 Member buckling resistance</h2>`;
   const abx = mode === 'B' ? R.ab : R.gov.flexural?.ab;
   if (abx && (inp.N || 0) > 0) {
-    b += `<h3>Flexural and torsional buckling (6.3.1)</h3><table class="rt"><tr><th>Mode</th><th>N<sub>cr</sub> (kN)</th><th>&lambda;&#772;</th><th>Curve (Table 6.2)</th><th>&alpha;</th><th>&Phi;</th><th>&chi;</th></tr>` +
-      [['y-y', abx.Ncry, abx.lamY, abx.curves.y, abx.y], ['z-z', abx.Ncrz, abx.lamZ, abx.curves.z, abx.z], ['torsional (6.3.1.4)', abx.NcrT, abx.lamT, abx.curves.z, abx.T]].map(([m, Ncr, l, c, o]) => `<tr><td>${m}</td><td>${fmt(kN(Ncr), 0)}</td><td>${l.toFixed(3)}</td><td>${c}</td><td>${o.alpha.toFixed(2)}</td><td>${o.phi.toFixed(3)}</td><td>${o.chi.toFixed(3)}</td></tr>`).join('') + `</table>` +
+    b += `<h3>Flexural and torsional buckling (6.3.1)${mode === 'A' && R.gov.flexural.free ? ' &mdash; free cantilever segment' : ''}</h3><table class="rt"><tr><th>Mode</th><th>L<sub>cr</sub> (m)</th><th>N<sub>cr</sub> (kN)</th><th>&lambda;&#772;</th><th>Curve (Table 6.2)</th><th>&alpha;</th><th>&Phi;</th><th>&chi;</th></tr>` +
+      [['y-y', abx.Lcry, abx.Ncry, abx.lamY, abx.curves.y, abx.y], ['z-z', abx.Lcrz, abx.Ncrz, abx.lamZ, abx.curves.z, abx.z], ['torsional (6.3.1.4)', abx.LT, abx.NcrT, abx.lamT, abx.curves.z, abx.T]].map(([m, Lc, Ncr, l, c, o]) => `<tr><td>${m}</td><td>${isFinite(Lc) ? (Lc / 1000).toFixed(2) : '&ndash;'}</td><td>${fmt(kN(Ncr), 0)}</td><td>${l.toFixed(3)}</td><td>${c}</td><td>${o.alpha.toFixed(2)}</td><td>${o.phi.toFixed(3)}</td><td>${o.chi.toFixed(3)}</td></tr>`).join('') + `</table>` +
       rl(`N<sub>b,Rd</sub> = &chi;<sub>min</sub> ${abx.comp.cls === 4 ? 'A<sub>eff</sub>' : 'A'} f<sub>y</sub> / &gamma;<sub>M1</sub> = ${fmt(kN(abx.NbRd))} kN`, '6.3.1.1', okng(R.gov.flexural.util));
   }
   const lt = R.gov.ltb;
@@ -1767,7 +1881,7 @@ function reportHTML(R, inp, s) {
   if (R.gov.interaction) {
     const g = R.gov.interaction, ir = g.ir;
     b += `<h3>Bending and axial compression (6.3.3, Method 2, Annex B Table B.2)</h3>` +
-      rl(`C<sub>my</sub> = ${ir.Cmy.toFixed(3)}, C<sub>mLT</sub> = ${ir.CmLT.toFixed(3)}${ir.MzRk && (inp.MzT || inp.MzB) ? ', C<sub>mz</sub> = ' + ir.Cmz.toFixed(3) : ''} (Table B.3)`, 'Annex B', '') +
+      rl(`C<sub>my</sub> = ${ir.Cmy.toFixed(3)}${g.swayY ? ' (sway mode, Table B.3 note)' : ''}, C<sub>mLT</sub> = ${ir.CmLT.toFixed(3)}${g.freeLT ? ' (free tip: outside Table B.3, upper limit taken)' : ''}${ir.MzRk && (inp.MzT || inp.MzB) ? ', C<sub>mz</sub> = ' + ir.Cmz.toFixed(3) + (g.swayZ ? ' (sway mode)' : '') : ''} (Table B.3)`, 'Annex B', '') +
       rl(`n<sub>y</sub> = ${ir.nY.toFixed(3)}, n<sub>z</sub> = ${ir.nZ.toFixed(3)}; k<sub>yy</sub> = ${ir.kyy.toFixed(3)}, k<sub>yz</sub> = ${ir.kyz.toFixed(3)}, k<sub>zy</sub> = ${ir.kzy.toFixed(3)}, k<sub>zz</sub> = ${ir.kzz.toFixed(3)}`, 'Table B.2', '') +
       rl(`N<sub>Ed</sub>/(&chi;<sub>y</sub>N<sub>Rk</sub>/&gamma;<sub>M1</sub>) + k<sub>yy</sub>M<sub>y,Ed</sub>/(&chi;<sub>LT</sub>M<sub>y,Rk</sub>/&gamma;<sub>M1</sub>) + k<sub>yz</sub>M<sub>z,Ed</sub>/(M<sub>z,Rk</sub>/&gamma;<sub>M1</sub>)`, '(6.61)', ir.u61.toFixed(3)) +
       rl(`N<sub>Ed</sub>/(&chi;<sub>z</sub>N<sub>Rk</sub>/&gamma;<sub>M1</sub>) + k<sub>zy</sub>M<sub>y,Ed</sub>/(&chi;<sub>LT</sub>M<sub>y,Rk</sub>/&gamma;<sub>M1</sub>) + k<sub>zz</sub>M<sub>z,Ed</sub>/(M<sub>z,Rk</sub>/&gamma;<sub>M1</sub>)`, '(6.62)', ir.u62.toFixed(3)) +
@@ -1781,7 +1895,7 @@ function reportHTML(R, inp, s) {
   b += `<div class="rs"><h2>${mode === 'A' ? 8 : 7} Summary</h2><table class="rt"><tr><th>Check</th><th>Clause</th><th>Utilisation</th></tr>` +
     CHECKS.filter(([k]) => R.gov[k]).map(([k, nm, c]) => `<tr><td>${nm}</td><td>${c}</td><td>${okng(R.gov[k].util)}</td></tr>`).join('') +
     `<tr><th>Overall</th><th></th><th>${okng(R.utilMax)}</th></tr></table>` +
-    `<p class="rp">${notesHTML(R, inp).replace(/<\/?div[^>]*>/g, '')}</p><p class="rp" style="color:#555">Generated by EngineeringTools &mdash; Steel Member Design. All calculations are the responsibility of the engineer.</p></div>`;
+    `<p class="rp" style="font-size:.92em">${notesHTML(R, inp).replace(/<\/?div[^>]*>/g, '')}<br><span style="color:#555">Generated by EngineeringTools &mdash; Steel Member Design. All calculations are the responsibility of the engineer.</span></p></div>`;
   return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
 }
 

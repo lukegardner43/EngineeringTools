@@ -106,3 +106,11 @@ Next items for Steel Member Design:
 - **EC3 clause chain:** 1980 comparisons against an independent Python implementation (`reference/ref_ec3.py`) covering 400 random cross-section states, 100 flexural buckling cases and 40 LTB cases. Plus four hand-calculated design cases.
 - **Screening:** the Mcr screening bound gives results identical to exhaustive solution on 40 random continuous beams.
 - **Section data:** `reference/check.py` recomputes every tabulated property from the dimensions. 406x260x132 UKB is excluded because its tabulated mass contradicts its geometry.
+- **Review fixes:** 31 checks (`test_fixes.js`). Most compare against `reference/ref_fixes.py`, which uses its own independent methods; the rest are hand values. They cover:
+  - a destabilising tip load on a cantilever (Ritz solution);
+  - flexural and torsional buckling of a span with an overhang (exact characteristic equation);
+  - Weff of a plate girder with a Class 4 web (EN 1993-1-5 4.4);
+  - sway-mode Cm = 0.9;
+  - bending with shear on a web that needs a shear buckling check (EN 1993-1-5 7.1).
+
+**Open point.** Table B.3, last row (−1 ≤ αh < 0, −1 ≤ ψ < 0), concentrated-load column. Copies are reported to print 0.90 − 0.10αh(1+2ψ), which does not meet the row above at ψ = 0. The engine takes the larger of the + and − readings, which is conservative either way. Confirm the cell against a printed BS EN 1993-1-1 + AC:2009.
