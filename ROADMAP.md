@@ -47,7 +47,7 @@ Status key: **Done** means it's in this repo with tests. **Partial** means an ex
 | Windpost design | Windpost Design | Done | EN 1993-1-1; carbon steel (stainless windposts not covered) |
 | Steel Beam Supporting Hollowcore Slab Design | Hollowcore Support Beam | Done | P385 torsion + EC3; UKB / UKC / ASB / Slimflor |
 | Steel 2D Analysis & Design | Steel Frame Design | Done | portal and multi-bay multi-storey frames; α<sub>cr</sub>, EHF, second-order P-Δ, member design |
-| Crane gantry girder design | Crane girder | Planned | EN 1993-6, EN 1991-3 |
+| Crane gantry girder design | Crane Gantry Girder | Done | EN 1993-6 / EN 1991-3: moving wheels, cap channel, chord LTB, local wheel stresses, deflection, fatigue (λ by class) |
 | Steel member fire resistance design | Steel Member Fire Design | Done | EN 1993-1-2: incremental heating (unprotected / board / spray), restrained and unrestrained beams, columns; intumescents not covered |
 | Steel sheet piling design | Sheet piling | Planned | EN 1997-1, EN 1993-5 |
 
@@ -85,6 +85,10 @@ Steel Frame Design covers / limits:
 - Geometry from templates: single-bay portal (flat or pitched) and regular multi-bay, multi-storey grids with fixed or pinned bases and rigid or pinned beams; general node / member editing is not provided.
 - α<sub>cr</sub> by the frame's elastic buckling eigenvalue; second-order P-Δ analysis (geometric stiffness, iterated) where α<sub>cr</sub> &lt; 10; sway imperfection by EHF (5.3.2); member bow imperfections are covered by the member checks (in-plane buckling length = member length).
 - Haunches, tapered members, plastic analysis (SCI P397 / P399 portal design) and bracing are not covered.
+
+Crane Gantry Girder limits / open points:
+- Two equal wheels per rail; single simple span; eccentric-wheel torsion and rail wear are not included; the web resistance to the wheel uses s<sub>s</sub> = l<sub>eff</sub> − 2t<sub>f</sub> (engineer to confirm).
+- Fatigue λ values (BS EN 1991-3 Table 2.12) and the φ₂ parameters (Table 2.5) to be confirmed against the printed standard.
 
 Steel Masonry Support and Windpost limits:
 - Fixings into the frame (channels, anchors) and wall ties are checked against the manufacturer's design resistances entered by the engineer.
@@ -159,6 +163,7 @@ Steel Masonry Support and Windpost limits:
 - **ConnectionCheck joints engine** (`node tests/connections/test_joints.js`): 112 checks (incl. the published extended end plate example) against `reference/ref_joints.py`: T-stubs and Table 6.4 effective lengths re-implemented; base plate effective area by rasterising the Chebyshev offset of the column; M<sub>j,Rd</sub> (Table 6.7) against proportional loading of the two-component model; fin / end plate tying, anchors (cone, pull-out, pry-out, edge) and the RHS splice by hand. `tests/connections/ui_smoke.js` (jsdom) runs every joint type through the page.
 - **Steel Frame Design** (`node tests/frame/test_frame.js`): 28 checks against `reference/ref_frame.py`: portal sway, moments and reactions by an independent numpy stiffness solver; α<sub>cr</sub> of fixed- and pinned-base portals against the exact stability-function characteristic equation (and a scipy FE eigen solution); second-order cantilever sway and moment against the exact solution; combinations, EHF; the frame member check against the Steel Member Design beam mode.
 - **Steel Member Fire Design** (`node tests/fire/test_fire.js`): 39 checks: section factors; unprotected heating against scipy RK45 integration and protected heating against an independent fine-step loop (`reference/ref_fire.py`); critical temperature (4.22) against Table 4.1; reduction factors, restrained-beam and column resistances by hand; limiting temperature and protection sizing.
+- **Crane Gantry Girder** (`node tests/gantry/test_gantry.js`): 25 checks: moving loads against closed forms, cap-channel section by parallel axes, φ₂, l<sub>eff</sub>, chord buckling, fatigue ranges.
 - **Review fixes:** 31 checks (`test_fixes.js`). Most compare against `reference/ref_fixes.py`, which uses its own independent methods; the rest are hand values. They cover:
   - a destabilising tip load on a cantilever (Ritz solution);
   - flexural and torsional buckling of a span with an overhang (exact characteristic equation);
