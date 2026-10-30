@@ -41,7 +41,7 @@ Status key: **Done** means it's in this repo with tests. **Partial** means an ex
 | Steel hollow section tension only splice design | Steel splices | Planned | EN 1993-1-8 |
 | Steel to Concrete Simple Connection Design | Steel to concrete | Planned | EN 1993-1-8, EN 1992-4 |
 | Bolt Group Analysis | Bolt Group Analysis | Done | elastic and ICR methods; EN 1993-1-8 Table 3.4 |
-| Steel Beam Torsion Design | Steel torsion | Planned | SCI P385 |
+| Steel Beam Torsion Design | Steel Beam Torsion | Done | SCI P385; EN 1993-6 Annex A interaction |
 | Steel Masonry Support | Masonry support | Planned | EN 1993-1-1, -1-5 |
 | Windpost design | Windpost | Planned | EN 1993-1-1, EN 1991-1-4 |
 | Steel Beam Supporting Hollowcore Slab Design | Hollowcore support beam | Planned | P385 torsion + EC3 |
@@ -117,6 +117,7 @@ Limits:
 - **Beam Analysis** (`node tests/beam-analysis/test_beam_analysis.js`): 35 closed-form checks. They cover simply supported, cantilever, propped, fixed-fixed and two-span beams; stepped EI; a vertical spring; a Gerber beam with a hinge; a rotational spring; triangular load; mechanism detection; and the EN 1990 combinations and pattern loading.
 - **Section Properties** (`node tests/section-props/test_section_props.js`): 471 checks. They cover closed forms, British Steel UKB/UKC/PFC and Tata SHS tables, BS EN 10056-1 angle values, cross-checks against the EC3 hollow-section engine, and a grid integration of the monosymmetry integral.
 - **Bolt Group Analysis** (`node tests/bolt-group/test_bolt_group.js`): 38 checks. Elastic distribution and EN 1993-1-8 resistances against hand calculations; ICR against an independent scipy solution (`reference/ref_icr.py`).
+- **Steel Beam Torsion** (`node tests/torsion/test_torsion.js`): 139 checks. FE torsion against closed-form ODE solutions (`reference/ref_torsion.py`) for fork, warping-fixed and cantilever ends; I and channel sectorial properties against integration; stresses and the Annex A interaction by hand.
 - **Review fixes:** 31 checks (`test_fixes.js`). Most compare against `reference/ref_fixes.py`, which uses its own independent methods; the rest are hand values. They cover:
   - a destabilising tip load on a cantilever (Ritz solution);
   - flexural and torsional buckling of a span with an overhang (exact characteristic equation);
