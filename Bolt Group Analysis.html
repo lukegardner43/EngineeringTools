@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bolt Group Analysis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Saira:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0e1014; --surf:#16191f; --surf2:#1c2027; --bdr:#2a2f38; --bdr2:#3a4250;
+  --txt:#e6e8ec; --mut:#8b93a0; --faint:#59616d;
+  --accent:#ffb000; --accent-dim:#3a2e12;
+  --pass:#3ecf8e; --warn:#ffb000; --fail:#ff5d5d;
+  --r:2px;
+  --sans:'Saira',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --mono:'JetBrains Mono','SF Mono',Consolas,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5;min-height:100vh;padding:20px 16px;
+  background-image:linear-gradient(rgba(255,255,255,.014) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.014) 1px,transparent 1px);
+  background-size:32px 32px;}
+.container{max-width:1280px;margin:0 auto;}
+.page-hdr{margin-bottom:16px;}
+.home-lnk{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--mut);text-decoration:none;margin-bottom:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.5px;transition:color .15s;}
+.home-lnk:hover{color:var(--accent);}
+.home-lnk svg{width:12px;height:12px;}
+.page-hdr h1{font-size:20px;font-weight:600;margin-bottom:2px;}
+.page-hdr p{font-size:12px;color:var(--mut);}
+.main-grid{display:grid;grid-template-columns:minmax(340px,1fr) 1.55fr;gap:16px;align-items:start;}
+@media(max-width:1024px){.main-grid{grid-template-columns:1fr;}}
+.main-grid > div{min-width:0;}
+#results table.t{display:block;overflow-x:auto;white-space:nowrap;}
+.chk{align-items:flex-start;}
+@media(max-width:560px){body{padding:14px 10px;} .card{padding:14px 12px;} .ck{grid-template-columns:1fr 1fr 48px;gap:8px;} .grid3{grid-template-columns:1fr 1fr;}
+  .row.span{grid-template-columns:1fr 28px;} .row.span > div:nth-child(2),.row.span > div:nth-child(3){display:none;} .row.load .vals{grid-template-columns:1fr 1fr;}}
+.card{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--r);padding:16px 18px;margin-bottom:14px;}
+.section-title{font-size:11px;font-weight:600;color:var(--accent);font-family:var(--mono);margin:4px 0 12px;text-transform:uppercase;letter-spacing:1.5px;border-bottom:1px solid var(--bdr);padding-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.section-title .aux{color:var(--faint);letter-spacing:.5px;font-weight:500;}
+.form-group{margin-bottom:10px;}
+.form-group label,.lbl{display:block;font-size:11.5px;margin-bottom:4px;color:var(--mut);font-weight:500;}
+input[type="number"],input[type="text"],select{background:var(--surf2);border:1px solid var(--bdr2);color:var(--txt);padding:0 8px;height:32px;border-radius:var(--r);font-family:var(--mono);font-size:13px;width:100%;transition:border-color .15s,box-shadow .15s;}
+input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-dim);}
+select option{background:var(--surf);color:var(--txt);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+.chk{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut);margin:6px 0;cursor:pointer;}
+.chk input{width:15px;height:15px;accent-color:var(--accent);}
+.help{font-size:10.5px;color:var(--faint);margin-top:3px;line-height:1.45;}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--bdr2);border-radius:var(--r);overflow:hidden;margin-bottom:12px;}
+.seg button{background:var(--surf2);color:var(--mut);border:none;padding:8px;font-family:var(--mono);font-size:11.5px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;}
+.seg button.on{background:var(--accent-dim);color:var(--accent);}
+.rows{display:flex;flex-direction:column;gap:6px;margin-bottom:8px;}
+.row{display:grid;gap:6px;align-items:end;background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--r);padding:8px;}
+.row label{font-size:10px;color:var(--faint);margin-bottom:2px;display:block;font-family:var(--mono);text-transform:uppercase;letter-spacing:.4px;}
+.row input,.row select{height:28px;font-size:12px;padding:0 6px;}
+.row.span{grid-template-columns:1fr 1.6fr 1fr 28px;}
+.row.load{grid-template-columns:52px 64px 1.1fr 1.1fr 28px;}
+.row.load .vals{grid-column:1 / span 3;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+.xbtn{height:28px;width:28px;background:transparent;border:1px solid var(--bdr2);color:var(--faint);border-radius:var(--r);cursor:pointer;font-size:15px;line-height:1;}
+.xbtn:hover{color:var(--fail);border-color:var(--fail);}
+.addbtn{background:transparent;border:1px dashed var(--bdr2);color:var(--mut);border-radius:var(--r);padding:6px 10px;font-family:var(--mono);font-size:11px;cursor:pointer;width:100%;}
+.addbtn:hover{color:var(--accent);border-color:var(--accent);}
+.btn{padding:10px;border:none;border-radius:var(--r);font-weight:700;cursor:pointer;font-family:var(--sans);font-size:14px;width:100%;background:var(--accent);color:#1a1208;text-transform:uppercase;letter-spacing:.8px;}
+.btn:hover{filter:brightness(1.08);}
+.btn2{width:100%;padding:9px;background:var(--surf2);border:1px solid var(--bdr2);border-radius:var(--r);font-size:12.5px;color:var(--mut);cursor:pointer;font-family:var(--mono);letter-spacing:.4px;margin-top:8px;}
+.btn2:hover{border-color:var(--accent);color:var(--accent);}
+.hidden{display:none!important;}
+/* results */
+.placeholder{display:flex;align-items:center;justify-content:center;min-height:260px;color:var(--faint);font-size:13px;text-align:center;}
+.verdict{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--bdr2);border-left:4px solid var(--pass);background:var(--surf2);margin-bottom:14px;}
+.verdict.fail{border-left-color:var(--fail);}
+.verdict .big{font-family:var(--mono);font-size:22px;font-weight:700;}
+.verdict .sub{font-size:11.5px;color:var(--mut);}
+.checks{display:flex;flex-direction:column;gap:6px;margin-bottom:6px;}
+.ck{display:grid;grid-template-columns:1.25fr 2fr 56px;gap:10px;align-items:center;font-size:12px;}
+.ck .nm{color:var(--txt);} .ck .nm small{display:block;color:var(--faint);font-family:var(--mono);font-size:10px;}
+.bar{height:8px;background:var(--surf2);border:1px solid var(--bdr);position:relative;}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--pass);}
+.bar i.hi{background:var(--warn);} .bar i.over{background:var(--fail);}
+.ck .u{font-family:var(--mono);text-align:right;font-weight:600;}
+.ck .u.over{color:var(--fail);}
+.diag{width:100%;height:auto;display:block;margin-bottom:6px;}
+.dlabel{font-family:var(--mono);font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:1px;margin:10px 0 2px;}
+table.t{width:100%;border-collapse:collapse;font-size:11.5px;font-family:var(--mono);margin-bottom:8px;}
+table.t th{color:var(--faint);font-weight:500;text-align:right;padding:4px 6px;border-bottom:1px solid var(--bdr);font-size:10.5px;}
+table.t td{padding:4px 6px;border-bottom:1px solid var(--bdr);text-align:right;}
+table.t th:first-child,table.t td:first-child{text-align:left;}
+.note{font-size:11px;color:var(--mut);background:var(--surf2);border:1px solid var(--bdr);border-left:3px solid var(--bdr2);padding:8px 10px;margin-top:8px;line-height:1.55;}
+.err{color:var(--fail);font-size:12px;padding:10px;border:1px solid var(--fail);margin-bottom:12px;}
+.busy{opacity:.55;pointer-events:none;}
+/* ---------- print: A4 calculation sheet ---------- */
+#report{display:none;}
+@media print{
+  @page{size:A4;margin:12mm 12mm 14mm;}
+  body{background:#fff;color:#000;padding:0;background-image:none;font-size:9.5pt;}
+  .container{display:none;}
+  #report{display:block;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  #report table.wrap{width:100%;border-collapse:collapse;}
+  #report thead td{padding:0 0 3mm;}
+  .rh{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;border:0.6pt solid #000;font-size:8pt;}
+  .rh div{padding:1.2mm 2mm;border-right:0.6pt solid #000;}
+  .rh div:last-child{border-right:none;}
+  .rh b{display:block;font-size:6.5pt;color:#444;font-weight:normal;text-transform:uppercase;letter-spacing:.3pt;}
+  .rh .ttl{grid-column:1 / -1;border-top:0.6pt solid #000;border-right:none;font-weight:bold;font-size:10pt;}
+  .rs{margin:0 0 3.5mm;}
+  .rs h2,.rs h3{break-after:avoid;}
+  .rl,.rt,.rsvg,.rp,.rt tr{break-inside:avoid;}
+  .rs h2{font-size:10pt;margin:3mm 0 1.5mm;padding-bottom:0.8mm;border-bottom:0.8pt solid #000;}
+  .rs h3{font-size:9pt;margin:2mm 0 1mm;}
+  .rl{display:grid;grid-template-columns:1fr 92px 132px;gap:2mm;padding:0.5mm 0;font-size:8.6pt;}
+  .rl .cl{text-align:right;color:#444;font-size:7.5pt;}
+  .rl .rv{text-align:right;font-weight:bold;}
+  .ok{color:#0a7a3e;} .ng{color:#c00;}
+  .rt{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;}
+  .rt th,.rt td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;}
+  .rt th{background:#eee;font-weight:bold;}
+  .rt td:first-child,.rt th:first-child,.rt.lft td,.rt.lft th{text-align:left;}
+  .rp{font-size:8.3pt;line-height:1.45;margin:1mm 0;}
+  .rsvg{width:100%;height:auto;}
+  .rsvg *{vector-effect:non-scaling-stroke;}
+}
+
+textarea{width:100%;min-height:90px;background:var(--surf2);color:var(--txt);border:1px solid var(--bdr2);border-radius:var(--r);padding:8px;font-family:var(--mono);font-size:12px;}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="page-hdr">
+    <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
+    <h1>Bolt Group Analysis</h1>
+    <p>In-plane shear and torsion (elastic method, instantaneous-centre comparison) and out-of-plane tension &nbsp;·&nbsp; bolt resistances to BS EN 1993-1-8 + UK NA</p>
+  </div>
+  <div class="main-grid">
+    <div id="inputs">
+      <div class="card">
+        <div class="section-title">Project</div>
+        <div class="form-group"><label>Project</label><input type="text" id="pName" placeholder="Project name"></div>
+        <div class="grid3"><div class="form-group"><label>Job no.</label><input type="text" id="pJob"></div><div class="form-group"><label>By</label><input type="text" id="pBy"></div><div class="form-group"><label>Reference</label><input type="text" id="pRef"></div></div>
+      </div>
+      <div class="card">
+        <div class="section-title">Bolt layout <span class="aux">mm</span></div>
+        <div class="seg"><button id="lgGrid" class="on">Grid</button><button id="lgCustom">Coordinates</button></div>
+        <div id="gridBox">
+          <div class="grid3">
+            <div class="form-group"><label>Rows (vertical)</label><input type="number" id="rows" value="4" min="1" step="1"></div>
+            <div class="form-group"><label>Columns</label><input type="number" id="cols" value="2" min="1" step="1"></div>
+            <div class="form-group"><label>Pitch p<sub>1</sub> (vertical)</label><input type="number" id="p1" value="70"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Gauge p<sub>2</sub> (horizontal)</label><input type="number" id="p2" value="90"></div>
+            <div class="form-group"><label>Edge e<sub>1</sub> (top/bottom)</label><input type="number" id="e1" value="40"></div>
+            <div class="form-group"><label>Edge e<sub>2</sub> (sides)</label><input type="number" id="e2" value="40"></div>
+          </div>
+        </div>
+        <div id="customBox" class="hidden">
+          <div class="form-group"><label>Bolt centres "y, z" per line, from the plate's bottom-left corner</label><textarea id="coords">40, 40
+130, 40
+40, 160
+130, 160</textarea></div>
+          <div class="grid2"><div class="form-group"><label>Plate width</label><input type="number" id="pw" value="170"></div><div class="form-group"><label>Plate height</label><input type="number" id="ph" value="200"></div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="section-title">Bolts and plies</div>
+        <div class="grid3">
+          <div class="form-group"><label>Diameter</label><select id="d"></select></div>
+          <div class="form-group"><label>Class</label><select id="cls"><option>4.6</option><option selected>8.8</option><option>10.9</option></select></div>
+          <div class="form-group"><label>Shear planes</label><select id="planes"><option>1</option><option>2</option></select></div>
+        </div>
+        <label class="chk"><input type="checkbox" id="thr" checked> Threads in the shear plane</label>
+        <div class="grid3">
+          <div class="form-group"><label>Ply 1 thickness</label><input type="number" id="t1" value="10"></div>
+          <div class="form-group"><label>Ply 1 grade</label><select id="g1"><option value="410">S275 (f<sub>u</sub> 410)</option><option value="470" selected>S355 (f<sub>u</sub> 470)</option><option value="540">S460 (f<sub>u</sub> 540)</option></select></div>
+          <div class="form-group"><label>Ply 2 thickness (0 = none)</label><input type="number" id="t2" value="8.5"></div>
+        </div>
+        <div class="grid3"><div class="form-group"><label>Ply 2 grade</label><select id="g2"><option value="410">S275</option><option value="470" selected>S355</option><option value="540">S460</option></select></div></div>
+        <div class="help">Bearing is checked in each ply with the same pattern geometry (edge distances from the plate outline). Ply 2 is typically the supported member's web.</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Actions at ULS <span class="aux">kN, kNm, mm</span></div>
+        <div class="grid3">
+          <div class="form-group"><label>F<sub>y</sub> horizontal (+ right)</label><input type="number" id="Fy" value="0"></div>
+          <div class="form-group"><label>F<sub>z</sub> vertical (+ up)</label><input type="number" id="Fz" value="-250"></div>
+          <div class="form-group"><label>T in-plane (anticlockwise +)</label><input type="number" id="T" value="0"></div>
+        </div>
+        <div class="grid2">
+          <div class="form-group"><label>Force applied at y</label><input type="number" id="ya" value="185"></div>
+          <div class="form-group"><label>Force applied at z</label><input type="number" id="za" value="145"></div>
+        </div>
+        <div class="section-title" style="margin-top:10px">Out of plane</div>
+        <div class="grid3">
+          <div class="form-group"><label>N tension (+)</label><input type="number" id="N" value="0"></div>
+          <div class="form-group"><label>M<sub>y</sub> (top bolts in tension +)</label><input type="number" id="My" value="0"></div>
+          <div class="form-group"><label>Rotation about</label><select id="pivot"><option value="centroid">group centroid</option><option value="bottom">plate bottom edge</option></select></div>
+        </div>
+      </div>
+      <button class="btn" id="calc">Analyse</button>
+    </div>
+    <div><div class="card" id="results"><div class="placeholder">Set out the bolts and actions, then Analyse.</div></div></div>
+  </div>
+</div>
+<div id="report"></div>
+<script id="engine">
+/* ===== BOLT GROUP ENGINE (EngineeringTools) =====
+   Bolt forces from in-plane shear/torsion (elastic method; instantaneous-centre capacity for comparison) and from
+   out-of-plane tension/moments (about the centroid or a pivot line), with bolt resistances to BS EN 1993-1-8
+   Table 3.4 and the UK NA (gamma_M2 = 1.25). Units: N, mm. Plane of the joint: y horizontal (+ right), z vertical (+ up).
+   In-plane moment T anticlockwise positive. Out-of-plane: N tension positive, My about y (tension in bolts with z > pivot). */
+const BoltGroup = (() => {
+  'use strict';
+  const GM2 = 1.25;                                     // UK NA to BS EN 1993-1-8, Table NA.1
+  const CLASSES = { '4.6': [240, 400], '5.6': [300, 500], '8.8': [640, 800], '10.9': [900, 1000] };   // fyb, fub (Table 3.1)
+  // nominal d: [As (mm2), dm (mean of across-flats and across-corners of the nut, mm), normal hole d0 (BS EN 1090-2)]
+  const BOLTS = { 12: [84.3, 20.5, 13], 16: [157, 26.0, 18], 20: [245, 32.4, 22], 22: [303, 35.8, 24], 24: [353, 39.7, 26], 27: [459, 44.7, 30], 30: [561, 49.6, 33], 36: [817, 59.1, 39] };
+
+  function grid({ rows, cols, p1, p2, e1, e2 }) {     // rows along z (pitch p1), columns along y (gauge p2), edge distances e1 (z), e2 (y)
+    const bolts = [];
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) bolts.push({ y: e2 + c * p2, z: e1 + r * p1 });
+    return { bolts, plate: { y0: 0, y1: 2 * e2 + (cols - 1) * p2, z0: 0, z1: 2 * e1 + (rows - 1) * p1 } };
+  }
+  function centroid(bolts) { const n = bolts.length; return { yc: bolts.reduce((s, b) => s + b.y, 0) / n, zc: bolts.reduce((s, b) => s + b.z, 0) / n }; }
+
+  // ---------- in-plane: elastic method ----------
+  function elastic(bolts, { Fy = 0, Fz = 0, T = 0, ya, za }) {
+    const n = bolts.length, { yc, zc } = centroid(bolts);
+    const Tc = T + (ya - yc) * Fz - (za - zc) * Fy;   // moment about the centroid (anticlockwise +)
+    const J = bolts.reduce((s, b) => s + (b.y - yc) ** 2 + (b.z - zc) ** 2, 0);
+    const forces = bolts.map(b => {
+      const fy = Fy / n - (J > 0 ? Tc * (b.z - zc) / J : 0), fz = Fz / n + (J > 0 ? Tc * (b.y - yc) / J : 0);
+      return { fy, fz, F: Math.hypot(fy, fz) };
+    });
+    if (J === 0 && Math.abs(Tc) > 1e-9) throw new Error('A single bolt (or coincident bolts) cannot resist an in-plane moment');
+    return { yc, zc, Tc, J, forces };
+  }
+  // ---------- in-plane: instantaneous centre of rotation (Crawford-Kulak load-deformation curve) ----------
+  // R = Rult (1 - exp(-10 D))^0.55, D in inches (Dmax = 0.34 in). Returns the ultimate load multiplier on the applied actions
+  // expressed as a multiple of Rult, i.e. the group coefficient C = lambda |F| / Rult (or lambda |T| / Rult for pure moment).
+  function icr(bolts, act) {
+    const { yc, zc } = centroid(bolts), F = Math.hypot(act.Fy || 0, act.Fz || 0);
+    const Tc = (act.T || 0) + (act.ya - yc) * (act.Fz || 0) - (act.za - zc) * (act.Fy || 0);
+    if (Math.abs(Tc) < 1e-9 * Math.max(F, 1)) return { C: bolts.length, pure: 'shear', note: 'concentric: every bolt reaches R_ult' };
+    const Dmax = 0.34;
+    const resp = (a, b) => {                           // IC at (a, b): bolt resultants and their moment about the IC
+      const r = bolts.map(p => Math.hypot(p.y - a, p.z - b)), rmax = Math.max(...r);
+      let Ry = 0, Rz = 0, M = 0;
+      bolts.forEach((p, i) => { if (r[i] < 1e-9) return; const D = Dmax * r[i] / rmax, R = Math.pow(1 - Math.exp(-10 * D), 0.55);
+        const ty = -(p.z - b) / r[i], tz = (p.y - a) / r[i];   // anticlockwise tangent
+        Ry += R * ty; Rz += R * tz; M += R * r[i]; });
+      return { Ry, Rz, M };
+    };
+    // Equilibrium of the plate rotating about the IC (a, b): the bolt reactions oppose the motion, so with
+    // s = sign of the applied moment about the IC:  lambda F s = sum R_i t_i  and  lambda |T_IC| = sum R_i r_i.
+    const TICof = (a, b) => (act.T || 0) + (act.ya - a) * (act.Fz || 0) - (act.za - b) * (act.Fy || 0);
+    const fun = ([a, b]) => { const r = resp(a, b), TIC = TICof(a, b), s = Math.sign(TIC) || 1, lam = r.M / Math.abs(TIC);
+      return [lam * (act.Fy || 0) * s - r.Ry, lam * (act.Fz || 0) * s - r.Rz, lam]; };
+    // start from the elastic instantaneous centre: F/n + (Tc/J) k x (p - c) = 0
+    const n = bolts.length, J = bolts.reduce((s, p) => s + (p.y - yc) ** 2 + (p.z - zc) ** 2, 0);
+    let a = yc - (act.Fz || 0) * J / (n * Tc), b = zc + (act.Fy || 0) * J / (n * Tc);
+    let x = [a, b];
+    for (let it = 0; it < 200; it++) {
+      const f0 = fun(x), h = 1e-4 * Math.max(1, Math.hypot(...bolts.map(p => p.y)), Math.hypot(...bolts.map(p => p.z)));
+      const J = [[0, 0], [0, 0]];
+      for (let k = 0; k < 2; k++) { const xp = x.slice(); xp[k] += h; const f1 = fun(xp); J[0][k] = (f1[0] - f0[0]) / h; J[1][k] = (f1[1] - f0[1]) / h; }
+      const det = J[0][0] * J[1][1] - J[0][1] * J[1][0];
+      if (!Number.isFinite(det) || Math.abs(det) < 1e-30) break;
+      const dx = [(-f0[0] * J[1][1] + f0[1] * J[0][1]) / det, (-f0[1] * J[0][0] + f0[0] * J[1][0]) / det];
+      let step = 1; while (step > 1e-4) { const xn = [x[0] + step * dx[0], x[1] + step * dx[1]], fn = fun(xn); if (Math.hypot(fn[0], fn[1]) < Math.hypot(f0[0], f0[1])) { x = xn; break; } step /= 2; }
+      if (Math.hypot(fun(x)[0], fun(x)[1]) < 1e-10 * bolts.length) break;
+    }
+    const lam = fun(x)[2], res = fun(x);
+    if (Math.hypot(res[0], res[1]) > 1e-6 * bolts.length) return { C: null, note: 'ICR iteration did not converge' };
+    return { C: lam * (F > 0 ? F : Math.abs(act.T)), lambda: lam, ic: { y: x[0], z: x[1] } };
+  }
+
+  // ---------- out-of-plane: tension and moments ----------
+  // pivot: 'centroid' (linear about the group centroid, bolts in tension only where the result is positive) or
+  // { zp } / { yp }: rotation about a pivot line (compression on plate contact), forces proportional to distance on the tension side.
+  function outOfPlane(bolts, { N = 0, My = 0, Mz = 0, pivotZ = null, pivotY = null }) {
+    const n = bolts.length, { yc, zc } = centroid(bolts);
+    const dz = bolts.map(b => b.z - (pivotZ ?? zc)), dy = bolts.map(b => b.y - (pivotY ?? yc));
+    const pos = arr => arr.map(v => (pivotZ !== null || pivotY !== null) ? Math.max(0, v) : v);
+    const sz = pos(dz), sy = pos(dy);
+    const Sz = sz.reduce((s, v) => s + v * v, 0), Sy = sy.reduce((s, v) => s + v * v, 0);
+    if (My && !(Sz > 0)) throw new Error('No bolts on the tension side of the pivot for M_y');
+    if (Mz && !(Sy > 0)) throw new Error('No bolts on the tension side of the pivot for M_z');
+    return bolts.map((b, i) => ({ t: N / n + (My ? My * sz[i] / Sz : 0) + (Mz ? Mz * sy[i] / Sy : 0) }));
+  }
+
+  // ---------- resistances, BS EN 1993-1-8 Table 3.4 ----------
+  function boltProps(d, cls, opts = {}) {
+    const [As, dm, d0] = BOLTS[d], [fyb, fub] = CLASSES[cls];
+    const A = Math.PI * d * d / 4;
+    const av = opts.threadsInShear === false ? 0.6 : (['4.6', '5.6', '8.8'].includes(cls) ? 0.6 : 0.5);
+    const shearArea = opts.threadsInShear === false ? A : As;
+    const nPlanes = opts.planes || 1;
+    return { d, cls, As, A, dm, d0: opts.d0 || d0, fyb, fub, av, FvRd: nPlanes * av * fub * shearArea / GM2, FtRd: (opts.countersunk ? 0.63 : 0.9) * fub * As / GM2, planes: nPlanes };
+  }
+  // bearing for a force component along an axis: e1, p1 along the force; e2, p2 across; end/edge status from the bolt pattern
+  function bearing(bp, fu, t, { e1, p1, e2, p2, end, edge }) {
+    const d0 = bp.d0;
+    const ad = end ? e1 / (3 * d0) : p1 / (3 * d0) - 0.25;
+    const ab = Math.min(ad, bp.fub / fu, 1.0);
+    const k1 = edge ? Math.min(2.8 * e2 / d0 - 1.7, Number.isFinite(p2) ? 1.4 * p2 / d0 - 1.7 : Infinity, 2.5) : Math.min(1.4 * p2 / d0 - 1.7, 2.5);
+    return { ad, ab, k1, FbRd: Math.max(0, k1 * ab * fu * bp.d * t / GM2) };
+  }
+  // pattern geometry per bolt along y or z: neighbour spacing and edge distances (plate rectangle)
+  function geometry(bolts, plate) {
+    const near = (vals, v) => { const o = vals.filter(x => Math.abs(x - v) > 1e-6).map(x => Math.abs(x - v)); return o.length ? Math.min(...o) : Infinity; };
+    return bolts.map(b => {
+      const sameRow = bolts.filter(o => Math.abs(o.z - b.z) < 1e-6).map(o => o.y), sameCol = bolts.filter(o => Math.abs(o.y - b.y) < 1e-6).map(o => o.z);
+      const ey = Math.min(b.y - plate.y0, plate.y1 - b.y), ez = Math.min(b.z - plate.z0, plate.z1 - b.z);
+      const py = near(sameRow, b.y), pz = near(sameCol, b.z);
+      // a bolt is an end bolt along an axis when no bolt lies beyond it towards the nearer edge in that direction
+      const endY = !bolts.some(o => Math.abs(o.z - b.z) < 1e-6 && ((b.y - plate.y0 <= plate.y1 - b.y) ? o.y < b.y - 1e-6 : o.y > b.y + 1e-6));
+      const endZ = !bolts.some(o => Math.abs(o.y - b.y) < 1e-6 && ((b.z - plate.z0 <= plate.z1 - b.z) ? o.z < b.z - 1e-6 : o.z > b.z + 1e-6));
+      const gapY = near(bolts.map(o => o.y), b.y), gapZ = near(bolts.map(o => o.z), b.z);
+      return { ey, ez, py: Number.isFinite(py) ? py : gapY, pz: Number.isFinite(pz) ? pz : gapZ, endY, endZ,
+        edgeY: !bolts.some(o => (b.z - plate.z0 <= plate.z1 - b.z) ? o.z < b.z - 1e-6 : o.z > b.z + 1e-6),   // outer line for a force along y
+        edgeZ: !bolts.some(o => (b.y - plate.y0 <= plate.y1 - b.y) ? o.y < b.y - 1e-6 : o.y > b.y + 1e-6) };
+    });
+  }
+
+  /* Full check. inp: { bolts, plate, d, cls, threadsInShear, planes, plates: [{ t, fu }] (bearing plies, thinnest governs per ply),
+     act: { Fy, Fz, T, ya, za, N, My, Mz, pivotZ, pivotY }, method: 'elastic' } */
+  function check(inp) {
+    const bp = boltProps(inp.d, inp.cls, { threadsInShear: inp.threadsInShear !== false, planes: inp.planes || 1 });
+    const el = elastic(inp.bolts, inp.act), oop = outOfPlane(inp.bolts, inp.act), geo = geometry(inp.bolts, inp.plate);
+    // long joint, 3.8: distance between the end bolts in the direction of force transfer (largest extent)
+    const ys = inp.bolts.map(b => b.y), zs = inp.bolts.map(b => b.z);
+    const Lj = Math.max(Math.max(...ys) - Math.min(...ys), Math.max(...zs) - Math.min(...zs));
+    const bLf = Lj > 15 * inp.d ? Math.min(1, Math.max(0.75, 1 - (Lj - 15 * inp.d) / (200 * inp.d))) : 1;
+    const rows = inp.bolts.map((b, i) => {
+      const f = el.forces[i], g = geo[i], t = Math.max(0, oop[i].t);
+      const plies = (inp.plates || []).map(pl => {
+        const by = bearing(bp, pl.fu, pl.t, { e1: g.ey, p1: g.py, e2: g.ez, p2: g.pz, end: g.endY, edge: g.edgeY });
+        const bz = bearing(bp, pl.fu, pl.t, { e1: g.ez, p1: g.pz, e2: g.ey, p2: g.py, end: g.endZ, edge: g.edgeZ });
+        const u = Math.sqrt((f.fy / by.FbRd) ** 2 + (f.fz / bz.FbRd) ** 2);       // vector interaction (SCI P358)
+        return { t: pl.t, fu: pl.fu, by, bz, u, Bp: 0.6 * Math.PI * bp.dm * pl.t * pl.fu / GM2 };
+      });
+      const ub = plies.length ? Math.max(...plies.map(p => p.u)) : 0;
+      const Bp = plies.length ? Math.min(...plies.map(p => p.Bp)) : Infinity;
+      const uv = f.F / (bLf * bp.FvRd), ut = t / Math.min(bp.FtRd, Bp), uvt = f.F / (bLf * bp.FvRd) + t / (1.4 * bp.FtRd);
+      return { i, ...b, ...f, t, g, plies, uv, ub, ut, uvt: t > 0 ? uvt : uv, util: Math.max(uv, ub, ut, t > 0 ? uvt : 0) };
+    });
+    const gov = rows.reduce((a, r) => r.util > a.util ? r : a, rows[0]);
+    let ic = null;
+    try { ic = icr(inp.bolts, inp.act); } catch (e) { ic = { C: null, note: e.message }; }
+    return { bp, el, rows, gov, Lj, bLf, ic, utilMax: gov.util };
+  }
+  return { GM2, CLASSES, BOLTS, grid, centroid, elastic, icr, outOfPlane, boltProps, bearing, geometry, check };
+})();
+if (typeof module !== 'undefined') module.exports = { BoltGroup };
+
+</script>
+<script id="ui">
+'use strict';
+const $ = id => document.getElementById(id);
+const STORE = 'et-bolt-group-v1';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmt = (v, d = 1) => Number.isFinite(v) ? v.toFixed(d) : '&ndash;';
+const ufmt = u => !Number.isFinite(u) ? '&gt;99' : u.toFixed(3);
+$('d').innerHTML = Object.keys(BoltGroup.BOLTS).map(d => `<option value="${d}"${d === '20' ? ' selected' : ''}>M${d}</option>`).join('');
+let layoutMode = 'grid';
+const setMode = m => { layoutMode = m; $('lgGrid').classList.toggle('on', m === 'grid'); $('lgCustom').classList.toggle('on', m === 'custom'); $('gridBox').classList.toggle('hidden', m !== 'grid'); $('customBox').classList.toggle('hidden', m !== 'custom'); };
+$('lgGrid').onclick = () => setMode('grid'); $('lgCustom').onclick = () => setMode('custom');
+const IDS = ['pName', 'pJob', 'pBy', 'pRef', 'rows', 'cols', 'p1', 'p2', 'e1', 'e2', 'coords', 'pw', 'ph', 'd', 'cls', 'planes', 't1', 'g1', 't2', 'g2', 'Fy', 'Fz', 'T', 'ya', 'za', 'N', 'My', 'pivot'];
+function collect() { const s = { v: 1, mode: layoutMode, thr: $('thr').checked }; IDS.forEach(k => s[k] = $(k).value); return s; }
+function restore(s) { IDS.forEach(k => { if (s[k] !== undefined) $(k).value = s[k]; }); $('thr').checked = s.thr; setMode(s.mode || 'grid'); }
+function layout(s) {
+  if (s.mode === 'grid') {
+    const rows = Math.round(+s.rows), cols = Math.round(+s.cols);
+    if (!(rows >= 1 && cols >= 1)) throw new Error('Rows and columns must be at least 1');
+    if ((rows > 1 && !(+s.p1 > 0)) || (cols > 1 && !(+s.p2 > 0)) || !(+s.e1 > 0) || !(+s.e2 > 0)) throw new Error('Pitches and edge distances must be positive');
+    return BoltGroup.grid({ rows, cols, p1: +s.p1, p2: cols > 1 ? +s.p2 : 0, e1: +s.e1, e2: +s.e2 });
+  }
+  const bolts = s.coords.split('\n').map(l => l.trim()).filter(Boolean).map(l => { const v = l.split(/[,\s;]+/).map(Number); if (v.length < 2 || !v.every(Number.isFinite)) throw new Error(`Bolt "${l}" is not a "y, z" pair`); return { y: v[0], z: v[1] }; });
+  if (!bolts.length) throw new Error('Add at least one bolt');
+  const plate = { y0: 0, y1: +s.pw, z0: 0, z1: +s.ph };
+  if (bolts.some(b => b.y <= 0 || b.y >= plate.y1 || b.z <= 0 || b.z >= plate.z1)) throw new Error('Every bolt must lie inside the plate outline');
+  return { bolts, plate };
+}
+function analyse(s) {
+  const { bolts, plate } = layout(s);
+  const plies = [{ t: +s.t1, fu: +s.g1 }, ...(+s.t2 > 0 ? [{ t: +s.t2, fu: +s.g2 }] : [])];
+  const act = { Fy: +s.Fy * 1e3, Fz: +s.Fz * 1e3, T: +s.T * 1e6, ya: +s.ya, za: +s.za, N: +s.N * 1e3, My: +s.My * 1e6, pivotZ: s.pivot === 'bottom' ? plate.z0 : null };
+  const r = BoltGroup.check({ bolts, plate, d: +s.d, cls: s.cls, threadsInShear: s.thr, planes: +s.planes, plates: plies, act });
+  // spacing and edge distance limits, BS EN 1993-1-8 Table 3.3 (minimum values)
+  const d0 = r.bp.d0, warn = [];
+  r.rows.forEach(b => { if (b.g.ey < 1.2 * d0 || b.g.ez < 1.2 * d0) warn.push(`Bolt ${b.i + 1}: edge or end distance below 1.2 d<sub>0</sub> = ${(1.2 * d0).toFixed(0)} mm`);
+    if ((Number.isFinite(b.g.pz) && b.g.pz < 2.2 * d0) || (Number.isFinite(b.g.py) && b.g.py < 2.4 * d0)) warn.push(`Bolt ${b.i + 1}: spacing below Table 3.3 minimum (p<sub>1</sub> 2.2 d<sub>0</sub>, p<sub>2</sub> 2.4 d<sub>0</sub>)`); });
+  return { s, bolts, plate, plies, act, r, warn: [...new Set(warn)] };
+}
+function svgGroup(R, light) {
+  const { plate, bolts } = R, w = plate.y1 - plate.y0, h = plate.z1 - plate.z0, S = 320, pad = 30, k = (S - 2 * pad) / Math.max(w, h, 1);
+  const X = y => pad + (y - plate.y0) * k + ((S - 2 * pad) - w * k) / 2, Y = z => S - pad - (z - plate.z0) * k - ((S - 2 * pad) - h * k) / 2;
+  const col = light ? '#000' : 'var(--txt)', acc = light ? '#b06000' : 'var(--accent)', mut = light ? '#888' : 'var(--faint)', red = light ? '#c00' : 'var(--fail)';
+  let g = `<rect x="${X(plate.y0)}" y="${Y(plate.z1)}" width="${w * k}" height="${h * k}" fill="${light ? '#eee' : 'var(--surf2)'}" stroke="${col}"/>`;
+  const Fmax = Math.max(...R.r.rows.map(b => b.F), 1e-9), L = 0.9 * Math.min(...[R.r.bp.d0 * 2.4 * k, 40]);
+  R.r.rows.forEach(b => {
+    g += `<circle cx="${X(b.y)}" cy="${Y(b.z)}" r="${Math.max(3, R.r.bp.d0 / 2 * k)}" fill="none" stroke="${b === R.r.gov ? red : col}" stroke-width="${b === R.r.gov ? 2 : 1}"/>`;
+    if (b.F > 0) { const ex = X(b.y) + b.fy / Fmax * L, ey = Y(b.z) - b.fz / Fmax * L; g += `<line x1="${X(b.y)}" y1="${Y(b.z)}" x2="${ex}" y2="${ey}" stroke="${acc}" stroke-width="1.5"/><circle cx="${ex}" cy="${ey}" r="1.8" fill="${acc}"/>`; }
+    g += `<text x="${X(b.y) + 6}" y="${Y(b.z) + 12}" font-size="9" fill="${mut}" font-family="monospace">${b.i + 1}</text>`;
+  });
+  const c = R.r.el; g += `<path d="M${X(c.yc) - 5} ${Y(c.zc)} h10 M${X(c.yc)} ${Y(c.zc) - 5} v10" stroke="${mut}"/>`;
+  if (R.act.Fy || R.act.Fz) { const F = Math.hypot(R.act.Fy, R.act.Fz), ax = X(R.act.ya), az = Y(R.act.za); g += `<line x1="${ax - R.act.Fy / F * 34}" y1="${az + R.act.Fz / F * 34}" x2="${ax}" y2="${az}" stroke="${red}" stroke-width="2"/><circle cx="${ax}" cy="${az}" r="3" fill="${red}"/>`; }
+  g += `<text x="6" y="14" font-size="10" fill="${mut}" font-family="monospace">bolt shear (share of the applied action, elastic), scaled</text>`;
+  return `<svg class="${light ? 'rsvg' : 'diag'}" viewBox="0 0 ${S} ${S}" style="max-width:${light ? 250 : 380}px;margin:0 auto">${g}</svg>`;
+}
+function render(R) {
+  const r = R.r, gov = r.gov, bp = r.bp;
+  let h = `<div class="verdict ${r.utilMax > 1 ? 'fail' : ''}"><div><div class="big">${r.utilMax > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(r.utilMax)}</div><div class="sub">${R.bolts.length} M${bp.d} ${bp.cls} bolts &nbsp;·&nbsp; governing bolt ${gov.i + 1}</div></div></div>`;
+  h += svgGroup(R, false);
+  h += `<div class="dlabel">Bolt forces and utilisations</div><table class="t"><tr><th>Bolt</th><th>y, z</th><th>F<sub>v,y</sub></th><th>F<sub>v,z</sub></th><th>F<sub>v</sub> kN</th><th>F<sub>t</sub> kN</th><th>shear</th><th>bearing</th><th>tension</th><th>V+T</th></tr>` +
+    r.rows.map(b => `<tr${b === gov ? ' style="color:var(--accent)"' : ''}><td>${b.i + 1}</td><td>${b.y.toFixed(0)}, ${b.z.toFixed(0)}</td><td>${fmt(b.fy / 1e3)}</td><td>${fmt(b.fz / 1e3)}</td><td>${fmt(b.F / 1e3)}</td><td>${fmt(b.t / 1e3)}</td><td>${ufmt(b.uv)}</td><td>${ufmt(b.ub)}</td><td>${ufmt(b.ut)}</td><td>${ufmt(b.uvt)}</td></tr>`).join('') + `</table>`;
+  h += `<div class="dlabel">Resistances per bolt</div><table class="t"><tr><th>F<sub>v,Rd</sub></th><th>&beta;<sub>Lf</sub></th><th>F<sub>t,Rd</sub></th>${gov.plies.map((p, i) => `<th>F<sub>b,Rd</sub> ply ${i + 1} (y / z)</th>`).join('')}</tr><tr><td>${fmt(bp.FvRd / 1e3)}</td><td>${r.bLf.toFixed(3)}</td><td>${fmt(bp.FtRd / 1e3)}</td>${gov.plies.map(p => `<td>${fmt(p.by.FbRd / 1e3)} / ${fmt(p.bz.FbRd / 1e3)}</td>`).join('')}</tr></table>`;
+  if (r.ic && r.ic.C) { const Fres = Math.hypot(R.act.Fy, R.act.Fz), elC = Fres > 0 ? Fres / gov.F : null;
+    h += `<div class="dlabel">Instantaneous-centre comparison</div><table class="t"><tr><th>Group coefficient</th><th>Elastic</th><th>ICR</th></tr><tr><td>${Fres > 0 ? 'C = F<sub>ult</sub> / R<sub>ult</sub>' : 'M<sub>ult</sub> / R<sub>ult</sub> (mm)'}</td><td>${elC ? elC.toFixed(3) : '&ndash;'}</td><td>${r.ic.C.toFixed(3)}</td></tr></table>`; }
+  if (R.warn.length) h += `<div class="err">${R.warn.join('<br>')}</div>`;
+  h += `<div class="note">${notes(R).join('<br>')}</div><button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  $('results').innerHTML = h;
+  $('printBtn').onclick = () => { $('report').innerHTML = report(R); window.print(); };
+}
+function notes(R) {
+  return ['Elastic method: each bolt carries F/n plus a share of the moment about the group centroid proportional to its distance (BS EN 1993-1-8 3.12 for a ductile group may allow a plastic distribution; the elastic result is used for the checks).',
+    'Instantaneous centre (ICR): Crawford&ndash;Kulak load&ndash;deformation curve R = R<sub>ult</sub>(1 &minus; e<sup>&minus;10&Delta;</sup>)<sup>0.55</sup>, &Delta;<sub>max</sub> = 8.6 mm; shown for comparison only.',
+    'Bearing per ply for each force component with end/edge factors from the bolt pattern and plate outline (Table 3.4), combined as &radic;((F<sub>y</sub>/F<sub>b,Rd,y</sub>)² + (F<sub>z</sub>/F<sub>b,Rd,z</sub>)²) &le; 1 (SCI P358).',
+    `Out-of-plane tension ${R.s.pivot === 'bottom' ? 'from rotation about the plate bottom edge (compression on plate contact)' : 'distributed linearly about the group centroid'}; tension and punching (B<sub>p,Rd</sub>) checked; combined shear and tension to Table 3.4.`,
+    `&gamma;<sub>M2</sub> = 1.25 (UK NA). Long-joint factor &beta;<sub>Lf</sub> (3.8) for L<sub>j</sub> = ${R.r.Lj.toFixed(0)} mm.`];
+}
+const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
+const okng = u => u <= 1 ? `<span class="ok">${ufmt(u)} OK</span>` : `<span class="ng">${ufmt(u)} FAIL</span>`;
+function report(R) {
+  const s = R.s, r = R.r, bp = r.bp, gov = r.gov, today = new Date().toLocaleDateString('en-GB');
+  const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Reference</b>${esc(s.pRef) || '&nbsp;'}</div>
+    <div class="ttl">Bolt group analysis &mdash; ${R.bolts.length} M${bp.d} class ${bp.cls} to BS EN 1993-1-8</div></div>`;
+  let b = `<div class="rs"><h2>1 Layout and actions</h2>${svgGroup(R, true)}` +
+    rl('Plate outline', '', `${(R.plate.y1 - R.plate.y0).toFixed(0)} &times; ${(R.plate.z1 - R.plate.z0).toFixed(0)} mm`) +
+    rl(`Group centroid (from the bottom-left corner)`, 'y<sub>c</sub>, z<sub>c</sub>', `${r.el.yc.toFixed(1)}, ${r.el.zc.toFixed(1)} mm`) +
+    rl(`F<sub>y</sub> = ${s.Fy} kN, F<sub>z</sub> = ${s.Fz} kN at (${s.ya}, ${s.za}) mm; T = ${s.T} kNm`, 'in plane', `T<sub>c</sub> = ${(r.el.Tc / 1e6).toFixed(2)} kNm`) +
+    rl(`J = &Sigma;r² = ${(r.el.J).toFixed(0)} mm²`, 'elastic', '') +
+    ((+s.N || +s.My) ? rl(`N = ${s.N} kN, M<sub>y</sub> = ${s.My} kNm, rotation about the ${s.pivot === 'bottom' ? 'plate bottom edge' : 'group centroid'}`, 'out of plane', '') : '') + `</div>`;
+  b += `<div class="rs"><h2>2 Bolt resistances (Table 3.4, &gamma;<sub>M2</sub> = 1.25)</h2>` +
+    rl(`Shear: &alpha;<sub>v</sub> = ${bp.av}, f<sub>ub</sub> = ${bp.fub} N/mm², ${s.thr ? 'A<sub>s</sub> = ' + bp.As : 'A = ' + bp.A.toFixed(0)} mm², ${bp.planes} plane${bp.planes > 1 ? 's' : ''}`, 'F<sub>v,Rd</sub>', `${fmt(bp.FvRd / 1e3)} kN`) +
+    rl(`Long joint: L<sub>j</sub> = ${r.Lj.toFixed(0)} mm ${r.Lj > 15 * bp.d ? '&gt;' : '&le;'} 15d`, '3.8', `&beta;<sub>Lf</sub> = ${r.bLf.toFixed(3)}`) +
+    rl('Tension: k<sub>2</sub> f<sub>ub</sub> A<sub>s</sub> / &gamma;<sub>M2</sub>, k<sub>2</sub> = 0.9', 'F<sub>t,Rd</sub>', `${fmt(bp.FtRd / 1e3)} kN`) +
+    gov.plies.map((p, i) => rl(`Ply ${i + 1} (t = ${p.t} mm, f<sub>u</sub> = ${p.fu}): governing bolt ${gov.i + 1}, d<sub>0</sub> = ${bp.d0} mm; y: &alpha;<sub>b</sub> = ${p.by.ab.toFixed(3)}, k<sub>1</sub> = ${p.by.k1.toFixed(2)}; z: &alpha;<sub>b</sub> = ${p.bz.ab.toFixed(3)}, k<sub>1</sub> = ${p.bz.k1.toFixed(2)}; B<sub>p,Rd</sub> = ${fmt(p.Bp / 1e3)} kN`, 'F<sub>b,Rd,y / z</sub>', `${fmt(p.by.FbRd / 1e3)} / ${fmt(p.bz.FbRd / 1e3)} kN`)).join('') + `</div>`;
+  b += `<div class="rs"><h2>3 Bolt forces and checks</h2><table class="rt"><tr><th>Bolt</th><th>y, z (mm)</th><th>F<sub>v,y</sub> (kN)</th><th>F<sub>v,z</sub> (kN)</th><th>F<sub>v</sub> (kN)</th><th>F<sub>t</sub> (kN)</th><th>Shear</th><th>Bearing</th><th>Tension</th><th>V + T</th></tr>` +
+    r.rows.map(x => `<tr><td>${x.i + 1}</td><td>${x.y.toFixed(0)}, ${x.z.toFixed(0)}</td><td>${fmt(x.fy / 1e3)}</td><td>${fmt(x.fz / 1e3)}</td><td>${fmt(x.F / 1e3)}</td><td>${fmt(x.t / 1e3)}</td><td>${ufmt(x.uv)}</td><td>${ufmt(x.ub)}</td><td>${ufmt(x.ut)}</td><td>${ufmt(x.uvt)}</td></tr>`).join('') + `</table>` +
+    rl(`Governing bolt ${gov.i + 1}: F<sub>v</sub> = ${fmt(gov.F / 1e3)} kN, F<sub>t</sub> = ${fmt(gov.t / 1e3)} kN`, 'Table 3.4', okng(r.utilMax)) +
+    (r.ic && r.ic.C ? rl(`Instantaneous-centre comparison (information): group coefficient ${r.ic.C.toFixed(3)}`, 'ICR', '') : '') +
+    (R.warn.length ? `<p class="rp" style="color:#c00">${R.warn.join('; ')}</p>` : '') + `</div>`;
+  b += `<div class="rs"><h2>4 Method</h2><p class="rp">${notes(R).join(' ')}</p><p class="rp" style="color:#555">Generated by EngineeringTools &mdash; Bolt Group Analysis. All calculations are the responsibility of the engineer.</p></div>`;
+  return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
+}
+$('calc').onclick = () => { const s = collect(); try { localStorage.setItem(STORE, JSON.stringify(s)); } catch (e) { /* storage unavailable */ }
+  try { render(analyse(s)); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div>`; } };
+(function init() { let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; } if (s && s.v === 1) restore(s); })();
+</script>
+</body>
+</html>
