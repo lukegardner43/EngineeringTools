@@ -56,7 +56,7 @@ select option{background:var(--surf);color:var(--txt);}
 .row label{font-size:10px;color:var(--faint);margin-bottom:2px;display:block;font-family:var(--mono);text-transform:uppercase;letter-spacing:.4px;}
 .row input,.row select{height:28px;font-size:12px;padding:0 6px;}
 .row.span{grid-template-columns:1fr 1.6fr 1fr 28px;}
-.row.load{grid-template-columns:52px 1.1fr 1.1fr 28px;}
+.row.load{grid-template-columns:52px 64px 1.1fr 1.1fr 28px;}
 .row.load .vals{grid-column:1 / span 3;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
 .xbtn{height:28px;width:28px;background:transparent;border:1px solid var(--bdr2);color:var(--faint);border-radius:var(--r);cursor:pointer;font-size:15px;line-height:1;}
 .xbtn:hover{color:var(--fail);border-color:var(--fail);}
@@ -1504,7 +1504,12 @@ const Design = (() => {
     const lay = Beam.layout(inp);
     const loads = inp.loads.slice();
     if (inp.selfWeight) lay.mem.forEach((_, m) => loads.push({ case: 'G', member: m, type: 'udl', w: sec.mass * 9.80665e-3, sw: true }));
-    const res = Beam.analyse({ ...inp, EI: EC3.E * sec.Iy, loads });
+    // Horizontal loads (dir 'h', acting through the shear centre) bend the member about its minor axis on the same supports.
+    // Both analyses see every load (the other plane's at zero magnitude) so that their stations coincide.
+    const isH = l => l.dir === 'h', zero = l => ({ ...l, w: 0, w1: 0, w2: 0, P: 0, M: 0 });
+    const hasH = loads.some(isH);
+    const res = Beam.analyse({ ...inp, EI: EC3.E * sec.Iy, loads: hasH ? loads.map(l => isH(l) ? zero(l) : l) : loads });
+    const resH = hasH ? Beam.analyse({ ...inp, EI: EC3.E * sec.Iz, loads: loads.map(l => isH(l) ? l : zero(l)) }) : null;
     const nMem = lay.mem.length;
     const qMembers = res.hasQ.map((h, m) => h ? m : -1).filter(m => m >= 0);
     const combos = ulsCombos(inp.rule, inp.psi0, nMem, qMembers);
@@ -1532,10 +1537,11 @@ const Design = (() => {
     // supports with built-in ends (a lone cantilever off a fixed support) are modelled as fully fixed for LTB
     const builtIn = x => lay.sup.some(s => Math.abs(s.x - x) < 1e-6 && s.type === 'fixed');
 
-    const out = { fy, sec, lay, res, combos, segs, gov: {}, segResults: [], memDefl: [], reactions: [] };
+    const out = { fy, sec, lay, res, resH, hasH, combos, segs, gov: {}, segResults: [], memDefl: [], reactions: [] };
     const ky = inp.ky || lay.mem.map(m => m.kind === 'span' ? 1 : 2);
     const ab = lay.mem.map((m, mi) => null);
-    const envelope = { Mmax: new Float64Array(res.st.length).fill(-Infinity), Mmin: new Float64Array(res.st.length).fill(Infinity), Vmax: new Float64Array(res.st.length).fill(-Infinity), Vmin: new Float64Array(res.st.length).fill(Infinity) };
+    const env0 = () => ({ Mmax: new Float64Array(res.st.length).fill(-Infinity), Mmin: new Float64Array(res.st.length).fill(Infinity), Vmax: new Float64Array(res.st.length).fill(-Infinity), Vmin: new Float64Array(res.st.length).fill(Infinity) });
+    const envelope = env0(), envelopeH = hasH ? env0() : null;
     // LT segment models: geometry/restraints once; C matrices once per load group
     const groups = [res.G, ...res.Q];
     const segModels = segs.map(sg => {
@@ -1587,14 +1593,21 @@ const Design = (() => {
     }
 
     // Phase 1: combinations, cross-section checks at every station, envelopes
+    const combResH = [];
     const combRes = combos.map(cb => {
-      const c = Beam.combine(res, cb.gG, cb.qFac);
+      const c = Beam.combine(res, cb.gG, cb.qFac), h = hasH ? Beam.combine(resH, cb.gG, cb.qFac) : null;
+      combResH.push(h);
       res.st.forEach((s, k) => {
         envelope.Mmax[k] = Math.max(envelope.Mmax[k], c.M[k]); envelope.Mmin[k] = Math.min(envelope.Mmin[k], c.M[k]);
         envelope.Vmax[k] = Math.max(envelope.Vmax[k], c.V[k]); envelope.Vmin[k] = Math.min(envelope.Vmin[k], c.V[k]);
-        const sc = EC3.sectionCheck(sec, fy, N, c.M[k], c.V[k]);
-        track(out.gov, 'shear', sc.uV, { x: s.x, combo: cb.label, V: c.V[k], M: c.M[k], sc });
-        track(out.gov, 'bending', sc.uM, { x: s.x, combo: cb.label, V: c.V[k], M: c.M[k], sc });
+        const Mz = h ? h.M[k] : 0, Vz = h ? h.V[k] : 0;
+        if (h) {
+          envelopeH.Mmax[k] = Math.max(envelopeH.Mmax[k], Mz); envelopeH.Mmin[k] = Math.min(envelopeH.Mmin[k], Mz);
+          envelopeH.Vmax[k] = Math.max(envelopeH.Vmax[k], Vz); envelopeH.Vmin[k] = Math.min(envelopeH.Vmin[k], Vz);
+        }
+        const sc = EC3.sectionCheck(sec, fy, N, c.M[k], c.V[k], Mz, Vz);
+        track(out.gov, 'shear', sc.uV, { x: s.x, combo: cb.label, V: c.V[k], M: c.M[k], Mz, Vz, sc });
+        track(out.gov, 'bending', sc.uM, { x: s.x, combo: cb.label, V: c.V[k], M: c.M[k], Mz, Vz, sc });
         if (N) track(out.gov, 'axial', sc.uN, { x: s.x, combo: 'N constant along member', sc });
       });
       return c;
@@ -1603,26 +1616,32 @@ const Design = (() => {
     // Phase 2: member buckling per LT segment. Combinations are taken in descending order of segment moment;
     // a combination is solved exactly unless its upper-bound utilisation (from the Mcr lower bound, f = 1)
     // cannot exceed the governing value already found for that segment.
-    const cls = EC3.classify(sec, fy, N, true).cls;
+    const cls = EC3.classify(sec, fy, N, true, hasH).cls;
+    const Nc = Math.max(N, 0), doInt = N > 0 || hasH;      // 6.3.3 with compression and/or biaxial bending
     const Wy = EC3.wyByClass(sec, fy, cls), lp = EC3.ltbParams(sec);
     out.ltbStats = { candidates: 0, solved: 0 };
     segs.forEach((sg, si) => {
       const m = lay.mem[sg.mem], sm = segModels[si];
-      const order = combos.map((cb, ci) => ({ cb, ci, own: segmentData(res, combRes[ci], sg.xa, sg.xb) }))
-        .filter(o => o.own.Mmax >= 1).sort((p, q) => q.own.Mmax - p.own.Mmax);
+      const order = combos.map((cb, ci) => ({ cb, ci, own: segmentData(res, combRes[ci], sg.xa, sg.xb), ownH: hasH ? segmentData(resH, combResH[ci], sg.xa, sg.xb) : null }))
+        .filter(o => o.own.Mmax >= 1 || (o.ownH && o.ownH.Mmax >= 1)).sort((p, q) => q.own.Mmax - p.own.Mmax);
       let abk = null, memStCache = new Map();
-      if (N > 0) {
-        const Lcry = m.kind === 'span' ? ky[sg.mem] * m.L : LcryCant, ax = sm.axial;
-        abk = axialBuckling(sec, fy, inp.grade, N, Lcry, ax ? ax.Lcrz : sg.xb - sg.xa, ax ? ax.LT : sg.xb - sg.xa);
-        track(out.gov, 'flexural', abk.util, { combo: 'N constant along member', mem: sg.mem, seg: si, ab: abk, cant: m.kind !== 'span', free: !!sg.free });
+      if (doInt) {
+        const Lcry = m.kind === 'span' ? ky[sg.mem] * m.L : (LcryCant ?? Infinity), ax = sm.axial;
+        abk = axialBuckling(sec, fy, inp.grade, Nc, Lcry, ax ? ax.Lcrz : sg.xb - sg.xa, ax ? ax.LT : sg.xb - sg.xa);
+        if (N > 0) track(out.gov, 'flexural', abk.util, { combo: 'N constant along member', mem: sg.mem, seg: si, ab: abk, cant: m.kind !== 'span', free: !!sg.free });
       }
       let bestLT = -1, bestInt = -1;
-      for (const { cb, ci, own } of order) {
+      for (const { cb, ci, own, ownH } of order) {
         out.ltbStats.candidates++;
         const fac = [cb.gG, ...cb.qFac], c = combRes[ci];
-        let Cmy = null, CmLT = null;
-        if (N > 0) {
+        let Cmy = null, CmLT = null, Cmz = 1, MzEd = 0;
+        if (doInt) {
           let memSt = memStCache.get(ci); if (!memSt) memStCache.set(ci, memSt = segmentData(res, c, m.x0, m.x1));
+          if (ownH) {                // minor-axis bending between supports: Cmz over the member (sway for a cantilever)
+            const mh = segmentData(resH, combResH[ci], m.x0, m.x1);
+            MzEd = ownH.Mmax;
+            Cmz = m.kind !== 'span' ? 0.9 : mh.Mmax > 0 ? EC3.cmFactor(mh.xs, mh.Ms, mh.qs.some(v => Math.abs(v) > 1e-9), mh.P.length > 0).Cm : 1;
+          }
           // Table B.3: sway buckling mode (cantilever, or a span with Lcr,y > L) -> Cmy = 0.9. A free-tip LT segment is outside Table B.3:
           // CmLT = 1.0, the upper limit, is taken (kzy increases with CmLT, so this is the conservative choice)
           Cmy = (m.kind !== 'span' || ky[sg.mem] > 1 + 1e-9) ? 0.9 : EC3.cmFactor(memSt.xs, memSt.Ms, memSt.qs.some(v => Math.abs(v) > 1e-9), memSt.P.length > 0).Cm;
@@ -1634,8 +1653,15 @@ const Design = (() => {
         const lamUb = McrLb === Infinity ? 0 : Math.sqrt(Wy * fy / McrLb);
         const chiLb = EC3.chiLT(lamUb, 1, lp, 1).chiMod;           // f = 1 and no 'ignore' allowance -> lower bound
         const uLTub = own.Mmax / (chiLb * Wy * fy / EC3.GM1);
-        const uIntub = N > 0 ? interaction(sec, fy, cls, N, abk, own.Mmax, chiLb, Cmy, CmLT).util : -Infinity;
+        const uIntub = doInt ? interaction(sec, fy, cls, Nc, abk, own.Mmax, chiLb, Cmy, CmLT, MzEd, Cmz).util : -Infinity;
         if (!inp.noScreen && uLTub <= bestLT && uIntub <= bestInt) continue;
+        if (own.Mmax < 1) {          // minor-axis bending only in this segment and combination: no lateral-torsional buckling
+          out.ltbStats.solved++;
+          const ir = interaction(sec, fy, cls, Nc, abk, own.Mmax, 1, Cmy, CmLT, MzEd, Cmz);
+          track(out.gov, 'interaction', ir.util, { combo: cb.label, seg: si, ir, ab: abk, chiLT: 1, swayY: m.kind !== 'span' || ky[sg.mem] > 1 + 1e-9, freeLT: !!sg.free, MzEd });
+          bestInt = Math.max(bestInt, ir.util);
+          continue;
+        }
         out.ltbStats.solved++;
         const nn = sm.md.n, CM = new Float64Array(nn * nn);
         fac.forEach((f, g) => { if (f && sm.CM[g]) for (let k = 0; k < CM.length; k++) CM[k] += f * sm.CM[g][k]; });
@@ -1649,14 +1675,14 @@ const Design = (() => {
         bestLT = Math.max(bestLT, r.util);
         if (!out.segResults[si] || r.util > out.segResults[si].util) out.segResults[si] = r;
         track(out.gov, 'ltb', r.util, { ...r });
-        if (N > 0) {
-          const ir = interaction(sec, fy, cls, N, abk, own.Mmax, lt.chiMod, Cmy, CmLT);
-          track(out.gov, 'interaction', ir.util, { combo: cb.label, seg: si, ir, ab: abk, chiLT: lt.chiMod, swayY: m.kind !== 'span' || ky[sg.mem] > 1 + 1e-9, freeLT: !!sg.free });
+        if (doInt) {
+          const ir = interaction(sec, fy, cls, Nc, abk, own.Mmax, lt.chiMod, Cmy, CmLT, MzEd, Cmz);
+          track(out.gov, 'interaction', ir.util, { combo: cb.label, seg: si, ir, ab: abk, chiLT: lt.chiMod, swayY: m.kind !== 'span' || ky[sg.mem] > 1 + 1e-9, freeLT: !!sg.free, MzEd });
           bestInt = Math.max(bestInt, ir.util);
         }
       }
     });
-    out.envelope = envelope;
+    out.envelope = envelope; out.envelopeH = envelopeH;
 
     // SLS deflection: characteristic combinations with Q patterns, and Q alone
     const slsPat = subsets(qMembers);
@@ -1674,7 +1700,13 @@ const Design = (() => {
       const isC = m.kind !== 'span';
       const div = isC ? 180 : (inp.defl && inp.defl.brittle === false ? 200 : 360);
       const lim = m.L / div;
-      out.memDefl.push({ mem: mi, kind: m.kind, L: m.L, wTot, xTot, wQ, xQ, div, lim, util: Math.abs(wQ) / lim });
+      let wH = 0;
+      if (hasH) for (const sub of slsPat) {
+        const qf = Array(nMem).fill(0); sub.forEach(j => qf[j] = 1);
+        const ch = Beam.combine(resH, 1, qf);
+        resH.st.forEach((s, k) => { if (s.mem === mi && Math.abs(ch.W[k]) > Math.abs(wH)) wH = ch.W[k]; });
+      }
+      out.memDefl.push({ mem: mi, kind: m.kind, L: m.L, wTot, xTot, wQ, xQ, div, lim, util: Math.abs(wQ) / lim, wH });
       track(out.gov, 'deflection', Math.abs(wQ) / lim, { mem: mi, wQ, lim, div });
     });
     // reactions
@@ -1683,7 +1715,9 @@ const Design = (() => {
       let Qmax = 0, Qmin = 0, Umax = -Infinity, Umin = Infinity, CUmax = 0;
       for (const sub of slsPat) { const qf = Array(nMem).fill(0); sub.forEach(j => qf[j] = 1); const cq = Beam.combine(res, 0, qf); Qmax = Math.max(Qmax, cq.reac[i].R); Qmin = Math.min(Qmin, cq.reac[i].R); }
       for (const cb of combos) { const c = Beam.combine(res, cb.gG, cb.qFac); Umax = Math.max(Umax, c.reac[i].R); Umin = Math.min(Umin, c.reac[i].R); if (Math.abs(c.reac[i].C) > Math.abs(CUmax)) CUmax = c.reac[i].C; }
-      out.reactions.push({ x: s.x, type: s.type, Gk: Gk.R, Qmax, Qmin, Umax, Umin, CGk: Gk.C, CUmax });
+      let Hmax = 0;
+      if (hasH) for (const cb of combos) { const h = Beam.combine(resH, cb.gG, cb.qFac); if (Math.abs(h.reac[i].R) > Math.abs(Hmax)) Hmax = h.reac[i].R; }
+      out.reactions.push({ x: s.x, type: s.type, Gk: Gk.R, Qmax, Qmin, Umax, Umin, CGk: Gk.C, CUmax, Hmax });
     });
 
     // web bearing and buckling under concentrated forces, EN 1993-1-5 section 6, with the 7.2 interaction
@@ -1725,18 +1759,19 @@ const Design = (() => {
     const sec = inp.sec, fy = EC3.yieldStrength(inp.grade, Math.max(sec.tf, sec.tw));
     const L = inp.L, N = inp.N || 0, nLT = Math.max(1, Math.round(inp.nLT || 1));
     const My = x => inp.MyB + (inp.MyT - inp.MyB) * x / L, Mz = x => inp.MzB + (inp.MzT - inp.MzB) * x / L;
-    const Vz = (inp.MyT - inp.MyB) / L;
+    const Vz = (inp.MyT - inp.MyB) / L, Vy = (inp.MzT - inp.MzB) / L;
+    const hasMz = Math.abs(inp.MzB) + Math.abs(inp.MzT) > 0;
     const out = { fy, sec, gov: {}, segResults: [] };
     const ns = 40;
     for (let k = 0; k <= ns; k++) {
-      const x = L * k / ns, sc = EC3.sectionCheck(sec, fy, N, My(x), Vz, Mz(x));
+      const x = L * k / ns, sc = EC3.sectionCheck(sec, fy, N, My(x), Vz, Mz(x), Vy);
       track(out.gov, 'shear', sc.uV, { x, V: Vz, sc });
       track(out.gov, 'bending', sc.uM, { x, M: My(x), Mz: Mz(x), V: Vz, sc });
       if (N) track(out.gov, 'axial', sc.uN, { x, sc });
     }
-    const cls = EC3.classify(sec, fy, N, Math.abs(inp.MyB) + Math.abs(inp.MyT) + Math.abs(inp.MzB) + Math.abs(inp.MzT) > 0).cls;
-    const Lseg = L / nLT;
-    const ab = axialBuckling(sec, fy, inp.grade, N, inp.ky * L, inp.kz * L, Lseg);
+    const cls = EC3.classify(sec, fy, N, Math.abs(inp.MyB) + Math.abs(inp.MyT) + Math.abs(inp.MzB) + Math.abs(inp.MzT) > 0, hasMz).cls;
+    const Lseg = L / nLT, Nc = Math.max(N, 0);
+    const ab = axialBuckling(sec, fy, inp.grade, Nc, inp.ky * L, inp.kz * L, Lseg);
     out.ab = ab;
     if (N > 0) track(out.gov, 'flexural', ab.util, { ab });
     const xs = Array.from({ length: 21 }, (_, k) => L * k / 20);
@@ -1755,8 +1790,8 @@ const Design = (() => {
       }
       const chiLT = lt ? lt.chiMod : 1;
       const MzMax = Math.max(Math.abs(Mz(xa)), Math.abs(Mz(xa + Lseg)));
-      if (N > 0) {
-        const ir = interaction(sec, fy, cls, N, ab, Mmax, chiLT, Cmy, CmLT, MzMax, Cmz);
+      if (N > 0 || hasMz) {           // 6.3.3 with compression and/or biaxial bending
+        const ir = interaction(sec, fy, cls, Nc, ab, Mmax, chiLT, Cmy, CmLT, MzMax, Cmz);
         track(out.gov, 'interaction', ir.util, { seg: i, ir, chiLT, swayY, swayZ });
       }
     }
@@ -1862,10 +1897,11 @@ const LOAD_TYPES = { udl: 'UDL, full length', pudl: 'Partial UDL', vdl: 'Trapezo
 function loadRow(l = { case: 'G', member: 0, type: 'udl', w: 5 }) {
   const d = document.createElement('div'); d.className = 'row load';
   d.innerHTML = `<div><label>Case</label><select class="cs"><option value="G">G</option><option value="Q">Q</option></select></div>
+    <div><label>Dir.</label><select class="dir" title="Vertical (major axis) or horizontal (minor axis, through the shear centre)"><option value="v">&darr; vert</option><option value="h">&rarr; horiz</option></select></div>
     <div><label>Member</label><select class="mem"></select></div>
     <div><label>Type</label><select class="ty">${Object.entries(LOAD_TYPES).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
     <button class="xbtn" title="Remove load">&times;</button><div class="vals"></div>`;
-  d.querySelector('.cs').value = l.case; d.querySelector('.ty').value = l.type;
+  d.querySelector('.cs').value = l.case; d.querySelector('.ty').value = l.type; d.querySelector('.dir').value = l.dir || 'v';
   d.dataset.member = l.member;
   d._vals = { w: l.w ?? 5, w1: l.w1 ?? 0, w2: l.w2 ?? 5, P: l.P ?? 20, M: l.M ?? 10, a: l.a ?? 1, b: l.b ?? 3 };
   d.querySelector('.ty').onchange = () => renderVals(d);
@@ -1918,7 +1954,7 @@ function collect() {
     proj: { name: $('pName').value, job: $('pJob').value, ref: $('pRef').value, by: $('pBy').value },
     spans: [...document.querySelectorAll('#spanRows .row')].map(r => +r.querySelector('.L').value),
     cantL: +$('cantL').value, cantR: +$('cantR').value, endL: $('endL').value, endR: $('endR').value,
-    loads: [...document.querySelectorAll('#loadRows .row')].map(d => ({ case: d.querySelector('.cs').value, member: +d.dataset.member, type: d.querySelector('.ty').value, ...d._vals })),
+    loads: [...document.querySelectorAll('#loadRows .row')].map(d => ({ case: d.querySelector('.cs').value, dir: d.querySelector('.dir').value, member: +d.dataset.member, type: d.querySelector('.ty').value, ...d._vals })),
     sw: $('sw').checked, rule: $('rule').value, psi0: +$('psi0').value, NA: +$('NA').value,
     restr: [...document.querySelectorAll('#restrRows .row')].map(rowRestraint), destab: $('destab').checked, brittle: $('defl').value === '1', ssS: +$('ssS').value, ssP: +$('ssP').value, cEnd: +$('cEnd').value,
     B: { L: +$('bL').value, N: +$('bN').value, nLT: +$('bnLT').value, MyT: +$('bMyT').value, MyB: +$('bMyB').value, MzT: +$('bMzT').value, MzB: +$('bMzB').value, ky: +$('bky').value, kz: +$('bkz').value },
@@ -1949,7 +1985,7 @@ function buildBeamInput(s, sec) {
   const mem = members();
   const memL = [...(s.cantL > 0 ? [s.cantL] : []), ...s.spans, ...(s.cantR > 0 ? [s.cantR] : [])];
   const loads = s.loads.map((l, i) => {
-    const L = memL[l.member] * 1000, o = { case: l.case, member: l.member, type: l.type };
+    const L = memL[l.member] * 1000, o = { case: l.case, member: l.member, type: l.type, dir: l.dir === 'h' ? 'h' : 'v' };
     const chkPos = (x, nm) => { if (!(x >= 0 && x <= L + 1e-6)) throw new Error(`Load ${i + 1}: ${nm} = ${x / 1000} m lies outside ${mem[l.member].name} (length ${L / 1000} m)`); return x; };
     if (l.type === 'udl') o.w = l.w;
     if (l.type === 'pudl') { o.w = l.w; o.a = chkPos(l.a * 1000, 'a'); o.b = chkPos(l.b * 1000, 'b'); if (o.b <= o.a) throw new Error(`Load ${i + 1}: b must exceed a`); }
@@ -1984,20 +2020,22 @@ function svgBeam(lay, inp, light) {
   }
   lay.mem.forEach((m, i) => { g += `<text x="${(X(m.x0) + X(m.x1)) / 2}" y="${y + 30}" text-anchor="middle" font-size="10" fill="${mut}" font-family="monospace">${(m.L / 1000).toFixed(2)} m</text>`; });
   for (const l of inp.loads) {
-    const m = lay.mem[l.member], c = l.case === 'Q' ? acc : col;
+    const m = lay.mem[l.member], c = l.case === 'Q' ? acc : col, dash = l.dir === 'h' ? ' stroke-dasharray="3 2"' : '';
     if (l.type === 'udl' || l.type === 'pudl' || l.type === 'vdl') {
       const a = l.type === 'udl' ? 0 : l.a, b = l.type === 'udl' ? m.L : l.b;
       const top = l.case === 'Q' ? y - 44 : y - 28;
-      g += `<rect x="${X(m.x0 + a)}" y="${top}" width="${X(m.x0 + b) - X(m.x0 + a)}" height="10" fill="none" stroke="${c}" stroke-width="1"/>`;
+      g += `<rect x="${X(m.x0 + a)}" y="${top}" width="${X(m.x0 + b) - X(m.x0 + a)}" height="10" fill="none" stroke="${c}" stroke-width="1"${dash}/>`;
     } else if (l.type === 'point') {
       const x = X(m.x0 + l.a);
-      g += `<line x1="${x}" y1="${y - 46}" x2="${x}" y2="${y - 5}" stroke="${c}" stroke-width="1.5"/><path d="M${x} ${y - 3} l-4 -7 h8 z" fill="${c}"/>`;
+      g += l.dir === 'h' ? `<circle cx="${x}" cy="${y - 12}" r="5" fill="none" stroke="${c}" stroke-width="1.5"/><circle cx="${x}" cy="${y - 12}" r="1.5" fill="${c}"/>`
+        : `<line x1="${x}" y1="${y - 46}" x2="${x}" y2="${y - 5}" stroke="${c}" stroke-width="1.5"/><path d="M${x} ${y - 3} l-4 -7 h8 z" fill="${c}"/>`;
     } else if (l.type === 'moment') {
       const x = X(m.x0 + l.a);
       g += `<path d="M${x - 9} ${y - 6} a 10 10 0 1 1 18 0" fill="none" stroke="${c}" stroke-width="1.5"/>`;
     }
   }
-  g += `<text x="${PADL}" y="12" font-size="10" fill="${mut}" font-family="monospace">permanent ▭ &nbsp; </text><text x="${PADL + 90}" y="12" font-size="10" fill="${acc}" font-family="monospace">variable ▭</text>`;
+  g += `<text x="${PADL}" y="12" font-size="10" fill="${mut}" font-family="monospace">permanent ▭ &nbsp; </text><text x="${PADL + 90}" y="12" font-size="10" fill="${acc}" font-family="monospace">variable ▭</text>` +
+    (inp.loads.some(l => l.dir === 'h') ? `<text x="${PADL + 175}" y="12" font-size="10" fill="${mut}" font-family="monospace">horizontal: dashed / &#8857;</text>` : '');
   return `<svg class="${light ? 'rsvg' : 'diag'}" viewBox="0 0 ${W} 100">${g}</svg>`;
 }
 function svgEnv(lay, st, hi, lo, unit, scaleTo, light, invert) {
@@ -2044,8 +2082,9 @@ function renderA(R, inp, ms) {
   h += `<div class="dlabel">Member &amp; characteristic loads</div>` + svgBeam(lay, inp);
   h += `<div class="dlabel">ULS bending moment envelope (kNm, sagging plotted below)</div>` + svgEnv(lay, st, R.envelope.Mmax, R.envelope.Mmin, 'kNm', 1e6, false, true);
   h += `<div class="dlabel">ULS shear force envelope (kN)</div>` + svgEnv(lay, st, R.envelope.Vmax, R.envelope.Vmin, 'kN', 1e3, false, false);
-  h += `<div class="dlabel">Reactions (kN, upward +)</div><table class="t"><tr><th>Support</th><th>x (m)</th><th>G<sub>k</sub></th><th>Q<sub>k</sub> max</th><th>Q<sub>k</sub> min</th><th>ULS max</th><th>ULS min</th></tr>` +
-    R.reactions.map((r, i) => `<tr><td>${String.fromCharCode(65 + i)} (${r.type})</td><td>${(r.x / 1000).toFixed(2)}</td><td>${fmt(kN(r.Gk))}</td><td>${fmt(kN(r.Qmax))}</td><td>${fmt(kN(r.Qmin))}</td><td>${fmt(kN(r.Umax))}</td><td>${fmt(kN(r.Umin))}</td></tr>`).join('') + `</table>`;
+  if (R.hasH) h += `<div class="dlabel">ULS minor-axis moment envelope M<sub>z</sub> (kNm, horizontal loads)</div>` + svgEnv(lay, st, R.envelopeH.Mmax, R.envelopeH.Mmin, 'kNm', 1e6, false, false);
+  h += `<div class="dlabel">Reactions (kN, upward +)</div><table class="t"><tr><th>Support</th><th>x (m)</th><th>G<sub>k</sub></th><th>Q<sub>k</sub> max</th><th>Q<sub>k</sub> min</th><th>ULS max</th><th>ULS min</th>${R.hasH ? '<th>H<sub>ULS</sub></th>' : ''}</tr>` +
+    R.reactions.map((r, i) => `<tr><td>${String.fromCharCode(65 + i)} (${r.type})</td><td>${(r.x / 1000).toFixed(2)}</td><td>${fmt(kN(r.Gk))}</td><td>${fmt(kN(r.Qmax))}</td><td>${fmt(kN(r.Qmin))}</td><td>${fmt(kN(r.Umax))}</td><td>${fmt(kN(r.Umin))}</td>${R.hasH ? `<td>${fmt(kN(Math.abs(r.Hmax)))}</td>` : ''}</tr>`).join('') + `</table>`;
   if (R.reactions.some(r => r.type === 'fixed')) h += `<table class="t"><tr><th>Fixed support</th><th>M<sub>Gk</sub> (kNm)</th><th>M<sub>ULS</sub> extreme (kNm)</th></tr>` + R.reactions.map((r, i) => r.type === 'fixed' ? `<tr><td>${String.fromCharCode(65 + i)}</td><td>${fmt(kNm(r.CGk))}</td><td>${fmt(kNm(r.CUmax))}</td></tr>` : '').join('') + `</table>`;
   h += `<div class="dlabel">Lateral-torsional buckling by segment (governing combination)</div><table class="t"><tr><th>Segment</th><th>L (m)</th><th>M<sub>Ed</sub></th><th>C<sub>1</sub></th><th>M<sub>cr</sub></th><th>&lambda;<sub>LT</sub></th><th>&chi;<sub>LT,mod</sub></th><th>M<sub>b,Rd</sub></th><th>Util.</th></tr>` +
     R.segs.map((sg, i) => { const r = R.segResults[i]; if (!r) return ''; return `<tr><td>${mem[sg.mem].name}${R.segs.filter(o => o.mem === sg.mem).length > 1 ? ' / ' + (R.segs.filter(o => o.mem === sg.mem).indexOf(sg) + 1) : ''}${sg.topRestrained ? ' (top rest.)' : sg.free ? ' (free tip)' : ''}</td><td>${(r.Lseg / 1000).toFixed(2)}</td><td>${fmt(kNm(r.Mmax))}</td><td>${r.C1 ? r.C1.toFixed(2) : '&ndash;'}</td><td>${fmt(kNm(r.Mcr), 0)}</td><td>${r.lamLT.toFixed(3)}</td><td>${r.chiMod.toFixed(3)}</td><td>${fmt(kNm(r.MbRd))}</td><td>${ufmt(r.util)}</td></tr>`; }).join('') + `</table>`;
@@ -2084,6 +2123,7 @@ function notesHTML(R, inp) {
   if (wb.reduced) n.push(`Web is Class 4 in bending: W<sub>eff,y</sub> = ${(wb.Weff / 1e3).toFixed(0)} cm³ (BS EN 1993-1-5 4.4, &rho; = ${wb.rho.toFixed(3)}) replaces W<sub>el,y</sub> in the bending, buckling and interaction checks.`);
   if (mode === 'A' && (inp.N || 0) > 0 && R.lay.mem.some(m => m.kind !== 'span')) n.push('Cantilever under axial compression: L<sub>cr,y</sub> from the buckling load of the whole beam on its supports; for a free tip, L<sub>cr,z</sub> and the torsional length from the cantilever modelled with its backspan segment. C<sub>my</sub> = 0.9 (sway mode, Table B.3); C<sub>mLT</sub> = 1.0 for a free-tip segment.');
   n.push('M<sub>cr</sub> is computed by finite elements for each lateral-torsional segment and combination (forks at restraints: lateral and torsional displacement prevented, warping and plan rotation free). k<sub>c</sub> = 1/&radic;C<sub>1</sub>, not less than 0.6.');
+  if (mode === 'A' && R.hasH) n.push('Horizontal loads are taken through the shear centre (no torsion), carried about the minor axis between the vertical supports; the interaction (6.61)/(6.62) includes M<sub>z,Ed</sub> with C<sub>mz</sub> from Table B.3 over each member. Horizontal deflections are reported for information only.');
   if (mode === 'A' && inp.destab) n.push('Destabilising loading: all gravity loads, including self-weight, are applied at the top flange (conservative).');
   if (mode === 'A') n.push(`Internal and end supports are assumed to give lateral and torsional restraint. Web bearing and buckling: unstiffened webs to BS EN 1993-1-5 section 6 at supports (type (c) at simple end supports, (a) elsewhere) and under point loads (type (a)); point loads directly over supports are not checked separately${EC3.isHollow(R.sec) ? '; local bearing of hollow-section walls is not checked' : ''}.`);
   return `<div class="note">${n.join('<br>')}</div>`;
@@ -2115,13 +2155,14 @@ function reportHTML(R, inp, s) {
 
   if (mode === 'A') {
     const mem = members();
-    b += `<div class="rs"><h2>3 Analysis</h2>${svgBeam(R.lay, inp, true)}<table class="rt lft"><tr><th>Load</th><th>Case</th><th>Member</th><th>Type</th><th>Value</th><th>Position (m)</th></tr>` +
-      s.loads.map((l, i) => `<tr><td>${i + 1}</td><td>${l.case}</td><td>${mem[l.member].name}</td><td>${LOAD_TYPES[l.type]}</td><td>${l.type === 'point' ? l.P + ' kN' : l.type === 'moment' ? l.M + ' kNm' : l.type === 'vdl' ? l.w1 + ' &rarr; ' + l.w2 + ' kN/m' : l.w + ' kN/m'}</td><td>${l.type === 'udl' ? 'full' : l.type === 'pudl' || l.type === 'vdl' ? l.a + ' &ndash; ' + l.b : l.a}</td></tr>`).join('') +
-      (s.sw ? `<tr><td>&ndash;</td><td>G</td><td>all</td><td>Self-weight</td><td>${(sec.mass * 9.80665e-3).toFixed(3)} kN/m</td><td>full</td></tr>` : '') + `</table>`;
+    b += `<div class="rs"><h2>3 Analysis</h2>${svgBeam(R.lay, inp, true)}<table class="rt lft"><tr><th>Load</th><th>Case</th><th>Dir.</th><th>Member</th><th>Type</th><th>Value</th><th>Position (m)</th></tr>` +
+      s.loads.map((l, i) => `<tr><td>${i + 1}</td><td>${l.case}</td><td>${l.dir === 'h' ? 'horiz.' : 'vert.'}</td><td>${mem[l.member].name}</td><td>${LOAD_TYPES[l.type]}</td><td>${l.type === 'point' ? l.P + ' kN' : l.type === 'moment' ? l.M + ' kNm' : l.type === 'vdl' ? l.w1 + ' &rarr; ' + l.w2 + ' kN/m' : l.w + ' kN/m'}</td><td>${l.type === 'udl' ? 'full' : l.type === 'pudl' || l.type === 'vdl' ? l.a + ' &ndash; ' + l.b : l.a}</td></tr>`).join('') +
+      (s.sw ? `<tr><td>&ndash;</td><td>G</td><td>vert.</td><td>all</td><td>Self-weight</td><td>${(sec.mass * 9.80665e-3).toFixed(3)} kN/m</td><td>full</td></tr>` : '') + `</table>`;
     const rule = s.rule === '6.10' ? '6.10: 1.35 G<sub>k</sub> + 1.5 Q<sub>k</sub>' : `6.10a: 1.35 G<sub>k</sub> + 1.5 &psi;<sub>0</sub> Q<sub>k</sub> (&psi;<sub>0</sub> = ${s.psi0}); 6.10b: &xi;&middot;1.35 G<sub>k</sub> + 1.5 Q<sub>k</sub> (&xi; = 0.925)`;
     b += `<p class="rp">Linear elastic analysis (stiffness method, E I<sub>y</sub> constant). ULS combinations to UK NA Table NA.A1.2(B): ${rule}; G<sub>k</sub> also at &gamma;<sub>G,inf</sub> = 1.0. Variable loads pattern-loaded by member: ${R.combos.length} combinations. Supports: ${R.lay.sup.map((x, i) => String.fromCharCode(65 + i) + ' ' + x.type).join(', ')}.</p>`;
-    b += `<h3>ULS bending moment envelope (kNm)</h3>${svgEnv(R.lay, R.res.st, R.envelope.Mmax, R.envelope.Mmin, 'kNm', 1e6, true, true)}<h3>ULS shear force envelope (kN)</h3>${svgEnv(R.lay, R.res.st, R.envelope.Vmax, R.envelope.Vmin, 'kN', 1e3, true, false)}`;
-    b += `<table class="rt"><tr><th>Support</th><th>x (m)</th><th>G<sub>k</sub> (kN)</th><th>Q<sub>k</sub> max (kN)</th><th>Q<sub>k</sub> min (kN)</th><th>ULS max (kN)</th><th>ULS min (kN)</th></tr>` + R.reactions.map((r, i) => `<tr><td>${String.fromCharCode(65 + i)}</td><td>${(r.x / 1000).toFixed(2)}</td><td>${fmt(kN(r.Gk))}</td><td>${fmt(kN(r.Qmax))}</td><td>${fmt(kN(r.Qmin))}</td><td>${fmt(kN(r.Umax))}</td><td>${fmt(kN(r.Umin))}</td></tr>`).join('') + `</table>`;
+    b += `<h3>ULS bending moment envelope (kNm)</h3>${svgEnv(R.lay, R.res.st, R.envelope.Mmax, R.envelope.Mmin, 'kNm', 1e6, true, true)}<h3>ULS shear force envelope (kN)</h3>${svgEnv(R.lay, R.res.st, R.envelope.Vmax, R.envelope.Vmin, 'kN', 1e3, true, false)}` +
+      (R.hasH ? `<p class="rp">Horizontal loads act through the shear centre and bend the member about its minor axis between the same supports (E I<sub>z</sub>, same combination factors).</p><h3>ULS minor-axis moment envelope M<sub>z</sub> (kNm)</h3>${svgEnv(R.lay, R.res.st, R.envelopeH.Mmax, R.envelopeH.Mmin, 'kNm', 1e6, true, false)}` : '');
+    b += `<table class="rt"><tr><th>Support</th><th>x (m)</th><th>G<sub>k</sub> (kN)</th><th>Q<sub>k</sub> max (kN)</th><th>Q<sub>k</sub> min (kN)</th><th>ULS max (kN)</th><th>ULS min (kN)</th>${R.hasH ? '<th>H<sub>ULS</sub> (kN)</th>' : ''}</tr>` + R.reactions.map((r, i) => `<tr><td>${String.fromCharCode(65 + i)}</td><td>${(r.x / 1000).toFixed(2)}</td><td>${fmt(kN(r.Gk))}</td><td>${fmt(kN(r.Qmax))}</td><td>${fmt(kN(r.Qmin))}</td><td>${fmt(kN(r.Umax))}</td><td>${fmt(kN(r.Umin))}</td>${R.hasH ? `<td>${fmt(kN(Math.abs(r.Hmax)))}</td>` : ''}</tr>`).join('') + `</table>`;
     if ((inp.N || 0) !== 0) b += rl('Axial force, constant along the member (compression +)', 'N<sub>Ed</sub>', `${fmt(kN(inp.N))} kN`);
     b += `</div>`;
   } else {
@@ -2144,10 +2185,11 @@ function reportHTML(R, inp, s) {
     rl(sec.shape === 'CHS' ? 'A<sub>v</sub> = 2A/&pi;' : sec.shape === 'RHS' ? 'A<sub>v</sub> = A h/(b + h)' : sec.shape === 'PFC' ? 'A<sub>v</sub> = A &minus; 2bt<sub>f</sub> + (t<sub>w</sub> + r)t<sub>f</sub> &ge; &eta;h<sub>w</sub>t<sub>w</sub> (&eta; = 1.0, UK NA)'
       : sec.rolled ? 'A<sub>v</sub> = A &minus; 2bt<sub>f</sub> + (t<sub>w</sub> + 2r)t<sub>f</sub> &ge; &eta;h<sub>w</sub>t<sub>w</sub> (&eta; = 1.0, UK NA)' : 'A<sub>v</sub> = &eta;h<sub>w</sub>t<sub>w</sub> (&eta; = 1.0, UK NA)', '6.2.6(3)', `${sh.Av.toFixed(0)} mm²`) +
     rl('V<sub>pl,Rd</sub> = A<sub>v</sub> f<sub>y</sub> / (&radic;3 &gamma;<sub>M0</sub>)', '6.2.6(2)', `${fmt(kN(sh.Vpl))} kN`) +
+    (mode === 'A' && R.hasH ? rl(`Horizontal shear: A<sub>v,y</sub> = ${sc.shearZ.Av.toFixed(0)} mm² (6.2.6(3)), V<sub>pl,y,Rd</sub> = ${fmt(kN(sc.shearZ.Vpl))} kN`, '6.2.6', '') : '') +
     (sec.shape === 'CHS' ? '' : rl(`h<sub>w</sub>/t<sub>w</sub> = ${(hw / sec.tw).toFixed(1)} ${sh.slender ? '&gt;' : '&le;'} 72&epsilon;/&eta; = ${(72 * eps).toFixed(1)}${sec.shape === 'RHS' ? ' (each of two webs)' : ''}` + (sh.slender ? `: &lambda;<sub>w</sub> = ${sh.lw.toFixed(3)}, &chi;<sub>w</sub> = ${sh.chiw.toFixed(3)}, V<sub>b,Rd</sub> = ${fmt(kN(sh.Vb))} kN` : ': no shear buckling check needed'), sh.slender ? 'EN 1993-1-5 5.2' : '6.2.6(6)', sh.slender ? `${fmt(kN(sh.VRd))} kN` : 'OK')) +
     rl(`Governing V<sub>Ed</sub> = ${fmt(Math.abs(kN(R.gov.shear.V ?? 0)))} kN${R.gov.shear.combo ? ' (' + R.gov.shear.combo + ')' : ''}`, 'V<sub>Ed</sub>/V<sub>Rd</sub>', okng(R.gov.shear.util));
   b += `<h3>Bending${(inp.N || 0) ? ', shear and axial' : ' and shear'} at the governing location${gb.x !== undefined ? ' (x = ' + (gb.x / 1000).toFixed(2) + ' m)' : ''}</h3>` +
-    rl(`M<sub>y,Ed</sub> = ${fmt(Math.abs(kNm(gb.M ?? 0)))} kNm, coexisting V<sub>Ed</sub> = ${fmt(Math.abs(kN(gb.V ?? (gb.sc ? 0 : 0))))} kN${gb.combo ? '; ' + gb.combo : ''}`, '', '');
+    rl(`M<sub>y,Ed</sub> = ${fmt(Math.abs(kNm(gb.M ?? 0)))} kNm${Math.abs(gb.Mz || 0) > 1 ? ', M<sub>z,Ed</sub> = ' + fmt(Math.abs(kNm(gb.Mz))) + ' kNm' : ''}, coexisting V<sub>Ed</sub> = ${fmt(Math.abs(kN(gb.V ?? (gb.sc ? 0 : 0))))} kN${gb.combo ? '; ' + gb.combo : ''}`, '', '');
   if (sc.method === 'plastic') {
     b += (sc.shear.slender ? rl('Web susceptible to shear buckling: bending and shear interaction by BS EN 1993-1-5 7.1 instead of 6.2.8', '6.2.8(1), 6.2.6(6)', '') : rl(`V<sub>Ed</sub> ${sc.rho > 0 ? '&gt;' : '&le;'} 0.5 V<sub>Rd</sub>${sc.rho > 0 ? ': &rho; = (2V<sub>Ed</sub>/V<sub>Rd</sub> &minus; 1)² = ' + sc.rho.toFixed(3) : ': no reduction for shear'}`, '6.2.8(2),(3)', sc.rho.toFixed(3))) +
       rl('M<sub>pl,y,Rd</sub> (reduced for shear: W<sub>pl,y</sub> &minus; &rho;A<sub>w</sub>²/4t<sub>w</sub>)', '6.2.5, 6.2.8(5)', `${fmt(kNm(sc.Mply))} kNm`);
@@ -2210,8 +2252,8 @@ function reportHTML(R, inp, s) {
   }
   b += `</div>`;
   if (mode === 'A') {
-    b += `<div class="rs"><h2>7 Serviceability</h2><p class="rp">Characteristic combinations with variable loads pattern-loaded; deflection limits for variable actions from UK NA NA.2.23 (beams ${inp.defl.brittle ? 'carrying brittle finishes: span/360' : 'generally: span/200'}; cantilevers: length/180).</p><table class="rt"><tr><th>Member</th><th>&delta;<sub>Q</sub> (mm)</th><th>Limit (mm)</th><th>&delta;<sub>G+Q</sub> (mm)</th><th>Util.</th></tr>` +
-      R.memDefl.map(d => `<tr><td>${members()[d.mem].name}</td><td>${Math.abs(d.wQ).toFixed(1)}</td><td>L/${d.div} = ${d.lim.toFixed(1)}</td><td>${Math.abs(d.wTot).toFixed(1)}</td><td>${okng(d.util)}</td></tr>`).join('') + `</table></div>`;
+    b += `<div class="rs"><h2>7 Serviceability</h2><p class="rp">Characteristic combinations with variable loads pattern-loaded; deflection limits for variable actions from UK NA NA.2.23 (beams ${inp.defl.brittle ? 'carrying brittle finishes: span/360' : 'generally: span/200'}; cantilevers: length/180).</p><table class="rt"><tr><th>Member</th><th>&delta;<sub>Q</sub> (mm)</th><th>Limit (mm)</th><th>&delta;<sub>G+Q</sub> (mm)</th><th>Util.</th>${R.hasH ? '<th>&delta;<sub>h,G+Q</sub> (mm)</th>' : ''}</tr>` +
+      R.memDefl.map(d => `<tr><td>${members()[d.mem].name}</td><td>${Math.abs(d.wQ).toFixed(1)}</td><td>L/${d.div} = ${d.lim.toFixed(1)}</td><td>${Math.abs(d.wTot).toFixed(1)}</td><td>${okng(d.util)}</td>${R.hasH ? `<td>${Math.abs(d.wH).toFixed(1)}</td>` : ''}</tr>`).join('') + `</table></div>`;
   }
   b += `<div class="rs"><h2>${mode === 'A' ? 8 : 7} Summary</h2><table class="rt"><tr><th>Check</th><th>Clause</th><th>Utilisation</th></tr>` +
     CHECKS.filter(([k]) => R.gov[k]).map(([k, nm, c]) => `<tr><td>${nm}</td><td>${c}</td><td>${okng(R.gov[k].util)}</td></tr>`).join('') +
