@@ -125,24 +125,28 @@ def case(c):
     return dict(fy=fy, beff=beff, P=P, k=k, PRd=PRd, nHalf=nHalf, NcFull=full['Nc'], Npl=full['Npl'], eta=eta, etaMin=etaMin, MRd=MRd,
                 MEd=MEd, VEd=VEd, VRd=VRd, M1=M1, reqAst=req, vEd=vEd, vCrush=vCr, I0=I0, IL=IL, dQ=dQ, dSDL=dSDL, dTot=dTot, f=f)
 
-deck = lambda **k: {**dict(hs=130, hp=60, b0=150, rib=300, t=0.9, deck='perp', density=24, fck=30, Ast=193, continuous=True, Ape=1100, fyp=350, sw=2.6), **k}
-studs = lambda **k: {**dict(d=19, hsc=95, fu=450, nr=1, every=1, spacing=150), **k}
-loads = dict(gConst=0.75, sdl=1.2, q=3.5, qPart=0.8)
-base = dict(grade='S355', gG=1.35, gQ=1.5, propped=False, creep=2, deflQ=360, deflT=250, fLim=4, loads=loads)
-cases = {
-  'perp_single': {**base, 'section': '457×191×67 UKB', 'L': 9000, 'bL': 3000, 'bR': 3000, 'slab': deck(), 'studs': studs()},
-  'perp_pairs': {**base, 'section': '457×191×67 UKB', 'L': 9000, 'bL': 3000, 'bR': 3000, 'slab': deck(t=1.2), 'studs': studs(nr=2)},
-  'edge_alternate': {**base, 'section': '533×210×92 UKB', 'L': 12000, 'bL': 3000, 'bR': 0, 'slab': deck(hs=140, sw=2.8, continuous=False), 'studs': studs(every=2)},
-  'solid_propped': {**base, 'section': '406×178×54 UKB', 'L': 7500, 'bL': 2500, 'bR': 2500, 'propped': True,
-                    'slab': deck(hs=150, hp=0, deck='none', sw=3.6, fck=35, Ast=252), 'studs': studs(spacing=150)},
-  'parallel': {**base, 'section': '356×171×45 UKB', 'L': 6000, 'bL': 2500, 'bR': 2500, 'grade': 'S275',
-               'slab': deck(deck='para', b0=180, hp=60, sw=2.5), 'studs': studs(spacing=200)},
-}
-out = {k: {'input': v, 'ref': case(v)} for k, v in cases.items()}
-# plastic moment checks: no concrete (= Wpl fy by fibres), and the PNA-in-slab closed form
-s = section('457×191×67 UKB')
-out['plastic_steel'] = plastic(s, 355, 2000, 70, 130, 20, 0.0)
-out['area_457'] = plastic(s, 355, 2000, 70, 130, 20, 0.0)['A']
-(HERE.parent / 'ref_composite.json').write_text(json.dumps(out, indent=1))
-for k in cases: r = out[k]['ref']; print(k, {x: round(r[x], 3) for x in ('beff', 'PRd', 'eta', 'MRd', 'MEd', 'reqAst', 'dTot', 'f')})
-print('steel Mpl (fibres)', out['plastic_steel']['M'] / 1e6, 'area', out['area_457'])
+def main():
+    deck = lambda **k: {**dict(hs=130, hp=60, b0=150, rib=300, t=0.9, deck='perp', density=24, fck=30, Ast=193, continuous=True, Ape=1100, fyp=350, sw=2.6), **k}
+    studs = lambda **k: {**dict(d=19, hsc=95, fu=450, nr=1, every=1, spacing=150), **k}
+    loads = dict(gConst=0.75, sdl=1.2, q=3.5, qPart=0.8)
+    base = dict(grade='S355', gG=1.35, gQ=1.5, propped=False, creep=2, deflQ=360, deflT=250, fLim=4, loads=loads)
+    cases = {
+      'perp_single': {**base, 'section': '457×191×67 UKB', 'L': 9000, 'bL': 3000, 'bR': 3000, 'slab': deck(), 'studs': studs()},
+      'perp_pairs': {**base, 'section': '457×191×67 UKB', 'L': 9000, 'bL': 3000, 'bR': 3000, 'slab': deck(t=1.2), 'studs': studs(nr=2)},
+      'edge_alternate': {**base, 'section': '533×210×92 UKB', 'L': 12000, 'bL': 3000, 'bR': 0, 'slab': deck(hs=140, sw=2.8, continuous=False), 'studs': studs(every=2)},
+      'solid_propped': {**base, 'section': '406×178×54 UKB', 'L': 7500, 'bL': 2500, 'bR': 2500, 'propped': True,
+                        'slab': deck(hs=150, hp=0, deck='none', sw=3.6, fck=35, Ast=252), 'studs': studs(spacing=150)},
+      'parallel': {**base, 'section': '356×171×45 UKB', 'L': 6000, 'bL': 2500, 'bR': 2500, 'grade': 'S275',
+                   'slab': deck(deck='para', b0=180, hp=60, sw=2.5), 'studs': studs(spacing=200)},
+    }
+    out = {k: {'input': v, 'ref': case(v)} for k, v in cases.items()}
+    # plastic moment checks: no concrete (= Wpl fy by fibres), and the PNA-in-slab closed form
+    s = section('457×191×67 UKB')
+    out['plastic_steel'] = plastic(s, 355, 2000, 70, 130, 20, 0.0)
+    out['area_457'] = plastic(s, 355, 2000, 70, 130, 20, 0.0)['A']
+    (HERE.parent / 'ref_composite.json').write_text(json.dumps(out, indent=1))
+    for k in cases: r = out[k]['ref']; print(k, {x: round(r[x], 3) for x in ('beff', 'PRd', 'eta', 'MRd', 'MEd', 'reqAst', 'dTot', 'f')})
+    print('steel Mpl (fibres)', out['plastic_steel']['M'] / 1e6, 'area', out['area_457'])
+
+if __name__ == '__main__':
+    main()

@@ -51,6 +51,7 @@ Status key: **Done** means it's in this repo with tests. **Partial** means an ex
 | Steel member fire resistance design | Steel Member Fire Design | Done | EN 1993-1-2: incremental heating (unprotected / board / spray), restrained and unrestrained beams, columns; intumescents not covered |
 | Steel sheet piling design | Sheet Pile Wall | Done | cantilever (Blum) and single-propped (free earth) walls, DA1, layered soils and water; EN 1993-5 bending |
 | Composite beam design (SCI P359) | Composite Beam Design | Done | EN 1994-1-1: simply supported UKB, decking ⟂ / ∥ or solid slab, partial shear connection, studs, slab shear, SLS and frequency |
+| Steel and composite beams with web openings (SCI P355) | Beam Web Openings | Done | circular / rectangular / elongated openings, Vierendeel, web-posts (AD 418 / AD 419), construction stage, deflection |
 
 Steel Member Design covers:
 
@@ -97,6 +98,12 @@ Composite Beam Design limits:
 - k<sub>t</sub> / k<sub>l</sub> from EN 1994-1-1 6.6.4 with the Table 6.2 limits; confirm against the decking manufacturer's data and the SCI guidance for the stud position in the trough.
 - The construction stage takes the decking (ribs perpendicular) as lateral restraint; for parallel decking the beam is checked for LTB between the supports with the wet load on the top flange.
 - Natural frequency is the beam alone (f = 18/√δ); the floor-system frequency and response factor (SCI P354) are not calculated.
+
+Beam Web Openings limits / basis:
+- Simply supported rolled UKB / UKC; steel beams with the compression flange laterally restrained (no LTB check of the perforated beam); UDL (+ point loads for steel beams); unstiffened openings.
+- P355 (2011) as published on SteelConstruction.info covers the method up to 3.4.1; Tee M–N–V resistances are therefore taken from first principles (fibre plastic interaction with ρ on the stem; elastic for Class 3, effective stem 14εt<sub>w</sub> for Class 4), and the local composite Vierendeel action M<sub>vc,Rd</sub> and the slab shear contribution are ignored (conservative).
+- Web-post buckling lengths and bending follow AD 418 / AD 419 with buckling curve b (AD 418 permits curve a for rolled sections); the compression-Tee check over long openings follows the EN 1993-1-13 approach in the SCI NSC May 2024 article.
+- Deflection adds the Vierendeel sway (fixed-ended Tees) and the reduced stiffness over each opening using the steel Tees only (no composite stiffening of the top Tee).
 
 Sheet Pile Wall limits:
 - Limit equilibrium only (no soil-structure interaction / deflections); hydrostatic water (no seepage); Coulomb K<sub>a</sub>, K<sub>p</sub> with passive wall friction capped at φ′/3; multi-propped walls, berms, sloping ground, undrained (total stress) clays and overall stability are not covered; pile section properties are entered by the engineer.
@@ -176,6 +183,7 @@ Steel Masonry Support and Windpost limits:
 - **Steel Member Fire Design** (`node tests/fire/test_fire.js`): 39 checks: section factors; unprotected heating against scipy RK45 integration and protected heating against an independent fine-step loop (`reference/ref_fire.py`); critical temperature (4.22) against Table 4.1; reduction factors, restrained-beam and column resistances by hand; limiting temperature and protection sizing.
 - **Crane Gantry Girder** (`node tests/gantry/test_gantry.js`): 25 checks: moving loads against closed forms, cap-channel section by parallel axes, φ₂, l<sub>eff</sub>, chord buckling, fatigue ranges.
 - **Composite Beam Design** (`node tests/composite/test_composite.js`): 133 checks against `reference/ref_composite.py`: five full design cases (decking ⟂ with one or two studs, edge beam with alternate troughs, propped solid slab, parallel decking) with the plastic resistance by fibre integration of the true section shape including root fillets; PNA in the slab and the top flange against closed forms; stud resistances and k<sub>t</sub> / k<sub>l</sub> with the Table 6.2 limits; η<sub>min</sub>; construction M<sub>cr</sub> (load on the top flange) against the SN003 three-factor formula; partial interaction, propped and edge-beam branches. `tests/composite/ui_smoke.js` (jsdom): 15 page checks.
+- **Beam Web Openings** (`node tests/webopen/test_webopen.js`): 181 checks: the published NSC May 2024 worked example (Tee area, centroid, axial and plastic resistances, M<sub>o,Rd</sub>, I<sub>T</sub>, Vierendeel moment, sway, M<sub>add</sub>, combined check 0.99); steel (circular, rectangular, elongated with eccentricity, point load) and composite cases, final and construction stages, against `reference/ref_webopen.py` (fibre model of the true section with root fillets, Tee M–N by bisection, composite net section by fibres, mid-span deflection by virtual work with scipy quad); validation and behaviour. `tests/webopen/ui_smoke.js` (jsdom): 19 page checks.
 - **Sheet Pile Wall** (`node tests/piling/test_piling.js`): 18 checks: Coulomb coefficients, Blum cantilever and free-earth propped walls against closed forms, water and effective stresses, DA1 combinations, section resistance.
 - **Review fixes:** 31 checks (`test_fixes.js`). Most compare against `reference/ref_fixes.py`, which uses its own independent methods; the rest are hand values. They cover:
   - a destabilising tip load on a cantilever (Ritz solution);
