@@ -1778,18 +1778,19 @@ const Design = (() => {
   function designMember(inp) {
     const sec = inp.sec, fy = EC3.yieldStrength(inp.grade, Math.max(sec.tf, sec.tw));
     const L = inp.L, N = inp.N || 0, nLT = Math.max(1, Math.round(inp.nLT || 1));
-    const My = x => inp.MyB + (inp.MyT - inp.MyB) * x / L, Mz = x => inp.MzB + (inp.MzT - inp.MzB) * x / L;
-    const Vz = (inp.MyT - inp.MyB) / L, Vy = (inp.MzT - inp.MzB) / L;
+    // general in-plane moment diagram (frame members): inp.Myf(x), inp.Vzf(x); otherwise linear between the end moments
+    const My = inp.Myf || (x => inp.MyB + (inp.MyT - inp.MyB) * x / L), Mz = x => inp.MzB + (inp.MzT - inp.MzB) * x / L;
+    const Vzc = (inp.MyT - inp.MyB) / L, Vy = (inp.MzT - inp.MzB) / L, Vzf = inp.Vzf || (() => Vzc), Vz = Vzc;
     const hasMz = Math.abs(inp.MzB) + Math.abs(inp.MzT) > 0;
     const out = { fy, sec, gov: {}, segResults: [] };
     const ns = 40;
     for (let k = 0; k <= ns; k++) {
-      const x = L * k / ns, sc = EC3.sectionCheck(sec, fy, N, My(x), Vz, Mz(x), Vy);
-      track(out.gov, 'shear', sc.uV, { x, V: Vz, sc });
-      track(out.gov, 'bending', sc.uM, { x, M: My(x), Mz: Mz(x), V: Vz, sc });
+      const x = L * k / ns, sc = EC3.sectionCheck(sec, fy, N, My(x), Vzf(x), Mz(x), Vy);
+      track(out.gov, 'shear', sc.uV, { x, V: Vzf(x), sc });
+      track(out.gov, 'bending', sc.uM, { x, M: My(x), Mz: Mz(x), V: Vzf(x), sc });
       if (N) track(out.gov, 'axial', sc.uN, { x, sc });
     }
-    const cls = EC3.classify(sec, fy, N, Math.abs(inp.MyB) + Math.abs(inp.MyT) + Math.abs(inp.MzB) + Math.abs(inp.MzT) > 0, hasMz).cls;
+    const cls = EC3.classify(sec, fy, N, (inp.Myf ? Math.max(...Array.from({ length: 21 }, (_, k) => Math.abs(My(L * k / 20)))) : Math.abs(inp.MyB) + Math.abs(inp.MyT)) + Math.abs(inp.MzB) + Math.abs(inp.MzT) > 0, hasMz).cls;
     const Lseg = L / nLT, Nc = Math.max(N, 0);
     const ab = axialBuckling(sec, fy, inp.grade, Nc, inp.ky * L, inp.kz * L, Lseg);
     out.ab = ab;
@@ -1797,14 +1798,14 @@ const Design = (() => {
     const xs = Array.from({ length: 21 }, (_, k) => L * k / 20);
     // Table B.3 note: sway buckling mode -> Cm = 0.9. A buckling length above the member length implies a sway mode.
     const swayY = inp.ky > 1 + 1e-9, swayZ = inp.kz > 1 + 1e-9;
-    const Cmy = swayY ? 0.9 : EC3.cmFactor(xs, xs.map(My), false, false).Cm, Cmz = swayZ ? 0.9 : EC3.cmFactor(xs, xs.map(Mz), false, false).Cm;
+    const Cmy = swayY ? 0.9 : EC3.cmFactor(xs, xs.map(My), !!inp.hasUdl, false).Cm, Cmz = swayZ ? 0.9 : EC3.cmFactor(xs, xs.map(Mz), false, false).Cm;
     // Annex A, Table A.2: Cmi,0 for end moments (psi = smaller / larger end moment); sway modes are outside the table: 1.0 taken
     const psiOf = (a, b) => { const big = Math.abs(a) >= Math.abs(b) ? a : b, sm = big === a ? b : a; return big ? sm / big : 1; };
     const annexA = inp.annex === 'A';
     for (let i = 0; i < nLT; i++) {
-      const xa = i * Lseg, Ma = My(xa), Mb = My(xa + Lseg), Mmax = Math.max(Math.abs(Ma), Math.abs(Mb));
-      const sxs = Array.from({ length: 11 }, (_, k) => Lseg * k / 10);
-      const CmLT = EC3.cmFactor(sxs, sxs.map(x => My(xa + x)), false, false).Cm;
+      const xa = i * Lseg, sxs = Array.from({ length: 11 }, (_, k) => Lseg * k / 10);
+      const Mmax = Math.max(...sxs.map(x => Math.abs(My(xa + x))));
+      const CmLT = EC3.cmFactor(sxs, sxs.map(x => My(xa + x)), !!inp.hasUdl, false).Cm;
       let lt = null;
       if (Mmax > 1) {
         lt = ltb(sec, fy, cls, { L: Lseg, M: x => My(xa + x), Mref: Mmax, Mmax, restraints: [{ x: 0, type: 'fork' }, { x: Lseg, type: 'fork' }], forkFork: true }, { destab: false });

@@ -46,7 +46,7 @@ Status key: **Done** means it's in this repo with tests. **Partial** means an ex
 | Steel Masonry Support | Steel Masonry Support | Done | EN 1993-1-1, -1-4, -1-8; continuous angle, spanning angle, welded plate |
 | Windpost design | Windpost Design | Done | EN 1993-1-1; carbon steel (stainless windposts not covered) |
 | Steel Beam Supporting Hollowcore Slab Design | Hollowcore Support Beam | Done | P385 torsion + EC3; UKB / UKC / ASB / Slimflor |
-| Steel 2D Analysis & Design | 2D frame + EC3 | Planned | frame solver, 5.2 imperfections |
+| Steel 2D Analysis & Design | Steel Frame Design | Done | portal and multi-bay multi-storey frames; α<sub>cr</sub>, EHF, second-order P-Δ, member design |
 | Crane gantry girder design | Crane girder | Planned | EN 1993-6, EN 1991-3 |
 | Steel member fire resistance design | Steel fire | Planned | EN 1993-1-2 |
 | Steel sheet piling design | Sheet piling | Planned | EN 1997-1, EN 1993-5 |
@@ -80,6 +80,11 @@ ConnectionCheck audit (October 2026):
 - Section table replaced with the British Steel datasheet (the legacy table had cross-section areas up to 40 % wrong and wrong root radii).
 - Moment end plates (P398): verified against a published worked example (HEB 140 / IPE 220, extended end plate: every component, row forces and M<sub>j,Rd</sub> = 34.91 kNm). α (Figure 6.11) is entered by the engineer; without it the unstiffened yield patterns are used, which is conservative. Joint stiffness S<sub>j,ini</sub> and classification are not yet calculated; stiffened columns are limited to a compression stiffener.
 - Open: column web tying (yield line) for fin plates on column webs is not checked; anchor splitting / blow-out and supplementary reinforcement are not considered.
+
+Steel Frame Design covers / limits:
+- Geometry from templates: single-bay portal (flat or pitched) and regular multi-bay, multi-storey grids with fixed or pinned bases and rigid or pinned beams; general node / member editing is not provided.
+- α<sub>cr</sub> by the frame's elastic buckling eigenvalue; second-order P-Δ analysis (geometric stiffness, iterated) where α<sub>cr</sub> &lt; 10; sway imperfection by EHF (5.3.2); member bow imperfections are covered by the member checks (in-plane buckling length = member length).
+- Haunches, tapered members, plastic analysis (SCI P397 / P399 portal design) and bracing are not covered.
 
 Steel Masonry Support and Windpost limits:
 - Fixings into the frame (channels, anchors) and wall ties are checked against the manufacturer's design resistances entered by the engineer.
@@ -152,6 +157,7 @@ Steel Masonry Support and Windpost limits:
 - **Steel Masonry Support** (`node tests/masonry/test_masonry.js`): 65 checks against `reference/ref_masonry.py`: angle properties (hot-rolled and cold-formed) by a 2D occupancy grid and the BS EN 10056-1 datasheet; the continuous-angle deflection against a 2D frame FE; the stainless secant modulus by Ramberg-Osgood; spanning angle, plate, weld and fixing forces by hand.
 - **Windpost Design** (`node tests/windpost/test_windpost.js`): 24 checks: wind load, moments, shear, deflection, reactions and tie forces by hand; M<sub>cr</sub> against the C1 closed form; cantilever, RHS orientation and CHS behaviour.
 - **ConnectionCheck joints engine** (`node tests/connections/test_joints.js`): 112 checks (incl. the published extended end plate example) against `reference/ref_joints.py`: T-stubs and Table 6.4 effective lengths re-implemented; base plate effective area by rasterising the Chebyshev offset of the column; M<sub>j,Rd</sub> (Table 6.7) against proportional loading of the two-component model; fin / end plate tying, anchors (cone, pull-out, pry-out, edge) and the RHS splice by hand. `tests/connections/ui_smoke.js` (jsdom) runs every joint type through the page.
+- **Steel Frame Design** (`node tests/frame/test_frame.js`): 28 checks against `reference/ref_frame.py`: portal sway, moments and reactions by an independent numpy stiffness solver; α<sub>cr</sub> of fixed- and pinned-base portals against the exact stability-function characteristic equation (and a scipy FE eigen solution); second-order cantilever sway and moment against the exact solution; combinations, EHF; the frame member check against the Steel Member Design beam mode.
 - **Review fixes:** 31 checks (`test_fixes.js`). Most compare against `reference/ref_fixes.py`, which uses its own independent methods; the rest are hand values. They cover:
   - a destabilising tip load on a cantilever (Ritz solution);
   - flexural and torsional buckling of a span with an overhang (exact characteristic equation);
