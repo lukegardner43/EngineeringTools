@@ -1,0 +1,108 @@
+# EngineeringTools roadmap: Eurocode (UK NA) calculation coverage
+
+Target scope: the structural calculations in the public Tekla Tedds UK Eurocode library list
+([support.tekla.com, 14 Oct 2025](https://support.tekla.com/doc/tekla-tedds/not-version-specific/lib_calculation_list_eurocodes)),
+rebuilt independently as self-contained EngineeringTools modules.
+
+## Clean-room rules
+
+- **Scope** comes from the public calculation list only: names, not methods.
+- **Methods** come from BS EN 1990 to 1997, their UK National Annexes, and published guidance (SCI, Concrete Centre, TRADA, IStructE), with clause references in the output.
+- **Not used as input:** Tedds software, help text, report layouts, screenshots or outputs. Decompiling or reverse engineering Tedds is prohibited by the Trimble Tekla EULA (2024) cl. 4.11(d). Using Tedds to develop other software is prohibited by cl. 4.11(f).
+- **Verification** is against published worked examples, closed-form results and independent reference implementations, kept as runnable tests under `tests/`.
+
+## Scope
+
+The UK list has 91 entries. Out of scope:
+
+- 5 civils entries: drain and sewer design, open channel flow, stormwater drainage, cut and fill, slope stability.
+- 4 non-calculation or proprietary entries: Tata Steel RoofDek, batch design, section sketch, co-ordinate conversion.
+
+That leaves **82 structural entries**. Many share one engine. For example, the four steel member entries are a single EC3 member check behind different front ends.
+
+Status key: **Done** means it's in this repo with tests. **Partial** means an existing tool covers part of it. **Planned** means it isn't started.
+
+## Batch 1: Steel, EN 1993 (in progress)
+
+| Tedds entry | Module | Status | Basis |
+|---|---|---|---|
+| Steel Member Design | Steel Member Design | Done (I/H) | EN 1993-1-1 6.2, 6.3 + UK NA |
+| Steel Member Analysis & Design | Steel Member Design | Done (I/H) | + EN 1990 combinations |
+| Steel Beam Analysis & Design | Steel Member Design | Done (I/H) | continuous spans, cantilevers, pattern loading |
+| Steel Column Design | Steel Member Design (member mode) | Done (I/H) | 6.3.1, 6.3.3 Annex B |
+| Steel section classification | Steel Member Design | Done (I/H) | Table 5.2 |
+| Beam Analysis | Steel Member Design (engine) | Done, not yet standalone | stiffness method |
+| Section Properties Calculator | Steel Member Design (custom I) | Partial | SCI P363 formulae |
+| Steel simple connection design | ConnectionCheck | Partial (existing) | SCI P358, EN 1993-1-8 |
+| Steel beam splice design | ConnectionCheck | Partial (existing) | P358 splices |
+| Steel column splice design | ConnectionCheck | Partial (existing) | P358 splices |
+| Column Base Plate Design | ConnectionCheck | Partial (existing) | P358 bases; add EN 1993-1-8 6.2.5 T-stub |
+| Steel Column and Base Plate Design | Steel Member Design + base | Planned | |
+| Steel hollow section tension only splice design | Steel splices | Planned | EN 1993-1-8 |
+| Steel to Concrete Simple Connection Design | Steel to concrete | Planned | EN 1993-1-8, EN 1992-4 |
+| Bolt Group Analysis | Bolt group | Planned | elastic / ICR method |
+| Steel Beam Torsion Design | Steel torsion | Planned | SCI P385 |
+| Steel Masonry Support | Masonry support | Planned | EN 1993-1-1, -1-5 |
+| Windpost design | Windpost | Planned | EN 1993-1-1, EN 1991-1-4 |
+| Steel Beam Supporting Hollowcore Slab Design | Hollowcore support beam | Planned | P385 torsion + EC3 |
+| Steel 2D Analysis & Design | 2D frame + EC3 | Planned | frame solver, 5.2 imperfections |
+| Crane gantry girder design | Crane girder | Planned | EN 1993-6, EN 1991-3 |
+| Steel member fire resistance design | Steel fire | Planned | EN 1993-1-2 |
+| Steel sheet piling design | Sheet piling | Planned | EN 1997-1, EN 1993-5 |
+
+Next items for Steel Member Design:
+
+- Hollow sections (SHS, RHS, CHS) and PFC/angles.
+- Web bearing and buckling under concentrated loads (EN 1993-1-5 section 6).
+- Minor-axis loading in beam mode.
+- Annex A as an alternative to Annex B.
+
+## Batch 2: Concrete and precast, EN 1992
+
+| Tedds entry | Module | Status |
+|---|---|---|
+| RC Column Design | RC Column Design | Done (existing) |
+| RC Beam Design; RC Beam Analysis & Design; RC Beam Torsion Design; RC Design Toolkit | RC beam | Planned |
+| RC Slab Design | RC slab | Partial (FEM plate tool, not yet in this repo) |
+| RC Wall Design | RC wall | Planned (RC Crack Width covers early-age cracking) |
+| RC Corbel Design; RC Nib Design | Corbels and nibs | Planned |
+| RC Stair design | RC stair | Planned |
+| RC 2D Analysis & Design | 2D frame + EC2 | Planned |
+| Precast Concrete beam design | Precast beam | Partial (prestressed double-tee tool, not yet in this repo) |
+| Precast Concrete Column / Wall / Stair Design | Precast members | Planned |
+| Precast Concrete Hollowcore slab design | Hollowcore | Planned |
+| Precast Concrete Bearing / Half-joint / Grouted Sleeve Splice Design | Precast connections | Planned |
+
+## Batch 3: Timber and masonry, EN 1995 and EN 1996
+
+| Tedds entry | Module | Status |
+|---|---|---|
+| Timber Member Design; Timber Member A&D; Timber Beam A&D; Timber joist; Timber rafter; Timber stud | Timber member | Planned |
+| Flitch, Glulam, Composite LVL Beam / Member A&D (6 entries) | Timber member (product sets) | Planned |
+| Timber 2D analysis & design | 2D frame + EC5 | Planned |
+| Cross-laminated timber section properties / section design / floor panel / wall panel | CLT | Planned |
+| Timber Connection Design | EC5 connections | Partial (ec5-connection-designer, not yet in this repo) |
+| Timber Frame Racking Panel Design; Timber Frame Racking Loads | Racking | Planned |
+| Masonry Bearing Design; Masonry Column Design; Masonry Wall Panel Design | Masonry | Planned |
+
+## Batch 4: Foundations, retaining, loading and analysis, EN 1991 and EN 1997
+
+| Tedds entry | Module | Status |
+|---|---|---|
+| Foundation Analysis & Design; Bearing Pressures for Rectangular Footings | Pad foundation | Planned |
+| RC raft foundation; RC pile cap design | Raft / pile cap | Planned |
+| Pile Analysis; Pile Group Analysis | Piles | Planned |
+| Retaining Wall Analysis & Design; Retaining basement wall analysis & design; Gabion Retaining Wall | Retaining walls | Planned |
+| Wind Loading; Snow Loading | EC1 loading | Planned |
+| Dead Loading; Hipped End Loading | Load take-down | Planned |
+| Rigid Diaphragm Force Distribution | Diaphragm | Planned |
+| Outrigger loading design | Outrigger (TWf) | Planned |
+| 2D Frame Analysis; Rolling load analysis | Analysis | Planned |
+
+## Steel Member Design verification (`node tests/steel-member/run_all.js`)
+
+- **Beam analysis:** 30 closed-form checks (simply supported, fixed, propped, continuous, cantilever, couples, triangular load, three-span coefficients).
+- **Mcr:** finite-element solution against the closed-form uniform-moment result, against an independent Galerkin solution (`reference/galerkin.py`), against the exact tension-flange-restraint solution, and against the classical cantilever result.
+- **EC3 clause chain:** 1980 comparisons against an independent Python implementation (`reference/ref_ec3.py`) covering 400 random cross-section states, 100 flexural buckling cases and 40 LTB cases. Plus four hand-calculated design cases.
+- **Screening:** the Mcr screening bound gives results identical to exhaustive solution on 40 random continuous beams.
+- **Section data:** `reference/check.py` recomputes every tabulated property from the dimensions. 406x260x132 UKB is excluded because its tabulated mass contradicts its geometry.
