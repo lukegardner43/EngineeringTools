@@ -49,7 +49,7 @@ Status key: **Done** means it's in this repo with tests. **Partial** means an ex
 | Steel 2D Analysis & Design | Steel Frame Design | Done | portal and multi-bay multi-storey frames; α<sub>cr</sub>, EHF, second-order P-Δ, member design |
 | Crane gantry girder design | Crane Gantry Girder | Done | EN 1993-6 / EN 1991-3: moving wheels, cap channel, chord LTB, local wheel stresses, deflection, fatigue (λ by class) |
 | Steel member fire resistance design | Steel Member Fire Design | Done | EN 1993-1-2: incremental heating (unprotected / board / spray), restrained and unrestrained beams, columns; intumescents not covered |
-| Steel sheet piling design | Sheet piling | Planned | EN 1997-1, EN 1993-5 |
+| Steel sheet piling design | Sheet Pile Wall | Done | cantilever (Blum) and single-propped (free earth) walls, DA1, layered soils and water; EN 1993-5 bending |
 
 Steel Member Design covers:
 
@@ -89,6 +89,9 @@ Steel Frame Design covers / limits:
 Crane Gantry Girder limits / open points:
 - Two equal wheels per rail; single simple span; eccentric-wheel torsion and rail wear are not included; the web resistance to the wheel uses s<sub>s</sub> = l<sub>eff</sub> − 2t<sub>f</sub> (engineer to confirm).
 - Fatigue λ values (BS EN 1991-3 Table 2.12) and the φ₂ parameters (Table 2.5) to be confirmed against the printed standard.
+
+Sheet Pile Wall limits:
+- Limit equilibrium only (no soil-structure interaction / deflections); hydrostatic water (no seepage); Coulomb K<sub>a</sub>, K<sub>p</sub> with passive wall friction capped at φ′/3; multi-propped walls, berms, sloping ground, undrained (total stress) clays and overall stability are not covered; pile section properties are entered by the engineer.
 
 Steel Masonry Support and Windpost limits:
 - Fixings into the frame (channels, anchors) and wall ties are checked against the manufacturer's design resistances entered by the engineer.
@@ -164,6 +167,7 @@ Steel Masonry Support and Windpost limits:
 - **Steel Frame Design** (`node tests/frame/test_frame.js`): 28 checks against `reference/ref_frame.py`: portal sway, moments and reactions by an independent numpy stiffness solver; α<sub>cr</sub> of fixed- and pinned-base portals against the exact stability-function characteristic equation (and a scipy FE eigen solution); second-order cantilever sway and moment against the exact solution; combinations, EHF; the frame member check against the Steel Member Design beam mode.
 - **Steel Member Fire Design** (`node tests/fire/test_fire.js`): 39 checks: section factors; unprotected heating against scipy RK45 integration and protected heating against an independent fine-step loop (`reference/ref_fire.py`); critical temperature (4.22) against Table 4.1; reduction factors, restrained-beam and column resistances by hand; limiting temperature and protection sizing.
 - **Crane Gantry Girder** (`node tests/gantry/test_gantry.js`): 25 checks: moving loads against closed forms, cap-channel section by parallel axes, φ₂, l<sub>eff</sub>, chord buckling, fatigue ranges.
+- **Sheet Pile Wall** (`node tests/piling/test_piling.js`): 18 checks: Coulomb coefficients, Blum cantilever and free-earth propped walls against closed forms, water and effective stresses, DA1 combinations, section resistance.
 - **Review fixes:** 31 checks (`test_fixes.js`). Most compare against `reference/ref_fixes.py`, which uses its own independent methods; the rest are hand values. They cover:
   - a destabilising tip load on a cantilever (Ritz solution);
   - flexural and torsional buckling of a span with an overhang (exact characteristic equation);
