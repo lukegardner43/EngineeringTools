@@ -1116,7 +1116,8 @@ const EC3 = (() => {
   function hermite(xi, le) {
     return {
       N: [1 - 3 * xi * xi + 2 * xi ** 3, le * (xi - 2 * xi * xi + xi ** 3), 3 * xi * xi - 2 * xi ** 3, le * (-xi * xi + xi ** 3)],
-      B: [(-6 + 12 * xi) / (le * le), (-4 + 6 * xi) / le, (6 - 12 * xi) / (le * le), (-2 + 6 * xi) / le] };
+      B: [(-6 + 12 * xi) / (le * le), (-4 + 6 * xi) / le, (6 - 12 * xi) / (le * le), (-2 + 6 * xi) / le],
+      D: [6 * (xi * xi - xi) / le, 1 - 4 * xi + 3 * xi * xi, 6 * (xi - xi * xi) / le, 3 * xi * xi - 2 * xi] };
   }
   function symEigenvalues(A) {                // Householder tridiagonalisation + implicit QL (values only)
     const n = A.length, a = A.map(r => Float64Array.from(r)), d = new Float64Array(n), e = new Float64Array(n);
@@ -1227,7 +1228,10 @@ const EC3 = (() => {
       const d = Math.sqrt(s); K[j * n + j] = d;
       for (let i = j + 1; i < n; i++) { let t = K[i * n + j]; for (let k = 0; k < j; k++) t -= K[i * n + k] * K[j * n + k]; K[i * n + j] = t / d; }
     }
-    // Kg for a loading: M (moment fn, sagging +), q (N/mm downward fn), P [{x,P}], a (load height above shear centre)
+    // Kg for a loading: M (moment fn, sagging +), q (N/mm downward fn), P [{x,P}], a (load height above shear centre).
+    // Monosymmetric sections: o.zj (Wagner, mm, positive when the top flange - in compression under sagging - is the larger)
+    // adds the term 1/2 int M (2 z_j) phi'^2 to the second-order energy (stabilising when M z_j > 0).
+    const zj = o.zj || 0;
     function kg(M, q, P, a) {
       const Kg = new Float64Array(n * n), kge = new Float64Array(64);
       for (let e = 0; e < nn - 1; e++) {
@@ -1239,6 +1243,7 @@ const EC3 = (() => {
             const cpl = w * m * h.N[i] * h.B[j];   // phi_i x v''_j : Kg = d²/du² of [∫M phi v'' + ½∫q a phi²]
             kge[pD[i] * 8 + vD[j]] += cpl; kge[vD[j] * 8 + pD[i]] += cpl;
             if (qa) kge[pD[i] * 8 + pD[j]] += w * qa * h.N[i] * h.N[j];
+            if (zj && m) kge[pD[i] * 8 + pD[j]] -= 2 * w * m * zj * h.D[i] * h.D[j];
           }
         }
         for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) add(Kg, 4 * e + i, 4 * e + j, kge[i * 8 + j]);

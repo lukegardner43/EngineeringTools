@@ -798,7 +798,8 @@ const EC3 = (() => {
   function hermite(xi, le) {
     return {
       N: [1 - 3 * xi * xi + 2 * xi ** 3, le * (xi - 2 * xi * xi + xi ** 3), 3 * xi * xi - 2 * xi ** 3, le * (-xi * xi + xi ** 3)],
-      B: [(-6 + 12 * xi) / (le * le), (-4 + 6 * xi) / le, (6 - 12 * xi) / (le * le), (-2 + 6 * xi) / le] };
+      B: [(-6 + 12 * xi) / (le * le), (-4 + 6 * xi) / le, (6 - 12 * xi) / (le * le), (-2 + 6 * xi) / le],
+      D: [6 * (xi * xi - xi) / le, 1 - 4 * xi + 3 * xi * xi, 6 * (xi - xi * xi) / le, 3 * xi * xi - 2 * xi] };
   }
   function symEigenvalues(A) {                // Householder tridiagonalisation + implicit QL (values only)
     const n = A.length, a = A.map(r => Float64Array.from(r)), d = new Float64Array(n), e = new Float64Array(n);
@@ -909,7 +910,10 @@ const EC3 = (() => {
       const d = Math.sqrt(s); K[j * n + j] = d;
       for (let i = j + 1; i < n; i++) { let t = K[i * n + j]; for (let k = 0; k < j; k++) t -= K[i * n + k] * K[j * n + k]; K[i * n + j] = t / d; }
     }
-    // Kg for a loading: M (moment fn, sagging +), q (N/mm downward fn), P [{x,P}], a (load height above shear centre)
+    // Kg for a loading: M (moment fn, sagging +), q (N/mm downward fn), P [{x,P}], a (load height above shear centre).
+    // Monosymmetric sections: o.zj (Wagner, mm, positive when the top flange - in compression under sagging - is the larger)
+    // adds the term 1/2 int M (2 z_j) phi'^2 to the second-order energy (stabilising when M z_j > 0).
+    const zj = o.zj || 0;
     function kg(M, q, P, a) {
       const Kg = new Float64Array(n * n), kge = new Float64Array(64);
       for (let e = 0; e < nn - 1; e++) {
@@ -921,6 +925,7 @@ const EC3 = (() => {
             const cpl = w * m * h.N[i] * h.B[j];   // phi_i x v''_j : Kg = d²/du² of [∫M phi v'' + ½∫q a phi²]
             kge[pD[i] * 8 + vD[j]] += cpl; kge[vD[j] * 8 + pD[i]] += cpl;
             if (qa) kge[pD[i] * 8 + pD[j]] += w * qa * h.N[i] * h.N[j];
+            if (zj && m) kge[pD[i] * 8 + pD[j]] -= 2 * w * m * zj * h.D[i] * h.D[j];
           }
         }
         for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) add(Kg, 4 * e + i, 4 * e + j, kge[i * 8 + j]);
@@ -1129,6 +1134,18 @@ const Torsion = (() => {
   // ---------- sectorial properties (thin-walled, centreline dimensions) ----------
   // I (doubly symmetric) and PFC. omega_n at key points, warping statical moment Sw, elastic warping modulus Ww = Iw / omega_max.
   function sectorial(s) {
+    if (s.shape === 'RHS' || s.shape === 'CHS') {         // closed sections: warping negligible, St Venant shear tau = T / Wt
+      return { kind: 'closed', w_tip: 0, w_junction: 0, wmax: 0, Sw_flange: 0, Sw_junction: 0, Sw_web: 0, Ww: Infinity, hs: s.h - s.t };
+    }
+    if (s.shape === 'MONO') {                            // I with unequal flanges (and/or a welded plate): s.flanges = [{ b, t, z }] (z = centreline level)
+      // thin-walled, symmetric about the web: shear centre where sum I_k (z_k - z_s) = 0, omega = (z_k - z_s) y, I_w = sum I_k (z_k - z_s)^2
+      const I = s.flanges.map(f => f.t * f.b ** 3 / 12), sI = I.reduce((a, b) => a + b, 0);
+      const zs = s.flanges.reduce((a, f, k) => a + I[k] * f.z, 0) / sI;
+      const Iw = s.flanges.reduce((a, f, k) => a + I[k] * (f.z - zs) ** 2, 0);
+      const fl = s.flanges.map(f => ({ ...f, w: Math.abs(f.z - zs) * f.b / 2, Sw: f.t * Math.abs(f.z - zs) * f.b * f.b / 8 }));
+      const wmax = Math.max(...fl.map(f => f.w));
+      return { kind: 'mono', flanges: fl, zs, Iw, w_tip: wmax, w_junction: 0, wmax, Sw_flange: Math.max(...fl.map(f => f.Sw)), Sw_junction: 0, Sw_web: 0, Ww: Iw / wmax, hs: s.h };
+    }
     if (s.shape === 'PFC') {
       const bp = s.b - s.tw / 2, hp = s.h - s.tf, e = s.eSC;
       const w1 = e * hp / 2, w2 = (bp - e) * hp / 2;                       // web-flange junction, flange tip (opposite sign)
@@ -1234,27 +1251,44 @@ const Torsion = (() => {
        loadsG / loadsQ: [{ type, w|P, a, e }], torquesG / torquesQ: [{ x, T }], gG, gQ (ULS factors),
        lateral: { restraints: [x...] (intermediate), destab: bool }, rotLimitDeg } */
   function design(inp) {
-    const s = inp.sec, fy = EC3.yieldStrength(inp.grade, Math.max(s.tf, s.tw)), L = inp.L, sc = sectorial(s);
+    const s = inp.sec, fy = inp.fy ?? EC3.yieldStrength(inp.grade, Math.max(s.tf, s.tw)), L = inp.L, sc = sectorial(s);
+    const Iw = sc.kind === 'mono' ? sc.Iw : s.Iw;
     const comb = (fG, fQ) => ({
       loads: [...inp.loadsG.map(l => ({ ...l, w: (l.w || 0) * fG, P: (l.P || 0) * fG })), ...inp.loadsQ.map(l => ({ ...l, w: (l.w || 0) * fQ, P: (l.P || 0) * fQ }))],
       torques: [...(inp.torquesG || []).map(t => ({ ...t, T: t.T * fG })), ...(inp.torquesQ || []).map(t => ({ ...t, T: t.T * fQ }))] });
-    const torsionOf = c => analyse({ L, EIw: E * s.Iw, GIt: G * s.It, ends: inp.ends,
+    const torsionOf = c => analyse({ L, EIw: E * Math.max(Iw, 1e-6 * s.It * L * L / 1e3), GIt: G * s.It, ends: inp.ends,
       mt: c.loads.filter(l => l.type === 'udl' && l.e).map(l => ({ a: 0, b: L, m: l.w * l.e })),
       Tpt: [...c.loads.filter(l => l.type === 'point' && l.e).map(l => ({ x: l.a, T: l.P * l.e })), ...c.torques] });
     const U = comb(inp.gG, inp.gQ), S = comb(1, 1);
     const tu = torsionOf(U), ts = torsionOf(S);
-    const cls = EC3.classify(s, fy, 0, true).cls;
+    const cls = inp.cls ?? EC3.classify(s, fy, 0, true).cls;
     // stresses along the member at ULS (elastic): flange tip, flange centre (web-flange junction for I), web
-    const sh = EC3.shear(s, fy), tauY = fy / Math.sqrt(3);
+    const sh = inp.Av ? { Av: inp.Av } : EC3.shear(s, fy), tauY = fy / Math.sqrt(3);
     const pts = tu.nodes.map((x, i) => {
       const bm = bending(L, inp.sys, U.loads, x), B = tu.B[i], Tt = tu.Tt[i], Tw = tu.Tw[i];
       const sb = Math.abs(bm.M) * (s.h / 2) / s.Iy;                                   // extreme fibre bending stress
-      const sw_tip = Math.abs(B) * sc.w_tip / s.Iw;                                   // warping normal stress at the flange tip
-      const tt_f = Math.abs(Tt) * s.tf / s.It, tt_w = Math.abs(Tt) * s.tw / s.It;     // St Venant shear at the surface
-      const tw_f = Math.abs(Tw) * sc.Sw_flange / (s.Iw * s.tf);                       // warping shear in the flange
+      const closed = sc.kind === 'closed';
+      const sw_tip = closed ? 0 : Math.abs(B) * sc.w_tip / s.Iw;                      // warping normal stress at the flange tip
+      const tt_f = closed ? Math.abs(Tt) / s.Wt : Math.abs(Tt) * s.tf / s.It;         // St Venant shear (closed: Bredt via Wt)
+      const tt_w = closed ? tt_f : Math.abs(Tt) * s.tw / s.It;
+      const tw_f = closed ? 0 : Math.abs(Tw) * sc.Sw_flange / (s.Iw * s.tf);          // warping shear in the flange
       const tv = Math.abs(bm.V) / (sh.Av);                                            // average web shear from V
       const tip = { s: sb + sw_tip, t: tt_f }, cen = { s: sb, t: tt_f + tw_f }, web = { s: Math.abs(bm.M) * (s.h / 2 - s.tf) / s.Iy, t: tv + tt_w };
       const vm = p => Math.sqrt((p.s / fy) ** 2 + 3 * (p.t / fy) ** 2);
+      if (sc.kind === 'mono') {                                                       // each flange: tip (bending + warping) and centre (shear)
+        const zc = s.zc, fls = sc.flanges.map(f => {
+          const zo = f.z > zc ? f.z + f.t / 2 : f.z - f.t / 2, sbk = Math.abs(bm.M) * Math.abs(zo - zc) / s.Iy;
+          const swk = Math.abs(B) * f.w / Iw, ttk = Math.abs(Tt) * f.t / s.It, twk = Math.abs(Tw) * f.Sw / (Iw * f.t);
+          const tip = { s: sbk + swk, t: ttk }, cen = { s: sbk, t: ttk + twk };
+          return { name: f.name, sb: sbk, sw: swk, tt: ttk, tw: twk, tip, cen, u: Math.max(vm(tip), vm(cen)) };
+        });
+        const wz = Math.max(Math.abs(s.webTop - zc), Math.abs(zc - s.webBot));
+        const webm = { s: Math.abs(bm.M) * wz / s.Iy, t: tv + Math.abs(Tt) * s.tw / s.It };
+        const g = fls.reduce((a, f) => f.u > a.u ? f : a, fls[0]);
+        return { x, M: bm.M, V: bm.V, B, Tt, Tw, phi: tu.phi[i], sb: Math.max(...fls.map(f => f.sb)), sw_tip: Math.max(...fls.map(f => f.sw)),
+          tt_f: Math.max(...fls.map(f => f.tt)), tw_f: Math.max(...fls.map(f => f.tw)), tv, tip: g.tip, cen: g.cen, web: webm, flanges: fls, govFlange: g.name,
+          u: Math.max(g.u, vm(webm)), us: Math.max(...fls.map(f => f.tip.s), webm.s) / fy, ut: Math.max(...fls.map(f => f.cen.t), webm.t) / tauY };
+      }
       return { x, M: bm.M, V: bm.V, B, Tt, Tw, phi: tu.phi[i], sb, sw_tip, tt_f, tw_f, tv, tip, cen, web, u: Math.max(vm(tip), vm(cen), vm(web)), us: Math.max(tip.s, cen.s, web.s) / fy, ut: Math.max(tip.t, cen.t, web.t) / tauY };
     });
     const govX = pts.reduce((a, p) => p.u > a.u ? p : a, pts[0]);
@@ -1262,6 +1296,7 @@ const Torsion = (() => {
     const Mmax = Math.max(...pts.map(p => Math.abs(p.M))), Bmax = Math.max(...pts.map(p => Math.abs(p.B)));
     const restr = [0, ...(inp.lateral?.restraints || []).filter(x => x > 0 && x < L), L];
     let worstSeg = null;
+    const noLTB = inp.lateral?.continuous || s.shape === 'CHS';
     for (let k = 0; k < restr.length - 1; k++) {
       const xa = restr[k], xb = restr[k + 1], Ls = xb - xa;
       const seg = pts.filter(p => p.x >= xa - 1e-6 && p.x <= xb + 1e-6), Ms = Math.max(...seg.map(p => Math.abs(p.M)));
@@ -1272,18 +1307,19 @@ const Torsion = (() => {
         : [{ x: 0, type: 'fork' }, ...(isCantTip ? [] : [{ x: Ls, type: 'fork' }])];
       const qf = x => U.loads.filter(l => l.type === 'udl').reduce((t, l) => t + l.w, 0);
       const Ppts = U.loads.filter(l => l.type === 'point' && l.a > xa && l.a < xb).map(l => ({ x: l.a - xa, P: l.P }));
-      const lam = EC3.mcrFE({ L: Ls, EIz: E * s.Iz, GIt: G * s.It, EIw: E * s.Iw, hs: s.h - s.tf, M: Mf, q: qf, P: Ppts, a: inp.lateral?.destab ? s.h / 2 : 0, restraints, nEl: 24 });
+      const aLoad = inp.lateral?.loadHeight ?? (inp.lateral?.destab ? s.h / 2 : 0);   // load height above the shear centre (destabilising +)
+      const lam = noLTB ? Infinity : EC3.mcrFE({ L: Ls, EIz: E * s.Iz, GIt: G * s.It, EIw: E * Iw, hs: s.h - s.tf, M: Mf, q: qf, P: Ppts, a: aLoad, zj: s.zj || 0, restraints, nEl: 24 });
       // lam is the load factor on the actual moment diagram, so M_cr (at the segment maximum) = lam x M_Ed.
       // Lateral end restraint of a simple span is taken as a fork even where warping is restrained (conservative).
       const MEd = Ms;
       const Mcrseg = lam * MEd;
-      const lp = EC3.ltbParams(s), W = EC3.wyByClass(s, fy, cls);
+      const lp = inp.ltbParams ?? EC3.ltbParams(s), W = inp.Wy ?? EC3.wyByClass(s, fy, cls);
       const lamLT = Number.isFinite(Mcrseg) ? Math.sqrt(W * fy / Mcrseg) : 0;
       const c = EC3.chiLT(lamLT, MEd / Mcrseg, lp, 1);
-      const Bs = Math.max(...seg.map(p => Math.abs(p.B))), BRk = fy * sc.Ww;
+      const Bs = sc.kind === 'closed' ? 0 : Math.max(...seg.map(p => Math.abs(p.B))), BRk = fy * sc.Ww;
       const MyRk = W * fy;
       const kw = 0.7 - 0.2 * Bs / (BRk / EC3.GM1), kzw = 1, ka = Number.isFinite(Mcrseg) ? 1 / (1 - MEd / Mcrseg) : 1;
-      const u = MEd / (c.chiMod * MyRk / EC3.GM1) + kw * kzw * ka * Bs / (BRk / EC3.GM1);
+      const u = MEd / (c.chiMod * MyRk / EC3.GM1) + (Bs > 0 ? kw * kzw * ka * Bs / (BRk / EC3.GM1) : 0);
       const r = { xa, xb, Ls, MEd, Mcr: Mcrseg, lamLT, chi: c.chiMod, BEd: Bs, BRk, MyRk, kw, kzw, ka, u, ltbIgnored: c.ignored };
       if (!worstSeg || r.u > worstSeg.u) worstSeg = r;
     }

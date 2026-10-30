@@ -40,18 +40,23 @@ def solve(L, EIw, GIt, ends, m=0.0, T0=0.0, a=None, xs=()):
         out.append(dict(x=x, phi=v[0], d2=v[2], Tt=GIt * v[1], Tw=-EIw * v[3]))
     return out
 
-E, G = 210000.0, 81000.0
-# 457x191x67 UKB: It 37.1 cm4 (table 38.7 used by the JS engine via fromRow), Iw 0.705 dm6
-It, Iw = 38.7e4, 0.705e12
-EIw, GIt = E * Iw, G * It
-cases = []
-L = 6000.0
-xs = [0.0, 1500.0, 3000.0, 4500.0, 6000.0]
-for ends in (('fork', 'fork'), ('fixed', 'fixed'), ('fixed', 'fork')):
-    cases.append(dict(name=f'uniform torque {ends}', L=L, ends=ends, m=10.0, pts=solve(L, EIw, GIt, ends, m=10.0, xs=xs)))
-    cases.append(dict(name=f'point torque at 0.3L {ends}', L=L, ends=ends, T0=5e6, a=1800.0, pts=solve(L, EIw, GIt, ends, T0=5e6, a=1800.0, xs=[0.0, 900.0, 1800.0, 3600.0, 6000.0])))
-Lc = 3000.0
-cases.append(dict(name='cantilever, tip torque', L=Lc, ends=('fixed', 'free'), T0=2e6, a=Lc, pts=solve(Lc, EIw, GIt, ('fixed', 'free'), T0=2e6, a=Lc, xs=[0.0, 1500.0, 3000.0])))
-cases.append(dict(name='cantilever, uniform torque', L=Lc, ends=('fixed', 'free'), m=5.0, pts=solve(Lc, EIw, GIt, ('fixed', 'free'), m=5.0, xs=[0.0, 1500.0, 3000.0])))
-pathlib.Path(__file__).resolve().parent.parent.joinpath('ref_torsion.json').write_text(json.dumps(dict(EIw=EIw, GIt=GIt, cases=cases)))
-print(len(cases), 'torsion reference cases'); print(cases[0]['pts'][2])
+def main():
+    E, G = 210000.0, 81000.0
+    # 457x191x67 UKB: It 37.1 cm4 (table 38.7 used by the JS engine via fromRow), Iw 0.705 dm6
+    It, Iw = 38.7e4, 0.705e12
+    EIw, GIt = E * Iw, G * It
+    cases = []
+    L = 6000.0
+    xs = [0.0, 1500.0, 3000.0, 4500.0, 6000.0]
+    for ends in (('fork', 'fork'), ('fixed', 'fixed'), ('fixed', 'fork')):
+        cases.append(dict(name=f'uniform torque {ends}', L=L, ends=ends, m=10.0, pts=solve(L, EIw, GIt, ends, m=10.0, xs=xs)))
+        cases.append(dict(name=f'point torque at 0.3L {ends}', L=L, ends=ends, T0=5e6, a=1800.0, pts=solve(L, EIw, GIt, ends, T0=5e6, a=1800.0, xs=[0.0, 900.0, 1800.0, 3600.0, 6000.0])))
+    Lc = 3000.0
+    cases.append(dict(name='cantilever, tip torque', L=Lc, ends=('fixed', 'free'), T0=2e6, a=Lc, pts=solve(Lc, EIw, GIt, ('fixed', 'free'), T0=2e6, a=Lc, xs=[0.0, 1500.0, 3000.0])))
+    cases.append(dict(name='cantilever, uniform torque', L=Lc, ends=('fixed', 'free'), m=5.0, pts=solve(Lc, EIw, GIt, ('fixed', 'free'), m=5.0, xs=[0.0, 1500.0, 3000.0])))
+    pathlib.Path(__file__).resolve().parent.parent.joinpath('ref_torsion.json').write_text(json.dumps(dict(EIw=EIw, GIt=GIt, cases=cases)))
+    print(len(cases), 'torsion reference cases'); print(cases[0]['pts'][2])
+
+
+if __name__ == '__main__':
+    main()

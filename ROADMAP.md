@@ -44,7 +44,7 @@ Status key: **Done** means it's in this repo with tests. **Partial** means an ex
 | Steel Beam Torsion Design | Steel Beam Torsion | Done | SCI P385; EN 1993-6 Annex A interaction |
 | Steel Masonry Support | Masonry support | Planned | EN 1993-1-1, -1-5 |
 | Windpost design | Windpost | Planned | EN 1993-1-1, EN 1991-1-4 |
-| Steel Beam Supporting Hollowcore Slab Design | Hollowcore support beam | Planned | P385 torsion + EC3 |
+| Steel Beam Supporting Hollowcore Slab Design | Hollowcore Support Beam | Done | P385 torsion + EC3; UKB / UKC / ASB / Slimflor |
 | Steel 2D Analysis & Design | 2D frame + EC3 | Planned | frame solver, 5.2 imperfections |
 | Crane gantry girder design | Crane girder | Planned | EN 1993-6, EN 1991-3 |
 | Steel member fire resistance design | Steel fire | Planned | EN 1993-1-2 |
@@ -60,6 +60,17 @@ Limits:
 - Class 4 flanges of I sections and channels, and Class 4 CHS (EN 1993-1-6), are rejected rather than designed.
 - Hollow-section wall bearing is not checked.
 - Torsion from eccentric loading (for example channels loaded in the web plane) belongs to the torsion module.
+
+Hollowcore Support Beam covers:
+
+- **Sections:** UKB / UKC (planks on the top or bottom flange), ASB (British Steel datasheet, planks on the bottom flange), Slimflor (UKC with a welded bottom plate, planks on the plate).
+- **Stages:** 1 planks on one side; 2 both sides with wet topping and construction load on either or both sides (beam unrestrained, P385 torsion, M<sub>cr</sub> with load height and z<sub>j</sub>); 3 final, restrained (6.2.5, 6.2.6, 6.2.8), with an option to check out-of-balance torsion on the beam alone.
+- **Local:** plank bearing length, transverse bending of the bearing flange / plate with the coexistent longitudinal stress, Slimflor plate welds.
+
+Limits:
+- Simply supported single spans with uniform plank loads; no point loads on the beam.
+- Non-composite; composite action (P359) is a separate module.
+- Slimflor weld prying uses a simple elastic estimate (Q = 6m/b) and should be confirmed by the engineer for unusual plate proportions.
 
 ## Batch 2: Concrete and precast, EN 1992
 
@@ -118,6 +129,12 @@ Limits:
 - **Section Properties** (`node tests/section-props/test_section_props.js`): 471 checks. They cover closed forms, British Steel UKB/UKC/PFC and Tata SHS tables, BS EN 10056-1 angle values, cross-checks against the EC3 hollow-section engine, and a grid integration of the monosymmetry integral.
 - **Bolt Group Analysis** (`node tests/bolt-group/test_bolt_group.js`): 38 checks. Elastic distribution and EN 1993-1-8 resistances against hand calculations; ICR against an independent scipy solution (`reference/ref_icr.py`).
 - **Steel Beam Torsion** (`node tests/torsion/test_torsion.js`): 139 checks. FE torsion against closed-form ODE solutions (`reference/ref_torsion.py`) for fork, warping-fixed and cantilever ends; I and channel sectorial properties against integration; stresses and the Annex A interaction by hand.
+- **Hollowcore Support Beam** (`node tests/hollowcore/test_hollowcore.js`): 133 checks against `reference/ref_hollowcore.py`:
+  - ASB datasheet values (British Steel, 21.07.26) against the nominal geometry by independent strip integration; Slimflor (UKC + plate) properties, shear centre, I<sub>w</sub> and z<sub>j</sub>;
+  - M<sub>cr</sub> with load height and the Wagner (monosymmetry) term against a Rayleigh-Ritz sine series;
+  - the transverse plastic moment of a plate under longitudinal stress against linear programming over fibres;
+  - a full UKB design case (final stage, deflections, stage 1 torsion against the closed-form ODE solution, local flange bending) and the Slimflor weld forces by hand;
+  - classification of every UKB / UKC against the EC3 engine, and behaviour (edge beam, bearing errors, warnings, final-stage torsion option).
 - **Review fixes:** 31 checks (`test_fixes.js`). Most compare against `reference/ref_fixes.py`, which uses its own independent methods; the rest are hand values. They cover:
   - a destabilising tip load on a cantilever (Ritz solution);
   - flexural and torsional buckling of a span with an overhang (exact characteristic equation);
