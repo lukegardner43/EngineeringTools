@@ -52,6 +52,7 @@ Status key: **Done** means it's in this repo with tests. **Partial** means an ex
 | Steel sheet piling design | Sheet Pile Wall | Done | cantilever (Blum) and single-propped (free earth) walls, DA1, layered soils and water; EN 1993-5 bending |
 | Composite beam design (SCI P359) | Composite Beam Design | Done | EN 1994-1-1: simply supported UKB, decking ⟂ / ∥ or solid slab, partial shear connection, studs, slab shear, SLS and frequency |
 | Steel and composite beams with web openings (SCI P355) | Beam Web Openings | Done | circular / rectangular / elongated openings, Vierendeel, web-posts (AD 418 / AD 419), construction stage, deflection |
+| Floor vibration (SCI P354) | Floor Vibration | Done | simplified method: mode frequencies, modal mass, steady-state / transient response factor, VDV |
 
 Steel Member Design covers:
 
@@ -104,6 +105,11 @@ Beam Web Openings limits / basis:
 - P355 (2011) as published on SteelConstruction.info covers the method up to 3.4.1; Tee M–N–V resistances are therefore taken from first principles (fibre plastic interaction with ρ on the stem; elastic for Class 3, effective stem 14εt<sub>w</sub> for Class 4), and the local composite Vierendeel action M<sub>vc,Rd</sub> and the slab shear contribution are ignored (conservative).
 - Web-post buckling lengths and bending follow AD 418 / AD 419 with buckling curve b (AD 418 permits curve a for rolled sections); the compression-Tee check over long openings follows the EN 1993-1-13 approach in the SCI NSC May 2024 article.
 - Deflection adds the Vierendeel sway (fixed-ended Tees) and the reduced stiffness over each opening using the steel Tees only (no composite stiffening of the top Tee).
+
+Floor Vibration limits / basis:
+- P354 (2009) simplified method for regular steel-composite grids; the copy on SteelConstruction.info stops in section 6, so the section 7 expressions (L<sub>eff</sub> = 1.09(1.10)<sup>n<sub>y</sub>−1</sup>…, S = η(1.15)<sup>n<sub>x</sub>−1</sup>…, η, 0.1Q steady state, 185 transient, v = 1.67f<sub>p</sub>² − 4.83f<sub>p</sub> + 4.5) were taken from two independent published summaries that agree; confirm against the printed guide.
+- Beams simply supported (no continuity factors); slab stiffness from the uncracked ribbed concrete section with the decking ignored (overridable); W<sub>b</sub> weighting (z-axis, offices); mode shape factors entered (default 1).
+- Irregular grids, cantilevers, long-span or lightweight floors, rhythmic activity, stairs and sensitive equipment need a finite element assessment (P354 section 6).
 
 Sheet Pile Wall limits:
 - Limit equilibrium only (no soil-structure interaction / deflections); hydrostatic water (no seepage); Coulomb K<sub>a</sub>, K<sub>p</sub> with passive wall friction capped at φ′/3; multi-propped walls, berms, sloping ground, undrained (total stress) clays and overall stability are not covered; pile section properties are entered by the engineer.
@@ -184,6 +190,7 @@ Steel Masonry Support and Windpost limits:
 - **Crane Gantry Girder** (`node tests/gantry/test_gantry.js`): 25 checks: moving loads against closed forms, cap-channel section by parallel axes, φ₂, l<sub>eff</sub>, chord buckling, fatigue ranges.
 - **Composite Beam Design** (`node tests/composite/test_composite.js`): 133 checks against `reference/ref_composite.py`: five full design cases (decking ⟂ with one or two studs, edge beam with alternate troughs, propped solid slab, parallel decking) with the plastic resistance by fibre integration of the true section shape including root fillets; PNA in the slab and the top flange against closed forms; stud resistances and k<sub>t</sub> / k<sub>l</sub> with the Table 6.2 limits; η<sub>min</sub>; construction M<sub>cr</sub> (load on the top flange) against the SN003 three-factor formula; partial interaction, propped and edge-beam branches. `tests/composite/ui_smoke.js` (jsdom): 15 page checks.
 - **Beam Web Openings** (`node tests/webopen/test_webopen.js`): 181 checks: the published NSC May 2024 worked example (Tee area, centroid, axial and plastic resistances, M<sub>o,Rd</sub>, I<sub>T</sub>, Vierendeel moment, sway, M<sub>add</sub>, combined check 0.99); steel (circular, rectangular, elongated with eccentricity, point load) and composite cases, final and construction stages, against `reference/ref_webopen.py` (fibre model of the true section with root fillets, Tee M–N by bisection, composite net section by fibres, mid-span deflection by virtual work with scipy quad); validation and behaviour. `tests/webopen/ui_smoke.js` (jsdom): 19 page checks.
+- **Floor Vibration** (`node tests/vibration/test_vibration.js`): 98 checks: four floors (open plan, walking path, high-frequency floor, non-composite primary with mode shape factors) against `reference/ref_vibration.py` (section properties by moments of area and strip integration, primary deflection by virtual work with scipy quad); η, W<sub>b</sub>, walking speed, caps and damping / path / mode-shape scaling. `tests/vibration/ui_smoke.js` (jsdom): 11 page checks.
 - **Sheet Pile Wall** (`node tests/piling/test_piling.js`): 18 checks: Coulomb coefficients, Blum cantilever and free-earth propped walls against closed forms, water and effective stresses, DA1 combinations, section resistance.
 - **Review fixes:** 31 checks (`test_fixes.js`). Most compare against `reference/ref_fixes.py`, which uses its own independent methods; the rest are hand values. They cover:
   - a destabilising tip load on a cantilever (Ritz solution);
