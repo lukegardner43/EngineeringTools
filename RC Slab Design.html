@@ -1,0 +1,1362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RC Slab Design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Saira:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0e1014; --surf:#16191f; --surf2:#1c2027; --bdr:#2a2f38; --bdr2:#3a4250;
+  --txt:#e6e8ec; --mut:#8b93a0; --faint:#59616d;
+  --accent:#ffb000; --accent-dim:#3a2e12;
+  --pass:#3ecf8e; --warn:#ffb000; --fail:#ff5d5d;
+  --r:2px;
+  --sans:'Saira',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --mono:'JetBrains Mono','SF Mono',Consolas,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5;min-height:100vh;padding:20px 16px;
+  background-image:linear-gradient(rgba(255,255,255,.014) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.014) 1px,transparent 1px);
+  background-size:32px 32px;}
+.container{max-width:1280px;margin:0 auto;}
+.page-hdr{margin-bottom:16px;}
+.home-lnk{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--mut);text-decoration:none;margin-bottom:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.5px;transition:color .15s;}
+.home-lnk:hover{color:var(--accent);}
+.home-lnk svg{width:12px;height:12px;}
+.page-hdr h1{font-size:20px;font-weight:600;margin-bottom:2px;}
+.page-hdr p{font-size:12px;color:var(--mut);}
+.main-grid{display:grid;grid-template-columns:minmax(340px,1fr) 1.55fr;gap:16px;align-items:start;}
+@media(max-width:1024px){.main-grid{grid-template-columns:1fr;}}
+.main-grid > div{min-width:0;}
+#results table.t{display:block;overflow-x:auto;white-space:nowrap;}
+.chk{align-items:flex-start;}
+@media(max-width:560px){body{padding:14px 10px;} .card{padding:14px 12px;} .ck{grid-template-columns:1fr 1fr 48px;gap:8px;} .grid3{grid-template-columns:1fr 1fr;}
+  .row.span{grid-template-columns:1fr 28px;} .row.span > div:nth-child(2),.row.span > div:nth-child(3){display:none;} .row.load .vals{grid-template-columns:1fr 1fr;}}
+.card{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--r);padding:16px 18px;margin-bottom:14px;}
+.section-title{font-size:11px;font-weight:600;color:var(--accent);font-family:var(--mono);margin:4px 0 12px;text-transform:uppercase;letter-spacing:1.5px;border-bottom:1px solid var(--bdr);padding-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.section-title .aux{color:var(--faint);letter-spacing:.5px;font-weight:500;}
+.form-group{margin-bottom:10px;}
+.form-group label,.lbl{display:block;font-size:11.5px;margin-bottom:4px;color:var(--mut);font-weight:500;}
+input[type="number"],input[type="text"],select{background:var(--surf2);border:1px solid var(--bdr2);color:var(--txt);padding:0 8px;height:32px;border-radius:var(--r);font-family:var(--mono);font-size:13px;width:100%;transition:border-color .15s,box-shadow .15s;}
+input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-dim);}
+select option{background:var(--surf);color:var(--txt);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+.chk{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut);margin:6px 0;cursor:pointer;}
+.chk input{width:15px;height:15px;accent-color:var(--accent);}
+.help{font-size:10.5px;color:var(--faint);margin-top:3px;line-height:1.45;}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--bdr2);border-radius:var(--r);overflow:hidden;margin-bottom:12px;}
+.seg button{background:var(--surf2);color:var(--mut);border:none;padding:8px;font-family:var(--mono);font-size:11.5px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;}
+.seg button.on{background:var(--accent-dim);color:var(--accent);}
+.rows{display:flex;flex-direction:column;gap:6px;margin-bottom:8px;}
+.row{display:grid;gap:6px;align-items:end;background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--r);padding:8px;}
+.row label{font-size:10px;color:var(--faint);margin-bottom:2px;display:block;font-family:var(--mono);text-transform:uppercase;letter-spacing:.4px;}
+.row input,.row select{height:28px;font-size:12px;padding:0 6px;}
+.row.span{grid-template-columns:1fr 1.6fr 1fr 28px;}
+.row.load{grid-template-columns:52px 64px 1.1fr 1.1fr 28px;}
+.row.load .vals{grid-column:1 / span 3;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+.xbtn{height:28px;width:28px;background:transparent;border:1px solid var(--bdr2);color:var(--faint);border-radius:var(--r);cursor:pointer;font-size:15px;line-height:1;}
+.xbtn:hover{color:var(--fail);border-color:var(--fail);}
+.addbtn{background:transparent;border:1px dashed var(--bdr2);color:var(--mut);border-radius:var(--r);padding:6px 10px;font-family:var(--mono);font-size:11px;cursor:pointer;width:100%;}
+.addbtn:hover{color:var(--accent);border-color:var(--accent);}
+.btn{padding:10px;border:none;border-radius:var(--r);font-weight:700;cursor:pointer;font-family:var(--sans);font-size:14px;width:100%;background:var(--accent);color:#1a1208;text-transform:uppercase;letter-spacing:.8px;}
+.btn:hover{filter:brightness(1.08);}
+.btn2{width:100%;padding:9px;background:var(--surf2);border:1px solid var(--bdr2);border-radius:var(--r);font-size:12.5px;color:var(--mut);cursor:pointer;font-family:var(--mono);letter-spacing:.4px;margin-top:8px;}
+.btn2:hover{border-color:var(--accent);color:var(--accent);}
+.hidden{display:none!important;}
+/* results */
+.placeholder{display:flex;align-items:center;justify-content:center;min-height:260px;color:var(--faint);font-size:13px;text-align:center;}
+.verdict{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--bdr2);border-left:4px solid var(--pass);background:var(--surf2);margin-bottom:14px;}
+.verdict.fail{border-left-color:var(--fail);}
+.verdict .big{font-family:var(--mono);font-size:22px;font-weight:700;}
+.verdict .sub{font-size:11.5px;color:var(--mut);}
+.checks{display:flex;flex-direction:column;gap:6px;margin-bottom:6px;}
+.ck{display:grid;grid-template-columns:1.25fr 2fr 56px;gap:10px;align-items:center;font-size:12px;}
+.ck .nm{color:var(--txt);} .ck .nm small{display:block;color:var(--faint);font-family:var(--mono);font-size:10px;}
+.bar{height:8px;background:var(--surf2);border:1px solid var(--bdr);position:relative;}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--pass);}
+.bar i.hi{background:var(--warn);} .bar i.over{background:var(--fail);}
+.ck .u{font-family:var(--mono);text-align:right;font-weight:600;}
+.ck .u.over{color:var(--fail);}
+.diag{width:100%;height:auto;display:block;margin-bottom:6px;}
+.dlabel{font-family:var(--mono);font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:1px;margin:10px 0 2px;}
+table.t{width:100%;border-collapse:collapse;font-size:11.5px;font-family:var(--mono);margin-bottom:8px;}
+table.t th{color:var(--faint);font-weight:500;text-align:right;padding:4px 6px;border-bottom:1px solid var(--bdr);font-size:10.5px;}
+table.t td{padding:4px 6px;border-bottom:1px solid var(--bdr);text-align:right;}
+table.t th:first-child,table.t td:first-child{text-align:left;}
+.note{font-size:11px;color:var(--mut);background:var(--surf2);border:1px solid var(--bdr);border-left:3px solid var(--bdr2);padding:8px 10px;margin-top:8px;line-height:1.55;}
+.err{color:var(--fail);font-size:12px;padding:10px;border:1px solid var(--fail);margin-bottom:12px;}
+.busy{opacity:.55;pointer-events:none;}
+/* ---------- print: A4 calculation sheet ---------- */
+#report{display:none;}
+@media print{
+  @page{size:A4;margin:12mm 12mm 14mm;}
+  body{background:#fff;color:#000;padding:0;background-image:none;font-size:9.5pt;}
+  .container{display:none;}
+  #report{display:block;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  #report table.wrap{width:100%;border-collapse:collapse;}
+  #report thead td{padding:0 0 3mm;}
+  .rh{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;border:0.6pt solid #000;font-size:8pt;}
+  .rh div{padding:1.2mm 2mm;border-right:0.6pt solid #000;}
+  .rh div:last-child{border-right:none;}
+  .rh b{display:block;font-size:6.5pt;color:#444;font-weight:normal;text-transform:uppercase;letter-spacing:.3pt;}
+  .rh .ttl{grid-column:1 / -1;border-top:0.6pt solid #000;border-right:none;font-weight:bold;font-size:10pt;}
+  .rs{margin:0 0 3.5mm;}
+  .rs h2,.rs h3{break-after:avoid;}
+  .rl,.rt,.rsvg,.rp,.rt tr{break-inside:avoid;}
+  .rs h2{font-size:10pt;margin:3mm 0 1.5mm;padding-bottom:0.8mm;border-bottom:0.8pt solid #000;}
+  .rs h3{font-size:9pt;margin:2mm 0 1mm;}
+  .rl{display:grid;grid-template-columns:1fr 92px 132px;gap:2mm;padding:0.5mm 0;font-size:8.6pt;}
+  .rl .cl{text-align:right;color:#444;font-size:7.5pt;}
+  .rl .rv{text-align:right;font-weight:bold;}
+  .ok{color:#0a7a3e;} .ng{color:#c00;}
+  .rt{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;}
+  .rt th,.rt td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;}
+  .rt th{background:#eee;font-weight:bold;}
+  .rt td:first-child,.rt th:first-child,.rt.lft td,.rt.lft th{text-align:left;}
+  .rp{font-size:8.3pt;line-height:1.45;margin:1mm 0;}
+  .rsvg{width:100%;height:auto;}
+  .rsvg *{vector-effect:non-scaling-stroke;}
+}
+
+.row.sspan{grid-template-columns:repeat(2,minmax(0,1fr)) 28px;}
+.row.ssup{grid-template-columns:1.4fr 1fr 1fr;}
+.row.sload{grid-template-columns:repeat(6,minmax(0,1fr)) 28px;}
+.row.sbar{grid-template-columns:1.3fr repeat(2,minmax(0,1fr));}
+.row.sbar .nm{font-family:var(--mono);font-size:11px;color:var(--mut);align-self:center;}
+svg.elev,svg.env,svg.plan{width:100%;height:auto;display:block;margin:2px 0 10px;}
+svg.plan{max-width:560px;margin:4px auto 10px;}
+.zone{border:1px solid var(--bdr);border-radius:var(--r);margin:6px 0;background:var(--surf2);}
+.zone summary{cursor:pointer;padding:7px 10px;font-family:var(--mono);font-size:11.5px;color:var(--mut);display:flex;justify-content:space-between;gap:10px;}
+.zone summary .u{color:var(--txt);} .zone summary .u.over{color:var(--fail);}
+.zone .steps{padding:0 10px 8px;}
+.steps{font-size:11.5px;color:var(--mut);line-height:1.5;}
+.steps .st{display:grid;grid-template-columns:96px 1fr;gap:8px;padding:3px 0;border-bottom:1px solid var(--bdr);}
+.steps .st span:first-child{font-family:var(--mono);font-size:10px;color:var(--faint);}
+.edges{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;}
+@media(max-width:560px){.row.sload{grid-template-columns:repeat(3,minmax(0,1fr)) 28px;} .edges{grid-template-columns:1fr;}}
+@media print{svg.elev,svg.env{max-width:180mm;} svg.plan{max-width:110mm;} .rtab{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;} .rtab th,.rtab td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;} .rtab th:first-child,.rtab td:first-child{text-align:left;}}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="page-hdr">
+    <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
+    <h1>RC Slab Design</h1>
+    <p>Solid slabs to BS EN 1992-1-1 + UK NA, per metre width &nbsp;·&nbsp; one-way continuous slabs with load patterns and redistribution &nbsp;·&nbsp; two-way panels by the BS 8110 coefficients &nbsp;·&nbsp; bending, shear, span/depth, crack control, bar suggestions</p>
+  </div>
+  <div class="main-grid">
+    <div id="inputs">
+      <div class="card">
+        <div class="section-title">Project</div>
+        <div class="form-group"><label>Project</label><input type="text" id="pName" placeholder="Project name"></div>
+        <div class="grid3"><div class="form-group"><label>Job no.</label><input type="text" id="pJob"></div><div class="form-group"><label>By</label><input type="text" id="pBy"></div><div class="form-group"><label>Member ref.</label><input type="text" id="pRef" placeholder="e.g. Slab S3, level 2"></div></div>
+      </div>
+      <div class="card">
+        <div class="seg" id="modes"><button data-m="one" class="on">One-way continuous</button><button data-m="two">Two-way panel</button></div>
+        <div class="grid3">
+          <div class="form-group"><label>Concrete</label><select id="fck"><option value="25">C25/30</option><option value="28">C28/35</option><option value="30">C30/37</option><option value="32" selected>C32/40</option><option value="35">C35/45</option><option value="40">C40/50</option><option value="45">C45/55</option><option value="50">C50/60</option></select></div>
+          <div class="form-group"><label>f<sub>yk</sub> (N/mm²)</label><input type="number" id="fyk" value="500" step="10"></div>
+          <div class="form-group"><label>Aggregate d<sub>g</sub> (mm)</label><input type="number" id="dg" value="20"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Cover, top / bottom (mm)</label><div class="grid2"><input type="number" id="cTop" value="25"><input type="number" id="cBtm" value="25"></div></div>
+          <div class="form-group"><label>w<sub>max</sub> top / bottom (mm)</label><div class="grid2"><select id="wkT"><option value="0.3" selected>0.3</option><option value="0.4">0.4</option><option value="0.2">0.2</option></select><select id="wkB"><option value="0.3" selected>0.3</option><option value="0.4">0.4</option><option value="0.2">0.2</option></select></div></div>
+          <div class="form-group"><label>Usage (ψ₀, ψ₂)</label><select id="usage"></select></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>ULS combination</label><select id="rule"><option value="6.10">6.10: 1.35 G + 1.5 Q</option><option value="6.10ab">6.10a and 6.10b</option></select></div>
+          <div class="form-group"><label>Self-weight</label><select id="sw"><option value="1">Added (density below)</option><option value="0">In the loads</option></select></div>
+          <div class="form-group"><label>Density (kN/m³) / brittle partitions</label><div class="grid2"><input type="number" id="gc" value="25" step="0.5"><select id="brittle"><option value="1">Yes</option><option value="0">No</option></select></div></div>
+        </div>
+        <div class="grid3 one">
+          <div class="form-group"><label>Load patterns</label><select id="pat"><option value="uk">UK NA: all and alternate</option><option value="adj">Also adjacent spans</option></select></div>
+          <div class="form-group"><label>Redistribution</label><select id="redist"><option value="limited">δ at supports, others ±(1 − δ)</option><option value="none">Reductions only</option></select></div>
+          <div class="form-group"><label>x/d limit</label><select id="xd"><option value="">5.5(4): (δ − 0.4)</option><option value="0.45">0.45 (ductility)</option></select></div>
+        </div>
+      </div>
+      <!-- one-way -->
+      <div id="pane-one">
+        <div class="card">
+          <div class="section-title">Spans <span class="aux">L (m), h (mm)</span></div>
+          <div class="rows" id="spanRows"></div>
+          <button class="addbtn" id="addSpan">+ Add span</button>
+        </div>
+        <div class="card">
+          <div class="section-title">Supports</div>
+          <div class="rows" id="supRows"></div>
+          <div class="help">On a beam or wall: cast with it, analysed as a knife edge, designed at the face, with 25% of the span moment as top steel at an end (9.3.1.2(2)). Bearing: simple support (masonry, steel), centreline moment less F t/8. Encastré: fully fixed. Free end: the end span is a cantilever. δ: redistribution at interior supports.</div>
+        </div>
+        <div class="card">
+          <div class="section-title">Loads <span class="aux">characteristic, per m²; line loads per m</span></div>
+          <div class="rows" id="loadRows"></div>
+          <button class="addbtn" id="addLoad">+ Add load</button>
+        </div>
+        <div class="card">
+          <div class="section-title">Reinforcement <span class="aux">bar Ø @ spacing (mm)</span></div>
+          <div class="rows" id="barRows"></div>
+          <button class="btn2" id="suggest">Suggest bars</button>
+        </div>
+      </div>
+      <!-- two-way -->
+      <div id="pane-two" class="hidden">
+        <div class="card">
+          <div class="section-title">Panel</div>
+          <div class="grid3">
+            <div class="form-group"><label>l<sub>x</sub>, short span (m)</label><input type="number" id="lx" value="6" step="0.05"></div>
+            <div class="form-group"><label>l<sub>y</sub>, long span (m)</label><input type="number" id="ly" value="7.5" step="0.05"></div>
+            <div class="form-group"><label>h (mm)</label><input type="number" id="th" value="225"></div>
+          </div>
+          <div class="lbl">Edges continuous over the support (unchecked: discontinuous)</div>
+          <div class="edges">
+            <label class="chk"><input type="checkbox" id="eL1" checked> Long edge 1</label><label class="chk"><input type="checkbox" id="eL2"> Long edge 2</label>
+            <label class="chk"><input type="checkbox" id="eS1" checked> Short edge 1</label><label class="chk"><input type="checkbox" id="eS2"> Short edge 2</label>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>g<sub>k</sub> other dead (kN/m²)</label><input type="number" id="tg" value="1.5" step="0.1"></div>
+            <div class="form-group"><label>q<sub>k</sub> imposed (kN/m²)</label><input type="number" id="tq" value="3.5" step="0.1"></div>
+            <div></div>
+          </div>
+          <div class="help">BS 8110-1 Table 3.14 (restrained panels, corners held down, torsion steel provided) and Table 3.15, as used with EC2 in the Concrete Centre's How to design slabs. Long edges run along l<sub>y</sub> and carry the short-span moments.</div>
+        </div>
+        <div class="card">
+          <div class="section-title">Reinforcement <span class="aux">bar Ø @ spacing (mm)</span></div>
+          <div class="rows" id="tbarRows"></div>
+          <button class="btn2" id="tsuggest">Suggest bars</button>
+        </div>
+      </div>
+      <button class="btn" id="calc">Calculate</button>
+    </div>
+    <div><div class="card" id="results"><div class="placeholder">Set up the slab and loads, then Calculate (or Suggest bars).</div></div></div>
+  </div>
+  <p class="help" style="text-align:center;margin:18px 0 6px">All calculations are the responsibility of the engineer. Verify results against the relevant codes and standards before use.</p>
+</div>
+<div id="report"></div>
+<script id="engine">
+/* ===== EC2 DESIGN CORE (EngineeringTools) =====
+   Clean-room implementation from BS EN 1992-1-1:2004 + A1:2014 and the UK National Annex (NA to BS EN 1992-1-1:2004+A1:2014),
+   cross-read with The Concrete Centre "How to design concrete structures using Eurocode 2". Units: N, mm (stresses N/mm2).
+   - materials (Table 3.1, 3.1.7(3), UK NA alpha_cc = 0.85 flexure / 1.0 shear and torsion, gamma_c 1.5, gamma_s 1.15);
+   - bending of rectangular and flanged sections by the rectangular stress block: required steel (singly or doubly
+     reinforced, x/d limit from ductility or redistribution, 5.5(4) with the UK NA) and the resistance of a given
+     arrangement by strain compatibility;
+   - shear 6.2.2 / 6.2.3 (vertical links, variable strut, fck limited to 50 N/mm2 in shear as the UK NA);
+   - torsion 6.3 (thin-walled closed section, interaction 6.29 / 6.31);
+   - SLS: cracked elastic section, crack control by Tables 7.2N / 7.3N or the calculated crack width 7.3.4, minimum
+     steel 7.3.2, span / effective depth 7.4.2 with the UK NA modifiers;
+   - detailing: 9.2.1.1 min / max steel, bar spacing 8.2, anchorage 8.4 and laps 8.7 (simplified alpha = 1), flange
+     width 5.3.2.1. */
+const EC2 = (() => {
+  'use strict';
+  const GC = 1.5, GS = 1.15, ES = 200000, ACC = 0.85, ACC_V = 1.0;
+  const CUBE = { 12: 15, 16: 20, 20: 25, 25: 30, 28: 35, 30: 37, 32: 40, 35: 45, 40: 50, 45: 55, 50: 60, 55: 67, 60: 75, 70: 85, 80: 95, 90: 105 };
+  const area = (n, phi) => n * Math.PI * phi * phi / 4;
+  // ---------- materials ----------
+  function concrete(fck) {
+    if (!(fck >= 12 && fck <= 90)) throw new Error('f_ck must be between 12 and 90 N/mm²');
+    const fcm = fck + 8, hi = fck > 50;
+    const fctm = hi ? 2.12 * Math.log(1 + fcm / 10) : 0.30 * fck ** (2 / 3);
+    const ec2 = hi ? (2.0 + 0.085 * (fck - 50) ** 0.53) * 1e-3 : 2.0e-3, ecu2 = hi ? (2.6 + 35 * ((90 - fck) / 100) ** 4) * 1e-3 : 3.5e-3;
+    const ec3 = hi ? (1.75 + 0.55 * (fck - 50) / 40) * 1e-3 : 1.75e-3, n = hi ? 1.4 + 23.4 * ((90 - fck) / 100) ** 4 : 2;
+    const lambda = hi ? 0.8 - (fck - 50) / 400 : 0.8, eta = hi ? 1 - (fck - 50) / 200 : 1;
+    const fv = Math.min(fck, 50);                                  // UK NA: shear and torsion with f_ck not above C50/60
+    return { fck, fckCube: CUBE[fck] ?? null, fcm, fctm, fctk05: 0.7 * fctm, fctk95: 1.3 * fctm, Ecm: 22000 * (fcm / 10) ** 0.3,
+      ec2, ecu2, ec3, ecu3: ecu2, n, lambda, eta, fcd: ACC * fck / GC, fcdV: ACC_V * fv / GC, fv, fctd: 1.0 * 0.7 * fctm / GC,
+      nu: 0.6 * (1 - fv / 250) };
+  }
+  const steel = (fyk = 500) => ({ fyk, fyd: fyk / GS, Es: ES, eyd: fyk / GS / ES });
+  // ---------- flexure: rectangular stress block (3.1.7(3)) ----------
+  // section: { b (width of the compression flange or rectangle), bw (web), hf (flange depth; 0 = rectangular), h }
+  // compression-zone force and its depth to the centroid for a block depth s = lambda x
+  function block(sec, s) {
+    const bw = sec.bw ?? sec.b, hf = sec.hf > 0 ? sec.hf : Infinity;
+    if (s <= hf || sec.b === bw) return { A: sec.b * s, y: s / 2 };
+    const Af = (sec.b - bw) * hf, Aw = bw * s;
+    return { A: Af + Aw, y: (Af * hf / 2 + Aw * s / 2) / (Af + Aw) };
+  }
+  // x/d limit: 5.5(4) with the UK NA (k1 = 0.4, k2 = 0.6 + 0.0014/eps_cu2; fck > 50: k3 = 0.4, k4 = 0.6 + 0.0014/eps_cu2)
+  // and an optional practical ductility limit (0.45 for fck <= 50 is the usual UK choice)
+  function xdLimit(c, delta = 1, practical = 0.45) {
+    const k2 = 0.6 + 0.0014 / c.ecu2, red = c.fck <= 50 ? (delta - 0.4) / k2 : (delta - 0.4) / k2;
+    return Math.min(red, practical ?? Infinity);
+  }
+  // required reinforcement for M (>= 0) on effective depth d; d2 to the compression steel
+  function bendingDesign({ sec, d, d2 = 50, M, c, s: st, delta = 1, xdMax = 0.45, zMax = 0.95 }) {
+    const a = c.eta * c.fcd, L = c.lambda, xlim = xdLimit(c, delta, xdMax) * d;
+    const Mx = x => { const bl = block(sec, L * x); return a * bl.A * (d - bl.y); };
+    const out = { M, d, xlim, K: M / (sec.b * d * d * c.fck) };
+    if (!(M > 0)) return { ...out, As: 0, As2: 0, x: 0, z: zMax * d, Kp: null };
+    const Mlim = Mx(xlim);
+    out.Kp = Mlim / (sec.b * d * d * c.fck); out.Mlim = Mlim;
+    if (M <= Mlim) {
+      let lo = 0, hi = xlim; for (let i = 0; i < 100; i++) { const m = (lo + hi) / 2; if (Mx(m) < M) lo = m; else hi = m; }
+      const x = (lo + hi) / 2, bl = block(sec, L * x), z = Math.min(d - bl.y, zMax * d);
+      return { ...out, x, z, zCap: d - bl.y > zMax * d, As: M / (st.fyd * z), As2: 0, inFlange: !(sec.hf > 0) || L * x <= sec.hf };
+    }
+    // compression steel at the x/d limit
+    const bl = block(sec, L * xlim), z = Math.min(d - bl.y, zMax * d), esc = c.ecu2 * (xlim - d2) / xlim;
+    // compression steel stress from the strain diagram, net of the concrete it displaces (inside the stress block)
+    const fscG = Math.min(st.fyd, st.Es * esc), fsc = fscG - (d2 < L * xlim ? a : 0);
+    if (!(fsc > 0)) throw new Error('Compression steel would be in tension at the limiting neutral axis (d2 too large)');
+    const As2 = (M - Mlim) / (fsc * (d - d2));
+    return { ...out, x: xlim, z, As2, fsc, fscGross: fscG, As: Mlim / (st.fyd * z) + As2 * fsc / st.fyd, doubly: true, inFlange: !(sec.hf > 0) || L * xlim <= sec.hf };
+  }
+  // resistance of a given arrangement by strain compatibility (eps_cu2 at the top, rectangular block; bilinear steel
+  // with a horizontal top branch). layers: [{ As, d }] measured from the compression face (any layer may be in compression)
+  function bendingResistance({ sec, layers, c, s: st, N = 0 }) {
+    const a = c.eta * c.fcd, L = c.lambda, h = sec.h, ecu = c.ecu2;
+    const sig = (x, di) => { const e = ecu * (x - di) / x; return Math.max(-st.fyd, Math.min(st.fyd, st.Es * e)); };   // compression +
+    const F = x => { const bl = block(sec, Math.min(L * x, h)); return a * bl.A + layers.reduce((t, l) => t + l.As * (sig(x, l.d) - (L * x > l.d ? a : 0)), 0) - N; };
+    let lo = 1e-6, hi = 2 * h;
+    if (F(lo) > 0) lo = 1e-9;
+    for (let i = 0; i < 200; i++) { const m = (lo + hi) / 2; if (F(m) > 0) hi = m; else lo = m; }
+    const x = (lo + hi) / 2, bl = block(sec, Math.min(L * x, h));
+    // moment about the compression face, then shifted to the section's mid-depth reference (N acts at h/2)
+    let Mtop = 0; Mtop += -a * bl.A * bl.y;
+    for (const l of layers) Mtop += -l.As * (sig(x, l.d) - (L * x > l.d ? a : 0)) * l.d;
+    // M about mid-depth (where N acts) = moment of the internal forces about the top + N h/2; N = 0 gives pure bending
+    const MRd = Mtop + N * h / 2;
+    const dt = Math.max(...layers.map(l => l.d));
+    return { x, xd: x / dt, MRd, eps: layers.map(l => ecu * (x - l.d) / x), sig: layers.map(l => sig(x, l.d)),
+      yielded: layers.map(l => ecu * (l.d - x) / x >= st.eyd) };
+  }
+  // ---------- shear, 6.2.2 / 6.2.3 (vertical links) ----------
+  function shearConcrete({ bw, d, Asl, c, NEd = 0, Ac = null }) {
+    const k = Math.min(2, 1 + Math.sqrt(200 / d)), rho = Math.min(0.02, Asl / (bw * d));
+    const scp = Ac ? Math.min(Math.max(NEd, 0) / Ac, 0.2 * c.fcd) : 0;
+    const vmin = 0.035 * k ** 1.5 * Math.sqrt(c.fv);
+    const v = 0.18 / GC * k * (100 * rho * c.fv) ** (1 / 3);
+    const VRdc = Math.max(v + 0.15 * scp, vmin + 0.15 * scp) * bw * d;
+    return { k, rho, scp, vmin, v, VRdc, governs: v >= vmin ? 'formula' : 'vmin' };
+  }
+  const acw = (scp, fcd) => scp <= 0 ? 1 : scp <= 0.25 * fcd ? 1 + scp / fcd : scp <= 0.5 * fcd ? 1.25 : 2.5 * (1 - scp / fcd);
+  function vrdMax(bw, z, c, cot, scp = 0) { const t = 1 / cot; return acw(scp, c.fcdV) * bw * z * c.nu * c.fcdV / (cot + t); }
+  // design of vertical links for V_Ed: strut angle (cot theta 1..2.5), Asw/s, minimum, maximum spacing
+  // VEdStrut (default VEd): the shear that sets the strut angle, normally V_Ed at the support face, so that one truss
+  // angle serves both the V_Rd,max check at the face and the links designed for V_Ed at d from the face
+  function shearDesign({ bw, d, VEd, VEdStrut = null, c, fywk = 500, z = null, scp = 0 }) {
+    z = z ?? 0.9 * d; const fywd = fywk / GS, Vs = Math.max(VEd, VEdStrut ?? 0);
+    const Vmax25 = vrdMax(bw, z, c, 2.5, scp), Vmax45 = vrdMax(bw, z, c, 1, scp);
+    let cot = 2.5, ok = true;
+    if (Vs > Vmax25) {
+      const s2 = 2 * Vs / (acw(scp, c.fcdV) * bw * z * c.nu * c.fcdV);
+      if (s2 > 1) { ok = false; cot = 1; } else { const th = 0.5 * Math.asin(s2); cot = 1 / Math.tan(th); }
+    }
+    const AswS = VEd / (z * fywd * cot), AswSmin = 0.08 * Math.sqrt(c.fck) / fywk * bw;
+    return { z, fywd, cot, theta: Math.atan(1 / cot) * 180 / Math.PI, VRdmax: vrdMax(bw, z, c, cot, scp), Vmax25, Vmax45, ok, AswS, AswSmin, AswSreq: Math.max(AswS, AswSmin),
+      slMax: 0.75 * d, stMax: Math.min(0.75 * d, 600), dFtd: 0.5 * VEd * cot };
+  }
+  // resistance of provided links: the best strut angle in 1 <= cot <= 2.5 (V_Rd,s = V_Rd,max where possible)
+  function shearResistance({ bw, d, AswS, c, fywk = 500, z = null, scp = 0 }) {
+    z = z ?? 0.9 * d; const fywd = fywk / GS, Vs = cot => AswS * z * fywd * cot;
+    let cot;
+    if (Vs(2.5) <= vrdMax(bw, z, c, 2.5, scp)) cot = 2.5;
+    else if (Vs(1) >= vrdMax(bw, z, c, 1, scp)) cot = 1;
+    else { let lo = 1, hi = 2.5; for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; if (Vs(m) > vrdMax(bw, z, c, m, scp)) hi = m; else lo = m; } cot = (lo + hi) / 2; }
+    const VRds = Vs(cot), VRdmax = vrdMax(bw, z, c, cot, scp);
+    return { cot, VRds, VRdmax, VRd: Math.min(VRds, VRdmax), z, fywd };
+  }
+  // ---------- torsion, 6.3 (rectangular solid section treated as thin-walled closed) ----------
+  function torsion({ b, h, cEdge, c, TEd, VEd = 0, bw = b, d, cot = null, VRdc = null, VRdmax = null, fywk = 500, fyk = 500 }) {
+    const A = b * h, u = 2 * (b + h), tef = Math.max(A / u, 2 * cEdge);
+    if (!(tef < Math.min(b, h) / 2)) throw new Error('Torsion: the effective wall thickness exceeds half the section');
+    const Ak = (b - tef) * (h - tef), uk = 2 * ((b - tef) + (h - tef));
+    const TRdc = 2 * Ak * tef * c.fctd;
+    cot = cot ?? 2.5; const sn = 1 / Math.sqrt(1 + cot * cot), cs = cot * sn;
+    const TRdmax = 2 * c.nu * 1.0 * c.fcdV * Ak * tef * sn * cs;
+    const AswS1 = TEd / (2 * Ak * (fywk / GS) * cot), Asl = TEd * uk * cot / (2 * Ak * (fyk / GS));
+    const crackFree = VRdc ? TEd / TRdc + VEd / VRdc <= 1 : null;
+    const inter = VRdmax ? TEd / TRdmax + VEd / VRdmax : TEd / TRdmax;
+    return { A, u, tef, Ak, uk, TRdc, TRdmax, cot, AswS1, Asl, crackFree, inter, sMax: Math.min(uk / 8, b, h) };
+  }
+  // ---------- SLS sections ----------
+  // cracked elastic section (no concrete in tension): neutral axis and stresses for moment M, modular ratio ae
+  function cracked({ sec, As, d, As2 = 0, d2 = 50, ae, M = 0 }) {
+    const bw = sec.bw ?? sec.b, hf = sec.hf > 0 ? sec.hf : Infinity;
+    const Q = x => {   // first moment of the transformed area about the neutral axis (compression +)
+      const xc = Math.min(x, hf), q1 = sec.b * xc * (x - xc / 2), q2 = x > hf ? bw * (x - hf) * (x - hf) / 2 : 0;
+      return q1 + q2 + (ae - 1) * As2 * (x - d2) - ae * As * (d - x);
+    };
+    let lo = 0, hi = d; for (let i = 0; i < 100; i++) { const m = (lo + hi) / 2; if (Q(m) > 0) hi = m; else lo = m; }
+    const x = (lo + hi) / 2, xc = Math.min(x, hf);
+    // second moment about the neutral axis: flange part [0, xc], web part [hf, x], transformed steel
+    const Icr = sec.b * (x ** 3 - (x - xc) ** 3) / 3 + (x > hf ? bw * (x - hf) ** 3 / 3 : 0) + (ae - 1) * As2 * (x - d2) ** 2 + ae * As * (d - x) ** 2;
+    return { x, Icr, sc: M * x / Icr, ss: ae * M * (d - x) / Icr, ss2: ae * M * (x - d2) / Icr };
+  }
+  function uncracked({ sec, h, As = 0, d = 0, As2 = 0, d2 = 0, ae = 0 }) {
+    const bw = sec.bw ?? sec.b, hf = sec.hf > 0 ? Math.min(sec.hf, h) : 0;
+    const parts = [[bw * h, h / 2, bw * h ** 3 / 12], [(sec.b - bw) * hf, hf / 2, (sec.b - bw) * hf ** 3 / 12], [(ae - 1) * As, d, 0], [(ae - 1) * As2, d2, 0]];
+    const A = parts.reduce((t, p) => t + p[0], 0), y = parts.reduce((t, p) => t + p[0] * p[1], 0) / A;
+    const I = parts.reduce((t, p) => t + p[2] + p[0] * (p[1] - y) ** 2, 0);
+    return { A, y, I };
+  }
+  // ---------- crack control, 7.3 ----------
+  const T72 = { s: [160, 200, 240, 280, 320, 360, 400, 450], 0.4: [40, 32, 20, 16, 12, 10, 8, 6], 0.3: [32, 25, 16, 12, 10, 8, 6, 5], 0.2: [25, 16, 12, 8, 6, 5, 4, null] };
+  const T73 = { s: [160, 200, 240, 280, 320, 360], 0.4: [300, 300, 250, 200, 150, 100], 0.3: [300, 250, 200, 150, 100, 50], 0.2: [200, 150, 100, 50, null, null] };
+  function tableLookup(T, wk, ss) {
+    const col = T[wk]; if (!col) throw new Error('w_k must be 0.2, 0.3 or 0.4 mm for Tables 7.2N / 7.3N');
+    const s = T.s;
+    if (ss <= s[0]) return col[0];
+    for (let i = 1; i < s.length; i++) if (ss <= s[i]) { const a = col[i - 1], b = col[i]; if (a == null || b == null) return null; return a + (b - a) * (ss - s[i - 1]) / (s[i] - s[i - 1]); }
+    return null;   // stress beyond the table
+  }
+  // quasi-permanent steel stress by the ratio method (How to guide): fyd x (M_qp/M_Ed) x (As,req/As,prov) / delta
+  const sigmaQP = ({ fyd, Mqp, MEd, AsReq, AsProv, delta = 1 }) => fyd * (Mqp / MEd) * (AsReq / AsProv) / delta;
+  function crackTables({ ss, wk = 0.3, h, d, fctEff, kc = 0.4, hcr = null, tension = false }) {
+    const phiStar = tableLookup(T72, wk, ss), sMax = tableLookup(T73, wk, ss);
+    hcr = hcr ?? h / 2;
+    const mod = tension ? (fctEff / 2.9) * hcr / (8 * (h - d)) : (fctEff / 2.9) * kc * hcr / (2 * (h - d));
+    return { phiStar, phiMax: phiStar == null ? null : phiStar * mod, mod, sMax };
+  }
+  function crackWidth({ sec, h, As, d, phi, cover, spacing, ss, x, c, fctEff = null, kt = 0.4, k2 = 0.5 }) {
+    fctEff = fctEff ?? c.fctm; const ae = ES / c.Ecm, bw = sec.bw ?? sec.b;
+    const hcef = Math.min(2.5 * (h - d), (h - x) / 3, h / 2), Aceff = bw * hcef, rho = As / Aceff;
+    const de = Math.max((ss - kt * fctEff / rho * (1 + ae * rho)) / ES, 0.6 * ss / ES);
+    const close = spacing <= 5 * (cover + phi / 2);
+    const sr = close ? 3.4 * cover + 0.8 * k2 * 0.425 * phi / rho : 1.3 * (h - x);
+    return { hcef, Aceff, rho, ae, de, sr, close, wk: sr * de };
+  }
+  function asMinCrack({ kc = 0.4, k = 1.0, fctEff, Act, ss }) { return kc * k * fctEff * Act / ss; }
+  // k for 7.3.2: 1.0 for h <= 300, 0.65 for h >= 800, linear between
+  const kSize = h => h <= 300 ? 1.0 : h >= 800 ? 0.65 : 1.0 - 0.35 * (h - 300) / 500;
+  // ---------- deflection: span / effective depth, 7.4.2 with the UK NA ----------
+  const KSYS = { ss: 1.0, end: 1.3, interior: 1.5, flat: 1.2, cantilever: 0.4 };
+  function spanDepth({ fck, rho, rho2 = 0, system = 'ss', fyk = 500, AsReq, AsProv, flangeRatio = 1, span, brittle = true, flat = false }) {
+    const K = KSYS[system], r0 = 1e-3 * Math.sqrt(fck), sf = Math.sqrt(fck);
+    const base = rho <= r0 ? K * (11 + 1.5 * sf * r0 / rho + 3.2 * sf * (r0 / rho - 1) ** 1.5)
+      : K * (11 + 1.5 * sf * r0 / (rho - rho2) + sf / 12 * Math.sqrt(rho2 / r0));
+    const fs = Math.min(1.5, (500 / fyk) * (AsProv / AsReq));                         // 310/sigma_s ~ 500/(fyk As,req/As,prov), UK NA limit 1.5
+    const ff = flangeRatio > 3 ? 0.8 : 1;
+    const lim = flat ? 8500 : 7000, fl = brittle && span > lim && system !== 'cantilever' ? lim / span : 1;
+    return { K, rho0: r0, rho, base, fs, ff, fl, allowed: base * fs * ff * fl };
+  }
+  // ---------- detailing ----------
+  function asMin({ fctm, fyk = 500, bt, d }) { return Math.max(0.26 * fctm / fyk * bt * d, 0.0013 * bt * d); }
+  const clearMin = (phi, dg = 20) => Math.max(phi, dg + 5, 20);
+  // anchorage and laps, 8.4 / 8.7: straight or bent bars in tension, compression bars; alpha1 (shape), alpha2 (cover cd),
+  // alpha3 = alpha4 = alpha5 = 1 (conservative), alpha2 alpha3 alpha5 >= 0.7; alpha6 from the proportion lapped (Table 8.3)
+  function anchorage({ phi, c, ss = null, good = true, fyk = 500, tension = true, bent = false, cd = null, lappedPct = 100 }) {
+    const fbd = 2.25 * (good ? 1 : 0.7) * (phi <= 32 ? 1 : (132 - phi) / 100) * c.fctd;
+    const sd = ss ?? fyk / GS, lbrqd = phi / 4 * sd / fbd;
+    let a1 = 1, a2 = 1;
+    if (tension) {
+      cd = cd ?? 3 * phi;
+      if (bent) { a1 = cd > 3 * phi ? 0.7 : 1; a2 = Math.min(1, Math.max(0.7, 1 - 0.15 * (cd - 3 * phi) / phi)); }
+      else a2 = Math.min(1, Math.max(0.7, 1 - 0.15 * (cd - phi) / phi));
+    }
+    const a235 = Math.max(0.7, a2), lbmin = tension ? Math.max(0.3 * lbrqd, 10 * phi, 100) : Math.max(0.6 * lbrqd, 10 * phi, 100);
+    const lbd = Math.max(a1 * a235 * lbrqd, lbmin);
+    const a6 = tension ? Math.min(1.5, Math.max(1, Math.sqrt(lappedPct / 25))) : 1;
+    const l0min = Math.max(0.3 * a6 * lbrqd, 15 * phi, 200), l0 = Math.max(a1 * a235 * a6 * lbrqd, l0min);
+    return { fbd, sd, lbrqd, a1, a2, a6, lbmin, lbd, l0min, l0 };
+  }
+  // effective flange width, 5.3.2.1: bi = half clear distance to the next web (each side), l0 distance between zero moments
+  function flangeWidth({ bw, b1, b2, l0, bMax = Infinity }) {
+    const bi = b => Math.max(0, Math.min(0.2 * b + 0.1 * l0, 0.2 * l0, b));
+    return Math.min(bw + bi(b1) + bi(b2), bMax, bw + b1 + b2);
+  }
+  // l0 for 5.3.2.1 Figure 5.2: 0.85 L end span, 0.7 L interior span, 0.15 (L1 + L2) over an internal support, 0.15 L2 + L3 at a cantilever root
+  return { GC, GS, ES, CUBE, area, concrete, steel, block, xdLimit, bendingDesign, bendingResistance, shearConcrete, shearDesign, shearResistance, vrdMax, acw,
+    torsion, cracked, uncracked, T72, T73, tableLookup, sigmaQP, crackTables, crackWidth, asMinCrack, kSize, KSYS, spanDepth, asMin, clearMin, anchorage, flangeWidth };
+})();
+if (typeof module !== 'undefined') module.exports = { EC2 };
+
+/* ===== EC2 SECTION DESIGN (EngineeringTools) =====
+   Design and check of one reinforced concrete section (beam or slab strip) to BS EN 1992-1-1 + UK NA, built on the EC2
+   core: bending (singly or doubly reinforced, rectangular or flanged), provided-bar resistance, minimum and maximum steel,
+   bar spacing, crack control without direct calculation (Tables 7.2N / 7.3N), span / effective depth with the UK NA
+   (Table NA.5 notes: F3 = 310/sigma_s <= 1.5 with sigma_s at the characteristic SLS load, l/d <= 40K), the steel needed
+   to satisfy deflection, and shear with or without links. Each step is recorded as { ref, text, val } for the calc sheet.
+   UK practice choices (stated in the report): sigma_s by the cracked transformed section with alpha_e (15 by default);
+   flange factor F1 = 1 - 0.1(b_eff/b_w - 1) >= 0.8 (Concrete Centre "How to" guide); rho = A_s,req/(b_w d) and
+   rho' = A_s2,prov/(b_w d) in Expression 7.16. Units N, mm. */
+const EC2Section = (() => {
+  'use strict';
+  const r1 = v => (Math.round(v * 10) / 10).toString(), r0 = v => Math.round(v).toString(), r3 = v => v.toFixed(3), r2 = v => v.toFixed(2);
+  const kNm = v => v / 1e6, kN = v => v / 1e3;
+  const AREA = phi => Math.PI * phi * phi / 4;
+  const USAGE = { A: ['Domestic', 0.3], B: ['Office', 0.3], C: ['Congregation', 0.6], D: ['Shopping', 0.6], E: ['Storage', 0.8], F: ['Traffic ≤ 30 kN', 0.6], G: ['Traffic 30–160 kN', 0.3], H: ['Roof', 0] };
+  // bar arrangement: beams n bars of phi in one or two layers (second layer directly above, clear gap max(phi, 20, dg + 5));
+  // slabs phi at spacing s per metre width
+  function arrangement({ kind, h, cover, phiLink = 0, bar, width, dg = 20 }) {
+    if (kind === 'slab') {
+      const As = AREA(bar.phi) * 1000 / bar.s, d = h - cover - bar.phi / 2;
+      return { As, d, dc: d, layers: [{ As, d }], spacing: bar.s, clear: bar.s - bar.phi, n: 1000 / bar.s };
+    }
+    const n = Math.max(1, Math.round(bar.n)), two = bar.layers === 2 && n >= 2, n1 = two ? Math.ceil(n / 2) : n, n2 = n - n1;
+    const gap = Math.max(bar.phi, 20, dg + 5), d1 = h - cover - phiLink - bar.phi / 2, d2 = d1 - bar.phi - gap;
+    const As1 = n1 * AREA(bar.phi), As2 = n2 * AREA(bar.phi), As = As1 + As2, dc = (As1 * d1 + As2 * d2) / As;
+    const inner = width - 2 * (cover + phiLink), clear = n1 > 1 ? (inner - n1 * bar.phi) / (n1 - 1) : inner - bar.phi;
+    return { As, d: dc, d1, dc, layers: two ? [{ As: As1, d: d1 }, { As: As2, d: d2 }] : [{ As, d: d1 }], spacing: clear + bar.phi, clear, n, n1, n2, gap };
+  }
+  /* inp: { kind 'beam'|'slab', shape 'rect'|'flanged', moment 'sagging'|'hogging', b (rect width, or effective flange width),
+            bw, hf, h, fck, fyk, cover, phiLink, dg, bar { phi, n, layers | s }, comp { phi, n } | null,
+            MEd, gk, qk, psi2, gG 1.35, gQ 1.5 (load ratios for SLS moments), delta, xdMax (null = 5.5(4) only),
+            wk 0.3, ae 15, defl { system, span, brittle } | null, shear { VEd, w, link { phi, legs, s } } | null,
+            Mel (optional: elastic ULS moment for the SLS ratios, default M_Ed/delta), Mk + Mqp (optional: SLS moments from an analysis,
+            replacing the ratios), barWidth (optional: width the bars are spread over, default b_w), rhoArea 'web' (b_w d, default) | 'compression' } */
+  function design(inp) {
+    const c = EC2.concrete(inp.fck), st = EC2.steel(inp.fyk || 500), S = [], chk = [];
+    const step = (ref, text, val) => S.push({ ref, text, val });
+    const slab = inp.kind === 'slab', flanged = !slab && inp.shape === 'flanged';
+    const bw = slab ? 1000 : flanged ? inp.bw : inp.b, h = inp.h;
+    const sag = !flanged || inp.moment !== 'hogging';
+    // compression zone: flange width for sagging flanged sections, web otherwise
+    const secC = flanged && sag ? { b: inp.b, bw, hf: inp.hf, h } : { b: bw, h };
+    const tensionWidth = flanged && !sag ? inp.b : bw;
+    const arr = arrangement({ kind: inp.kind, h, cover: inp.cover, phiLink: slab ? 0 : inp.phiLink || 0, bar: inp.bar, width: inp.barWidth ?? bw, dg: inp.dg });
+    const d = arr.d, comp = !slab && inp.comp && inp.comp.n > 0 ? inp.comp : null;
+    const cC = inp.coverComp ?? inp.cover, d2 = comp ? cC + (inp.phiLink || 0) + comp.phi / 2 : cC + (inp.phiLink || 0) + 8;
+    const As2p = comp ? comp.n * AREA(comp.phi) : 0;
+    const n = (inp.gG ?? 1.35) * inp.gk + (inp.gQ ?? 1.5) * inp.qk;
+    // SLS moments from the elastic (unredistributed) ULS moment M_Ed/delta scaled by the load ratios
+    const delta = inp.delta ?? 1, Mel = inp.Mel ?? inp.MEd / delta, slsGiven = inp.Mk != null && inp.Mqp != null;
+    const Mk = slsGiven ? Math.max(inp.Mk, 1) : Mel * (inp.gk + inp.qk) / n, Mqp = slsGiven ? Math.max(inp.Mqp, 1) : Mel * (inp.gk + inp.psi2 * inp.qk) / n;
+    step('Table 3.1', `f_ck = ${inp.fck} N/mm², f_cd = 0.85 f_ck/1.5 = ${r2(c.fcd)} N/mm², f_ctm = ${r3(c.fctm)} N/mm², E_cm = ${r1(c.Ecm / 1000)} GPa`, '');
+    step('', `f_yd = f_yk/1.15 = ${r1(st.fyd)} N/mm²; d = ${r1(d)} mm${arr.n2 ? ` (two layers, centroid)` : ''}`, '');
+    // ---------- bending ----------
+    const bd = EC2.bendingDesign({ sec: secC, d, d2, M: inp.MEd, c, s: st, delta: inp.delta ?? 1, xdMax: inp.xdMax ?? null, zMax: 0.95 });
+    step('3.1.7(3)', `K = M_Ed/(b d² f_ck) = ${r1(kNm(inp.MEd))}E6/(${r0(secC.b)} × ${r1(d)}² × ${inp.fck}) = ${r3(bd.K)}; K′ = ${bd.Kp != null ? r3(bd.Kp) : '–'} (x/d ≤ ${r3(bd.xlim / d)}, 5.5(4) with δ = ${inp.delta ?? 1})`, '');
+    if (inp.MEd > 0) step('', bd.doubly ? `K > K′: compression steel A_s2 = ${r0(bd.As2)} mm² (f_sc net ${r1(bd.fsc)} N/mm²), z = ${r1(bd.z)} mm` : `x = ${r1(bd.x)} mm, z = ${r1(bd.z)} mm${bd.zCap ? ' (0.95d)' : ''}${flanged && sag ? (bd.inFlange ? ', stress block within the flange' : ', stress block extends into the web') : ''}`, '');
+    step('', `A_s,req = ${r0(bd.As)} mm²${slab ? '/m' : ''}; A_s,prov = ${r0(arr.As)} mm²${slab ? `/m (H${inp.bar.phi} @ ${inp.bar.s})` : ` (${arr.n}H${inp.bar.phi}${arr.n2 ? `, ${arr.n1} + ${arr.n2} in two layers` : ''})`}`, '');
+    if (bd.doubly && !(As2p >= bd.As2)) chk.push({ id: 'comp', name: 'Compression steel', ref: '3.1.7(3)', util: As2p > 0 ? bd.As2 / As2p : Infinity, note: `A_s2,req ${r0(bd.As2)} mm², provided ${r0(As2p)} mm²` });
+    // resistance of the provided arrangement by strain compatibility
+    const layers = [...arr.layers, ...(As2p ? [{ As: As2p, d: d2 }] : [])];
+    const res = EC2.bendingResistance({ sec: secC, layers, c, s: st });
+    step('6.1', `M_Rd (provided bars, strain compatibility, ε_cu2 = ${(c.ecu2 * 1000).toFixed(1)}‰) = ${r1(kNm(res.MRd))} kNm${slab ? '/m' : ''}; x = ${r1(res.x)} mm, x/d = ${r3(res.x / d)}`, '');
+    chk.push({ id: 'bend', name: 'Bending', ref: '6.1', util: inp.MEd / res.MRd, note: `M_Ed ${r1(kNm(inp.MEd))} / M_Rd ${r1(kNm(res.MRd))} kNm${slab ? '/m' : ''}` });
+    // ---------- detailing ----------
+    const bt = flanged && !sag ? inp.b : bw, AsMin = EC2.asMin({ fctm: c.fctm, fyk: st.fyk, bt, d }), Ac = flanged ? bw * h + (inp.b - bw) * inp.hf : bw * h, AsMax = 0.04 * Ac;
+    step('9.2.1.1', `A_s,min = max(0.26 f_ctm/f_yk, 0.0013) b_t d = ${r0(AsMin)} mm² (b_t = ${r0(bt)} mm); A_s,max = 0.04 A_c = ${r0(AsMax)} mm²`, '');
+    chk.push({ id: 'asmin', name: 'Minimum tension steel', ref: '9.2.1.1(1)', util: AsMin / arr.As, note: `${r0(AsMin)} / ${r0(arr.As)} mm²` });
+    chk.push({ id: 'asmax', name: 'Maximum steel', ref: '9.2.1.1(3)', util: (arr.As + As2p) / AsMax, note: `${r0(arr.As + As2p)} / ${r0(AsMax)} mm²` });
+    const sMinClear = EC2.clearMin(inp.bar.phi, inp.dg || 20);
+    chk.push({ id: 'smin', name: 'Clear bar spacing', ref: '8.2(2)', util: sMinClear / Math.max(arr.clear, 1e-9), note: `${r0(arr.clear)} mm ≥ max(φ, d_g + 5, 20) = ${r0(sMinClear)} mm` });
+    if (slab) { const sMax = Math.min(3 * h, 400); chk.push({ id: 'smaxSlab', name: 'Slab bar spacing', ref: '9.3.1.1(3)', util: inp.bar.s / sMax, note: `${inp.bar.s} ≤ min(3h, 400) = ${r0(sMax)} mm` }); }
+    // ---------- SLS stresses (cracked transformed section) ----------
+    const ae = inp.ae ?? 15, secS = flanged && sag ? { b: inp.b, bw, hf: inp.hf } : { b: bw };
+    const crK = EC2.cracked({ sec: secS, As: arr.As, d, As2: As2p, d2, ae, M: Mk }), ssK = crK.ss, ssQP = ssK * Mqp / Mk;
+    step('7.2', slsGiven ? `SLS moments from the elastic analysis: characteristic M_k = ${r1(kNm(Mk))} kNm, quasi-permanent M_qp = ${r1(kNm(Mqp))} kNm (ψ₂ = ${inp.psi2})`
+      : `SLS: n = ${inp.gG ?? 1.35} g_k + ${inp.gQ ?? 1.5} q_k = ${r2(n)}; M_k = ${inp.Mel != null ? 'M_el' : '(M_Ed/δ)'}(g_k + q_k)/n = ${r1(kNm(Mk))} kNm; M_qp = ${inp.Mel != null ? 'M_el' : '(M_Ed/δ)'}(g_k + ψ₂ q_k)/n = ${r1(kNm(Mqp))} kNm (ψ₂ = ${inp.psi2})`, '');
+    step('', `cracked section (α_e = ${ae}): x = ${r1(crK.x)} mm; σ_s = ${r1(ssK)} N/mm² (characteristic), ${r1(ssQP)} N/mm² (quasi-permanent)`, '');
+    // ---------- crack control without direct calculation, 7.3.3 ----------
+    const wk = inp.wk ?? 0.3, tab = EC2.crackTables({ ss: ssQP, wk, h, d, fctEff: c.fctm, kc: 0.4, hcr: h / 2 });
+    const sMaxT = tab.sMax == null ? null : Math.min(tab.sMax, tableEdge(EC2.T73, wk)), phiMaxT = tab.phiMax;
+    const uPhi = phiMaxT ? inp.bar.phi / phiMaxT : Infinity, uS = sMaxT ? arr.spacing / sMaxT : Infinity;
+    step('7.3.3', `w_k = ${wk} mm: Table 7.2N φ*_s = ${tab.phiStar == null ? 'beyond table' : r1(tab.phiStar)} mm → φ_s,max = ${phiMaxT == null ? '–' : r1(phiMaxT)} mm (7.6N); Table 7.3N s_max = ${sMaxT == null ? 'beyond table' : r0(sMaxT)} mm`, '');
+    chk.push({ id: 'crack', name: 'Crack control (bar size or spacing)', ref: '7.3.3', util: Math.min(uPhi, uS), note: `φ ${inp.bar.phi} vs ${phiMaxT == null ? '–' : r1(phiMaxT)} mm; s ${r0(arr.spacing)} vs ${sMaxT == null ? '–' : r0(sMaxT)} mm` });
+    // minimum steel for crack control, 7.3.2: uncracked section (alpha_e = E_s/E_cm) just before cracking, split into the
+    // web (k_c = 0.4, pure bending, k from the web depth) and a flange in tension (k_c = 0.9 F_cr/(A_ct f_ct,eff) by
+    // Expression 7.3 = 0.9(1 - t/(2 y_t)) >= 0.5, k from the flange width)
+    const aeS = EC2.ES / c.Ecm, Aw = bw * h, hfl = flanged ? inp.hf : 0, Afl = flanged ? (inp.b - bw) * hfl : 0;
+    const dT = sag ? d : h - d, dC = sag ? d2 : h - d2;      // physical depths from the top face
+    const Atr = Aw + Afl + (aeS - 1) * (arr.As + As2p);
+    const yTop = (Aw * h / 2 + Afl * hfl / 2 + (aeS - 1) * (arr.As * dT + As2p * dC)) / Atr;
+    const fct = c.fctm, parts = [];
+    if (sag) parts.push({ what: 'web', kc: 0.4, k: EC2.kSize(h), Act: bw * (h - yTop) });
+    else if (!flanged) parts.push({ what: 'section', kc: 0.4, k: EC2.kSize(h), Act: bw * yTop });
+    else {
+      const tf = Math.min(inp.hf, yTop);
+      parts.push({ what: 'flange', kc: Math.max(0.5, 0.9 * (1 - tf / (2 * yTop))), k: EC2.kSize(inp.b), Act: inp.b * tf });
+      if (yTop > inp.hf) parts.push({ what: 'web', kc: 0.4, k: EC2.kSize(h), Act: bw * (yTop - inp.hf) });
+    }
+    const AsCrack = parts.reduce((t, q) => t + q.kc * q.k * fct * q.Act / st.fyk, 0);
+    const kElem = parts[0].k, Act = parts.reduce((t, q) => t + q.Act, 0), kc = parts[0].kc;
+    step('7.3.2', `A_s,min for crack control = Σ k_c k f_ct,eff A_ct/f_yk: ${parts.map(q => `${q.what} ${r2(q.kc)} × ${r3(q.k)} × ${r3(fct)} × ${r0(q.Act)}`).join(' + ')} /${st.fyk} = ${r0(AsCrack)} mm²`, '');
+    chk.push({ id: 'ascrack', name: 'Minimum steel for crack control', ref: '7.3.2(2)', util: AsCrack / arr.As, note: `${r0(AsCrack)} / ${r0(arr.As)} mm²` });
+    // ---------- deflection: span / effective depth ----------
+    let defl = null;
+    if (inp.defl && inp.defl.span > 0) {
+      // rho on b_w d, or (rhoArea 'compression', flanged sagging) on the concrete above the tension steel b_w d + (b_eff - b_w) h_f
+      const Arho = inp.rhoArea === 'compression' && flanged && sag ? bw * d + (inp.b - bw) * inp.hf : bw * d;
+      const D = inp.defl, actual = D.span / d, rho = bd.As / Arho, rho2 = (bd.As2 || 0) / Arho, K = EC2.KSYS[D.system];
+      const base = baseRatio(inp.fck, rho, rho2, K);
+      const F1 = flanged && sag ? Math.max(0.8, 1 - 0.1 * (inp.b / bw - 1)) : 1;
+      const lim = D.system === 'flat' ? 8500 : 7000, F2 = D.brittle && D.span > lim && D.system !== 'cantilever' ? lim / D.span : 1;
+      const F3 = f3(ssK), allowed = Math.min(40 * K, base * F1 * F2 * F3);
+      step('7.4.2', `l/d basic (7.16), K = ${K}: ρ = A_s,req/(${Arho !== bw * d ? 'b_w d + (b_eff − b_w) h_f' : 'b_w d'}) = ${(100 * rho).toFixed(3)}%, ρ′ = A_s2,req/(${Arho !== bw * d ? 'same' : 'b_w d'}) = ${(100 * rho2).toFixed(3)}%, ρ₀ = ${(100 * 1e-3 * Math.sqrt(inp.fck)).toFixed(3)}% → ${r2(base)}`, '');
+      step('NA Table NA.5', `F1 = ${r3(F1)}${flanged && sag ? ' (1 − 0.1(b_eff/b_w − 1) ≥ 0.8)' : ''}, F2 = ${r3(F2)}${F2 < 1 ? ` (${lim / 1000}/l)` : ''}, F3 = 310/σ_s = ${r3(F3)} (≤ 1.5); allowed l/d = min(40K, ${r2(base)} × F1 F2 F3) = ${r2(allowed)}; actual ${r2(actual)}`, '');
+      // steel needed for deflection: provided area raises F3 (sigma_s falls) until allowed >= actual
+      let AsDef = null;
+      if (actual > allowed) {
+        const allowedAt = As => Math.min(40 * K, base * F1 * F2 * f3(EC2.cracked({ sec: secS, As, d, As2: As2p, d2, ae, M: Mk }).ss));
+        let lo = arr.As, hi = arr.As * 4;
+        if (allowedAt(hi) >= actual) { for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; if (allowedAt(m) >= actual) hi = m; else lo = m; } AsDef = hi; }
+        else AsDef = Infinity;
+        step('', AsDef === Infinity ? 'Deflection cannot be satisfied by adding steel (F3 limited to 1.5): increase the depth' : `A_s needed for deflection ≈ ${r0(AsDef)} mm²${slab ? '/m' : ''}`, '');
+      }
+      defl = { actual, rho, rho2, K, base, F1, F2, F3, allowed, AsDef };
+      chk.push({ id: 'defl', name: 'Deflection (span/depth)', ref: '7.4.2', util: actual / allowed, note: `l/d ${r2(actual)} / ${r2(allowed)}` });
+    }
+    // ---------- shear ----------
+    let shear = null;
+    if (inp.shear && inp.shear.VEd > 0) {
+      const V = inp.shear, VEd_d = Math.max(0, V.VEd - (V.w || 0) * d);   // V_Ed at d from the face for a UDL w (N/mm)
+      const vc = EC2.shearConcrete({ bw, d, Asl: arr.As, c });
+      step('6.2.2', `V_Rd,c: k = ${r3(vc.k)}, ρ_l = ${(100 * vc.rho).toFixed(3)}%, v = ${r3(vc.v)} N/mm², v_min = ${r3(vc.vmin)} N/mm² → V_Rd,c = ${r1(kN(vc.VRdc))} kN${slab ? '/m' : ''}`, '');
+      step('6.2.1(8)', `V_Ed at the face ${r1(kN(V.VEd))} kN; at d from the face ${r1(kN(VEd_d))} kN${V.w ? ` (w = ${r1(V.w)} kN/m)` : ''}`, '');
+      if (slab || !V.link) {
+        chk.push({ id: 'shear', name: 'Shear without links', ref: '6.2.2', util: VEd_d / vc.VRdc, note: `V_Ed ${r1(kN(VEd_d))} / V_Rd,c ${r1(kN(vc.VRdc))} kN` });
+        shear = { vc, VEd_d };
+      } else {
+        const L = V.link, AswS = L.legs * AREA(L.phi) / L.s, des = EC2.shearDesign({ bw, d, VEd: VEd_d, VEdStrut: V.VEd, c, fywk: st.fyk });
+        const face = EC2.shearDesign({ bw, d, VEd: V.VEd, c, fywk: st.fyk }), resV = EC2.shearResistance({ bw, d, AswS, c, fywk: st.fyk });
+        step('6.2.3', `z = 0.9d = ${r1(des.z)} mm, ν₁ = ${r3(c.nu)}, f_cd = ${r2(c.fcdV)} N/mm²: cot θ = ${r3(des.cot)}, V_Rd,max = ${r1(kN(des.VRdmax))} kN; A_sw/s,req = ${r3(des.AswS)} mm (min ${r3(des.AswSmin)})`, '');
+        step('', `provided ${L.legs} legs H${L.phi} @ ${L.s}: A_sw/s = ${r3(AswS)} mm, V_Rd,s = ${r1(kN(resV.VRds))} kN (cot θ ${r3(resV.cot)}); s_l,max = 0.75d = ${r0(des.slMax)} mm`, '');
+        chk.push({ id: 'vmax', name: 'Shear: concrete strut V_Rd,max (at the face)', ref: '6.2.3(3)', util: V.VEd / face.Vmax45, note: `${r1(kN(V.VEd))} / ${r1(kN(face.Vmax45))} kN (θ = 45°)` });
+        chk.push({ id: 'links', name: 'Shear links', ref: '6.2.3', util: VEd_d / resV.VRd, note: `V_Ed ${r1(kN(VEd_d))} / V_Rd ${r1(kN(resV.VRd))} kN` });
+        chk.push({ id: 'linkmin', name: 'Minimum links', ref: '9.2.2(5)', util: des.AswSmin / AswS, note: `${r3(des.AswSmin)} / ${r3(AswS)} mm` });
+        chk.push({ id: 'linksp', name: 'Link spacing', ref: '9.2.2(6)', util: L.s / des.slMax, note: `${L.s} ≤ 0.75d = ${r0(des.slMax)} mm` });
+        const stLeg = L.legs > 1 ? (bw - 2 * inp.cover - L.phi) / (L.legs - 1) : bw;
+        chk.push({ id: 'linkst', name: 'Link legs across the width', ref: '9.2.2(8)', util: stLeg / des.stMax, note: `${r0(stLeg)} ≤ min(0.75d, 600) = ${r0(des.stMax)} mm` });
+        shear = { vc, des, resV, AswS, VEd_d };
+      }
+    }
+    const utilMax = Math.max(...chk.map(k => k.util));
+    return { c, st, steps: S, checks: chk, utilMax, d, d2, arr, As2p, bd, res, Mk, Mqp, n, crK, ssK, ssQP, tab: { ...tab, sMax: sMaxT }, AsMin, AsMax, AsCrack, crackParts: parts, kElem, kc, Act, yTop, defl, shear, secC, bw };
+  }
+  const tableEdge = (T, wk) => T[wk][0];
+  const f3 = ss => Math.min(1.5, 310 / ss);
+  function baseRatio(fck, rho, rho2, K) {
+    const r0 = 1e-3 * Math.sqrt(fck), sf = Math.sqrt(fck);
+    return rho <= r0 ? K * (11 + 1.5 * sf * r0 / rho + 3.2 * sf * (r0 / rho - 1) ** 1.5) : K * (11 + 1.5 * sf * r0 / (rho - rho2) + sf / 12 * Math.sqrt(rho2 / r0));
+  }
+  return { design, arrangement, baseRatio, USAGE, AREA };
+})();
+if (typeof module !== 'undefined') module.exports = { EC2Section };
+
+/* ===== RC CONTINUOUS BEAM ANALYSIS & DESIGN (EngineeringTools) =====
+   Continuous reinforced concrete beams to BS EN 1992-1-1 + UK NA, on the EC2 core and section engines.
+   Analysis: the beam with the columns above and below each support (sub-frame, no sway, far ends of the columns fixed or
+   pinned) by the stiffness method with exact end actions; spans may be flanged (gross section with b_eff) or rectangular;
+   an end span may be a cantilever (free end).
+   Loading: EN 1990 6.10 or 6.10a/b with the UK NA; patterns per EC2 5.1.3 + UK NA (all spans and alternate spans loaded,
+   the same gamma_G on every span), optionally adjacent spans as well, and 1.0 G_k for the minimum moments.
+   Redistribution (5.5): at each support the largest elastic hogging moment is reduced to delta x it; in every pattern the
+   support moment is then min(beta+ M, delta M_max) with beta+ = 2 - delta ("limited", the Concrete Centre method) or 1 (no
+   increase, "none"); span moments follow by equilibrium, and the design envelope is not taken below delta_f x the elastic
+   envelope (delta_f the smaller delta of the span's supports).
+   Design: per support the hogging moment at the face (monolithic: not less than 0.65 of the centreline value; knife edge:
+   the centreline value less F t/8, 5.3.2.2), at end supports at least beta1 = 0.25 of the span moment (9.2.1.2(1)); per span
+   the largest sagging moment; bending, minimum and maximum steel, crack control, span/depth (7.4.2) and shear at each face
+   with links. Units N and mm inside (kN/m = N/mm). */
+const RCBeam = (() => {
+  'use strict';
+  const AREA = phi => Math.PI * phi * phi / 4, r0 = v => Math.round(v).toString(), r1 = v => (Math.round(v * 10) / 10).toString(), r2 = v => v.toFixed(2), r3 = v => v.toFixed(3);
+  // ---------- geometry ----------
+  function grossSection(s) {
+    const fl = s.shape !== 'R' && s.hf > 0 && s.beff > s.bw;
+    if (!fl) return { A: s.bw * s.h, y: s.h / 2, I: s.bw * s.h ** 3 / 12 };
+    const Af = (s.beff - s.bw) * s.hf, Aw = s.bw * s.h, A = Af + Aw, y = (Af * s.hf / 2 + Aw * s.h / 2) / A;
+    return { A, y, I: (s.beff - s.bw) * s.hf ** 3 / 12 + Af * (y - s.hf / 2) ** 2 + s.bw * s.h ** 3 / 12 + Aw * (s.h / 2 - y) ** 2 };
+  }
+  // effective flange width 5.3.2.1: each outstand b_i = half the clear distance to the next web (T), one outstand for L
+  function beffFor(s, l0) {
+    if (s.shape === 'R') return s.bw;
+    const bi = Math.max(0, (s.bay - s.bw) / 2), part = b => Math.min(0.2 * b + 0.1 * l0, 0.2 * l0, b);
+    return s.bw + part(bi) + (s.shape === 'T' ? part(bi) : 0);
+  }
+  /* model: { spans: [{ L (mm), h, bw, hf, shape 'T'|'L'|'R', beff (mm or null = 5.3.2.1), bay (web spacing, mm) }],
+              supports: [{ kind 'column'|'knife'|'fixed'|'free', width (mm), above: { L (mm), b, h, far 'F'|'P' } | null, below, delta }] }
+     derived: cantilever spans (free end), l0 per Figure 5.2, b_eff, I */
+  function prepare(model) {
+    const sp = model.spans, su = model.supports, n = sp.length;
+    if (!(n >= 1)) throw new Error('Give at least one span');
+    if (su.length !== n + 1) throw new Error('There must be one more support than spans');
+    su.forEach((s, j) => { if (s.kind === 'free' && j !== 0 && j !== n) throw new Error(`Support ${j + 1}: only an end support can be a free end`); });
+    if (su[0].kind === 'free' && su[n].kind === 'free') throw new Error('Both ends are free: the beam is a mechanism');
+    const spans = sp.map((s, i) => {
+      if (!(s.L > 0 && s.h > 0 && s.bw > 0)) throw new Error(`Span ${i + 1}: give L, h and b_w`);
+      if (s.shape !== 'R' && !(s.hf > 0 && s.hf < s.h)) throw new Error(`Span ${i + 1}: h_f must be between 0 and h for a flanged beam`);
+      const cant = i === 0 && su[0].kind === 'free' ? 'L' : i === n - 1 && su[n].kind === 'free' ? 'R' : null;
+      if (cant && n === 1 && su[cant === 'L' ? 1 : 0].kind !== 'fixed') throw new Error('A single cantilever needs a fixed (encastré) support');
+      const contL = i > 0 || su[0].kind === 'fixed', contR = i < n - 1 || su[n].kind === 'fixed';
+      const adjL = cant === 'L' ? (sp[1] ? sp[1].L : 0) : cant === 'R' ? (sp[n - 2] ? sp[n - 2].L : 0) : 0;
+      const l0 = cant ? 0.15 * adjL + s.L : (contL && contR ? 0.7 : contL || contR ? 0.85 : 1) * s.L;
+      const beff = s.shape === 'R' ? s.bw : s.beff > 0 ? s.beff : beffFor(s, l0);
+      if (s.shape !== 'R' && beff < s.bw) throw new Error(`Span ${i + 1}: b_eff must be at least b_w`);
+      const sec = grossSection({ ...s, beff });
+      return { ...s, i, cant, l0, beff, I: sec.I, A: sec.A, contL, contR };
+    });
+    // support zones: l0 = 0.15(L1 + L2) (0.15 L at an end, 0.15 L2 + L3 at a cantilever root), b_eff for the tension flange
+    const supports = su.map((s, j) => {
+      const L1 = j > 0 ? spans[j - 1] : null, L2 = j < n ? spans[j] : null, ref = L1 && L2 ? (L1.h >= L2.h ? L1 : L2) : (L1 || L2);
+      const cantSide = !!((L1 && L1.cant) || (L2 && L2.cant)), Lc = L1 && L1.cant ? L1.L : L2 && L2.cant ? L2.L : 0, Lo = L1 && !L1.cant ? L1.L : L2 && !L2.cant ? L2.L : 0;
+      const l0 = cantSide ? 0.15 * Lo + Lc : 0.15 * ((L1 ? L1.L : 0) + (L2 ? L2.L : 0));
+      const beff = ref.shape === 'R' ? ref.bw : beffFor(ref, l0);
+      const col = c => c && c.L > 0 && c.b > 0 && c.h > 0 ? (c.far === 'P' ? 3 : 4) * (c.b * c.h ** 3 / 12) / c.L : 0;
+      const kA = s.kind === 'column' ? col(s.above) : 0, kB = s.kind === 'column' ? col(s.below) : 0;
+      const delta = s.delta ?? 1;
+      if (!(delta >= 0.7 - 1e-12 && delta <= 1 + 1e-12)) throw new Error(`Support ${j + 1}: δ must be between 0.7 and 1.0`);
+      return { ...s, j, l0, beff, ref, kA, kB, k: kA + kB, width: s.width || 0, delta: cantSide ? 1 : delta, cantRoot: cantSide, monolithic: s.kind === 'column' || s.kind === 'fixed', end: (j === 0 || j === n) && s.kind !== 'free' };
+    });
+    return { spans, supports, n };
+  }
+  // ---------- loads on one span (factored by the caller) ----------
+  // load: { type 'udl'|'point'|'part', w (N/mm), P (N), a (mm from the left), b (mm length) }
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  function partOf(l, L) { return l.type === 'udl' ? [0, L] : [clamp(l.a, 0, L), clamp(l.a + l.b, 0, L)]; }
+  function fem(l, L) {   // clockwise-positive fixed end moments [left, right]
+    if (l.type === 'point') { const a = clamp(l.a, 0, L), b = L - a; return [-l.P * a * b * b / (L * L), l.P * a * a * b / (L * L)]; }
+    const [a1, a2] = partOf(l, L), F1 = x => (L * L * x * x / 2 - 2 * L * x ** 3 / 3 + x ** 4 / 4) / (L * L), F2 = x => (L * x ** 3 / 3 - x ** 4 / 4) / (L * L);
+    return [-l.w * (F1(a2) - F1(a1)), l.w * (F2(a2) - F2(a1))];
+  }
+  const total = (l, L) => l.type === 'point' ? l.P : l.w * (partOf(l, L)[1] - partOf(l, L)[0]);
+  const centroid = (l, L) => l.type === 'point' ? clamp(l.a, 0, L) : (partOf(l, L)[0] + partOf(l, L)[1]) / 2;
+  // simply supported free moment and shear at x
+  function free(l, L, x) {
+    const W = total(l, L), c = centroid(l, L), RL = W * (L - c) / L;
+    if (l.type === 'point') { const a = c; return { M: RL * x - (x > a ? l.P * (x - a) : 0), V: RL - (x > a ? l.P : 0) }; }
+    const [a1, a2] = partOf(l, L), s = clamp(x - a1, 0, a2 - a1);
+    return { M: RL * x - l.w * s * (x - a1 - s / 2), V: RL - l.w * s };
+  }
+  // cantilever: loads beyond x towards the free end; side 'L' = free left end (root at x = L), 'R' = free right end (root at 0)
+  function cantForce(l, L, x, side) {
+    if (side === 'L') {   // loads with position < x
+      if (l.type === 'point') { const a = clamp(l.a, 0, L); return x > a ? { M: -l.P * (x - a), V: -l.P } : { M: 0, V: 0 }; }
+      const [a1, a2] = partOf(l, L), s = clamp(x - a1, 0, a2 - a1); return { M: -l.w * s * (x - a1 - s / 2), V: -l.w * s };
+    }
+    if (l.type === 'point') { const a = clamp(l.a, 0, L); return x < a ? { M: -l.P * (a - x), V: l.P } : { M: 0, V: 0 }; }
+    const [a1, a2] = partOf(l, L), lo = Math.max(x, a1), s = Math.max(0, a2 - lo); return { M: -l.w * s * ((lo + a2) / 2 - x), V: l.w * s };
+  }
+  // ---------- stiffness analysis of one load arrangement ----------
+  // loadsBySpan[i] = [{ type, w, P, a, b }] already factored. Returns the hogging end moments (positive = hogging) and reactions.
+  function solve(P, loadsBySpan) {
+    const { spans, supports, n } = P, nn = n + 1;
+    const dof = supports.map(s => s.kind === 'fixed' || s.kind === 'free' ? -1 : 0);
+    let m = 0; dof.forEach((v, j) => { if (v === 0) dof[j] = m++; });
+    const K = Array.from({ length: m }, () => new Float64Array(m)), F = new Float64Array(m), femE = [];
+    spans.forEach((s, i) => {
+      const loads = loadsBySpan[i] || [];
+      if (s.cant) {   // statically determinate: its root moment acts on the joint
+        const Mroot = loads.reduce((t, l) => t + total(l, s.L) * (s.cant === 'L' ? s.L - centroid(l, s.L) : centroid(l, s.L)), 0);
+        femE.push(s.cant === 'L' ? [0, Mroot] : [-Mroot, 0]);
+        const jr = s.cant === 'L' ? i + 1 : i, fe = s.cant === 'L' ? Mroot : -Mroot;
+        if (dof[jr] >= 0) F[dof[jr]] -= fe;
+        return;
+      }
+      const fe = loads.reduce((t, l) => { const f = fem(l, s.L); return [t[0] + f[0], t[1] + f[1]]; }, [0, 0]); femE.push(fe);
+      const k = s.I / s.L, a = dof[i], b = dof[i + 1];
+      if (a >= 0) { K[a][a] += 4 * k; F[a] -= fe[0]; }
+      if (b >= 0) { K[b][b] += 4 * k; F[b] -= fe[1]; }
+      if (a >= 0 && b >= 0) { K[a][b] += 2 * k; K[b][a] += 2 * k; }
+    });
+    supports.forEach((s, j) => { if (dof[j] >= 0) K[dof[j]][dof[j]] += s.k; });
+    for (let i = 0; i < m; i++) if (!(K[i][i] > 0)) throw new Error(`Support ${dof.indexOf(i) + 1} has no rotational restraint next to a cantilever: the beam is a mechanism`);
+    // Gaussian elimination (symmetric, banded: small)
+    const A = K.map(r => Float64Array.from(r)), x = Float64Array.from(F);
+    for (let c = 0; c < m; c++) { const p = A[c][c]; if (Math.abs(p) < 1e-30) throw new Error('Singular stiffness: the beam is a mechanism'); for (let r = c + 1; r < m; r++) { const f = A[r][c] / p; if (!f) continue; for (let k2 = c; k2 < m; k2++) A[r][k2] -= f * A[c][k2]; x[r] -= f * x[c]; } }
+    for (let r = m - 1; r >= 0; r--) { let s = x[r]; for (let k2 = r + 1; k2 < m; k2++) s -= A[r][k2] * x[k2]; x[r] = s / A[r][r]; }
+    const th = dof.map(d => d >= 0 ? x[d] : 0);
+    const hog = spans.map((s, i) => {
+      if (s.cant) return s.cant === 'L' ? [0, femE[i][1]] : [-femE[i][0], 0];
+      const k = s.I / s.L, ML = femE[i][0] + k * (4 * th[i] + 2 * th[i + 1]), MR = femE[i][1] + k * (2 * th[i] + 4 * th[i + 1]);
+      return [-ML, MR];
+    });
+    const colM = supports.map((s, j) => s.k > 0 ? { above: s.kA * th[j], below: s.kB * th[j] } : { above: 0, below: 0 });
+    return { hog, colM, th };
+  }
+  // section forces at x in span i for given hogging end moments
+  function forces(P, i, loads, hogL, hogR, x) {
+    const s = P.spans[i];
+    if (s.cant) return loads.reduce((t, l) => { const f = cantForce(l, s.L, x, s.cant); return { M: t.M + f.M, V: t.V + f.V }; }, { M: 0, V: 0 });
+    const f0 = loads.reduce((t, l) => { const f = free(l, s.L, x); return { M: t.M + f.M, V: t.V + f.V }; }, { M: 0, V: 0 });
+    return { M: f0.M - hogL * (1 - x / s.L) - hogR * x / s.L, V: f0.V + (hogL - hogR) / s.L };
+  }
+  function reactions(P, loadsBySpan, hog) {
+    const R = new Array(P.n + 1).fill(0);
+    P.spans.forEach((s, i) => { const l = loadsBySpan[i] || [], V0 = forces(P, i, l, hog[i][0], hog[i][1], 0).V, VL = forces(P, i, l, hog[i][0], hog[i][1], s.L).V; R[i] += V0; R[i + 1] -= VL; });
+    if (P.supports[0].kind === 'free') R[0] = 0; if (P.supports[P.n].kind === 'free') R[P.n] = 0;
+    return R;
+  }
+  // ---------- combinations and patterns ----------
+  // sets: [{ gG, gQ, label }]; patterns: which spans carry Q
+  function patternList(n, adjacent) {
+    const out = [{ name: 'All spans', q: Array(n).fill(true) }];
+    if (n > 1) { out.push({ name: 'Odd spans', q: Array.from({ length: n }, (_, i) => i % 2 === 0) }); out.push({ name: 'Even spans', q: Array.from({ length: n }, (_, i) => i % 2 === 1) }); }
+    if (adjacent && n > 2) for (let i = 0; i < n - 1; i++) out.push({ name: `Spans ${i + 1} & ${i + 2}`, q: Array.from({ length: n }, (_, k) => k === i || k === i + 1) });
+    return out;
+  }
+  function combinationSets(rule, psi0) {
+    if (rule === '6.10ab') return [{ gG: 1.35, gQ: 1.5 * psi0, label: '6.10a' }, { gG: 0.925 * 1.35, gQ: 1.5, label: '6.10b' }];
+    if (rule === '6.10b') return [{ gG: 0.925 * 1.35, gQ: 1.5, label: '6.10b' }];
+    return [{ gG: 1.35, gQ: 1.5, label: '6.10' }];
+  }
+  /* full analysis. inp: model + { loads: [{ span, case 'G'|'Q', type, w (kN/m), P (kN), a (m), b (m) }] (+ self-weight added by the caller),
+     rule, psi0, adjacent, redist 'limited'|'none', sets (optional explicit), patterns (optional explicit) } */
+  function analyse(inp) {
+    const P = prepare(inp), n = P.n;
+    const raw = P.spans.map(() => ({ G: [], Q: [] }));
+    for (const l of inp.loads) {
+      const i = l.span; if (!(i >= 0 && i < n)) throw new Error('A load is on a span that does not exist');
+      const L = { type: l.type, w: l.w, P: (l.P || 0) * 1e3, a: (l.a || 0) * 1e3, b: (l.b || 0) * 1e3 };
+      if (l.type !== 'udl' && !(L.a >= 0 && L.a <= P.spans[i].L + 1e-6)) throw new Error(`Span ${i + 1}: a load position is outside the span`);
+      raw[i][l.case === 'Q' ? 'Q' : 'G'].push(L);
+    }
+    const scale = (arr, f) => arr.map(l => ({ ...l, w: (l.w || 0) * f, P: (l.P || 0) * f }));
+    const loadsFor = (gG, qOn, gQ) => raw.map((r, i) => [...scale(r.G, gG), ...(qOn[i] ? scale(r.Q, gQ) : [])]);
+    const sets = inp.sets || combinationSets(inp.rule || '6.10', inp.psi0 ?? 0.7), pats = inp.patterns || patternList(n, !!inp.adjacent);
+    const cases = [];
+    for (const st of sets) for (const pt of pats) cases.push({ name: `${st.label}: ${pt.name}`, set: st, q: pt.q, loads: loadsFor(st.gG, pt.q, st.gQ), uls: true });
+    cases.push({ name: '1.0 G_k only (minimum)', set: { gG: 1, gQ: 0 }, q: Array(n).fill(false), loads: loadsFor(1, Array(n).fill(false), 0), uls: false });
+    cases.forEach(c => { const r = solve(P, c.loads); c.hog = r.hog; c.colM = r.colM; c.R = reactions(P, c.loads, r.hog); });
+    // SLS (elastic, no redistribution): characteristic 1.0 G + 1.0 Q and quasi-permanent 1.0 G + psi2 Q, same patterns
+    const psi2 = inp.psi2 ?? 0.3, sls = { k: [], qp: [] };
+    for (const pt of pats) { sls.k.push({ q: pt.q, loads: loadsFor(1, pt.q, 1) }); sls.qp.push({ q: pt.q, loads: loadsFor(1, pt.q, psi2) }); }
+    for (const arr of [sls.k, sls.qp]) arr.forEach(c => { c.hog = solve(P, c.loads).hog; });
+    // ---------- redistribution ----------
+    const red = inp.redist || 'limited';
+    const side = (c, j, s) => s === 'L' ? (j > 0 ? c.hog[j - 1][1] : null) : (j < n ? c.hog[j][0] : null);   // L: end of span j-1; R: start of span j
+    const Mmax = P.supports.map((su, j) => { let m = 0; for (const c of cases) if (c.uls) for (const s of ['L', 'R']) { const v = side(c, j, s); if (v != null) m = Math.max(m, v); } return m; });
+    const Mcap = P.supports.map((su, j) => su.delta * Mmax[j]);
+    const bplus = P.supports.map(su => red === 'none' ? 1 : 2 - su.delta);
+    for (const c of cases) {
+      // the cantilever and both sides of its root support stay elastic (statically determinate)
+      // the 1.0 G_k case (minimum moments) is only capped, never raised
+      const adj = (v, j, s) => s.cant || P.supports[j].cantRoot || P.supports[j].kind === 'free' || !(v > 0) ? v : Math.min((c.uls ? bplus[j] : 1) * v, Mcap[j]);
+      c.hogR = c.hog.map((h, i) => [adj(h[0], i, P.spans[i]), adj(h[1], i + 1, P.spans[i])]);
+      c.RR = reactions(P, c.loads, c.hogR);
+    }
+    // ---------- stations and envelopes ----------
+    const st = P.spans.map((s, i) => {
+      const xs = new Set(); const N = 40; for (let k = 0; k <= N; k++) xs.add(s.L * k / N);
+      for (const c of [raw[i].G, raw[i].Q]) for (const l of c) if (l.type !== 'udl') { const [a1, a2] = l.type === 'point' ? [clamp(l.a, 0, s.L), clamp(l.a, 0, s.L)] : partOf(l, s.L); for (const v of [a1, a2]) { xs.add(clamp(v - 1e-3, 0, s.L)); xs.add(clamp(v + 1e-3, 0, s.L)); xs.add(v); } }
+      const wl = P.supports[i].width / 2, wr = P.supports[i + 1].width / 2;
+      if (!s.cant || s.cant === 'R') xs.add(clamp(wl, 0, s.L)); if (!s.cant || s.cant === 'L') xs.add(clamp(s.L - wr, 0, s.L));
+      return [...xs].sort((a, b) => a - b);
+    });
+    const env = P.spans.map((s, i) => {
+      const xs = st[i], e = { x: xs, MmaxE: [], MminE: [], Mmax: [], Mmin: [], Vmax: [], Vmin: [], VmaxE: [], VminE: [], MkMax: [], MkMin: [], MqMax: [], MqMin: [] };
+      xs.forEach(x => {
+        let a = -Infinity, b = Infinity, A = -Infinity, B = Infinity, va = -Infinity, vb = Infinity, VA = -Infinity, VB = Infinity;
+        for (const c of cases) {
+          const fe = forces(P, i, c.loads[i], c.hog[i][0], c.hog[i][1], x), fr = forces(P, i, c.loads[i], c.hogR[i][0], c.hogR[i][1], x);
+          a = Math.max(a, fe.M); b = Math.min(b, fe.M); A = Math.max(A, fr.M); B = Math.min(B, fr.M);
+          VA = Math.max(VA, fe.V); VB = Math.min(VB, fe.V); va = Math.max(va, fr.V); vb = Math.min(vb, fr.V);
+        }
+        e.MmaxE.push(a); e.MminE.push(b); e.Mmax.push(A); e.Mmin.push(B); e.Vmax.push(va); e.Vmin.push(vb); e.VmaxE.push(VA); e.VminE.push(VB);
+        for (const [arr, hi, lo] of [[sls.k, 'MkMax', 'MkMin'], [sls.qp, 'MqMax', 'MqMin']]) { let u = -Infinity, w = Infinity; for (const c of arr) { const m = forces(P, i, c.loads[i], c.hog[i][0], c.hog[i][1], x).M; u = Math.max(u, m); w = Math.min(w, m); } e[hi].push(u); e[lo].push(w); }
+      });
+      // design envelope: the redistributed moments, not less than delta_f x the elastic ones at any section, delta_f the smaller
+      // delta of the span's two supports (the redistribution in every pattern stays within 5.5(4) at spans and faces too)
+      const df = Math.min(P.supports[i].delta, P.supports[i + 1].delta);
+      e.df = df; e.MmaxD = e.Mmax.map((m, k) => e.MmaxE[k] > 0 ? Math.max(m, df * e.MmaxE[k]) : m); e.MminD = e.Mmin.map((m, k) => e.MminE[k] < 0 ? Math.min(m, df * e.MminE[k]) : m);
+      return e;
+    });
+    // support moments (centreline, hogging +) and span sagging maxima, elastic and redistributed
+    const supM = P.supports.map((su, j) => {
+      const get = key => { let m = -Infinity; for (const c of cases) if (c.uls) for (const s of ['L', 'R']) { const v = s === 'L' ? (j > 0 ? c[key][j - 1][1] : null) : (j < n ? c[key][j][0] : null); if (v != null) m = Math.max(m, v); } return m; };
+      const el = get('hog'), rd = get('hogR');
+      return { elastic: Math.max(0, el), redist: Math.max(0, rd), delta: el > 0 ? rd / el : 1 };
+    });
+    // exact sagging maximum in a span over a set of cases: at the stations, at every point where V changes sign (bisection)
+    const exactMax = (i, arr, key) => {
+      let m = -Infinity; const xs = st[i], L = P.spans[i].L;
+      for (const c of arr) {
+        const f = x => forces(P, i, c.loads[i], c[key][i][0], c[key][i][1], x);
+        let prev = null;
+        xs.forEach(x => { const r = f(x); m = Math.max(m, r.M);
+          if (prev && prev.r.V > 0 && r.V < 0 && x - prev.x > 1e-2) { let lo = prev.x, hi = x; for (let k = 0; k < 60; k++) { const md = (lo + hi) / 2; if (f(md).V > 0) lo = md; else hi = md; } m = Math.max(m, f((lo + hi) / 2).M); }
+          prev = { x, r }; });
+      }
+      return m;
+    };
+    const uls = cases.filter(c => c.uls), allC = cases;
+    const spanM = P.spans.map((s, i) => { const el = Math.max(0, exactMax(i, allC, 'hog')), eq = Math.max(0, exactMax(i, allC, 'hogR')), df = env[i].df, rd = Math.max(eq, el > 0 ? df * el : 0);
+      return { elastic: el, equilibrium: eq, redist: rd, delta: el > 0 ? rd / el : 1, df, Mk: Math.max(0, exactMax(i, sls.k, 'hog')), Mqp: Math.max(0, exactMax(i, sls.qp, 'hog')) }; });
+    const Rmax = P.supports.map((_, j) => Math.max(...cases.filter(c => c.uls).map(c => c.RR[j]))), Rmin = P.supports.map((_, j) => Math.min(...cases.map(c => c.RR[j])));
+    return { P, cases, sls, env, supM, spanM, Rmax, Rmin, Mmax, Mcap, raw, sets, psi2 };
+  }
+  // the envelopes at any x, exactly (every case evaluated at x); side 'L' / 'R' picks the value just left / right of a point load
+  function envAt(A, i, x, side = 'R') {
+    const P = A.P, xe = clamp(x + (side === 'L' ? -1e-6 : 1e-6), 0, P.spans[i].L), o = { MmaxE: -Infinity, MminE: Infinity, Mmax: -Infinity, Mmin: Infinity, Vmax: -Infinity, Vmin: Infinity };
+    for (const c of A.cases) {
+      const fe = forces(P, i, c.loads[i], c.hog[i][0], c.hog[i][1], x), fr = forces(P, i, c.loads[i], c.hogR[i][0], c.hogR[i][1], x), fv = forces(P, i, c.loads[i], c.hogR[i][0], c.hogR[i][1], xe);
+      o.MmaxE = Math.max(o.MmaxE, fe.M); o.MminE = Math.min(o.MminE, fe.M); o.Mmax = Math.max(o.Mmax, fr.M); o.Mmin = Math.min(o.Mmin, fr.M); o.Vmax = Math.max(o.Vmax, fv.V); o.Vmin = Math.min(o.Vmin, fv.V);
+    }
+    const df = A.env[i].df; o.MmaxD = o.MmaxE > 0 ? Math.max(o.Mmax, df * o.MmaxE) : o.Mmax; o.MminD = o.MminE < 0 ? Math.min(o.Mmin, df * o.MminE) : o.Mmin;
+    const sl = (arr, key) => { let m = key === 'max' ? -Infinity : Infinity; for (const c of arr) { const v = forces(P, i, c.loads[i], c.hog[i][0], c.hog[i][1], x).M; m = key === 'max' ? Math.max(m, v) : Math.min(m, v); } return m; };
+    o.MkMax = sl(A.sls.k, 'max'); o.MkMin = sl(A.sls.k, 'min'); o.MqMax = sl(A.sls.qp, 'max'); o.MqMin = sl(A.sls.qp, 'min');
+    return o;
+  }
+  // value of a redistributed envelope at x by linear interpolation of the stations
+  function at(e, key, x) {
+    const xs = e.x; if (x <= xs[0]) return e[key][0]; if (x >= xs[xs.length - 1]) return e[key][xs.length - 1];
+    let k = 1; while (xs[k] < x) k++; const t = (x - xs[k - 1]) / (xs[k] - xs[k - 1] || 1); return e[key][k - 1] + t * (e[key][k] - e[key][k - 1]);
+  }
+  // largest hogging (as a positive number) over an interval of a span, redistributed envelope
+  function hogBetween(e, x0, x1) { let m = Math.max(-at(e, 'Mmin', x0), -at(e, 'Mmin', x1)); e.x.forEach((x, k) => { if (x >= x0 && x <= x1) m = Math.max(m, -e.Mmin[k]); }); return Math.max(0, m); }
+  return { prepare, solve, forces, reactions, analyse, envAt, patternList, combinationSets, grossSection, beffFor, at, hogBetween, fem, free, total };
+})();
+if (typeof module !== 'undefined') module.exports = { RCBeam };
+
+/* ===== RC SLAB DESIGN (EngineeringTools) =====
+   Solid slabs to BS EN 1992-1-1 + UK NA, per metre width.
+   One-way continuous slabs: the RCBeam analysis on a 1 m strip (supports on beams or walls, knife edges, encastré, free
+   ends), UK NA patterns and redistribution; design of each support and span through EC2Section (bending, minimum and
+   maximum steel, spacing 9.3.1.1, crack control, span/depth), shear without links (6.2.2), the 25 % end-support top steel
+   of 9.3.1.2(2), distribution steel 9.3.1.1(2) and curtailment with a_l = d (9.3.1.1(4)).
+   Two-way slabs: moment coefficients of BS 8110-1 Table 3.14 (restrained panels, corners held down) and shear coefficients
+   of Table 3.15, interpolated in l_y/l_x, as recommended for EC2 design by the Concrete Centre; each direction designed
+   with its own effective depth; span/depth on the short span; corner torsion steel. Units N and mm (kN/m² = N/mm per metre). */
+const RCSlabDesign = (() => {
+  'use strict';
+  const AREA = phi => Math.PI * phi * phi / 4, r0 = v => Math.round(v).toString(), r1 = v => (Math.round(v * 10) / 10).toString(), r3 = v => v.toFixed(3), r4 = v => v.toFixed(4);
+  const kNm = v => v / 1e6, kN = v => v / 1e3;
+  const slabAs = b => AREA(b.phi) * 1000 / b.s;
+  // ---------- shear without links, 6.2.2 / 6.2.3(3) ----------
+  function shearSlab({ d, Asl, Vface, Vd, c }) {
+    const vc = EC2.shearConcrete({ bw: 1000, d, Asl, c }), Vmax = 0.5 * 1000 * d * c.nu * c.fcdV;
+    return { vc, Vmax, Vface, Vd, d, checks: [
+      { id: 'vrdc', name: 'Shear without links', ref: '6.2.2(1)', util: Vd / vc.VRdc, note: `V_Ed at d ${r1(kN(Vd))} / V_Rd,c ${r1(kN(vc.VRdc))} kN/m` },
+      { id: 'vmax', name: 'Shear at the face: 0.5 b d ν f_cd', ref: '6.2.2(6)', util: Vface / Vmax, note: `${r1(kN(Vface))} / ${r1(kN(Vmax))} kN/m` }] };
+  }
+  // ---------- one-way continuous slab ----------
+  /* inp: { spans: [{ L (mm), h }], supports: [{ kind 'beam'|'knife'|'fixed'|'free', width (mm), delta }], loads: [{ span, case, type 'udl'|'line'|'part', w (kN/m²), P (kN/m), a, b (m) }],
+            rule, psi0, psi2, adjacent, redist, selfWeight (bool), gc, fck, fyk, dg, cover { top, btm }, wk { top, btm }, ae, xdMax, brittle,
+            bars { spans: [{ bottom { phi, s } }], supports: [{ top { phi, s } }] } }
+     'beam': monolithic with a beam or wall (no rotational restraint in the analysis, design at the face and the end-support top
+     steel of 9.3.1.2(2)); 'knife': simple bearing (masonry, steel), design at the centreline less F t/8 */
+  function oneWay(inp, opt = {}) {
+    const c = EC2.concrete(inp.fck), fyk = inp.fyk || 500, gc = inp.gc ?? 25;
+    if (!(inp.cover && inp.cover.top > 0 && inp.cover.btm > 0)) throw new Error('Give the covers');
+    const spans = inp.spans.map((s, i) => { if (!(s.L > 0 && s.h > 0)) throw new Error(`Span ${i + 1}: give L and h`); return { L: s.L, h: s.h, bw: 1000, shape: 'R', hf: 0 }; });
+    const supports = inp.supports.map(s => ({ kind: s.kind === 'beam' ? 'knife' : s.kind, width: s.kind === 'free' ? 0 : (s.width || 0), delta: s.delta ?? 1 }));
+    const loads = [...inp.loads.map(l => ({ span: l.span, case: l.case, type: l.type === 'line' ? 'point' : l.type, w: l.w, P: l.P, a: l.a, b: l.b })),
+      ...(inp.selfWeight === false ? [] : spans.map((s, i) => ({ span: i, case: 'G', type: 'udl', w: gc * s.h / 1e3, sw: true })))];
+    const model = { spans, supports, loads, rule: inp.rule, psi0: inp.psi0, psi2: inp.psi2, adjacent: inp.adjacent, redist: inp.redist, sets: inp.sets, patterns: inp.patterns };
+    const A = opt.analysis || RCBeam.analyse(model), P = A.P, n = P.n;
+    const bars = inp.bars || { spans: [], supports: [] };
+    const bot = i => (bars.spans[i] && bars.spans[i].bottom) || { phi: 12, s: 200 }, top = j => (bars.supports[j] && bars.supports[j].top) || { phi: 12, s: 200 };
+    const common = { kind: 'slab', fck: inp.fck, fyk, dg: inp.dg || 20, psi2: inp.psi2 ?? 0.3, ae: inp.ae ?? 15, xdMax: inp.xdMax ?? null };
+    const totals = i => { const s = P.spans[i], t = arr => arr.reduce((u, l) => u + (l.type === 'point' ? l.P : l.w * (l.type === 'udl' ? s.L : Math.min(l.b, s.L - l.a))), 0); return { gk: t(A.raw[i].G), qk: t(A.raw[i].Q) }; };
+    const kindOf = j => inp.supports[j].kind;
+    // supports
+    const supZ = P.supports.map((su, j) => {
+      if (su.kind === 'free') return null;
+      const sides = [], mono = kindOf(j) === 'beam' || kindOf(j) === 'fixed';
+      for (const side of ['L', 'R']) {
+        const i = side === 'L' ? j - 1 : j; if (i < 0 || i >= n) continue;
+        const s = P.spans[i], face = side === 'L' ? Math.max(0, s.L - su.width / 2) : Math.min(s.L, su.width / 2), xc = side === 'L' ? s.L : 0;
+        const EF = RCBeam.envAt(A, i, face, side), EC = RCBeam.envAt(A, i, xc), Mcl = Math.max(0, -EC.MminD), Mface = Math.max(0, -EF.MminD);
+        let Mdes, rule;
+        if (s.cant) { Mdes = mono ? Mface : Mcl; rule = mono ? 'cantilever root, at the face' : 'cantilever root, at the centreline'; }
+        else if (mono) { Mdes = Math.max(Mface, 0.65 * Mcl); rule = Mface >= 0.65 * Mcl ? 'at the face (5.3.2.2(3))' : '0.65 × centreline (5.3.2.2(3))'; }
+        else { const dM = A.Rmax[j] * su.width / 8; Mdes = Math.max(0, Mcl - dM); rule = `centreline − F t/8 = ${r1(kNm(Mcl))} − ${r1(kNm(dM))} (5.3.2.2(4))`; }
+        if (su.end && mono && !s.cant) { const Mb = 0.25 * A.spanM[i].redist; if (Mb > Mdes) { Mdes = Mb; rule = '25 % of the span moment (9.3.1.2(2))'; } }
+        const ES = mono ? EF : EC, T = totals(i), deltaS = A.supM[j].elastic > 0 ? Math.min(1, A.supM[j].redist / A.supM[j].elastic) : 1;
+        const sec = { ...common, moment: 'hogging', h: s.h, b: 1000, cover: inp.cover.top, coverComp: inp.cover.btm, bar: top(j), MEd: Math.max(Mdes, 1), gk: T.gk, qk: T.qk,
+          Mk: Math.max(0, -ES.MkMin), Mqp: Math.max(0, -ES.MqMin), delta: s.cant ? 1 : deltaS, wk: (inp.wk && inp.wk.top) || 0.3,
+          defl: s.cant ? { system: 'cantilever', span: s.L, brittle: inp.brittle !== false } : null };
+        sides.push({ side, i, Mcl, Mface, Mdes, rule, R: EC2Section.design(sec), sec });
+      }
+      return { j, sides, top: top(j), mono };
+    });
+    // spans
+    const spanZ = P.spans.map((s, i) => {
+      const T = totals(i), b = bot(i);
+      let sag = null;
+      if (!s.cant) {
+        const sm = A.spanM[i], sys = s.contL && s.contR ? 'interior' : s.contL || s.contR ? 'end' : 'ss';
+        const sec = { ...common, moment: 'sagging', h: s.h, b: 1000, cover: inp.cover.btm, coverComp: inp.cover.top, bar: b, MEd: Math.max(sm.redist, 1), Mel: Math.max(sm.elastic, 1), gk: T.gk, qk: T.qk,
+          Mk: sm.Mk, Mqp: sm.Mqp, delta: Math.min(1, sm.delta), wk: (inp.wk && inp.wk.btm) || 0.3, defl: { system: sys, span: s.L, brittle: inp.brittle !== false } };
+        sag = { M: sm.redist, Mel: sm.elastic, delta: sm.delta, sys, R: EC2Section.design(sec), sec };
+      }
+      const sh = {};
+      for (const end of ['L', 'R']) {
+        const j = end === 'L' ? i : i + 1, su = P.supports[j]; if (su.kind === 'free') continue;
+        const face = end === 'L' ? Math.min(s.L, su.width / 2) : Math.max(0, s.L - su.width / 2), zs = supZ[j] && supZ[j].sides.find(x => x.i === i);
+        const d = zs ? zs.R.d : s.h - inp.cover.top - 6, xd = Math.min(s.L, Math.max(0, face + (end === 'L' ? 1 : -1) * d));
+        const Ef = RCBeam.envAt(A, i, face, end === 'L' ? 'R' : 'L'), Ed = RCBeam.envAt(A, i, xd, end === 'L' ? 'R' : 'L');
+        const Vf = Math.max(Ef.Vmax, -Ef.Vmin), Vd = Math.max(Ed.Vmax, -Ed.Vmin);
+        sh[end] = { ...shearSlab({ d, Asl: slabAs(top(j)), Vface: Vf, Vd, c }), face, j };
+      }
+      // distribution steel 9.3.1.1(2): 20 % of the principal steel, and the minimum
+      const main = sag ? sag.R.arr.As : 0, dist = Math.max(0.2 * main, EC2.asMin({ fctm: c.fctm, fyk, bt: 1000, d: s.h - inp.cover.btm - b.phi - 5 }));
+      return { i, s, sag, sh, bot: b, dist };
+    });
+    const curt = curtail(inp, A, supZ, spanZ, c, fyk);
+    const list = [];
+    supZ.forEach(z => { if (!z) return; z.sides.forEach(sd => sd.R.checks.forEach(k => { if (k.id === 'bend' && sd.Mdes <= 1e3) return; list.push({ ...k, where: `Support ${z.j + 1}${z.sides.length > 1 ? (sd.side === 'L' ? ' (left)' : ' (right)') : ''}`, zone: 'sup', j: z.j }); })); });
+    spanZ.forEach(z => { if (z.sag) z.sag.R.checks.forEach(k => list.push({ ...k, where: `Span ${z.i + 1}`, zone: 'span', i: z.i }));
+      for (const e of ['L', 'R']) if (z.sh[e]) z.sh[e].checks.forEach(k => list.push({ ...k, where: `Span ${z.i + 1} ${e === 'L' ? 'left' : 'right'} end`, zone: 'shear', i: z.i })); });
+    return { A, supZ, spanZ, curt, checks: list, utilMax: Math.max(...list.map(k => k.util)), c, sw: inp.selfWeight === false ? 0 : gc };
+  }
+  // curtailment with a_l = d for slabs without shear reinforcement; end supports: 25 % top steel over 0.2 L from the face
+  function curtail(inp, A, supZ, spanZ, c, fyk) {
+    const out = { sup: [], span: [] };
+    supZ.forEach(z => {
+      if (!z) { out.sup.push(null); return; }
+      out.sup.push(z.sides.map(sd => {
+        const s = A.P.spans[sd.i], e = A.env[sd.i], R = sd.R, d = R.d, al = d, anc = EC2.anchorage({ phi: z.top.phi, c, good: s.h <= 250, fyk, tension: true, cd: Math.min(inp.cover.top, (z.top.s - z.top.phi) / 2) });
+        const xs = sd.side === 'L' ? x => s.L - x : x => x;
+        const reach = M => { let dist = 0; for (let k = 0; k <= 400; k++) { const t = s.L * k / 400, v = -RCBeam.at(e, 'MminD', xs(t)); if (v > M + 1e-6) dist = t; else if (k > 0) break; } return dist; };
+        const half = EC2.bendingResistance({ sec: { b: 1000, h: s.h }, layers: [{ As: R.arr.As / 2, d }], c, s: EC2.steel(fyk) }).MRd;
+        const x0 = reach(0), x50 = reach(half), endMin = z.mono && A.P.supports[z.j].end ? 0.2 * s.L + A.P.supports[z.j].width / 2 : 0;
+        return { side: sd.side, i: sd.i, al, lbd: anc.lbd, good: s.h <= 250, x0, all: Math.max(x0 > 0 ? Math.min(s.L, x0 + al) + anc.lbd : 0, endMin), half: x50 > 0 ? Math.min(s.L, x50 + al) + anc.lbd : 0, endMin };
+      }));
+    });
+    spanZ.forEach(z => {
+      if (!z.sag) { out.span.push(null); return; }
+      const s = z.s, e = A.env[z.i], R = z.sag.R, d = R.d, al = d, anc = EC2.anchorage({ phi: z.bot.phi, c, good: true, fyk, tension: true, cd: Math.min(inp.cover.btm, (z.bot.s - z.bot.phi) / 2) });
+      const half = EC2.bendingResistance({ sec: { b: 1000, h: s.h }, layers: [{ As: R.arr.As / 2, d }], c, s: EC2.steel(fyk) }).MRd;
+      let xa = null, xb = null; for (let k = 0; k <= 400; k++) { const x = s.L * k / 400; if (RCBeam.at(e, 'MmaxD', x) > half) { if (xa == null) xa = x; xb = x; } }
+      out.span.push({ i: z.i, al, lbd: anc.lbd, stopL: xa == null ? null : Math.max(0, xa - al - anc.lbd), stopR: xb == null ? null : Math.max(0, s.L - (xb + al + anc.lbd)) });
+    });
+    return out;
+  }
+  // ---------- bar suggestions (bar size and spacing per metre) ----------
+  const PHIS = [10, 12, 16, 20, 25], SPACINGS = [300, 275, 250, 225, 200, 175, 150, 125, 100];
+  const flexIds = ['bend', 'asmin', 'asmax', 'smin', 'smaxSlab', 'crack', 'ascrack', 'defl'];
+  function pickSlab(evalFn) {
+    let best = null;
+    for (const phi of PHIS) for (const s of SPACINGS) {
+      let R; try { R = evalFn({ phi, s }); } catch (e) { continue; }
+      if (!R.ok) continue;
+      const score = R.As * (phi < 10 ? 1.05 : 1);
+      if (!best || score < best.score - 1e-9 || (Math.abs(score - best.score) <= 1e-9 && s > best.bar.s)) best = { bar: { phi, s }, score };
+      break;
+    }
+    return best ? best.bar : null;
+  }
+  function suggestOneWay(inp) {
+    const D = oneWay(inp), out = { spans: [], supports: [] }, ok = R => R.checks.filter(k => flexIds.includes(k.id)).every(k => k.util <= 1 + 1e-9);
+    D.spanZ.forEach((z, i) => { out.spans[i] = { bottom: z.sag ? pickSlab(b => { const R = EC2Section.design({ ...z.sag.sec, bar: b }); return { ok: ok(R), As: R.arr.As }; }) || { phi: 25, s: 100 } : { phi: 10, s: 300 } }; });
+    D.supZ.forEach((z, j) => {
+      if (!z) { out.supports[j] = { top: { phi: 10, s: 300 } }; return; }
+      const bar = pickSlab(b => { let As = 0, good = true; for (const sd of z.sides) { const R = EC2Section.design({ ...sd.sec, bar: b }); As = R.arr.As; good = good && (sd.Mdes > 1e3 ? ok(R) : R.checks.filter(k => ['asmin', 'smin', 'smaxSlab', 'ascrack'].includes(k.id)).every(k => k.util <= 1 + 1e-9)); } return { ok: good, As }; });
+      out.supports[j] = { top: bar || { phi: 25, s: 100 } };
+    });
+    return out;
+  }
+  // ---------- two-way slabs: BS 8110-1 Tables 3.14 and 3.15 ----------
+  const RATIOS = [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.75, 2.0];
+  // Table 3.14: [negative at a continuous edge (short span), positive at mid-span (short span)], long span [negative, positive]
+  const T314 = {
+    1: { xn: [0.031, 0.037, 0.042, 0.046, 0.050, 0.053, 0.059, 0.063], xp: [0.024, 0.028, 0.032, 0.035, 0.037, 0.040, 0.044, 0.048], yn: 0.032, yp: 0.024, name: 'Interior panel' },
+    2: { xn: [0.039, 0.044, 0.048, 0.052, 0.055, 0.058, 0.063, 0.067], xp: [0.029, 0.033, 0.036, 0.039, 0.041, 0.043, 0.047, 0.050], yn: 0.037, yp: 0.028, name: 'One short edge discontinuous' },
+    3: { xn: [0.039, 0.049, 0.056, 0.062, 0.068, 0.073, 0.082, 0.089], xp: [0.030, 0.036, 0.042, 0.047, 0.051, 0.055, 0.062, 0.067], yn: 0.037, yp: 0.028, name: 'One long edge discontinuous' },
+    4: { xn: [0.047, 0.056, 0.063, 0.069, 0.074, 0.078, 0.087, 0.093], xp: [0.036, 0.042, 0.047, 0.051, 0.055, 0.059, 0.065, 0.070], yn: 0.045, yp: 0.034, name: 'Two adjacent edges discontinuous' },
+    5: { xn: [0.046, 0.050, 0.054, 0.057, 0.060, 0.062, 0.067, 0.070], xp: [0.034, 0.038, 0.040, 0.043, 0.045, 0.047, 0.050, 0.053], yn: null, yp: 0.034, name: 'Two short edges discontinuous' },
+    6: { xn: null, xp: [0.034, 0.046, 0.056, 0.065, 0.072, 0.078, 0.091, 0.100], yn: 0.045, yp: 0.034, name: 'Two long edges discontinuous' },
+    7: { xn: [0.057, 0.065, 0.071, 0.076, 0.081, 0.084, 0.092, 0.098], xp: [0.043, 0.048, 0.053, 0.057, 0.060, 0.063, 0.069, 0.074], yn: null, yp: 0.044, name: 'Three edges discontinuous (one long edge continuous)' },
+    8: { xn: null, xp: [0.042, 0.054, 0.063, 0.071, 0.078, 0.084, 0.096, 0.105], yn: 0.058, yp: 0.044, name: 'Three edges discontinuous (one short edge continuous)' },
+    9: { xn: null, xp: [0.055, 0.065, 0.074, 0.081, 0.087, 0.092, 0.103, 0.111], yn: null, yp: 0.056, name: 'Four edges discontinuous' } };
+  // Table 3.15 shear coefficients: long edges (v = beta_vx n l_x) continuous / discontinuous, short edges (beta_vy) continuous / discontinuous
+  const T315 = {
+    1: { xc: [0.33, 0.36, 0.39, 0.41, 0.43, 0.45, 0.48, 0.50], xd: null, yc: 0.33, yd: null },
+    2: { xc: [0.36, 0.39, 0.42, 0.44, 0.45, 0.47, 0.50, 0.52], xd: null, yc: 0.36, yd: 0.24 },
+    3: { xc: [0.36, 0.40, 0.44, 0.47, 0.49, 0.51, 0.55, 0.59], xd: [0.24, 0.27, 0.29, 0.31, 0.32, 0.34, 0.36, 0.38], yc: 0.36, yd: null },
+    4: { xc: [0.40, 0.44, 0.47, 0.50, 0.52, 0.54, 0.57, 0.60], xd: [0.26, 0.29, 0.31, 0.33, 0.34, 0.35, 0.38, 0.40], yc: 0.40, yd: 0.26 },
+    5: { xc: [0.40, 0.43, 0.45, 0.47, 0.48, 0.49, 0.52, 0.54], xd: null, yc: null, yd: 0.26 },
+    6: { xc: null, xd: [0.26, 0.30, 0.33, 0.36, 0.38, 0.40, 0.44, 0.47], yc: 0.40, yd: null },
+    7: { xc: [0.45, 0.48, 0.51, 0.53, 0.55, 0.57, 0.60, 0.63], xd: [0.30, 0.32, 0.34, 0.35, 0.36, 0.37, 0.39, 0.41], yc: null, yd: 0.29 },
+    8: { xc: null, xd: [0.29, 0.33, 0.36, 0.38, 0.40, 0.42, 0.45, 0.48], yc: 0.45, yd: 0.30 },
+    9: { xc: null, xd: [0.33, 0.36, 0.39, 0.41, 0.43, 0.45, 0.48, 0.50], yc: null, yd: 0.33 } };
+  const interp = (arr, r) => { if (arr == null) return null; if (typeof arr === 'number') return arr; if (r <= RATIOS[0]) return arr[0]; for (let k = 1; k < RATIOS.length; k++) if (r <= RATIOS[k]) return arr[k - 1] + (arr[k] - arr[k - 1]) * (r - RATIOS[k - 1]) / (RATIOS[k] - RATIOS[k - 1]); return arr[arr.length - 1]; };
+  // edges: { L1, L2 (long edges, along l_y), S1, S2 (short edges, along l_x) } true = continuous
+  function panelCase(e) {
+    const dl = (!e.L1) + (!e.L2), ds = (!e.S1) + (!e.S2), nd = dl + ds;
+    if (nd === 0) return 1; if (nd === 4) return 9;
+    if (nd === 1) return ds === 1 ? 2 : 3;
+    if (nd === 2) return dl === 1 ? 4 : ds === 2 ? 5 : 6;
+    return dl === 1 ? 7 : 8;   // three discontinuous: case 7 has one long edge continuous
+  }
+  function coefficients(edges, r) {
+    const k = panelCase(edges), m = T314[k], v = T315[k];
+    return { case: k, name: m.name, bxp: interp(m.xp, r), bxn: interp(m.xn, r), byp: m.yp, byn: m.yn, vxc: interp(v.xc, r), vxd: interp(v.xd, r), vyc: v.yc, vyd: v.yd };
+  }
+  /* inp: { lx, ly (mm, lx <= ly), h, fck, fyk, dg, cover { top, btm }, edges { L1, L2, S1, S2 }, gk (incl. self-weight unless selfWeight), qk (kN/m²), selfWeight, gc,
+            rule, psi0, psi2, wk, brittle, bars { x { phi, s } (short span, outer bottom layer), y { phi, s }, L1, L2, S1, S2 { phi, s } (top; L1/L2 in the outer top layer) } } */
+  function twoWay(inp) {
+    const c = EC2.concrete(inp.fck), fyk = inp.fyk || 500, gc = inp.gc ?? 25;
+    if (!(inp.lx > 0 && inp.ly > 0 && inp.h > 0)) throw new Error('Give l_x, l_y and h');
+    if (inp.ly < inp.lx - 1e-9) throw new Error('l_x must be the shorter span');
+    const r = inp.ly / inp.lx, oneway = r > 2;
+    const sw = inp.selfWeight === false ? 0 : gc * inp.h / 1e3, gk = inp.gk + sw, qk = inp.qk;
+    const sets = RCBeam.combinationSets(inp.rule || '6.10', inp.psi0 ?? 0.7), st = sets.reduce((b, s) => s.gG * gk + s.gQ * qk > b.gG * gk + b.gQ * qk ? s : b, sets[0]);
+    const nU = st.gG * gk + st.gQ * qk;   // N/mm per mm width = kN/m²
+    const K = coefficients(inp.edges, Math.min(r, 2)), lx2 = inp.lx * inp.lx, S = [], step = (ref, text) => S.push({ ref, text });
+    step('6.10', `n = ${st.gG === 1.35 && st.gQ === 1.5 ? '1.35' : st.gG.toFixed(3)} × ${r1(gk)} + ${st.gQ.toFixed(2)} × ${r1(qk)} = ${r3(nU)} kN/m² (g_k includes self-weight ${r1(sw)} kN/m²)`);
+    step('BS 8110 T3.14', `${K.name}, l_y/l_x = ${r3(r)}${oneway ? ' > 2: the slab spans one way; coefficients taken at 2.0 (consider a one-way design)' : ''}: β_sx = ${r4(K.bxp)}, β_sy = ${r4(K.byp)}${K.bxn ? `, β (long edges) = ${r4(K.bxn)}` : ''}${K.byn ? `, β (short edges) = ${r4(K.byn)}` : ''}`);
+    const b = inp.bars || {}, bx = b.x || { phi: 12, s: 200 }, by = b.y || { phi: 12, s: 200 };
+    const tb = e => b[e] || { phi: 12, s: 200 };
+    const common = { kind: 'slab', fck: inp.fck, fyk, dg: inp.dg || 20, psi2: inp.psi2 ?? 0.3, ae: inp.ae ?? 15, xdMax: inp.xdMax ?? null, gk, qk, gG: st.gG, gQ: st.gQ, delta: 1 };
+    // effective depths: short-span bars in the outer layers; long-span bars inside them
+    const covY = inp.cover.btm + bx.phi, contL = [inp.edges.L1, inp.edges.L2].filter(Boolean).length;
+    const sys = contL === 2 ? 'interior' : contL === 1 ? 'end' : 'ss';
+    const Rx = EC2Section.design({ ...common, moment: 'sagging', h: inp.h, b: 1000, cover: inp.cover.btm, coverComp: inp.cover.top, bar: bx, MEd: K.bxp * nU * lx2, wk: (inp.wk && inp.wk.btm) || 0.3,
+      defl: { system: sys, span: inp.lx, brittle: inp.brittle !== false } });
+    const Ry = EC2Section.design({ ...common, moment: 'sagging', h: inp.h, b: 1000, cover: covY, coverComp: inp.cover.top, bar: by, MEd: K.byp * nU * lx2, wk: (inp.wk && inp.wk.btm) || 0.3, defl: null });
+    step('', `short span M = β_sx n l_x² = ${r1(kNm(K.bxp * nU * lx2))} kNm/m (d = ${r1(Rx.d)} mm, outer layer); long span M = β_sy n l_x² = ${r1(kNm(K.byp * nU * lx2))} kNm/m (d = ${r1(Ry.d)} mm, inner layer)`);
+    const zones = [{ id: 'x', name: 'Short span (bottom, outer layer)', R: Rx, M: K.bxp * nU * lx2 }, { id: 'y', name: 'Long span (bottom, inner layer)', R: Ry, M: K.byp * nU * lx2 }];
+    const edgeName = { L1: 'Long edge 1', L2: 'Long edge 2', S1: 'Short edge 1', S2: 'Short edge 2' };
+    for (const e of ['L1', 'L2', 'S1', 'S2']) {
+      if (!inp.edges[e]) continue;
+      const long = e[0] === 'L', beta = long ? K.bxn : K.byn; if (beta == null) continue;
+      const bar = tb(e), cov = long ? inp.cover.top : inp.cover.top + Math.max(tb('L1').phi, tb('L2').phi), M = beta * nU * lx2;
+      const R = EC2Section.design({ ...common, moment: 'hogging', h: inp.h, b: 1000, cover: cov, coverComp: inp.cover.btm, bar, MEd: M, wk: (inp.wk && inp.wk.top) || 0.3, defl: null });
+      zones.push({ id: e, name: `${edgeName[e]} (top${long ? ', outer layer' : ', inner layer'})`, R, M });
+    }
+    // shear on each edge (6.2.2, no links) with the top steel at continuous edges and the bottom steel at discontinuous edges
+    const shear = [];
+    for (const e of ['L1', 'L2', 'S1', 'S2']) {
+      const long = e[0] === 'L', cont = inp.edges[e], beta = long ? (cont ? K.vxc : K.vxd) : (cont ? K.vyc : K.vyd); if (beta == null) continue;
+      const V = beta * nU * inp.lx, zone = cont ? zones.find(z => z.id === e) : zones.find(z => z.id === (long ? 'x' : 'y')), d = zone ? zone.R.d : Rx.d, As = zone ? zone.R.arr.As : Rx.arr.As;
+      const vs = shearSlab({ d, Asl: cont ? As : As / 2, Vface: V, Vd: V, c });
+      shear.push({ edge: e, name: edgeName[e], cont, beta, V, Vk: { g: beta * gk * inp.lx, q: beta * qk * inp.lx }, ...vs });
+    }
+    step('BS 8110 T3.15', `edge shears v = β_v n l_x: ${shear.map(s => `${edgeName[s.edge]} ${s.cont ? 'continuous' : 'discontinuous'} β_v ${r3(s.beta)} → ${r1(kN(s.V))} kN/m`).join('; ')}`);
+    // corner torsion steel (BS 8110 3.5.3.5, Concrete Centre How to: slabs): at corners where both edges are discontinuous 3/4 of the
+    // short-span mid-span steel, top and bottom, both ways, over l_x/5; where one edge is discontinuous half of that
+    const corners = [['L1', 'S1'], ['L1', 'S2'], ['L2', 'S1'], ['L2', 'S2']].map(([a, bb]) => { const nd = (!inp.edges[a]) + (!inp.edges[bb]); return { edges: [a, bb], nd, As: nd === 2 ? 0.75 * Rx.bd.As : nd === 1 ? 0.375 * Rx.bd.As : 0, size: inp.lx / 5 }; });
+    const list = [];
+    zones.forEach(z => z.R.checks.forEach(k => list.push({ ...k, where: z.name })));
+    shear.forEach(s => s.checks.forEach(k => list.push({ ...k, where: s.name })));
+    if (oneway) list.push({ id: 'ratio', name: 'l_y/l_x ≤ 2 for two-way coefficients', ref: 'BS 8110 3.5.3', util: r / 2, note: `l_y/l_x = ${r3(r)}` });
+    return { c, K, r, nU, gk, qk, sw, st, zones, shear, corners, steps: S, checks: list, utilMax: Math.max(...list.map(k => k.util)) };
+  }
+  function suggestTwoWay(inp) {
+    const D = twoWay(inp), out = { ...(inp.bars || {}) }, ok = R => R.checks.filter(k => flexIds.includes(k.id)).every(k => k.util <= 1 + 1e-9);
+    // short span first (it sets the long-span depth), then the long span, then the outer top layers, then the inner
+    const order = ['x', 'y', 'L1', 'L2', 'S1', 'S2'];
+    for (const id of order) {
+      const z = twoWay({ ...inp, bars: out }).zones.find(q => q.id === id); if (!z) continue;
+      const bar = pickSlab(b => { const R = twoWay({ ...inp, bars: { ...out, [id]: b } }).zones.find(q => q.id === id).R; return { ok: ok(R), As: R.arr.As }; });
+      out[id] = bar || { phi: 25, s: 100 };
+    }
+    return out;
+  }
+  return { oneWay, suggestOneWay, twoWay, suggestTwoWay, coefficients, panelCase, T314, T315, RATIOS, shearSlab };
+})();
+if (typeof module !== 'undefined') module.exports = { RCSlabDesign };
+
+</script>
+<script id="ui">
+'use strict';
+const $ = id => document.getElementById(id);
+const STORE = 'et-rc-slab-v1';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ufmt = u => !Number.isFinite(u) ? '&gt;99' : u.toFixed(3);
+const f1 = v => Number.isFinite(v) ? (Math.round(v * 10) / 10).toString() : '–', f0 = v => Number.isFinite(v) ? Math.round(v).toString() : '–';
+const PSI = { A: ['Domestic', 0.7, 0.3], B: ['Office', 0.7, 0.3], C: ['Congregation', 0.7, 0.6], D: ['Shopping', 0.7, 0.6], E: ['Storage', 1.0, 0.8], F: ['Traffic ≤ 30 kN', 0.7, 0.6], G: ['Traffic 30–160 kN', 0.7, 0.3], H: ['Roof', 0.7, 0] };
+$('usage').innerHTML = Object.entries(PSI).map(([k, [nm, p0, p2]]) => `<option value="${k}"${k === 'B' ? ' selected' : ''}>${k}: ${nm} (ψ₂ ${p2})</option>`).join('');
+const PHIS = [8, 10, 12, 16, 20, 25], SP = [75, 100, 125, 150, 175, 200, 225, 250, 275, 300, 350, 400];
+const opt = (vals, sel) => vals.map(v => `<option${String(v) === String(sel) ? ' selected' : ''}>${v}</option>`).join('');
+const optKV = (pairs, sel) => pairs.map(([v, t]) => `<option value="${v}"${String(v) === String(sel) ? ' selected' : ''}>${t}</option>`).join('');
+let mode = 'one';
+document.querySelectorAll('#modes button').forEach(b => b.onclick = () => setMode(b.dataset.m));
+function setMode(m) { mode = m; document.querySelectorAll('#modes button').forEach(b => b.classList.toggle('on', b.dataset.m === m)); $('pane-one').classList.toggle('hidden', m !== 'one'); $('pane-two').classList.toggle('hidden', m !== 'two'); document.querySelectorAll('.one').forEach(e => e.classList.toggle('hidden', m !== 'one')); }
+// ---------- one-way rows ----------
+function spanRow(s = {}) {
+  const d = document.createElement('div'); d.className = 'row sspan'; s = { L: 5, h: 225, ...s };
+  d.innerHTML = `<div><label class="sl">Span L (m)</label><input class="L" type="number" step="0.05" value="${s.L}"></div><div><label>h (mm)</label><input class="h" type="number" step="5" value="${s.h}"></div><button class="xbtn" title="Remove span">&times;</button>`;
+  d.querySelector('.xbtn').onclick = () => { if (document.querySelectorAll('#spanRows .row').length > 1) { d.remove(); syncRows(); } };
+  $('spanRows').appendChild(d);
+}
+function supRow(s = {}) {
+  const d = document.createElement('div'); d.className = 'row ssup'; s = { kind: 'beam', width: 300, delta: 1, ...s };
+  d.innerHTML = `<div><label class="sl">Support</label><select class="kind">${optKV([['beam', 'On a beam / wall'], ['knife', 'Bearing'], ['fixed', 'Encastré'], ['free', 'Free end']], s.kind)}</select></div><div><label>Width (mm)</label><input class="width" type="number" value="${s.width}"></div><div><label>δ</label><input class="delta" type="number" step="0.05" min="0.7" max="1" value="${s.delta}"></div>`;
+  $('supRows').appendChild(d);
+}
+function loadRow(l = {}) {
+  const d = document.createElement('div'); d.className = 'row sload'; l = { span: 0, case: 'G', type: 'udl', w: 1.5, P: 5, a: 1, b: 1, ...l };
+  d.innerHTML = `<div><label>Span</label><select class="span"></select></div><div><label>Case</label><select class="case">${optKV([['G', 'G'], ['Q', 'Q']], l.case)}</select></div><div><label>Type</label><select class="type">${optKV([['udl', 'UDL'], ['line', 'Line load'], ['part', 'Part UDL']], l.type)}</select></div>
+    <div><label class="vl">w (kN/m²)</label><input class="val" type="number" step="0.1" value="${l.type === 'line' ? l.P : l.w}"></div><div><label>a (m)</label><input class="a" type="number" step="0.05" value="${l.a}"></div><div><label>Length (m)</label><input class="b" type="number" step="0.05" value="${l.b}"></div><button class="xbtn" title="Remove load">&times;</button>`;
+  d.dataset.span = l.span;
+  d.querySelector('.type').onchange = () => refreshLoad(d); d.querySelector('.span').onchange = e => { d.dataset.span = e.target.value; }; d.querySelector('.xbtn').onclick = () => d.remove();
+  $('loadRows').appendChild(d); refreshLoad(d); syncLoadSpans();
+}
+function refreshLoad(d) { const t = d.querySelector('.type').value; d.querySelector('.vl').textContent = t === 'line' ? 'P (kN/m)' : 'w (kN/m²)'; d.querySelector('.a').disabled = t === 'udl'; d.querySelector('.b').disabled = t !== 'part'; }
+function syncLoadSpans() { const n = document.querySelectorAll('#spanRows .row').length; document.querySelectorAll('#loadRows .row').forEach(d => { const sel = d.querySelector('.span'), cur = Math.min(+d.dataset.span || 0, n - 1); sel.innerHTML = Array.from({ length: n }, (_, i) => `<option value="${i}"${i === cur ? ' selected' : ''}>${i + 1}</option>`).join(''); d.dataset.span = cur; }); }
+let barState = { spans: [], supports: [] };
+const brow = (kind, i, nm, v) => `<div class="row sbar" data-kind="${kind}" data-i="${i}"><div class="nm">${nm}</div><div><label>Ø</label><select class="phi">${opt(PHIS, v.phi)}</select></div><div><label>@ (mm)</label><select class="s">${opt(SP, v.s)}</select></div></div>`;
+function readBars() { const o = { spans: [], supports: [] }; document.querySelectorAll('#barRows .row').forEach(r => { const v = { phi: +r.querySelector('.phi').value, s: +r.querySelector('.s').value }; if (r.dataset.kind === 'sup') o.supports[+r.dataset.i] = { top: v }; else o.spans[+r.dataset.i] = { bottom: v }; }); return o; }
+function renderBars() {
+  const n = document.querySelectorAll('#spanRows .row').length, kinds = [...document.querySelectorAll('#supRows .kind')].map(e => e.value); let h = '';
+  for (let j = 0; j <= n; j++) { if (kinds[j] === 'free') continue; h += brow('sup', j, `Support ${j + 1} top`, (barState.supports[j] && barState.supports[j].top) || { phi: 10, s: 200 }); }
+  for (let i = 0; i < n; i++) h += brow('span', i, `Span ${i + 1} bottom`, (barState.spans[i] && barState.spans[i].bottom) || { phi: 10, s: 200 });
+  $('barRows').innerHTML = h;
+}
+function syncRows() {
+  const n = document.querySelectorAll('#spanRows .row').length; barState = readBars();
+  while (document.querySelectorAll('#supRows .row').length < n + 1) supRow();
+  while (document.querySelectorAll('#supRows .row').length > n + 1) { const r = document.querySelectorAll('#supRows .row'); r[r.length - 1].remove(); }
+  document.querySelectorAll('#spanRows .sl').forEach((e, i) => e.textContent = `Span ${i + 1} L (m)`); document.querySelectorAll('#supRows .sl').forEach((e, j) => e.textContent = `Support ${j + 1}`);
+  syncLoadSpans(); renderBars();
+}
+$('addSpan').onclick = () => { spanRow(); syncRows(); };
+$('addLoad').onclick = () => loadRow({ span: 0, case: 'Q', type: 'udl', w: 2.5 });
+$('supRows').addEventListener('change', e => { if (e.target.classList.contains('kind')) { barState = readBars(); renderBars(); } });
+// ---------- two-way bars ----------
+const TB = [['x', 'Short span, bottom (outer)'], ['y', 'Long span, bottom (inner)'], ['L1', 'Long edge 1, top (outer)'], ['L2', 'Long edge 2, top (outer)'], ['S1', 'Short edge 1, top (inner)'], ['S2', 'Short edge 2, top (inner)']];
+let tbars = { x: { phi: 10, s: 150 }, y: { phi: 10, s: 200 }, L1: { phi: 12, s: 150 }, L2: { phi: 12, s: 150 }, S1: { phi: 10, s: 200 }, S2: { phi: 10, s: 200 } };
+function readT() { document.querySelectorAll('#tbarRows .row').forEach(r => { tbars[r.dataset.i] = { phi: +r.querySelector('.phi').value, s: +r.querySelector('.s').value }; }); return tbars; }
+function renderT() { const ed = { L1: $('eL1').checked, L2: $('eL2').checked, S1: $('eS1').checked, S2: $('eS2').checked }; $('tbarRows').innerHTML = TB.filter(([k]) => k === 'x' || k === 'y' || ed[k]).map(([k, nm]) => brow('t', k, nm, tbars[k])).join(''); }
+['eL1', 'eL2', 'eS1', 'eS2'].forEach(id => $(id).addEventListener('change', () => { readT(); renderT(); }));
+// ---------- state ----------
+const IDS = ['pName', 'pJob', 'pBy', 'pRef', 'fck', 'fyk', 'dg', 'cTop', 'cBtm', 'wkT', 'wkB', 'usage', 'rule', 'sw', 'gc', 'brittle', 'pat', 'redist', 'xd', 'lx', 'ly', 'th', 'tg', 'tq'];
+const readSpans = () => [...document.querySelectorAll('#spanRows .row')].map(r => ({ L: +r.querySelector('.L').value, h: +r.querySelector('.h').value }));
+const readSups = () => [...document.querySelectorAll('#supRows .row')].map(r => ({ kind: r.querySelector('.kind').value, width: +r.querySelector('.width').value || 0, delta: +r.querySelector('.delta').value || 1 }));
+const readLoads = () => [...document.querySelectorAll('#loadRows .row')].map(r => { const q = c => r.querySelector(c).value, t = q('.type'); return { span: +q('.span'), case: q('.case'), type: t, w: t === 'line' ? 0 : +q('.val'), P: t === 'line' ? +q('.val') : 0, a: +q('.a') || 0, b: +q('.b') || 0 }; });
+const collect = () => { const s = { v: 1, mode, spans: readSpans(), sups: readSups(), loads: readLoads(), bars: readBars(), tbars: readT(), edges: { L1: $('eL1').checked, L2: $('eL2').checked, S1: $('eS1').checked, S2: $('eS2').checked } }; IDS.forEach(k => s[k] = $(k).value); return s; };
+function restore(s) {
+  IDS.forEach(k => { if (s[k] !== undefined) $(k).value = s[k]; });
+  $('spanRows').innerHTML = ''; $('supRows').innerHTML = ''; $('loadRows').innerHTML = '';
+  (s.spans || []).forEach(x => spanRow(x)); (s.sups || []).forEach(x => supRow(x)); barState = s.bars || { spans: [], supports: [] }; syncRows(); (s.loads || []).forEach(x => loadRow(x)); barState = s.bars || barState; renderBars();
+  if (s.edges) for (const k of ['L1', 'L2', 'S1', 'S2']) $('e' + k).checked = !!s.edges[k];
+  if (s.tbars) tbars = { ...tbars, ...s.tbars }; renderT(); setMode(s.mode || 'one');
+}
+function defaults() {
+  restore({ v: 1, mode: 'one', spans: [{ L: 5, h: 200 }, { L: 6, h: 200 }, { L: 5, h: 200 }], sups: [{ kind: 'beam', width: 300 }, { kind: 'beam', width: 300, delta: 0.85 }, { kind: 'beam', width: 300, delta: 0.85 }, { kind: 'beam', width: 300 }],
+    loads: [0, 1, 2].flatMap(i => [{ span: i, case: 'G', type: 'udl', w: 1.5 }, { span: i, case: 'Q', type: 'udl', w: 2.5 }]),
+    bars: { spans: [{ bottom: { phi: 10, s: 200 } }, { bottom: { phi: 12, s: 200 } }, { bottom: { phi: 10, s: 200 } }], supports: [{ top: { phi: 10, s: 300 } }, { top: { phi: 12, s: 175 } }, { top: { phi: 12, s: 175 } }, { top: { phi: 10, s: 300 } }] } });
+}
+// ---------- inputs ----------
+const num = (v, nm, pos = true) => { if (!Number.isFinite(v) || (pos && !(v > 0))) throw new Error(`${nm} must be ${pos ? 'positive' : 'a number'}`); return v; };
+function common() { const u = PSI[$('usage').value], xd = $('xd').value; return { fck: +$('fck').value, fyk: num(+$('fyk').value, 'f_yk'), dg: num(+$('dg').value, 'Aggregate size'), cover: { top: num(+$('cTop').value, 'Top cover'), btm: num(+$('cBtm').value, 'Bottom cover') },
+  wk: { top: +$('wkT').value, btm: +$('wkB').value }, rule: $('rule').value, psi0: u[1], psi2: u[2], selfWeight: $('sw').value === '1', gc: +$('gc').value || 25, brittle: $('brittle').value === '1', xdMax: xd ? +xd : null }; }
+function oneInput() {
+  const spans = readSpans().map((s, i) => ({ L: num(s.L, `Span ${i + 1} L`) * 1000, h: num(s.h, `Span ${i + 1} h`) }));
+  return { ...common(), spans, supports: readSups(), loads: readLoads(), adjacent: $('pat').value === 'adj', redist: $('redist').value, bars: readBars() };
+}
+function twoInput() {
+  return { ...common(), lx: num(+$('lx').value, 'l_x') * 1000, ly: num(+$('ly').value, 'l_y') * 1000, h: num(+$('th').value, 'h'), gk: num(+$('tg').value, 'g_k', false), qk: num(+$('tq').value, 'q_k', false),
+    edges: { L1: $('eL1').checked, L2: $('eL2').checked, S1: $('eS1').checked, S2: $('eS2').checked }, bars: readT() };
+}
+// ---------- drawings ----------
+const W = 760, PADL = 40, PADR = 24;
+function layout(P) { const x0 = [0]; P.spans.forEach(s => x0.push(x0[x0.length - 1] + s.L)); const Lt = x0[x0.length - 1], sc = (W - PADL - PADR) / Lt; return { x0, Lt, X: x => PADL + x * sc }; }
+function svgElev(D, inp, light) {
+  const A = D.A, P = A.P, Lo = layout(P), X = Lo.X, y = 70, hb = 12;
+  const col = light ? '#000' : 'var(--txt)', mut = light ? '#666' : 'var(--mut)', acc = light ? '#b06000' : 'var(--accent)', st = light ? '#1b67b0' : '#5aa9e6', con = light ? '#eee' : '#262b33';
+  let g = `<rect x="${X(0)}" y="${y}" width="${X(Lo.Lt) - X(0)}" height="${hb}" fill="${con}" stroke="${col}" stroke-width="1"/>`;
+  P.supports.forEach((s, j) => { const x = X(Lo.x0[j]), k = inp.supports[j].kind, w = Math.max(6, X(s.width) - X(0));
+    if (k === 'beam') g += `<rect x="${x - w / 2}" y="${y + hb}" width="${w}" height="26" fill="${con}" stroke="${col}" stroke-width="0.8"/>`;
+    else if (k === 'knife') g += `<path d="M${x} ${y + hb} l-8 13 h16 z" fill="none" stroke="${col}" stroke-width="1.2"/>`;
+    else if (k === 'fixed') g += `<line x1="${x}" y1="${y - 12}" x2="${x}" y2="${y + hb + 12}" stroke="${col}" stroke-width="2"/>` + [...Array(5)].map((_, q) => `<line x1="${x}" y1="${y - 10 + q * 8}" x2="${x + (j === 0 ? -7 : 7)}" y2="${y - 15 + q * 8}" stroke="${mut}"/>`).join('');
+    if (k !== 'free') g += `<text x="${x}" y="${y + hb + 40}" font-size="9" text-anchor="middle" fill="${mut}" font-family="monospace">${j + 1}</text>`; });
+  for (const l of inp.loads) { const x0 = Lo.x0[l.span], c = l.case === 'Q' ? acc : col, top = l.case === 'Q' ? y - 36 : y - 24;
+    if (l.type === 'line') { const x = X(x0 + l.a * 1000); g += `<line x1="${x}" y1="${y - 44}" x2="${x}" y2="${y - 6}" stroke="${c}" stroke-width="1.4"/><path d="M${x} ${y - 3} l-4 -7 h8 z" fill="${c}"/>`; }
+    else { const a = l.type === 'udl' ? 0 : l.a * 1000, b = l.type === 'udl' ? P.spans[l.span].L : Math.min(P.spans[l.span].L, (l.a + l.b) * 1000); g += `<rect x="${X(x0 + a)}" y="${top}" width="${X(x0 + b) - X(x0 + a)}" height="8" fill="none" stroke="${c}" stroke-width="0.9"/>`; } }
+  D.supZ.forEach((z, j) => { if (!z) return; const cs = D.curt.sup[j] || []; let xl = Lo.x0[j], xr = Lo.x0[j]; cs.forEach(c => { if (c.side === 'L') xl = Lo.x0[j] - Math.max(c.all, 200); else xr = Lo.x0[j] + Math.max(c.all, 200); });
+    g += `<line x1="${X(Math.max(0, xl))}" y1="${y + 2.5}" x2="${X(Math.min(Lo.Lt, xr))}" y2="${y + 2.5}" stroke="${st}" stroke-width="2"/><text x="${X(Lo.x0[j]) + (j === P.n ? -4 : 4)}" y="${y - 3}" font-size="9" text-anchor="${j === P.n ? 'end' : 'start'}" fill="${st}" font-family="monospace">H${z.top.phi}@${z.top.s}</text>`; });
+  D.spanZ.forEach((z, i) => { const x0 = Lo.x0[i], L = z.s.L; g += `<line x1="${X(x0 + 30)}" y1="${y + hb - 2.5}" x2="${X(x0 + L - 30)}" y2="${y + hb - 2.5}" stroke="${st}" stroke-width="2"/><text x="${X(x0 + L / 2)}" y="${y + hb + 12}" font-size="9" text-anchor="middle" fill="${st}" font-family="monospace">H${z.bot.phi}@${z.bot.s}</text><text x="${X(x0 + L / 2)}" y="${y + hb + 24}" font-size="9" text-anchor="middle" fill="${mut}" font-family="monospace">${f1(L / 1000)} m, h ${z.s.h}</text>`; });
+  g += `<text x="${PADL}" y="10" font-size="9.5" fill="${mut}" font-family="monospace">G ▭</text><text x="${PADL + 34}" y="10" font-size="9.5" fill="${acc}" font-family="monospace">Q ▭</text><text x="${PADL + 70}" y="10" font-size="9.5" fill="${st}" font-family="monospace">bars per metre</text>`;
+  return `<svg class="${light ? 'rsvg' : 'elev'}" viewBox="0 0 ${W} 130">${g}</svg>`;
+}
+function svgEnv(D, kind, light) {
+  const A = D.A, P = A.P, Lo = layout(P), X = Lo.X, H = 190, y0 = 103;
+  const col = light ? '#000' : 'var(--txt)', mut = light ? '#777' : 'var(--faint)', fA = light ? 'rgba(0,90,200,.18)' : 'rgba(255,176,0,.22)', fB = light ? 'rgba(200,0,0,.14)' : 'rgba(62,207,142,.18)', dash = light ? '#555' : 'var(--mut)';
+  const pts = []; A.env.forEach((e, i) => e.x.forEach((x, k) => pts.push({ X: Lo.x0[i] + x, hi: kind === 'M' ? e.MmaxD[k] : e.Vmax[k], lo: kind === 'M' ? e.MminD[k] : e.Vmin[k], hiE: kind === 'M' ? e.MmaxE[k] : e.VmaxE[k], loE: kind === 'M' ? e.MminE[k] : e.VminE[k] })));
+  const vmax = Math.max(1, ...pts.map(p => Math.max(Math.abs(p.hi), Math.abs(p.lo), Math.abs(p.hiE), Math.abs(p.loE)))), sc = (H / 2 - 28) / vmax, inv = kind === 'M' ? 1 : -1, Y = v => y0 + inv * v * sc;
+  const path = key => pts.map((p, k) => `${k ? 'L' : 'M'}${X(p.X).toFixed(1)} ${Y(p[key]).toFixed(1)}`).join(' '), close = `L${X(pts[pts.length - 1].X)} ${y0} L${X(pts[0].X)} ${y0} Z`;
+  let g = `<line x1="${X(0)}" y1="${y0}" x2="${X(Lo.Lt)}" y2="${y0}" stroke="${mut}"/><path d="${path('hi')} ${close}" fill="${fA}" stroke="${col}" stroke-width="1"/><path d="${path('lo')} ${close}" fill="${fB}" stroke="${col}" stroke-width="1"/>`;
+  g += `<path d="${path('hiE')}" fill="none" stroke="${dash}" stroke-width="0.8" stroke-dasharray="4 3"/><path d="${path('loE')}" fill="none" stroke="${dash}" stroke-width="0.8" stroke-dasharray="4 3"/>`;
+  const lab = (x, v, below) => `<text x="${X(x)}" y="${Y(v) + (below ? 11 : -3)}" font-size="9.5" text-anchor="middle" fill="${col}" font-family="monospace">${f1(v / (kind === 'M' ? 1e6 : 1e3))}</text>`;
+  A.env.forEach((e, i) => { const H1 = kind === 'M' ? e.MmaxD : e.Vmax, L1 = kind === 'M' ? e.MminD : e.Vmin; let kh = 0, kl = 0; H1.forEach((v, k) => { if (v > H1[kh]) kh = k; }); L1.forEach((v, k) => { if (v < L1[kl]) kl = k; });
+    if (Math.abs(H1[kh]) > vmax * 0.04) g += lab(Lo.x0[i] + e.x[kh], H1[kh], kind === 'M'); if (Math.abs(L1[kl]) > vmax * 0.04) g += lab(Lo.x0[i] + e.x[kl], L1[kl], kind !== 'M'); });
+  g += `<text x="4" y="12" font-size="10" fill="${mut}" font-family="monospace">${kind === 'M' ? 'M (kNm/m): design envelope, elastic dashed; sagging below' : 'V (kN/m): redistributed envelope, elastic dashed'}</text>`;
+  return `<svg class="${light ? 'rsvg' : 'env'}" viewBox="0 0 ${W} ${H}">${g}</svg>`;
+}
+function svgPlan(T, inp, light) {
+  const col = light ? '#000' : 'var(--txt)', mut = light ? '#666' : 'var(--mut)', acc = light ? '#b06000' : 'var(--accent)', st = light ? '#1b67b0' : '#5aa9e6', con = light ? '#f2f2f2' : '#1c2027';
+  const Wd = 420, Hd = Math.max(160, Math.min(300, Wd * inp.lx / inp.ly)), x0 = 70, y0 = 30, X = x => x0 + x * Wd / inp.ly, Y = y => y0 + y * Hd / inp.lx;
+  let g = `<rect x="${X(0)}" y="${Y(0)}" width="${Wd}" height="${Hd}" fill="${con}" stroke="${col}" stroke-width="1"/>`;
+  const edge = (cont, x1, y1, x2, y2, ox, oy) => cont ? `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="3"/>` + [...Array(12)].map((_, k) => { const t = (k + 0.5) / 12, px = x1 + (x2 - x1) * t, py = y1 + (y2 - y1) * t; return `<line x1="${px}" y1="${py}" x2="${px + ox}" y2="${py + oy}" stroke="${mut}"/>`; }).join('') : `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="1" stroke-dasharray="5 3"/>`;
+  g += edge(inp.edges.L1, X(0), Y(0), X(inp.ly), Y(0), -5, -7) + edge(inp.edges.L2, X(0), Y(inp.lx), X(inp.ly), Y(inp.lx), -5, 7) + edge(inp.edges.S1, X(0), Y(0), X(0), Y(inp.lx), -7, -5) + edge(inp.edges.S2, X(inp.ly), Y(0), X(inp.ly), Y(inp.lx), 7, -5);
+  const z = id => T.zones.find(q => q.id === id), t = (x, y, s, c, a = 'middle') => `<text x="${x}" y="${y}" font-size="10" text-anchor="${a}" fill="${c}" font-family="monospace">${s}</text>`;
+  g += `<line x1="${X(inp.ly / 2)}" y1="${Y(0.08 * inp.lx)}" x2="${X(inp.ly / 2)}" y2="${Y(0.92 * inp.lx)}" stroke="${st}" stroke-width="1.2" marker-end="url(#ar)" marker-start="url(#ar)"/><line x1="${X(0.08 * inp.ly)}" y1="${Y(inp.lx / 2)}" x2="${X(0.92 * inp.ly)}" y2="${Y(inp.lx / 2)}" stroke="${st}" stroke-width="1.2" marker-end="url(#ar)" marker-start="url(#ar)"/>`;
+  g += t(X(inp.ly / 2) + 6, Y(inp.lx * 0.3), `M ${f1(z("x").M / 1e6)}  H${inp.bars.x.phi}@${inp.bars.x.s} B1`, st, 'start') + t(X(inp.ly * 0.72), Y(inp.lx / 2) - 6, `M ${f1(z('y').M / 1e6)}  H${inp.bars.y.phi}@${inp.bars.y.s} B2`, st);
+  for (const [id, x, y, a] of [['L1', X(inp.ly / 2), Y(0) + 14, 'middle'], ['L2', X(inp.ly / 2), Y(inp.lx) - 6, 'middle'], ['S1', X(0) + 6, Y(inp.lx / 2) + 16, 'start'], ['S2', X(inp.ly) - 6, Y(inp.lx / 2) + 16, 'end']]) { const q = z(id); if (q) g += t(x, y, `−${f1(q.M / 1e6)}  H${inp.bars[id].phi}@${inp.bars[id].s} T`, acc, a); }
+  g += t(X(inp.ly / 2), Y(inp.lx) + 18, `l_y = ${f1(inp.ly / 1000)} m`, mut) + `<text x="${X(0) - 12}" y="${Y(inp.lx / 2)}" font-size="10" text-anchor="middle" fill="${mut}" font-family="monospace" transform="rotate(-90 ${X(0) - 12} ${Y(inp.lx / 2)})">l_x = ${f1(inp.lx / 1000)} m</text>`;
+  g += t(X(inp.ly / 2), Y(0) - 16, 'Long edge 1', mut) + t(X(inp.ly / 2), Y(inp.lx) + 30, 'Long edge 2', mut);
+  return `<svg class="${light ? 'rsvg' : 'plan'}" viewBox="0 0 560 ${Hd + 70}"><defs><marker id="ar" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${st}"/></marker></defs>${g}</svg>`;
+}
+// ---------- results ----------
+const bar = c => `<div class="ck"><div class="nm">${esc(c.where)}: ${esc(c.name)}<small>${esc(c.ref)} &nbsp;${esc(c.note || '')}</small></div><div class="bar"><i class="${c.util > 1 ? 'over' : c.util > 0.9 ? 'hi' : ''}" style="width:${Math.min(100, c.util * 100 / 1.2)}%"></i></div><div class="u ${c.util > 1 ? 'over' : ''}">${ufmt(c.util)}</div></div>`;
+const stepsHTML = S => `<div class="steps">${S.map(s => `<div class="st"><span>${esc(s.ref)}</span><span>${esc(s.text)}</span></div>`).join('')}</div>`;
+function worst(list) { const m = new Map(); for (const k of list) { const key = k.where + '|' + k.id; if (!m.has(key) || m.get(key).util < k.util) m.set(key, k); } return [...m.values()].sort((a, b) => b.util - a.util); }
+const zone = (title, u, S) => `<details class="zone"><summary><span>${title}</span><span class="u ${u > 1 ? 'over' : ''}">${ufmt(u)}</span></summary>${stepsHTML(S)}</details>`;
+function oneTables(D, inp) {
+  const A = D.A, P = A.P; let s = `<table class="t rtab"><tr><th>Support</th><th>M<sub>el</sub> / M<sub>red</sub></th><th>δ</th><th>M design L / R (kNm/m)</th><th>A<sub>s,req</sub> / prov</th><th>Top bars</th><th>R<sub>max</sub> (kN/m)</th></tr>`;
+  P.supports.forEach((su, j) => { const z = D.supZ[j]; if (!z) return; const sd = side => z.sides.find(x => x.side === side), L = sd('L'), R = sd('R'), sm = A.supM[j];
+    s += `<tr><td>${j + 1} ${esc(inp.supports[j].kind)}</td><td>${f1(sm.elastic / 1e6)} / ${f1(sm.redist / 1e6)}</td><td>${sm.delta.toFixed(3)}</td><td>${L ? f1(L.Mdes / 1e6) : '–'} / ${R ? f1(R.Mdes / 1e6) : '–'}</td><td>${f0(Math.max(...z.sides.map(x => x.R.bd.As)))} / ${f0(z.sides[0].R.arr.As)}</td><td>H${z.top.phi} @ ${z.top.s}</td><td>${f1(A.Rmax[j] / 1e3)}</td></tr>`; });
+  s += `</table><table class="t rtab"><tr><th>Span</th><th>M<sub>el</sub> / M<sub>des</sub></th><th>δ</th><th>A<sub>s,req</sub> / prov</th><th>Bottom bars</th><th>Distribution ≥</th><th>l/d actual / allowed</th></tr>`;
+  D.spanZ.forEach(z => { const g = z.sag, sm = A.spanM[z.i]; s += `<tr><td>${z.i + 1}${z.s.cant ? ' (cantilever)' : ''}</td><td>${f1(sm.elastic / 1e6)} / ${f1(sm.redist / 1e6)}</td><td>${sm.delta.toFixed(3)}</td><td>${g ? `${f0(g.R.bd.As)} / ${f0(g.R.arr.As)}` : '–'}</td><td>H${z.bot.phi} @ ${z.bot.s}</td><td>${f0(z.dist)} mm²/m</td><td>${g && g.R.defl ? `${g.R.defl.actual.toFixed(1)} / ${g.R.defl.allowed.toFixed(1)}` : '–'}</td></tr>`; });
+  s += `</table><table class="t rtab"><tr><th>Shear</th><th>V face / at d (kN/m)</th><th>V<sub>Rd,c</sub></th><th>v<sub>Ed</sub> / v<sub>Rd,c</sub> (N/mm²)</th></tr>`;
+  D.spanZ.forEach(z => { for (const e of ['L', 'R']) { const h = z.sh[e]; if (!h) continue; s += `<tr><td>Span ${z.i + 1} ${e === 'L' ? 'left' : 'right'}</td><td>${f1(h.Vface / 1e3)} / ${f1(h.Vd / 1e3)}</td><td>${f1(h.vc.VRdc / 1e3)}</td><td>${(h.Vd / (1000 * h.d)).toFixed(3)} / ${(h.vc.VRdc / (1000 * h.d)).toFixed(3)}</td></tr>`; } });
+  const rows = []; D.curt.sup.forEach((cs, j) => { if (!cs) return; cs.forEach(c => rows.push(`<tr><td>Support ${j + 1} top into span ${c.i + 1}</td><td>${f0(c.all)}${c.endMin && c.all <= c.endMin + 1e-6 ? ' (0.2 L, 9.3.1.2(2))' : ''}</td><td>${f0(c.half)}</td><td>${f0(c.lbd)}</td></tr>`)); });
+  D.curt.span.forEach(c => { if (!c) return; const side = (v, nm) => v > 0 ? `${f0(v)} from the ${nm}` : `to the ${nm} support`; rows.push(`<tr><td>Span ${c.i + 1} bottom: 50% may stop</td><td colspan="2">${c.stopL == null ? 'full length' : `${side(c.stopL, 'left')}, ${side(c.stopR, 'right')}`}</td><td>${f0(c.lbd)}</td></tr>`); });
+  return s + `</table><table class="t rtab"><tr><th>Curtailment</th><th>All bars to (mm from the support)</th><th>50% to</th><th>l<sub>bd</sub></th></tr>${rows.join('')}</table><div class="help">a<sub>l</sub> = d (9.3.1.1(4)); at least 50% of the span steel continues to every support (9.3.1.2(1)); distribution steel 20% of the main steel and not below A<sub>s,min</sub> (9.3.1.1(2)).</div>`;
+}
+let last = null;
+function run() {
+  try { localStorage.setItem(STORE, JSON.stringify(collect())); } catch (e) { /* storage unavailable */ }
+  try { mode === 'one' ? runOne() : runTwo(); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+function verdict(D, sub) { return `<div class="verdict ${D.utilMax > 1 ? 'fail' : ''}"><div><div class="big">${D.utilMax > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(D.utilMax)}</div><div class="sub">${esc(sub)}</div></div></div>`; }
+function runOne() {
+  const inp = oneInput(), D = RCSlabDesign.oneWay(inp), W = worst(D.checks); last = { kind: 'one', D, inp };
+  let z = ''; D.supZ.forEach(q => { if (!q) return; q.sides.forEach(sd => { const u = sd.Mdes > 1e3 ? sd.R.utilMax : Math.max(...sd.R.checks.filter(k => k.id !== 'bend').map(k => k.util)); z += zone(`Support ${q.j + 1}${q.sides.length > 1 ? ` (span ${sd.i + 1} side)` : ''}: M<sub>Ed</sub> ${f1(sd.Mdes / 1e6)} kNm/m, ${esc(sd.rule)}`, u, sd.R.steps); }); });
+  D.spanZ.forEach(q => { if (q.sag) z += zone(`Span ${q.i + 1}: M<sub>Ed</sub> ${f1(q.sag.M / 1e6)} kNm/m (δ ${q.sag.delta.toFixed(3)}), ${q.sag.sys} span`, q.sag.R.utilMax, q.sag.R.steps); });
+  $('results').innerHTML = verdict(D, `${D.A.P.n} span${D.A.P.n > 1 ? 's' : ''}, C${inp.fck}/${D.c.fckCube}, per metre width, ${D.A.cases.length - 1} ULS arrangements`)
+    + `<div class="dlabel">Elevation, loads and bars</div>${svgElev(D, inp, false)}<div class="dlabel">Bending moment</div>${svgEnv(D, 'M', false)}<div class="dlabel">Shear force</div>${svgEnv(D, 'V', false)}`
+    + `<div class="dlabel">Governing checks</div><div class="checks">${W.slice(0, 12).map(bar).join('')}</div><div class="dlabel">Results</div>${oneTables(D, inp)}<div class="dlabel">Zones</div>${z}`
+    + `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  $('printBtn').onclick = () => { $('report').innerHTML = report(); window.print(); };
+}
+function runTwo() {
+  const inp = twoInput(), T = RCSlabDesign.twoWay(inp), W = worst(T.checks); last = { kind: 'two', D: T, inp };
+  let s = `<table class="t rtab"><tr><th>Location</th><th>β</th><th>M (kNm/m)</th><th>d</th><th>A<sub>s,req</sub> / prov</th><th>Bars</th><th>Util.</th></tr>`;
+  T.zones.forEach(z => { const beta = z.id === 'x' ? T.K.bxp : z.id === 'y' ? T.K.byp : z.id[0] === 'L' ? T.K.bxn : T.K.byn; s += `<tr><td>${esc(z.name)}</td><td>${beta.toFixed(4)}</td><td>${f1(z.M / 1e6)}</td><td>${f1(z.R.d)}</td><td>${f0(Math.max(z.R.bd.As, z.R.AsMin))} / ${f0(z.R.arr.As)}</td><td>H${inp.bars[z.id].phi} @ ${inp.bars[z.id].s}</td><td>${ufmt(z.R.utilMax)}</td></tr>`; });
+  s += `</table><table class="t rtab"><tr><th>Edge</th><th>β<sub>v</sub></th><th>v<sub>Ed</sub> (kN/m)</th><th>V<sub>Rd,c</sub></th><th>Reaction g<sub>k</sub> / q<sub>k</sub> (kN/m)</th></tr>`;
+  T.shear.forEach(h => { s += `<tr><td>${esc(h.name)} (${h.cont ? 'continuous' : 'discontinuous'})</td><td>${h.beta.toFixed(3)}</td><td>${f1(h.V / 1e3)}</td><td>${f1(h.vc.VRdc / 1e3)}</td><td>${f1(h.Vk.g / 1e3)} / ${f1(h.Vk.q / 1e3)}</td></tr>`; });
+  s += `</table>`;
+  const cr = T.corners.filter(c => c.As > 0); if (cr.length) s += `<div class="help">Corner torsion steel (BS 8110 3.5.3.5): ${cr.map(c => `${c.edges.join('/')} corner ${f0(c.As)} mm²/m each way, top and bottom, over ${f0(c.size)} × ${f0(c.size)} mm`).join('; ')}. Reactions act on the middle three-quarters of each supporting beam.</div>`;
+  const Rx = T.zones[0].R, dl = Rx.defl;
+  $('results').innerHTML = verdict(T, `${T.K.name}, l_y/l_x = ${T.r.toFixed(3)}, n = ${T.nU.toFixed(2)} kN/m²${dl ? `, l/d ${dl.actual.toFixed(1)} / ${dl.allowed.toFixed(1)}` : ''}`)
+    + `<div class="dlabel">Plan: moments (kNm/m) and bars</div>${svgPlan(T, inp, false)}<div class="dlabel">Governing checks</div><div class="checks">${W.slice(0, 12).map(bar).join('')}</div><div class="dlabel">Results</div>${s}`
+    + `<div class="dlabel">Calculation</div>${stepsHTML(T.steps)}${T.zones.map(z => zone(`${esc(z.name)}: M<sub>Ed</sub> ${f1(z.M / 1e6)} kNm/m`, z.R.utilMax, z.R.steps)).join('')}<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  $('printBtn').onclick = () => { $('report').innerHTML = report(); window.print(); };
+}
+function suggest() {
+  try {
+    if (mode === 'one') { barState = RCSlabDesign.suggestOneWay(oneInput()); renderBars(); }
+    else { tbars = { ...tbars, ...RCSlabDesign.suggestTwoWay(twoInput()) }; renderT(); }
+    run();
+  } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+// ---------- A4 sheet ----------
+const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
+const okng = u => u <= 1 ? `<span class="ok">${ufmt(u)} OK</span>` : `<span class="ng">${ufmt(u)} FAIL</span>`;
+function report() {
+  const s = collect(), today = new Date().toLocaleDateString('en-GB'), { D, inp, kind } = last;
+  const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.pRef) || '&nbsp;'}</div><div class="ttl">${kind === 'one' ? `RC one-way slab: ${D.A.P.n} span${D.A.P.n > 1 ? 's' : ''}` : `RC two-way slab panel ${f1(inp.lx / 1000)} × ${f1(inp.ly / 1000)} m`}, C${inp.fck}/${D.c.fckCube}</div></div>`;
+  let b = `<div class="rs"><h2>Basis</h2>${rl(`BS EN 1992-1-1:2004+A1:2014 with the UK National Annex, per metre width; EN 1990 ${inp.rule === '6.10' ? '6.10' : '6.10a/6.10b'}; ψ₂ = ${inp.psi2}; covers ${inp.cover.top} top / ${inp.cover.btm} bottom mm; w_max ${inp.wk.top} / ${inp.wk.btm} mm`, '', '')}`
+    + (kind === 'two' ? rl('Moment coefficients BS 8110-1 Table 3.14 (restrained panel, torsion steel at corners), shear coefficients Table 3.15, linear interpolation in l_y/l_x', '', '') : rl(`Continuous strip, knife-edge supports with ${inp.adjacent ? 'all, alternate and adjacent' : 'all and alternate'} span patterns, same γ_G on every span; redistribution ${inp.redist === 'none' ? 'reductions only' : 'δ at supports, others ±(1 − δ)'}`, '5.1.3, 5.5', '')) + '</div>';
+  if (kind === 'one') {
+    b += `<div class="rs"><h2>Elevation and envelopes</h2>${svgElev(D, inp, true)}${svgEnv(D, 'M', true)}${svgEnv(D, 'V', true)}</div><div class="rs"><h2>Results</h2>${oneTables(D, inp)}</div>`;
+    D.supZ.forEach(z => { if (!z) return; z.sides.forEach(sd => { b += `<div class="rs"><h2>Support ${z.j + 1}${z.sides.length > 1 ? ` (span ${sd.i + 1} side)` : ''}: M_Ed = ${f1(sd.Mdes / 1e6)} kNm/m, ${esc(sd.rule)}</h2>` + sd.R.steps.map(x => rl(esc(x.text), esc(x.ref), '')).join('') + sd.R.checks.filter(k => k.id !== 'bend' || sd.Mdes > 1e3).map(c => rl(esc(c.name) + ` <span style="color:#666">${esc(c.note || '')}</span>`, esc(c.ref), okng(c.util))).join('') + '</div>'; }); });
+    D.spanZ.forEach(z => { if (z.sag) b += `<div class="rs"><h2>Span ${z.i + 1}: M_Ed = ${f1(z.sag.M / 1e6)} kNm/m</h2>` + z.sag.R.steps.map(x => rl(esc(x.text), esc(x.ref), '')).join('') + z.sag.R.checks.map(c => rl(esc(c.name) + ` <span style="color:#666">${esc(c.note || '')}</span>`, esc(c.ref), okng(c.util))).join('') + '</div>';
+      for (const e of ['L', 'R']) { const h = z.sh[e]; if (h) b += `<div class="rs"><h2>Span ${z.i + 1} shear, ${e === 'L' ? 'left' : 'right'}</h2>` + h.checks.map(c => rl(esc(c.name) + ` <span style="color:#666">${esc(c.note || '')}</span>`, esc(c.ref), okng(c.util))).join('') + '</div>'; } });
+  } else {
+    b += `<div class="rs"><h2>Plan</h2>${svgPlan(D, inp, true)}</div><div class="rs"><h2>Coefficients and loads</h2>${D.steps.map(x => rl(esc(x.text), esc(x.ref), '')).join('')}</div>`;
+    D.zones.forEach(z => { b += `<div class="rs"><h2>${esc(z.name)}: M_Ed = ${f1(z.M / 1e6)} kNm/m</h2>` + z.R.steps.map(x => rl(esc(x.text), esc(x.ref), '')).join('') + z.R.checks.map(c => rl(esc(c.name) + ` <span style="color:#666">${esc(c.note || '')}</span>`, esc(c.ref), okng(c.util))).join('') + '</div>'; });
+    b += `<div class="rs"><h2>Shear at the edges</h2>` + D.shear.map(h => rl(`${esc(h.name)}: β_v ${h.beta.toFixed(3)}, v_Ed = ${f1(h.V / 1e3)} kN/m, V_Rd,c = ${f1(h.vc.VRdc / 1e3)} kN/m`, '6.2.2', okng(h.checks[0].util))).join('') + '</div>';
+  }
+  b += `<div class="rs"><h2>Summary</h2>` + worst(D.checks).slice(0, 20).map(c => rl(esc(c.where + ': ' + c.name) + ` <span style="color:#666">${esc(c.note || '')}</span>`, esc(c.ref), okng(c.util))).join('') + '</div>';
+  b += `<p class="rp" style="color:#555">Generated by EngineeringTools — RC Slab Design. All calculations are the responsibility of the engineer.</p>`;
+  return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
+}
+$('calc').onclick = run; $('suggest').onclick = suggest; $('tsuggest').onclick = suggest;
+(function init() {
+  let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
+  if (s && s.v === 1 && Array.isArray(s.spans) && s.spans.length) restore(s); else defaults();
+})();
+</script>
+</body>
+</html>
