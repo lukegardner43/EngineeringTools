@@ -1,0 +1,41 @@
+// Drives "RC Section Design Toolkit.html" in jsdom (NODE_PATH=<dir with node_modules> node ui_smoke.js).
+const { JSDOM } = require('jsdom');
+const fs = require('fs'), path = require('path');
+const html = fs.readFileSync(path.join(__dirname, '..', '..', 'RC Section Design Toolkit.html'), 'utf8');
+let n = 0, fails = 0;
+const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`); if (!c) fails++; };
+function page(store) {
+  const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.org/', beforeParse(w) { w.print = () => { w.printed = true; }; if (store) w.localStorage.setItem('et-rc-section-v1', store); } });
+  const w = dom.window; w.errs = []; w.addEventListener('error', e => w.errs.push(e.message)); return w;
+}
+const w = page(), d = w.document, $ = id => d.getElementById(id), calc = () => $('calc').click(), res = () => $('results').textContent;
+const change = id => $(id).dispatchEvent(new w.Event('change')), mode = m => d.querySelector(`#modes button[data-m="${m}"]`).click();
+truth('page loads without script errors', w.errs.length === 0);
+truth('usage categories A–H, office (ψ₂ 0.3) by default', $('usage').options.length === 8 && $('usage').value === 'B');
+calc();
+truth('section: verdict, bending, deflection and shear checks', /PASS|FAIL/.test(res()) && /Bending/i.test(res()) && /deflection|span/i.test(res()) && /shear/i.test(res()) && !$('results').querySelector('.err'));
+truth('section sketch drawn with bars and neutral axis', !!$('results').querySelector('svg.sec') && $('results').querySelectorAll('svg.sec circle').length >= 6 && /x \d/.test($('results').querySelector('svg.sec').textContent));
+$('suggest').click();
+truth('suggest bars: a beam arrangement with Ø ≤ 32 and no error', +$('phi').value <= 32 && +$('n').value >= 2 && !$('results').querySelector('.err') && /PASS/.test(res()));
+$('shape').value = 'flanged'; change('shape'); $('b').value = '1200'; calc();
+truth('flanged: b_w and h_f shown, flanged title', !d.querySelector('#pane-sec .fl').classList.contains('hidden') && /Flanged beam/.test(res()) && !$('results').querySelector('.err'));
+$('b').value = '200'; calc(); truth('flanged: b_eff below b_w rejected', /b_eff must be at least b_w/.test(res()));
+$('b').value = '1200'; $('kind').value = 'slab'; change('kind'); calc();
+truth('slab: per-metre labels, beam inputs hidden, H12 @ 200 result', /kNm\/m/.test($('mLab').textContent) && d.querySelector('#pane-sec .bm').classList.contains('hidden') && /Slab h = 500/.test(res()) && !$('results').querySelector('.err'));
+$('h').value = '250'; $('MEd').value = '40'; $('gk').value = '7'; $('qk').value = '2.5'; $('VEd').value = '60'; $('suggest').click();
+truth('slab suggestion: spacing and bar size set, passes', +$('ss').value >= 75 && +$('ss').value <= 300 && /PASS/.test(res()));
+$('delta').value = '0.5'; calc(); truth('δ below 0.7 rejected', /δ must be between 0.7 and 1.0/.test(res()));
+$('delta').value = '1';
+mode('tor'); truth('torsion pane shown, section pane hidden', !$('pane-tor').classList.contains('hidden') && $('pane-sec').classList.contains('hidden'));
+calc(); truth('torsion: struts, links, longitudinal steel', /Torsion \+ shear: concrete struts/.test(res()) && /Links \(one leg, shear \+ torsion\)/.test(res()) && /6\.3\.2/.test(res()));
+mode('crk'); calc(); truth('crack width: w_k against 0.3 mm', /Crack width/.test(res()) && /w_k = s_r,max/.test(res()));
+$('ckind').value = 'tension'; change('ckind'); $('cel').value = 'slab'; change('cel'); $('cM').value = '300'; calc();
+truth('axial tension per metre: N_qp label, k₂ = 1.0', /N/.test($('cMLab').textContent) && /k₂ = 1/.test(res()));
+mode('anc'); calc(); truth('anchorage: l_bd and l₀ for H20', /l\s*bd\s*\d+/.test(res().replace(/ /g, ' ')) && /8\.7\.3/.test(res()));
+$('printBtn').click(); truth('print: A4 sheet with the calculation', w.printed && /Anchorage and laps/.test($('report').textContent) && /UK National Annex/.test($('report').textContent));
+mode('sec'); $('kind').value = 'beam'; change('kind'); $('shape').value = 'rect'; change('shape'); $('h').value = '600'; $('MEd').value = '300'; $('gk').value = '25'; $('qk').value = '20'; $('VEd').value = '250'; calc();
+$('printBtn').click(); truth('section print: sketch and summary on the sheet', !!$('report').querySelector('svg.sec') && /Summary/.test($('report').textContent));
+const w2 = page(w.localStorage.getItem('et-rc-section-v1')), $2 = id => w2.document.getElementById(id);
+truth('inputs restored', $2('h').value === '600' && $2('kind').value === 'beam' && $2('ckind').value === 'tension' && $2('cel').value === 'slab');
+truth('no script errors', w.errs.length === 0 && w2.errs.length === 0);
+console.log(`\n${n - fails}/${n} passed`); if (fails) process.exit(1);
