@@ -27,10 +27,10 @@ Status key: **Done** means it's in this repo with tests. **Partial** means an ex
 | Tedds entry | Module | Status | Basis |
 |---|---|---|---|
 | Steel Member Design | Steel Member Design | Done | EN 1993-1-1 6.2, 6.3, Annex A/B + UK NA; EN 1993-1-5 4.4, 5, 6, 7 |
-| Steel Member Analysis & Design | Steel Member Design | Done | + EN 1990 combinations, vertical and horizontal loads |
-| Steel Beam Analysis & Design | Steel Member Design | Done | continuous spans, cantilevers, pattern loading, web bearing |
-| Steel Column Design | Steel Member Design (member mode) | Done | 6.3.1, 6.3.3 Annex A or B |
-| Steel section classification | Steel Member Design | Done | Table 5.2 sheets 1-3 |
+| Steel Member Analysis & Design | Steel Beam Analysis & Design | Done | + EN 1990 combinations, vertical and horizontal loads |
+| Steel Beam Analysis & Design | Steel Beam Analysis & Design | Done | separate page (split from Steel Member Design, October 2026): continuous spans, cantilevers, pattern loading, web bearing |
+| Steel Column Design | Steel Member Design | Done | 6.3.1, 6.3.3 Annex A or B |
+| Steel section classification | Steel Member Design / Steel Beam Analysis & Design | Done | Table 5.2 sheets 1-3 |
 | Beam Analysis | Beam Analysis | Done | stiffness method; springs, hinges, EI per member; EN 1990 combinations |
 | Section Properties Calculator | Section Properties | Done | exact polygon integrals; plastic moduli; principal axes; It, Iw, shear centre |
 | Steel simple connection design | ConnectionCheck | Done | SCI P358 check lists incl. detailing, supporting element and tying (fin plates, end plates) |
@@ -54,10 +54,10 @@ Status key: **Done** means it's in this repo with tests. **Partial** means an ex
 | Steel and composite beams with web openings (SCI P355) | Beam Web Openings | Done | circular / rectangular / elongated openings, Vierendeel, web-posts (AD 418 / AD 419), construction stage, deflection |
 | Floor vibration (SCI P354) | Floor Vibration | Done | simplified method: mode frequencies, modal mass, steady-state / transient response factor, VDV |
 
-Steel Member Design covers:
+Steel Member Design (design actions) and Steel Beam Analysis & Design (spans, loads and combinations) are separate pages since October 2026, built from one template with the same engine. Together they cover:
 
 - **Sections:** UKB, UKC, PFC (British Steel datasheets); SHS/RHS/CHS, hot-finished (BS EN 10210-2) and cold-formed (BS EN 10219-2); custom welded or rolled I.
-- **Checks:** Class 4 effective sections, web bearing and buckling (EN 1993-1-5 section 6), horizontal (minor-axis) loads in beam mode, and Annex A or Annex B interaction.
+- **Checks:** Class 4 effective sections, web bearing and buckling (EN 1993-1-5 section 6), horizontal (minor-axis) loads in Steel Beam Analysis & Design, and Annex A or Annex B interaction.
 
 Limits:
 - Angles and tees are not covered.
@@ -171,7 +171,9 @@ Steel Masonry Support and Windpost limits:
 | 2D Frame Analysis | 2D Frame Analysis | Done |
 | Rolling load analysis | Analysis | Planned |
 
-## Steel Member Design verification (`node tests/steel-member/run_all.js`)
+## Steel Member Design and Steel Beam Analysis & Design verification (`node tests/steel-member/run_all.js`)
+
+The two pages are built from one template and carry the same engine; `tests/steel-member/ui_smoke.js` (jsdom, 18 checks) confirms the engines are identical, each page shows only its own inputs, calculates, prints and keeps its own saved inputs.
 
 - **Beam analysis:** 30 closed-form checks (simply supported, fixed, propped, continuous, cantilever, couples, triangular load, three-span coefficients).
 - **Mcr:** finite-element solution against the closed-form uniform-moment result, against an independent Galerkin solution (`reference/galerkin.py`), against the exact tension-flange-restraint solution, and against the classical cantilever result.
@@ -195,7 +197,7 @@ Steel Masonry Support and Windpost limits:
 - **Steel Masonry Support** (`node tests/masonry/test_masonry.js`): 65 checks against `reference/ref_masonry.py`: angle properties (hot-rolled and cold-formed) by a 2D occupancy grid and the BS EN 10056-1 datasheet; the continuous-angle deflection against a 2D frame FE; the stainless secant modulus by Ramberg-Osgood; spanning angle, plate, weld and fixing forces by hand.
 - **Windpost Design** (`node tests/windpost/test_windpost.js`): 24 checks: wind load, moments, shear, deflection, reactions and tie forces by hand; M<sub>cr</sub> against the C1 closed form; cantilever, RHS orientation and CHS behaviour.
 - **ConnectionCheck joints engine** (`node tests/connections/test_joints.js`): 156 checks (incl. three column splices: bearing, bearing with a division plate, non-bearing with packs) (incl. the published extended end plate example) against `reference/ref_joints.py`: T-stubs and Table 6.4 effective lengths re-implemented; base plate effective area by rasterising the Chebyshev offset of the column; M<sub>j,Rd</sub> (Table 6.7) against proportional loading of the two-component model; fin / end plate tying, anchors (cone, pull-out, pry-out, edge) and the RHS splice by hand. `tests/connections/ui_smoke.js` (jsdom) runs every joint type through the page.
-- **Steel Frame Design** (`node tests/frame/test_frame.js`): 28 checks against `reference/ref_frame.py`: portal sway, moments and reactions by an independent numpy stiffness solver; α<sub>cr</sub> of fixed- and pinned-base portals against the exact stability-function characteristic equation (and a scipy FE eigen solution); second-order cantilever sway and moment against the exact solution; combinations, EHF; the frame member check against the Steel Member Design beam mode.
+- **Steel Frame Design** (`node tests/frame/test_frame.js`): 28 checks against `reference/ref_frame.py`: portal sway, moments and reactions by an independent numpy stiffness solver; α<sub>cr</sub> of fixed- and pinned-base portals against the exact stability-function characteristic equation (and a scipy FE eigen solution); second-order cantilever sway and moment against the exact solution; combinations, EHF; the frame member check against the Steel Beam Analysis & Design engine.
 - **2D Frame Analysis** (`node tests/frame2d/test_frame2d.js`): 9804 checks against `reference/ref_frame2d.py` (an independent numpy stiffness solver with every member cut into 48 elements and releases by static condensation; the Pratt truss by the method of joints; three-span support moments by the three-moment equation): displacements, reactions and N / V / M / deflection along every member for every case and combination; Gerber hinge and spring support; second-order cantilever sway against the exact tan solution; α<sub>cr</sub> against Euler (cantilever, pinned strut, sway column), the clamped-guided column 4π²EI/L² (the clamped-member count), the propped cantilever (tan kL = kL), a portal with a rigid beam, and scipy eigen solutions of finely subdivided portal, multi-storey (pinned base, released beam end, self weight) and braced (truss bars, simple beams) frames; the stability functions against their series and the consistent geometric stiffness; EN 1990 combinations; mechanism and error messages. `tests/frame2d/ui_smoke.js` (jsdom): 33 page checks (drawing, wizards, releases, loads, views, undo, storage, report).
 - **Steel Member Fire Design** (`node tests/fire/test_fire.js`): 39 checks: section factors; unprotected heating against scipy RK45 integration and protected heating against an independent fine-step loop (`reference/ref_fire.py`); critical temperature (4.22) against Table 4.1; reduction factors, restrained-beam and column resistances by hand; limiting temperature and protection sizing.
 - **Crane Gantry Girder** (`node tests/gantry/test_gantry.js`): 25 checks: moving loads against closed forms, cap-channel section by parallel axes, φ₂, l<sub>eff</sub>, chord buckling, fatigue ranges.
