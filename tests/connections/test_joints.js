@@ -1,5 +1,5 @@
 // ConnectionCheck joints engine: T-stubs, effective lengths, fin plate and end plate tying, base plate (effective area,
-// Table 6.7 bending, anchors) and the RHS tension splice against reference/ref_joints.py (independent methods).
+// Table 6.7 bending, anchors), the RHS tension splice and column cover plate splices against reference/ref_joints.py (independent methods).
 const { Joints: J } = require('./load.js');
 const REF = require('./ref_joints.json');
 let n = 0, fails = 0;
@@ -90,6 +90,33 @@ REF.s2c.forEach((r, i) => {
   truth('1.9 F_t,Rd rule applied when a row exceeds it (thick plate, beta 0, stiffened)', St.rows.every(r => r.F <= Math.max(...St.rows.map(x => x.F)) + 1e-9) && (St.rows[0].F <= 1.9 * St.Ftb || St.rows.slice(1).every(r => r.F <= St.rows[0].F * r.h / St.rows[0].h + 1e-6)));
   throws('row inside the flange rejected', () => J.momentEndPlate({ ...base, rows: [40, 75, 250] }), /within the beam flange/);
   throws('gauge wider than the plate rejected', () => J.momentEndPlate({ ...base, w: 150 }), /gauge/);
+}
+
+// column splices (bearing and non-bearing cover plate splices) against the reference
+{ const dem = (list, id) => { const c = list.find(x => x.id === id); if (!c) throw new Error('missing check ' + id); return c.dem * (c.unit === 'kN' ? 1e3 : 1); };
+  REF.csplice.forEach((cs, i) => { const a = cs.args, r = cs.ref, t = `column splice ${i + 1} (${a.type})`;
+    const R = J.columnSplice({ ...a, upGrade: 'S355', loGrade: 'S355', plGrade: 'S275', bolt: J.bolt('M20', '8.8') }), C = R.checks;
+    near(`${t}: W_pl,y of the upper column (plates + spandrels)`, R.Pu.Wy, r.Wy_up, 1e-9); near(`${t}: W_pl,z of the upper column`, R.Pu.Wz, r.Wz_up, 1e-9);
+    near(`${t}: web bolt resistance (shear, bearing on web and plates)`, R.webBolt, r.web_bolt, 1e-9);
+    for (const k of ['My', 'Mz', 'Vy', 'Vz']) near(`${t}: design ${k}`, R.actions[k], r[k], 1e-9);
+    if (a.type === 'bearing') {
+      near(`${t}: net flange tension M/(h − t_f) − N_G/2`, dem(C, 'B2'), r.Ft, 1e-9); near(`${t}: flange group + plate tension resistance`, cap(C, 'B2'), r.B2, 1e-9);
+      near(`${t}: 25 % compression path resistance`, cap(C, 'B3'), r.B3, 1e-9); near(`${t}: most loaded web bolt (horizontal shear)`, dem(C, 'V1'), r.V1, 1e-9);
+      truth(`${t}: division plate ${r.needDiv ? 'required (offset ' + r.off.toFixed(1) + ' mm)' : 'not required'}`, r.needDiv ? C.find(c => c.id === 'B1').unit === 'mm' && Math.abs(dem(C, 'B1') - r.off) < 1e-9 : C.find(c => c.id === 'B1').unit === '-');
+    } else {
+      near(`${t}: flange bolt group utilisation (axial + M_z + V_z, elastic)`, dem(C, 'N1'), r.N1, 1e-9); near(`${t}: flange plate buckling resistance`, cap(C, 'N2'), r.N2, 1e-9);
+      near(`${t}: flange compression force N A_f/A + M_y/(h − t_f)`, dem(C, 'N2'), r.Ffc, 1e-9); near(`${t}: most loaded web bolt`, dem(C, 'N4'), r.N4, 1e-9);
+    }
+    near(`${t}: block tearing of the flange cover plate`, cap(C, 'BT'), r.BT, 1e-9);
+    if (r.T1 !== undefined) near(`${t}: tying resistance (γ_Mu = 1.1)`, cap(C, 'T1'), r.T1, 1e-9);
+  });
+  const U = (h, b, tf, tw, r, A) => ({ h, b, tf, tw, r, A }), up = U(203.2, 203.6, 11, 7.2, 12.7, 5920), lo = U(254.1, 254.6, 14.2, 8.6, 20, 9520);
+  const base = { type: 'nonbearing', up, lo, upGrade: 'S355', loGrade: 'S355', plGrade: 'S275', bolt: J.bolt('M20'), fl: { B: 210, t: 15, nr: 4, p: 60, g: 120, e1c: 40, e1p: 40 }, web: { h: 120, t: 10, nr: 3, nc: 2, p1: 60, p2: 60, e1c: 40, e1p: 40 }, gap: 10, N: 400e3, My: 0, Vy: 0 };
+  const R = J.columnSplice(base);
+  near('packs 25.45 mm > d/3: β_p = 9d/(8d + 3t_p)', R.FvF, 0.6 * 800 * 245 / 1.25 * 9 * 20 / (160 + 3 * 25.45), 1e-9);
+  truth('non-bearing: minimum moments 25 % M_pl about both axes applied when actions are smaller', R.actions.My > 0 && R.actions.Mz > 0);
+  near('long joint (3.8): β_Lf = 1 − (L_j − 15d)/200d', J.columnSplice({ ...base, up: lo, fl: { ...base.fl, nr: 7, p: 70, B: 260, g: 140 } }).FvF, 0.6 * 800 * 245 / 1.25 * (1 - (420 - 300) / 4000), 1e-9);
+  throws('gauge wider than the flange rejected', () => J.columnSplice({ ...base, fl: { ...base.fl, g: 220 } }), /gauge/);
 }
 console.log(`\n${n - fails}/${n} joint checks passed`);
 if (fails) process.exit(1);

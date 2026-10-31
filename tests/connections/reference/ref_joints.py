@@ -145,3 +145,96 @@ out['s2c'] = [s2c(120e3, 80, 75e3, 2, 200, 150, 300, 20, 245, 800, 640, 150, 35,
               s2c(80e3, 60, 0, 3, 100, 120, 300, 16, 157, 400, 240, 120, 30, 30, False, 150, 200)]
 (HERE.parent / 'ref_joints.json').write_text(json.dumps(out, indent=1))
 print(out['s2c'])
+
+# ---- column splices (EN 1993-1-8 3.6-3.10, 6.2.7.1; tying with gamma_Mu): own implementation of the clause chain ----
+def splice_ref(c):
+    up, lo = c['up'], c['lo']; d, d0, As, fub = 20, 22, 245, 800
+    fy = lambda g, t: {'S275': [(16, 275), (40, 265)], 'S355': [(16, 355), (40, 345)]}[g][0 if t <= 16 else 1][1]
+    fu = {'S275': 410, 'S355': 470}
+    fyu, fyl, fyp = fy('S355', max(up['tf'], up['tw'])), fy('S355', max(lo['tf'], lo['tw'])), fy('S275', c['fl']['t'])
+    Fl, Wb = c['fl'], c['web']; bearing = c['type'] == 'bearing'; gap = 0 if bearing else c['gap']
+    def betap(t): return min(1, 9 * d / (8 * d + 3 * t)) if t > d / 3 else 1
+    tpf, tpw = abs(lo['h'] - up['h']) / 2, abs(lo['tw'] - up['tw']) / 2
+    Fv = 0.6 * fub * As / 1.25
+    def fb(t, f, e1, p1, inner, e2, p2, gm=1.25):
+        ad = (p1 / (3 * d0) - 0.25 if p1 > 0 else 1) if (inner or e1 is None) else e1 / (3 * d0)
+        ab = max(0, min(ad, fub / f, 1)); k1 = max(0, min(2.8 * e2 / d0 - 1.7, 1.4 * p2 / d0 - 1.7 if p2 > 0 else 2.5, 2.5))
+        return k1 * ab * f * d * t / gm
+    def group(fv, fbs): return sum(fbs) if all(fv >= f for f in fbs) else len(fbs) * min([fv] + fbs)
+    e2p = (Fl['B'] - Fl['g']) / 2
+    def flgroup(col, direction, gm=1.25, fv=None):
+        fv = (Fv * betap(tpf)) if fv is None else fv; out = []
+        for i in range(Fl['nr']):
+            first, last = i == 0, i == Fl['nr'] - 1
+            for _ in range(2):
+                if direction == 't':
+                    a = fb(col['tf'], 470, Fl['e1c'] if first else None, Fl['p'], not first, (col['b'] - Fl['g']) / 2, Fl['g'], gm)
+                    b = fb(Fl['t'], 410, Fl['e1p'] if last else None, Fl['p'], not last, e2p, Fl['g'], gm)
+                else:
+                    a = fb(col['tf'], 470, None, Fl['p'], not last, (col['b'] - Fl['g']) / 2, Fl['g'], gm)
+                    b = fb(Fl['t'], 410, None, Fl['p'], not first, e2p, Fl['g'], gm)
+                out.append(min(a, b))
+        return group(fv, out)
+    fl_t = min(flgroup(up, 't'), flgroup(lo, 't')); fl_c = min(flgroup(up, 'c'), flgroup(lo, 'c'))
+    e2w = (Wb['h'] - (Wb['nc'] - 1) * Wb['p2']) / 2
+    def webfb(col, gm=1.25):
+        along_col = fb(col['tw'], 470, Wb['e1c'], Wb['p1'], False, e2w, Wb['p2'], gm)
+        along_pl = fb(2 * Wb['t'], 410, Wb['e1p'], Wb['p1'], False, e2w, Wb['p2'], gm)
+        across = fb(min(col['tw'] * 470, 2 * Wb['t'] * 410) / 410, 410, e2w, Wb['p2'], False, Wb['e1c'], Wb['p1'], gm)
+        return min(along_col, along_pl, across)
+    FvW = 2 * Fv * betap(tpw); web_bolt = min(FvW, webfb(up), webfb(lo))
+    pts_w = [((k - (Wb['nc'] - 1) / 2) * Wb['p2'], (i - (Wb['nr'] - 1) / 2) * Wb['p1']) for i in range(Wb['nr']) for k in range(Wb['nc'])]
+    pts_f = [(x, (i - (Fl['nr'] - 1) / 2) * Fl['p']) for i in range(Fl['nr']) for x in (-Fl['g'] / 2, Fl['g'] / 2)]
+    def egroup(pts, P, Q, M):
+        I = sum(x * x + y * y for x, y in pts); n = len(pts)
+        return max(math.hypot(Q / n - (M * y / I if I else 0), P / n + (M * x / I if I else 0)) for x, y in pts)
+    def props(col):
+        r = col['r']; As_ = (4 - math.pi) * r * r; e = r * (10 - 3 * math.pi) / (12 - 3 * math.pi)
+        # plastic moduli by direct strip integration of plates + spandrels (independent of the closed form)
+        Wy = 2 * col['b'] * col['tf'] * (col['h'] / 2 - col['tf'] / 2) + 2 * col['tw'] * (col['h'] / 2 - col['tf']) ** 2 / 2 + As_ * (col['h'] / 2 - col['tf'] - e)
+        Wz = 2 * 2 * col['tf'] * (col['b'] / 2) ** 2 / 2 + 2 * (col['h'] - 2 * col['tf']) * (col['tw'] / 2) ** 2 / 2 + As_ * (col['tw'] / 2 + e)
+        return dict(A=col['A'], Af=col['b'] * col['tf'], Wy=Wy, Wz=Wz)
+    Pu, Pl = props(up), props(lo); weak, fw = (Pu, fyu) if Pu['Wy'] * fyu <= Pl['Wy'] * fyl else (Pl, fyl)
+    My, Mz, Vy, Vz = c['My'], c.get('Mz', 0), c['Vy'], c.get('Vz', 0)
+    if not bearing:
+        My = max(My, 0.25 * weak['Wy'] * fw); Mz = max(Mz, 0.25 * weak['Wz'] * fw); Vy = max(Vy, 0.025 * weak['A'] * fw); Vz = max(Vz, 0.025 * weak['A'] * fw)
+    lever = up['h'] - up['tf']; eV = gap / 2 + Wb['e1c'] + (Wb['nr'] - 1) * Wb['p1'] / 2; eF = gap / 2 + Fl['e1c'] + (Fl['nr'] - 1) * Fl['p'] / 2
+    r = dict(Wy_up=Pu['Wy'], Wz_up=Pu['Wz'], fl_t=fl_t, fl_c=fl_c, web_bolt=web_bolt, My=My, Mz=Mz, Vy=Vy, Vz=Vz)
+    r['V1'] = egroup(pts_w, 0, Vy, Vy * eV)
+    plate_t = min(Fl['B'] * Fl['t'] * fyp, 0.9 * (Fl['B'] - 2 * d0) * Fl['t'] * 410 / 1.1)
+    if bearing:
+        off = abs((lo['h'] - lo['tf']) - (up['h'] - up['tf'])) / 2; r['off'] = off; r['needDiv'] = off > lo['tf'] / 2
+        r['Ft'] = max(0, My / lever - c['NG'] / 2); r['B2'] = min(fl_t, plate_t); r['B3'] = 2 * fl_c + web_bolt * len(pts_w)
+    else:
+        sh = weak['Af'] / weak['A']; Ffc = c['N'] * sh + My / lever; Fft = max(0, My / lever - c['N'] * sh); Nw = c['N'] * (weak['A'] - 2 * weak['Af']) / weak['A']
+        Mg = Mz / 2 + Vz / 2 * eF; nb = len(pts_f)
+        r['N1'] = max(egroup(pts_f, Ffc, Vz / 2, Mg) / min(Fv * betap(tpf), fl_c / nb), egroup(pts_f, Fft, Vz / 2, Mg) / min(Fv * betap(tpf), fl_t / nb) if Fft > 0 else 0)
+        r['N4'] = egroup(pts_w, Nw, Vy, Vy * eV); r['Ffc'] = Ffc
+        Lb = 2 * Fl['e1c'] + gap; lam = 0.6 * Lb * math.sqrt(12) / Fl['t'] / (math.pi * math.sqrt(210000 / fyp)); phi = 0.5 * (1 + 0.49 * (lam - 0.2) + lam * lam)
+        r['N2'] = (1 if lam <= 0.2 else min(1, 1 / (phi + math.sqrt(phi * phi - lam * lam)))) * Fl['B'] * Fl['t'] * fyp
+    L = Fl['e1p'] + (Fl['nr'] - 1) * Fl['p']; Anv = (L - (Fl['nr'] - 0.5) * d0) * Fl['t']
+    r['BT'] = min(410 * (Fl['g'] - d0) * Fl['t'] / 1.25, 410 * 2 * (e2p - d0 / 2) * Fl['t'] / 1.25) + fyp * 2 * Anv / math.sqrt(3)
+    if c.get('T', 0) > 0:
+        FvU = 0.6 * fub * As / 1.1
+        def flU(col):
+            out = []
+            for i in range(Fl['nr']):
+                first, last = i == 0, i == Fl['nr'] - 1
+                for _ in range(2):
+                    out.append(min(fb(col['tf'], 470, Fl['e1c'] if first else None, Fl['p'], not first, (col['b'] - Fl['g']) / 2, Fl['g'], 1.1),
+                                   fb(Fl['t'], 410, Fl['e1p'] if last else None, Fl['p'], not last, e2p, Fl['g'], 1.1)))
+            return group(FvU * betap(tpf), out)
+        plU = min(Fl['B'] * Fl['t'] * 410 / 1.1, (Fl['B'] - 2 * d0) * Fl['t'] * 410 / 1.1)
+        r['T1'] = 2 * min(flU(up), flU(lo), plU) + len(pts_w) * min(2 * FvU * betap(tpw), min(webfb(up, 1.1), webfb(lo, 1.1)))
+    return r
+UC = lambda h, b, tf, tw, r, A: dict(h=h, b=b, tf=tf, tw=tw, r=r, A=A)
+U89, U107, U46, U73 = UC(260.3, 256.3, 17.3, 10.3, 20, 11500), UC(266.7, 258.8, 20.5, 12.8, 20, 13800), UC(203.2, 203.6, 11, 7.2, 12.7, 5920), UC(254.1, 254.6, 14.2, 8.6, 20, 9520)
+fl = dict(B=260, t=12, nr=2, p=70, g=140, e1c=40, e1p=40); web = dict(h=150, t=8, nr=2, nc=1, p1=70, p2=0, e1c=40, e1p=40)
+out['csplice'] = [
+  dict(args=dict(type='bearing', up=U89, lo=U107, fl=fl, web=web, N=2500e3, NG=900e3, My=60e6, Vy=30e3, T=300e3, tdiv=0)),
+  dict(args=dict(type='bearing', up=U46, lo=U73, fl=dict(fl, B=210, g=120, nr=3), web=dict(web, h=120), N=1200e3, NG=300e3, My=95e6, Vy=40e3, T=0, tdiv=25)),
+  dict(args=dict(type='nonbearing', up=U46, lo=U73, fl=dict(B=210, t=15, nr=4, p=60, g=120, e1c=40, e1p=40), web=dict(h=120, t=10, nr=3, nc=2, p1=60, p2=60, e1c=40, e1p=40), gap=10, N=400e3, NG=0, My=20e6, Mz=5e6, Vy=20e3, Vz=10e3, T=250e3)),
+]
+for cs in out['csplice']: cs['ref'] = splice_ref(cs['args'])
+(HERE.parent / 'ref_joints.json').write_text(json.dumps(out, indent=1))
+print([ {k: (round(v, 1) if isinstance(v, float) else v) for k, v in cs['ref'].items()} for cs in out['csplice']])

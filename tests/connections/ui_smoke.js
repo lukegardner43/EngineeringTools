@@ -23,6 +23,9 @@ const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`);
     if (id === 'fin') truth('fin: P358 detailing checks reported', /Ductility/.test(txt) && /Torsional Restraint/.test(txt));
     if (id === 'base') truth('base: EN 1993-1-8 / EN 1992-4 checks reported', /Effective Area/.test(txt) && /Table 6.7/.test(txt) && /Concrete Cone/.test(txt));
     if (id === 'rsplice') truth('rsplice: T-stub check reported', /T-stub/.test(txt));
+    if (id === 'splice') { truth('splice (bearing): net tension, 25% compression and tying checks', /Net Tension/.test(txt) && /25% of the Maximum Compression/.test(txt) && /Vertical Tying/.test(txt));
+      w.document.getElementById('sp-type').value = 'nonbearing'; w.document.getElementById('sp-tdiv').value = '10'; w.doCalc(); await wait(50);
+      const t2 = w.document.getElementById('results').textContent; truth('splice (non-bearing): minimum actions and plate buckling checks', /Design Actions \(non-bearing\)/.test(t2) && /buckling across the joint/.test(t2)); }
     if (id === 'moment') truth('moment: M_j,Rd reported', /Moment Resistance M_j,Rd/.test(txt) && /Panel Shear/.test(txt));
     if (id === 'conc') truth('conc: EN 1992-4 anchor checks reported', /Concrete Cone/.test(txt) && /Pry-out/.test(txt));
   }

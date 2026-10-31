@@ -470,6 +470,155 @@ const Joints = (() => {
     return { checks: C, ts, NRd, Npl, Fw };
   }
 
+
+  // ---------- column splice with bolted cover plates, I sections: bearing or non-bearing type ----------
+  // EN 1993-1-8 6.2.7.1(13)/(14), 3.6-3.10 (bolt shear and bearing, packing 3.6.1(12), long joints 3.8, block tearing 3.10.2),
+  // EN 1993-1-1 6.2.3 / 6.2.6; structural integrity (tying) with gamma_Mu = 1.1 (P358 practice).
+  const spandrelE = r => r * (10 - 3 * Math.PI) / (12 - 3 * Math.PI);
+  function iProps(c) {   // plastic moduli and areas of a rolled I section from its dimensions (root fillets as spandrels)
+    const As = (4 - Math.PI) * c.r * c.r, Af = c.b * c.tf, e = spandrelE(c.r);
+    const Wy = c.b * c.tf * (c.h - c.tf) + c.tw * (c.h - 2 * c.tf) ** 2 / 4 + As * (c.h / 2 - c.tf - e);
+    const Wz = c.b * c.b * c.tf / 2 + (c.h - 2 * c.tf) * c.tw * c.tw / 4 + As * (c.tw / 2 + e);
+    const A = c.A || 2 * Af + (c.h - 2 * c.tf) * c.tw + As;
+    return { A, Af, Aw: A - 2 * Af, Wy, Wz };
+  }
+  // bearing resistance of one bolt (Table 3.4); along: force along the rows (e1 end distance in the force direction, Infinity = none),
+  // across: e2 (edge), p2 (between the lines; 0 = one line)
+  function fbBolt(b, t, fu, { e1, p1, inner, e2, p2 }) {
+    const ad = inner || !Number.isFinite(e1) ? (p1 > 0 ? p1 / (3 * b.d0) - 0.25 : 1) : e1 / (3 * b.d0);
+    const ab = Math.max(0, Math.min(ad, b.fub / fu, 1));
+    const k1 = Math.max(0, Math.min(2.8 * e2 / b.d0 - 1.7, p2 > 0 ? 1.4 * p2 / b.d0 - 1.7 : 2.5, 2.5));
+    return { Fb: k1 * ab * fu * b.d * t / GM2, k1, ab };
+  }
+  // group of n bolts (3.7(1)): sum of F_b,Rd if every F_v,Rd >= F_b,Rd, else n x the smallest resistance
+  function groupRes(Fv, Fbs) {
+    const all = Fbs.every(f => Fv >= f);
+    return all ? Fbs.reduce((a, f) => a + f, 0) : Fbs.length * Math.min(Fv, ...Fbs);
+  }
+  // elastic bolt group (one side of the joint): axial P along the column axis, shear Q across, in-plane moment M about the centroid
+  function elasticGroup(pts, P, Q, M) {
+    const n = pts.length, I = pts.reduce((a, [x, y]) => a + x * x + y * y, 0);
+    let Fmax = 0;
+    for (const [x, y] of pts) { const fy = P / n + (I > 0 ? M * x / I : 0), fx = Q / n - (I > 0 ? M * y / I : 0); Fmax = Math.max(Fmax, Math.hypot(fx, fy)); }
+    return Fmax;
+  }
+  /* o: { type: 'bearing'|'nonbearing', up, lo: { h, b, tf, tw, r, A }, upGrade, loGrade, plGrade, bolt,
+         fl: { B (plate width), t, nr (rows each side), p, g (gauge), e1c (column end to the first row), e1p (outer row to the plate end) },
+         web: { h (plate depth), t (each of two plates), nr, nc (1|2), p1, p2, e1c, e1p }, gap (non-bearing), tdiv (division plate, bearing),
+         N (maximum compression), NG (minimum compression, permanent actions only, gamma_G = 1.0), My, Mz, Vy (parallel to the web), Vz, T (tying, accidental) } */
+  function columnSplice(o) {
+    const C = [], b = o.bolt, up = o.up, lo = o.lo, bearing = o.type === 'bearing';
+    const um = mat(o.upGrade, Math.max(up.tf, up.tw)), lm = mat(o.loGrade, Math.max(lo.tf, lo.tw)), pf = mat(o.plGrade, o.fl.t), pw = mat(o.plGrade, o.web.t);
+    const Pu = iProps(up), Pl = iProps(lo), weak = Pu.Wy * um.fy <= Pl.Wy * lm.fy ? { s: up, P: Pu, m: um } : { s: lo, P: Pl, m: lm };
+    const Fl = o.fl, Wb = o.web, gap = bearing ? 0 : (o.gap || 0);
+    if (!(Fl.nr >= 1 && Wb.nr >= 1)) throw new Error('Splice: at least one bolt row is needed in each group');
+    if (Fl.g >= Math.min(up.b, lo.b) || Fl.g >= Fl.B) throw new Error('Splice: flange bolt gauge must be less than the flange and plate widths');
+    if (Fl.B < Math.min(up.b, lo.b) - 1) C.push(chk('D0', 'Detailing - Flange Cover Plate Width', 'P358 practice', [`Flange cover plates are normally at least as wide as the upper column flange (b = ${up.b} mm)`], Fl.B, Math.min(up.b, lo.b), 'mm'));
+    // packing (3.6.1(12)) where the column depths / web thicknesses differ; long joints (3.8)
+    const tpf = Math.abs(lo.h - up.h) / 2, tpw = Math.abs(lo.tw - up.tw) / 2;
+    const bp = t => t > b.d / 3 ? Math.min(1, 9 * b.d / (8 * b.d + 3 * t)) : 1;
+    const bL = (nr, p) => { const Lj = (nr - 1) * p; return Lj > 15 * b.d ? Math.max(0.75, Math.min(1, 1 - (Lj - 15 * b.d) / (200 * b.d))) : 1; };
+    const Fv1 = b.av * b.fub * b.As / GM2;                     // per shear plane (threads in the shear plane)
+    const FvF = Fv1 * bp(tpf) * bL(Fl.nr, Fl.p), FvW = 2 * Fv1 * bp(tpw) * bL(Wb.nr, Wb.p1);   // flange: single shear; web: double cover, double shear
+    const e2c = c => (c.b - Fl.g) / 2, e2p = (Fl.B - Fl.g) / 2;
+    // bearing resistances of a flange group (2 lines x nr rows) for tension (towards the column end / plate end) or compression (away from them)
+    const flangeGroup = (c, cm, dir) => {
+      const rows = Array.from({ length: Fl.nr }, (_, i) => i), Fb = [];
+      for (const i of rows) for (let k = 0; k < 2; k++) {
+        const outer = i === 0, last = i === Fl.nr - 1;   // row 0 nearest the joint
+        const col = fbBolt(b, c.tf, cm.fu, dir === 't' ? { e1: outer ? Fl.e1c : Infinity, inner: !outer, p1: Fl.p, e2: e2c(c), p2: Fl.g } : { e1: Infinity, inner: !last, p1: Fl.p, e2: e2c(c), p2: Fl.g });
+        const pl = fbBolt(b, Fl.t, pf.fu, dir === 't' ? { e1: last ? Fl.e1p : Infinity, inner: !last, p1: Fl.p, e2: e2p, p2: Fl.g } : { e1: Infinity, inner: !outer, p1: Fl.p, e2: e2p, p2: Fl.g });
+        Fb.push(Math.min(col.Fb, pl.Fb));
+      }
+      return groupRes(FvF, Fb);
+    };
+    const flRes = dir => Math.min(flangeGroup(up, um, dir), flangeGroup(lo, lm, dir));
+    // web group: double cover plates; bearing on the column web (t_w) and on the two plates (2 t_wp); load direction varies: use the lower of along / across
+    const webPts = []; for (let i = 0; i < Wb.nr; i++) for (let k = 0; k < Wb.nc; k++) webPts.push([(k - (Wb.nc - 1) / 2) * (Wb.p2 || 0), (i - (Wb.nr - 1) / 2) * Wb.p1]);
+    const webFb = (c, cm) => { const e2w = (Wb.h - (Wb.nc - 1) * (Wb.p2 || 0)) / 2, eA = { e1: Wb.e1c, p1: Wb.p1, e2: e2w, p2: Wb.p2 || 0 };
+      const col = fbBolt(b, c.tw, cm.fu, { ...eA, inner: false }), pl = fbBolt(b, 2 * Wb.t, pw.fu, { ...eA, e1: Wb.e1p, inner: false });
+      const across = fbBolt(b, Math.min(c.tw * cm.fu, 2 * Wb.t * pw.fu) / Math.min(cm.fu, pw.fu), Math.min(cm.fu, pw.fu), { e1: e2w, p1: Wb.p2 || 0, inner: false, e2: Wb.e1c, p2: Wb.p1 });
+      return Math.min(col.Fb, pl.Fb, across.Fb); };
+    const webBolt = Math.min(FvW, webFb(up, um), webFb(lo, lm));
+    const lever = up.h - up.tf, eV = gap / 2 + Wb.e1c + (Wb.nr - 1) * Wb.p1 / 2;
+    // ---- actions ----
+    let My = Math.abs(o.My || 0), Mz = Math.abs(o.Mz || 0), Vy = Math.abs(o.Vy || 0), Vz = Math.abs(o.Vz || 0);
+    const NplW = weak.P.A * weak.m.fy;
+    if (!bearing) {   // 6.2.7.1(13): minimum internal forces for splices not prepared for full contact
+      My = Math.max(My, 0.25 * weak.P.Wy * weak.m.fy); Mz = Math.max(Mz, 0.25 * weak.P.Wz * weak.m.fy); Vy = Math.max(Vy, 0.025 * NplW); Vz = Math.max(Vz, 0.025 * NplW);
+    }
+    const flPts = []; for (let i = 0; i < Fl.nr; i++) for (const x of [-Fl.g / 2, Fl.g / 2]) flPts.push([x, (i - (Fl.nr - 1) / 2) * Fl.p]);
+    const eF = gap / 2 + Fl.e1c + (Fl.nr - 1) * Fl.p / 2;
+    const plateTens = (B, t, nHoles, f) => Math.min(B * t * f.fy / GM0, 0.9 * (B - nHoles * b.d0) * t * f.fu / GM2S);
+    if (bearing) {
+      // direct bearing; division plate where the upper flange centreline falls outside the lower flange (45 degree dispersion)
+      const off = Math.abs((lo.h - lo.tf) - (up.h - up.tf)) / 2, needDiv = off > lo.tf / 2;
+      C.push(chk('B1', 'Bearing - Column Ends (full contact)', 'EN 1993-1-8 6.2.7.1(14)', [`Ends machined for full contact; N_Ed,max = ${kN(o.N)} kN on the upper column A = ${Math.round(Pu.A)} mm²: σ = ${r1(o.N / Pu.A)} N/mm² ≤ f_y = ${um.fy}`,
+        needDiv ? `Upper flange centreline ${r1(off)} mm from the lower flange centreline (> t_f/2): a division plate t ≥ ${r1(off)} mm is required (45° dispersion); provided ${o.tdiv || 0} mm` : `Flange centrelines within ${r1(off)} mm (≤ t_f/2 of the lower column): direct bearing, no division plate needed`],
+        needDiv ? (o.tdiv || 0) : 1, needDiv ? off : o.N / Pu.A / um.fy, needDiv ? 'mm' : '-'));
+      // net tension in a flange from the moment, with the minimum (permanent-only) compression
+      const Ft = Math.max(0, My / lever - (o.NG || 0) / 2), FRt = Math.min(flRes('t'), plateTens(Fl.B, Fl.t, 2, pf));
+      C.push(chk('B2', 'Flange Cover Plate and Bolts - Net Tension', 'EN 1993-1-8 3.6, 3.7; EN 1993-1-1 6.2.3', [`F_t,Ed = max(0, M_y/(h − t_f) − N_G/2) = max(0, ${r1(My / 1e6)}×10⁶/${r1(lever)} − ${kN(o.NG || 0)}/2) = ${kN(Ft)} kN per flange`,
+        `Bolts (single shear) F_v,Rd = ${kN(Fv1)} kN${bp(tpf) < 1 ? `, packs ${r1(tpf)} mm: β_p = ${r2(bp(tpf))}` : ''}; group with bearing (3.7(1)) = ${kN(flRes('t'))} kN; plate N_t,Rd = min(gross, 0.9 A_net f_u/γ_M2) = ${kN(plateTens(Fl.B, Fl.t, 2, pf))} kN`], FRt / 1e3, Ft / 1e3, 'kN'));
+      // 25 % of the maximum compression through the splice material (bolts of both flange groups and the web group, one side)
+      const Fmin = 0.25 * o.N, Rmin = 2 * flRes('c') + webBolt * webPts.length;
+      C.push(chk('B3', 'Splice Material - 25% of the Maximum Compression', 'EN 1993-1-8 6.2.7.1(14)', [`0.25 N_Ed,max = ${kN(Fmin)} kN carried by the cover plate bolts on one side of the joint`,
+        `2 flange groups × ${kN(flRes('c'))} kN + ${webPts.length} web bolts × ${kN(webBolt)} kN = ${kN(Rmin)} kN`], Rmin / 1e3, Fmin / 1e3, 'kN'));
+    } else {
+      // non-bearing: all forces through the bolts and plates; flange force = N A_f/A + M_y/(h - t_f)
+      const sh = weak.P.Af / weak.P.A, Ffc = o.N * sh + My / lever, Fft = Math.max(0, My / lever - o.N * sh), Nw = o.N * weak.P.Aw / weak.P.A;
+      C.push(chk('N0', 'Design Actions (non-bearing)', 'EN 1993-1-8 6.2.7.1(13)', [`M_y ≥ 0.25 M_pl,y = ${r1(0.25 * weak.P.Wy * weak.m.fy / 1e6)} kNm, M_z ≥ 0.25 M_pl,z = ${r1(0.25 * weak.P.Wz * weak.m.fy / 1e6)} kNm, V ≥ 0.025 N_pl = ${kN(0.025 * NplW)} kN (weaker section ${weak.s === up ? 'upper' : 'lower'})`,
+        `Used: M_y = ${r1(My / 1e6)} kNm, M_z = ${r1(Mz / 1e6)} kNm, V_y = ${kN(Vy)} kN, V_z = ${kN(Vz)} kN; flange force N A_f/A + M_y/(h − t_f) = ${kN(Ffc)} kN (compression), ${kN(Fft)} kN (tension); web N A_w/A = ${kN(Nw)} kN`], 1, 0, '-'));
+      // flange groups: axial share + in-plane moment M_z/2 and shear V_z/2 at the group eccentricity
+      const Ff = Math.max(Ffc, Fft), Mg = Mz / 2 + Vz / 2 * eF, Fbmax = elasticGroup(flPts, Ff, Vz / 2, Mg);
+      const perBolt = dir => Math.min(FvF, flRes(dir) / flPts.length);
+      const uC = elasticGroup(flPts, Ffc, Vz / 2, Mg) / perBolt('c'), uT = Fft > 0 ? elasticGroup(flPts, Fft, Vz / 2, Mg) / perBolt('t') : 0;
+      C.push(chk('N1', 'Flange Cover Plate Bolts - Axial, M_z and V_z', 'EN 1993-1-8 3.6, 3.7; elastic bolt group', [`Most loaded bolt ${kN(Fbmax)} kN (axial ${kN(Ff)} kN over ${flPts.length} bolts, in-plane moment M_z/2 + V_z e/2 = ${r1(Mg / 1e6)} kNm)`,
+        `Per-bolt resistance (lesser of shear and the group bearing average): compression ${kN(perBolt('c'))} kN, tension ${kN(perBolt('t'))} kN`], 1, Math.max(uC, uT), '-'));
+      // flange plate in compression between the innermost bolts across the joint (buckling length 0.6 L, EN 1993-1-8 Table 3.3 note)
+      const Lb = 2 * Fl.e1c + gap, lam = 0.6 * Lb * Math.sqrt(12) / Fl.t / (Math.PI * Math.sqrt(EC3_E / pf.fy)), phi = 0.5 * (1 + 0.49 * Math.max(0, lam - 0.2) + lam * lam);
+      const chi = lam <= 0.2 ? 1 : Math.min(1, 1 / (phi + Math.sqrt(phi * phi - lam * lam))), NcRd = chi * Fl.B * Fl.t * pf.fy / GM1;
+      C.push(chk('N2', 'Flange Cover Plate - Compression (buckling across the joint)', 'EN 1993-1-1 6.3.1, EN 1993-1-8 Table 3.3', [`L = 2e₁ + gap = ${r1(Lb)} mm, buckling length 0.6L; λ̄ = ${r2(lam)}, χ = ${r2(chi)} (curve c): N_b,Rd = ${kN(NcRd)} kN`], NcRd / 1e3, Ffc / 1e3, 'kN'));
+      if (Fft > 0) C.push(chk('N3', 'Flange Cover Plate - Tension', 'EN 1993-1-1 6.2.3', [`N_t,Rd = min(A f_y/γ_M0, 0.9 A_net f_u/γ_M2) = ${kN(plateTens(Fl.B, Fl.t, 2, pf))} kN`], plateTens(Fl.B, Fl.t, 2, pf) / 1e3, Fft / 1e3, 'kN'));
+      // web group: axial share, shear V_y and moment V_y e
+      const Fw = elasticGroup(webPts, Nw, Vy, Vy * eV);
+      C.push(chk('N4', 'Web Cover Plate Bolts - Axial, V_y and V_y·e', 'EN 1993-1-8 3.6, 3.7; elastic bolt group', [`Most loaded bolt ${kN(Fw)} kN (N_w = ${kN(Nw)} kN, V_y = ${kN(Vy)} kN at e = ${r1(eV)} mm); double shear F_v,Rd = ${kN(FvW)} kN${bp(tpw) < 1 ? ` with β_p = ${r2(bp(tpw))}` : ''}`,
+        `Resistance per bolt (shear, bearing on the web and the two plates) = ${kN(webBolt)} kN`], webBolt / 1e3, Fw / 1e3, 'kN'));
+      const Lw = 2 * Wb.e1c + gap, lw = 0.6 * Lw * Math.sqrt(12) / Wb.t / (Math.PI * Math.sqrt(EC3_E / pw.fy)), phw = 0.5 * (1 + 0.49 * Math.max(0, lw - 0.2) + lw * lw);
+      const chw = lw <= 0.2 ? 1 : Math.min(1, 1 / (phw + Math.sqrt(phw * phw - lw * lw))), NwRd = chw * 2 * Wb.h * Wb.t * pw.fy / GM1;
+      C.push(chk('N5', 'Web Cover Plates - Compression (buckling across the joint)', 'EN 1993-1-1 6.3.1', [`Two plates ${Wb.h} × ${Wb.t}; L = ${r1(Lw)} mm, 0.6L; χ = ${r2(chw)}: N_b,Rd = ${kN(NwRd)} kN`], NwRd / 1e3, Nw / 1e3, 'kN'));
+    }
+    // horizontal shear parallel to the web: web cover plates (gross and net shear) and bolts
+    {
+      const Fw = elasticGroup(webPts, 0, Vy, Vy * eV), Vg = 2 * Wb.h * Wb.t * pw.fy / (Math.sqrt(3) * GM0), Vn = 2 * (Wb.h - Wb.nc * b.d0) * Wb.t * pw.fu / (Math.sqrt(3) * GM2S);
+      if (bearing) C.push(chk('V1', 'Web Cover Plate Bolts - Horizontal Shear', 'EN 1993-1-8 3.6, 3.7', [`V_Ed = ${kN(Vy)} kN at e = ${r1(eV)} mm from the joint: most loaded bolt ${kN(Fw)} kN (elastic group of ${webPts.length})`, `Double shear F_v,Rd = ${kN(FvW)} kN; with bearing ${kN(webBolt)} kN`], webBolt / 1e3, Fw / 1e3, 'kN'));
+      C.push(chk('V2', 'Web Cover Plates - Shear', 'EN 1993-1-1 6.2.6 (gross); 0.9 A_net f_u/(√3 γ_M2) (net)', [`Gross ${kN(Vg)} kN, net ${kN(Vn)} kN for two plates`], Math.min(Vg, Vn) / 1e3, Vy / 1e3, 'kN'));
+    }
+    // block tearing of a flange cover plate (3.10.2): centre block between the bolt lines, and the two edge strips
+    {
+      const L = Fl.e1p + (Fl.nr - 1) * Fl.p, Anv = (L - (Fl.nr - 0.5) * b.d0) * Fl.t;
+      const centre = pf.fu * (Fl.g - b.d0) * Fl.t / GM2 + pf.fy * 2 * Anv / (Math.sqrt(3) * GM0), edges = pf.fu * 2 * (e2p - b.d0 / 2) * Fl.t / GM2 + pf.fy * 2 * Anv / (Math.sqrt(3) * GM0);
+      const Freq = bearing ? Math.max(0, My / lever - (o.NG || 0) / 2) : Math.max(0, My / lever - o.N * weak.P.Af / weak.P.A);
+      C.push(chk('BT', 'Flange Cover Plate - Block Tearing', 'EN 1993-1-8 3.10.2', [`Centre block ${kN(centre)} kN, edge strips ${kN(edges)} kN (concentric, (3.9))`], Math.min(centre, edges) / 1e3, Freq / 1e3, 'kN'));
+    }
+    // structural integrity: vertical tie through the splice (accidental, gamma_Mu = 1.1, f_u)
+    if (o.T > 0) {
+      const FvU = b.av * b.fub * b.As / GMU, fbU = (c, cm, t, e1, inner, e2, p2) => { const r = fbBolt(b, t, cm.fu, { e1, inner, p1: Fl.p, e2, p2 }); return r.Fb * GM2 / GMU; };
+      const flU = (c, cm) => { const Fb = []; for (let i = 0; i < Fl.nr; i++) for (let k = 0; k < 2; k++) Fb.push(Math.min(fbU(c, cm, c.tf, i === 0 ? Fl.e1c : Infinity, i !== 0, e2c(c), Fl.g), fbU(c, pf, Fl.t, i === Fl.nr - 1 ? Fl.e1p : Infinity, i !== Fl.nr - 1, e2p, Fl.g))); return groupRes(FvU * bp(tpf), Fb); };
+      const plU = Math.min(Fl.B * Fl.t * pf.fu / GMU, (Fl.B - 2 * b.d0) * Fl.t * pf.fu / GMU);
+      const webBearU = Math.min(webFb(up, um), webFb(lo, lm)) * GM2 / GMU, perFl = Math.min(flU(up, um), flU(lo, lm), plU), webU = webPts.length * Math.min(2 * FvU * bp(tpw), webBearU);
+      const TRd = 2 * perFl + webU;
+      C.push(chk('T1', 'Structural Integrity - Vertical Tying through the Splice', 'EN 1991-1-7 A.6; P358 (γ_Mu = 1.1)', [`Tie force T = ${kN(o.T)} kN (largest storey reaction on the column)`, `Flange groups 2 × ${kN(perFl)} kN (bolts, bearing and plate on f_u/γ_Mu) + web bolts ${kN(webU)} kN = ${kN(TRd)} kN`], TRd / 1e3, o.T / 1e3, 'kN'));
+    }
+    // detailing: Table 3.3 minimum spacings (and the maximum pitch for compression members)
+    const dmin = [['e₁ (column)', Fl.e1c, 1.2 * b.d0], ['e₁ (plate)', Fl.e1p, 1.2 * b.d0], ['e₂ (plate)', e2p, 1.2 * b.d0], ['e₂ (column flange)', Math.min(e2c(up), e2c(lo)), 1.2 * b.d0], ['gauge p₂', Fl.g, 2.4 * b.d0]];
+    if (Fl.nr > 1) dmin.push(['p₁ (flange)', Fl.p, 2.2 * b.d0]); if (Wb.nr > 1) dmin.push(['p₁ (web)', Wb.p1, 2.2 * b.d0]);
+    const worst = dmin.reduce((w, d) => d[2] / d[1] > w[2] / w[1] ? d : w);
+    C.push(chk('D1', 'Detailing - Bolt Spacing and Edge Distances', 'EN 1993-1-8 Table 3.3', [dmin.map(([n, v, m]) => `${n} ${r1(v)} ≥ ${r1(m)}`).join('; '),
+      !bearing ? `Compression: p₁ ≤ min(14t, 200) = ${r1(Math.min(14 * Fl.t, 200))} mm (flange plate)` : 'Bearing type: column ends machined for full contact'], 1, Math.max(worst[2] / worst[1], !bearing && Fl.nr > 1 ? Fl.p / Math.min(14 * Fl.t, 200) : 0), '-'));
+    return { checks: C, Pu, Pl, weak, FvF, FvW, webBolt, tpf, tpw, actions: { My, Mz, Vy, Vz } };
+  }
+
   // ---------- steel to concrete: plate on cast-in headed anchors (BS EN 1992-4) ----------
   /* o: { V (shear, downward), e (eccentricity of V from the concrete face), T (tie / axial tension), rows (nr), p (row pitch), g (gauge, 2 anchors per row),
          plate: { h, t } (plate height; compression at the bottom edge), size, cls ('4.6'|'8.8'), hef, dh, fck, cracked, c1 (edge distance below the
@@ -655,7 +804,7 @@ const Joints = (() => {
     return { checks: C, rows: F, MjRd, VRd, Ftb, Fvb, Ffb, Fcwc, Vwp, Flim, mP, mx, mC, eC, ep, Avc, cw, z, comp, T };
   }
 
-  return { GR, mat, BOLTS, bolt, tstub, leffRows, leffRun, finExtra, endPlateTying, basePlate, rhsSplice, steelToConcrete, momentEndPlate };
+  return { GR, mat, BOLTS, bolt, tstub, leffRows, leffRun, finExtra, endPlateTying, basePlate, rhsSplice, columnSplice, iProps, fbBolt, groupRes, elasticGroup, steelToConcrete, momentEndPlate };
 })();
 if (typeof module !== 'undefined') module.exports = { Joints };
 
@@ -907,8 +1056,8 @@ const JOINTS=[
    desc:'Pair of equal-leg angle cleats: outstanding legs to the column/beam, web legs bolted to the beam web. No site welding. Note: web cleats are not covered by P358 - checks based on EC3-1-8 / ECCS Pub.126.'},
   {id:'scleat', label:'Single Cleat',             ready:true,  ref:'EC3-1-8 (not P358)',
    desc:'Single angle cleat bolted to the support and through the beam web. Used where access permits only one side. Note: not covered by P358 - checks based on EC3-1-8 / ECCS Pub.126.'},
-  {id:'splice', label:'Column Splice',            ready:true,  ref:'P358 §6',
-   desc:'Bolted bearing splice joining two column lengths. Cover plates each side of web and flange. Transfers axial force, shear, and nominal moment from construction eccentricity.'},
+  {id:'splice', label:'Column Splice',            ready:true,  ref:'EN 1993-1-8 6.2.7.1',
+   desc:'Bolted cover plate splice joining two I-section column lengths, bearing or non-bearing. Flange cover plates for net tension (or all forces), web cover plates for shear, 25% compression and minimum-moment rules of EN 1993-1-8 6.2.7.1, packs, block tearing and vertical tying.'},
   {id:'base',   label:'Column Base',              ready:true,  ref:'P358 §7',
    desc:'Bolted base plate connecting a column to a concrete foundation. Checks base plate bending, holding-down bolt tension and shear, weld to column, and bearing on concrete grout.'},
   {id:'rsplice', label:'RHS Tension Splice',    ready:true,  ref:'EN 1993-1-8 6.2.4',
@@ -2280,71 +2429,53 @@ function formSCleat(){return`
 </div>`;}
 
 function formSplice(){return`
-<div class="card"><div class="card-title">Applied Loads</div>
-  <div class="ibox" style="margin-bottom:10px">Bearing splice: axial load is transferred by direct bearing. Cover plates resist shear and the nominal moment from construction eccentricity.</div>
+<div class="card"><div class="card-title">Splice Type and Columns</div>
   <div class="g2">
-    <div class="field"><label>Axial force N_Ed <em>compressive</em></label>
-      <div class="iw"><input type="number" id="sp-N" value="800"><span class="unit">kN</span></div></div>
-    <div class="field"><label>Shear V_Ed <em>horizontal</em></label>
-      <div class="iw"><input type="number" id="sp-V" value="25"><span class="unit">kN</span></div></div>
+    <div class="field"><label>Type <em>bearing: ends machined</em></label><div class="iw"><select id="sp-type"><option value="bearing" selected>Bearing</option><option value="nonbearing">Non-bearing</option></select></div></div>
+    <div class="field"><label>Bolts</label><div class="iw"><select id="sp-bolt"><option>M16</option><option selected>M20</option><option>M24</option><option>M27</option><option>M30</option></select></div></div>
+    <div class="field"><label>Bolt class</label><div class="iw"><select id="sp-cls"><option>8.8</option><option>10.9</option></select></div></div>
+    <div class="field"><label>Cover plate grade</label><div class="iw"><select id="sp-plGrade"><option selected>S275</option><option>S355</option></select></div></div>
+    <div class="field"><label>Upper column</label><div class="iw"><select id="sp-up">${secOpts('254×254×89 UKC')}</select></div></div>
+    <div class="field"><label>Grade</label><div class="iw"><select id="sp-upGrade"><option>S275</option><option selected>S355</option></select></div></div>
+    <div class="field"><label>Lower column</label><div class="iw"><select id="sp-lo">${secOpts('254×254×107 UKC')}</select></div></div>
+    <div class="field"><label>Grade</label><div class="iw"><select id="sp-loGrade"><option>S275</option><option selected>S355</option></select></div></div>
+    <div class="field"><label>Division plate <em>bearing</em> / gap <em>non-bearing</em></label><div class="iw"><input type="number" id="sp-tdiv" value="0"><span class="unit">mm</span></div></div>
   </div>
 </div>
-<div class="card"><div class="card-title">Bolt Group - Web Plates</div>
+<div class="card"><div class="card-title">Design Actions at the Splice</div>
   <div class="g2">
-    <div class="field"><label>Bolt Size</label><div class="iw"><select id="sp-boltSize">
-      <option>M16</option><option selected>M20</option><option>M24</option><option>M27</option>
-    </select></div></div>
-    <div class="field"><label>Bolts per web plate n_w <em>each side</em></label>
-      <div class="iw"><input type="number" id="sp-nw" value="4"></div></div>
-    <div class="field"><label>Pitch p₁</label>
-      <div class="iw"><input type="number" id="sp-p1w" value="70"><span class="unit">mm</span></div></div>
-    <div class="field"><label>End dist e₁</label>
-      <div class="iw"><input type="number" id="sp-e1w" value="50"><span class="unit">mm</span></div></div>
-    <div class="field"><label>Edge dist e₂ (web plate)</label>
-      <div class="iw"><input type="number" id="sp-e2w" value="35"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Max compression N_Ed <em>ULS</em></label><div class="iw"><input type="number" id="sp-N" value="2500"><span class="unit">kN</span></div></div>
+    <div class="field"><label>Min compression N_G <em>permanent, γ = 1.0</em></label><div class="iw"><input type="number" id="sp-NG" value="900"><span class="unit">kN</span></div></div>
+    <div class="field"><label>M_y,Ed <em>major axis</em></label><div class="iw"><input type="number" id="sp-My" value="60"><span class="unit">kN·m</span></div></div>
+    <div class="field"><label>M_z,Ed <em>minor axis (non-bearing)</em></label><div class="iw"><input type="number" id="sp-Mz" value="0"><span class="unit">kN·m</span></div></div>
+    <div class="field"><label>V_y,Ed <em>parallel to the web</em></label><div class="iw"><input type="number" id="sp-Vy" value="30"><span class="unit">kN</span></div></div>
+    <div class="field"><label>V_z,Ed <em>across the flanges (non-bearing)</em></label><div class="iw"><input type="number" id="sp-Vz" value="0"><span class="unit">kN</span></div></div>
+    <div class="field"><label>Tying force T <em>accidental, 0 = none</em></label><div class="iw"><input type="number" id="sp-T" value="300"><span class="unit">kN</span></div></div>
+  </div>
+  <div class="ibox">Bearing splices: the flange cover plates carry the net tension M_y/(h − t_f) − N_G/2 and 25% of the maximum compression (6.2.7.1(14)). Non-bearing splices carry everything through the bolts, with the 6.2.7.1(13) minimum moments (25% M_pl about both axes) and shears (2.5% N_pl).</div>
+</div>
+<div class="card"><div class="card-title">Flange Cover Plates <em>one outside each flange; packs where the depths differ</em></div>
+  <div class="g2">
+    <div class="field"><label>Plate width</label><div class="iw"><input type="number" id="sp-fB" value="260"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Plate thickness</label><div class="iw"><input type="number" id="sp-ft" value="12"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Bolt rows each side <em>2 bolts per row</em></label><div class="iw"><input type="number" id="sp-fnr" value="2"></div></div>
+    <div class="field"><label>Row pitch</label><div class="iw"><input type="number" id="sp-fp" value="70"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Gauge between the bolt lines</label><div class="iw"><input type="number" id="sp-fg" value="140"><span class="unit">mm</span></div></div>
+    <div class="field"><label>End distance, column end</label><div class="iw"><input type="number" id="sp-fe1c" value="40"><span class="unit">mm</span></div></div>
+    <div class="field"><label>End distance, plate end</label><div class="iw"><input type="number" id="sp-fe1p" value="40"><span class="unit">mm</span></div></div>
   </div>
 </div>
-<div class="card"><div class="card-title">Bolt Group - Flange Plates</div>
+<div class="card"><div class="card-title">Web Cover Plates <em>one each side of the web</em></div>
   <div class="g2">
-    <div class="field"><label>Bolts per flange plate n_f <em>per plate, each side</em></label>
-      <div class="iw"><input type="number" id="sp-nf" value="2"></div></div>
-    <div class="field"><label>Gauge e₂ (flange plate)</label>
-      <div class="iw"><input type="number" id="sp-e2f" value="50"><span class="unit">mm</span></div></div>
-    <div class="field"><label>End dist e₁ (flange)</label>
-      <div class="iw"><input type="number" id="sp-e1f" value="40"><span class="unit">mm</span></div></div>
-    <div class="field"><label>Pitch p₁ (flange) <em>if n_f &gt; 1</em></label>
-      <div class="iw"><input type="number" id="sp-p1f" value="60"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Plate depth</label><div class="iw"><input type="number" id="sp-wh" value="150"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Plate thickness</label><div class="iw"><input type="number" id="sp-wt" value="8"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Bolt rows each side</label><div class="iw"><input type="number" id="sp-wnr" value="2"></div></div>
+    <div class="field"><label>Row pitch</label><div class="iw"><input type="number" id="sp-wp1" value="70"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Bolt columns</label><div class="iw"><input type="number" id="sp-wnc" value="1"></div></div>
+    <div class="field"><label>Column spacing</label><div class="iw"><input type="number" id="sp-wp2" value="0"><span class="unit">mm</span></div></div>
+    <div class="field"><label>End distance, column end</label><div class="iw"><input type="number" id="sp-we1c" value="40"><span class="unit">mm</span></div></div>
+    <div class="field"><label>End distance, plate end</label><div class="iw"><input type="number" id="sp-we1p" value="40"><span class="unit">mm</span></div></div>
   </div>
-</div>
-<div class="card"><div class="card-title">Column & Plate Geometry</div>
-  <div class="g2">
-    <div class="field"><label>Col. flange width b_f</label>
-      <div class="iw"><input type="number" id="sp-bf" value="209"><span class="unit">mm</span></div></div>
-    <div class="field"><label>Col. flange thick t_f</label>
-      <div class="iw"><input type="number" id="sp-tf" value="17"><span class="unit">mm</span></div></div>
-    <div class="field"><label>Col. web thick t_w</label>
-      <div class="iw"><input type="number" id="sp-tw" value="10"><span class="unit">mm</span></div></div>
-    <div class="field"><label>Col. depth d</label>
-      <div class="iw"><input type="number" id="sp-d" value="206"><span class="unit">mm</span></div></div>
-    <div class="field"><label>Flange plate thick t_fp</label>
-      <div class="iw"><input type="number" id="sp-tfp" value="12"><span class="unit">mm</span></div></div>
-    <div class="field"><label>Flange plate width b_fp</label>
-      <div class="iw"><input type="number" id="sp-bfp" value="180"><span class="unit">mm</span></div></div>
-    <div class="field"><label>Web plate thick t_wp</label>
-      <div class="iw"><input type="number" id="sp-twp" value="10"><span class="unit">mm</span></div></div>
-    <div class="field"><label>Web plate length L_cp <em>each side of joint</em></label>
-      <div class="iw"><input type="number" id="sp-Lcp" value="200"><span class="unit">mm</span></div></div>
-  </div>
-  <div class="ibox">Defaults suit 203×203×60 UC (S355). Flange plates each side of each flange (×4 total). Web plates each side of web (×2 total).</div>
-</div>
-<div class="card"><div class="card-title">Material Grades</div>
-  <div class="g2">
-    <div class="field"><label>Column</label><div class="iw"><select id="sp-colGrade">
-      <option>S275</option><option selected>S355</option></select></div></div>
-    <div class="field"><label>Cover Plates</label><div class="iw"><select id="sp-platGrade">
-      <option>S275</option><option selected>S355</option></select></div></div>
-  </div>
-  <div class="ibox">BS EN 10025-2, t ≤ 16 mm: S275 f<sub>y</sub> = 275, f<sub>u</sub> = 410 MPa · S355 f<sub>y</sub> = 355, f<sub>u</sub> = 470 MPa (UK NA: lowest f<sub>u</sub> of the range)</div>
 </div>`;}
 
 function formBase(){return`
@@ -3272,136 +3403,13 @@ function calcSCleat(g){
 }
 
 function calcSplice(g){
-  // Column splice - bearing type (P358 §9)
-  // Axial load transferred by direct bearing between prepared column end faces.
-  // Cover plates resist: (a) shear V_Ed, (b) nominal moment V_Ed × L_cp/2 (P358 §9.3)
-  const b=BOLT[g.boltSize], cm=MAT[g.colGrade], pm=MAT[g.platGrade];
-  const Nn=fv(g.N)*1e3, Vn=fv(g.V)*1e3;
-  const nw=fi(g.nw), nf=fi(g.nf);
-  const P1w=fv(g.p1w), E1w=fv(g.e1w), E2w=fv(g.e2w);
-  const P1f=fv(g.p1f), E1f=fv(g.e1f), E2f=fv(g.e2f);
-  const Bf=fv(g.bf), Tf=fv(g.tf), Tw=fv(g.tw), D=fv(g.d);
-  const Tfp=fv(g.tfp), Bfp=fv(g.bfp), Twp=fv(g.twp), Lcp=fv(g.Lcp);
-  const {d,d0,As}=b, fub=800;
-  const GM2s=1.1;  // section fracture (EC3-1-1 UK NA)
-
-  const dw=D-2*Tf;                    // web clear depth
-  const hwp=2*E1w+(nw-1)*P1w;         // web plate height
-  const Vwp=Vn/2;                     // shear per web plate
-
-  // P358 §9.3: nominal moment lever arm = D - tf (flange plate CL to CL)
-  const lever=D-Tf;
-  const M_nom=Vn*Lcp/2;               // N·mm
-  const Ffl=M_nom/lever;              // axial force in each flange plate pair (N)
-
-  const C=[];
-
-  // 1 - Web plate bolt shear
-  const FvRd_wb=.6*fub*As/GM2;
-  const FvRd_web_total=2*nw*FvRd_wb;
-  C.push(chk('1','Web Plate Bolts - Shear Resistance','EC3-1-8 Table 3.4 / P358 §9.4',[
-    `Bolt ${g.boltSize} Gr.8.8  As=${As} mm²  Fv,Rd=${rd(FvRd_wb/1e3)} kN/bolt`,
-    `2 web plates × ${nw} bolts = ${2*nw} bolts total, carry V_Ed = ${rd(Vn/1e3)} kN`,
-    `Fv,Rd,total = ${2*nw}×${rd(FvRd_wb/1e3)} = ${rd(FvRd_web_total/1e3)} kN`,
-  ],FvRd_web_total/1e3,fv(g.V),'kN',`F_{v,Rd,tot}=${2*nw}\\times${rd(FvRd_wb/1e3)}=${rd(FvRd_web_total/1e3)}\\text{ kN}`));
-
-  // 2 - Bearing on web cover plate
-  const Fvd_w=Vn/(2*nw);
-  const k1_wp=Math.min(2.8*E2w/d0-1.7,2.5);
-  const ab_wp=nw>1?Math.min(E1w/(3*d0),P1w/(3*d0)-.25,fub/pm.fu,1):Math.min(E1w/(3*d0),fub/pm.fu,1);
-  const FbwpRd=Math.max(0,k1_wp)*Math.max(0,ab_wp)*pm.fu*d*Twp/GM2/1e3;
-  C.push(chk('2','Bearing - Web Cover Plate','EC3-1-8 Table 3.4 / P358 §9.4',[
-    `k₁=${rd(k1_wp)}  αb=${rd(ab_wp,3)}  twp=${Twp} mm`,
-    `Fb,Rd=${rd(FbwpRd)} kN   Applied per bolt = V/(2nw) = ${rd(Fvd_w/1e3)} kN`,
-  ],FbwpRd,Fvd_w/1e3,'kN',`F_{b,Rd}=\\dfrac{${rd(k1_wp)}\\times${rd(ab_wp,3)}\\times${pm.fu}\\times${d}\\times${Twp}}{1.25}=${rd(FbwpRd)}\\text{ kN}`));
-
-  // 3 - Bearing on column web
-  const ab_cw=nw>1?Math.min(E1w/(3*d0),P1w/(3*d0)-.25,fub/cm.fu,1):Math.min(E1w/(3*d0),fub/cm.fu,1);
-  const FbcwRd=Math.max(0,k1_wp)*Math.max(0,ab_cw)*cm.fu*d*Tw/GM2/1e3;
-  C.push(chk('3','Bearing - Column Web','EC3-1-8 Table 3.4 / P358 §9.4',[
-    `k₁=${rd(k1_wp)}  αb=${rd(ab_cw,3)}  tw=${Tw} mm`,
-    `Fb,Rd=${rd(FbcwRd)} kN   Applied per bolt = ${rd(Fvd_w/1e3)} kN`,
-  ],FbcwRd,Fvd_w/1e3,'kN',`F_{b,Rd}=\\dfrac{${rd(k1_wp)}\\times${rd(ab_cw,3)}\\times${cm.fu}\\times${d}\\times${Tw}}{1.25}=${rd(FbcwRd)}\\text{ kN}`));
-
-  // 4 - Web plate gross shear
-  const Ag_wp=hwp*Twp;
-  const Vg_wpRd=pm.fy*Ag_wp/(Math.sqrt(3)*GM0)/1e3;
-  C.push(chk('4','Web Plate - Gross Section Shear','EC3-1-1 §6.2.6 / P358 §9.4',[
-    `hwp = 2e₁+(n−1)p₁ = ${hwp} mm`,
-    `Av = hwp×twp = ${Ag_wp} mm²`,
-    `Vpl,Rd = ${pm.fy}×${Ag_wp}/√3 = ${rd(Vg_wpRd)} kN   Applied per plate = ${rd(Vwp/1e3)} kN`,
-  ],Vg_wpRd,Vwp/1e3,'kN',`V_{pl,Rd}=\\dfrac{${pm.fy}\\times${Ag_wp}}{\\sqrt{3}\\times1.0}=${rd(Vg_wpRd)}\\text{ kN}`));
-
-  // 5 - Web plate net shear [γM2 = 1.1 per EC3-1-1 UK NA]
-  const An_wp=Math.max(0,(hwp-nw*d0)*Twp);
-  const Vn_wpRd=.9*pm.fu*An_wp/(Math.sqrt(3)*GM2s)/1e3;
-  C.push(chk('5','Web Plate - Net Section Shear','EC3-1-1 §6.2.6 / P358 §9.4',[
-    `Anet = (${hwp}−${nw}×${d0})×${Twp} = ${An_wp} mm²`,
-    `Vnet,Rd = 0.9×${pm.fu}×${An_wp}/(√3×1.1) = ${rd(Vn_wpRd)} kN`,
-    `γM2 = 1.1 per EC3-1-1 UK NA (plate cross-section fracture)`,
-  ],Vn_wpRd,Vwp/1e3,'kN',`V_{net,Rd}=\\dfrac{0.9\\times${pm.fu}\\times${An_wp}}{\\sqrt{3}\\times1.1}=${rd(Vn_wpRd)}\\text{ kN}`));
-
-  // 6 - Flange plate bolts (carry nominal moment force)
-  // P358 §9.3: M_nom = V_Ed × L_cp/2; lever arm = D - tf (flange CL to flange CL)
-  const FvRd_fb=.6*fub*As/GM2;
-  const FvRd_fl_total=2*nf*FvRd_fb;
-  C.push(chk('6','Flange Plate Bolts - Axial Force (Nominal Moment)','EC3-1-8 Table 3.4 / P358 §9.3',[
-    `M_nom = V_Ed × L_cp/2 = ${rd(Vn/1e3)}×${Lcp}/2 = ${rd(M_nom/1e6)} kN·m`,
-    `Lever arm = D − tf = ${D}−${Tf} = ${lever} mm  (flange plate CL to CL, per P358 §9.3)`,
-    `F_fl = M_nom / lever = ${rd(M_nom/1e6)}×10⁶/${lever} = ${rd(Ffl/1e3)} kN (per flange pair)`,
-    `2 flange plates × ${nf} bolts per plate = ${2*nf} bolts per flange`,
-    `Fv,Rd,total = ${2*nf}×${rd(FvRd_fb/1e3)} = ${rd(FvRd_fl_total/1e3)} kN`,
-  ],FvRd_fl_total/1e3,Ffl/1e3,'kN',`F_{fl}=\\dfrac{M_{nom}}{d-t_f}=\\dfrac{${rd(M_nom/1e6)}\\times10^6}{${lever}}=${rd(Ffl/1e3)}\\text{ kN}`));
-
-  // 7 - Bearing on flange cover plate
-  const Fvd_f=Ffl/(2*nf);
-  const k1_fp=Math.min(2.8*E2f/d0-1.7,2.5);
-  const ab_fp=nf>1?Math.min(E1f/(3*d0),P1f/(3*d0)-.25,fub/pm.fu,1):Math.min(E1f/(3*d0),fub/pm.fu,1);
-  const FbfpRd=Math.max(0,k1_fp)*Math.max(0,ab_fp)*pm.fu*d*Tfp/GM2/1e3;
-  C.push(chk('7','Bearing - Flange Cover Plate','EC3-1-8 Table 3.4 / P358 §9.4',[
-    `k₁=${rd(k1_fp)}  αb=${rd(ab_fp,3)}  tfp=${Tfp} mm`,
-    `Fb,Rd=${rd(FbfpRd)} kN   Applied per bolt = F_fl/(2nf) = ${rd(Fvd_f/1e3)} kN`,
-  ],FbfpRd,Fvd_f/1e3,'kN',`F_{b,Rd}=\\dfrac{${rd(k1_fp)}\\times${rd(ab_fp,3)}\\times${pm.fu}\\times${d}\\times${Tfp}}{1.25}=${rd(FbfpRd)}\\text{ kN}`));
-
-  // 8 - Bearing on column flange
-  const ab_cf=nf>1?Math.min(E1f/(3*d0),P1f/(3*d0)-.25,fub/cm.fu,1):Math.min(E1f/(3*d0),fub/cm.fu,1);
-  const FbcfRd=Math.max(0,k1_fp)*Math.max(0,ab_cf)*cm.fu*d*Tf/GM2/1e3;
-  C.push(chk('8','Bearing - Column Flange','EC3-1-8 Table 3.4 / P358 §9.4',[
-    `k₁=${rd(k1_fp)}  αb=${rd(ab_cf,3)}  tf=${Tf} mm`,
-    `Fb,Rd=${rd(FbcfRd)} kN   Applied per bolt = ${rd(Fvd_f/1e3)} kN`,
-  ],FbcfRd,Fvd_f/1e3,'kN',`F_{b,Rd}=\\dfrac{${rd(k1_fp)}\\times${rd(ab_cf,3)}\\times${cm.fu}\\times${d}\\times${Tf}}{1.25}=${rd(FbcfRd)}\\text{ kN}`));
-
-  // 9 - Flange plate gross tension
-  const Ag_fp=2*Bfp*Tfp;
-  const NplRd_fp=pm.fy*Ag_fp/GM0/1e3;
-  C.push(chk('9','Flange Plates - Gross Tension (pair)','EC3-1-1 §6.2.3 / P358 §9.4',[
-    `2 plates per flange (one each side): Ag = 2×${Bfp}×${Tfp} = ${Ag_fp} mm²`,
-    `Npl,Rd = fy×Ag/γM0 = ${pm.fy}×${Ag_fp}/1.0/1000 = ${rd(NplRd_fp)} kN`,
-    `Applied: F_fl = ${rd(Ffl/1e3)} kN`,
-  ],NplRd_fp,Ffl/1e3,'kN',`N_{pl,Rd}=\\dfrac{${pm.fy}\\times${Ag_fp}}{\\gamma_{M0}\\times1000}=${rd(NplRd_fp)}\\text{ kN}`));
-
-  // 10 - Flange plate NET tension [γM2 = 1.1, deduct 1 bolt hole per plate]
-  const An_fp=Math.max(0,2*(Bfp-d0)*Tfp);
-  const NnetRd_fp=.9*pm.fu*An_fp/GM2s/1e3;
-  C.push(chk('10','Flange Plates - Net Section Tension (pair)','EC3-1-1 §6.2.3 / P358 §9.4',[
-    `Anet = 2×(bfp−d₀)×tfp = 2×(${Bfp}−${d0})×${Tfp} = ${An_fp} mm²  (1 bolt hole per plate)`,
-    `Nnet,Rd = 0.9×fu×Anet/γM2 = 0.9×${pm.fu}×${An_fp}/1.1/1000 = ${rd(NnetRd_fp)} kN`,
-    `γM2 = 1.1 per EC3-1-1 UK NA`,
-  ],NnetRd_fp,Ffl/1e3,'kN',`N_{net,Rd}=\\dfrac{0.9\\times${pm.fu}\\times${An_fp}}{1.1\\times1000}=${rd(NnetRd_fp)}\\text{ kN}`));
-
-  // 11 - Column end bearing (direct axial compression)
-  // P358 §9.2: σ_bearing ≤ fy (yield stress of column material)
-  // Bearing area = full column cross-sectional area (web + flanges)
-  const A_col=2*Bf*Tf+(D-2*Tf)*Tw;
-  const sigma_b=Nn/A_col;
-  C.push(chk('11','Column End Bearing - Direct Axial Compression','P358 §9.2',[
-    `Full column cross-section: A = 2×bf×tf + (D−2tf)×tw`,
-    `  = 2×${Bf}×${Tf} + (${D}−${2*Tf})×${Tw} = ${A_col} mm²`,
-    `σ_bearing = N_Ed/A = ${rd(Nn/1e3)}×1000/${A_col} = ${rd(sigma_b,1)} N/mm²`,
-    `Limit per P358 §9.2: fy = ${cm.fy} N/mm²  (bearing on machined faces)`,
-    `Note: bearing splice requires column ends to be machined flat and square.`,
-  ],cm.fy,sigma_b,'N/mm²',`\\sigma=\\dfrac{N_{Ed}}{A_{col}}=\\dfrac{${rd(Nn/1e3)}\\times10^3}{${A_col}}=${rd(sigma_b,1)}\\text{ N/mm}^2`));
-
+  // Column splice with cover plates, bearing or non-bearing (EN 1993-1-8 6.2.7.1(13)/(14)) - joints engine
+  const cs=x=>{const c=SECTIONS[x];if(!c)throw new Error('Choose the column sections');return{h:c.d,b:c.b,tf:c.tf,tw:c.tw,r:c.r,A:c.A};};
+  const nb=g.type!=='bearing';
+  const R=Joints.columnSplice({type:g.type,up:cs(g.up),lo:cs(g.lo),upGrade:g.upGrade,loGrade:g.loGrade,plGrade:g.plGrade,bolt:Joints.bolt(g.bolt,g.cls),
+    fl:{B:fv(g.fB),t:fv(g.ft),nr:fi(g.fnr),p:fv(g.fp),g:fv(g.fg),e1c:fv(g.fe1c),e1p:fv(g.fe1p)},web:{h:fv(g.wh),t:fv(g.wt),nr:fi(g.wnr),nc:Math.max(1,fi(g.wnc)),p1:fv(g.wp1),p2:fv(g.wp2),e1c:fv(g.we1c),e1p:fv(g.we1p)},
+    gap:nb?fv(g.tdiv):0,tdiv:nb?0:fv(g.tdiv),N:fv(g.N)*1e3,NG:fv(g.NG)*1e3,My:fv(g.My)*1e6,Mz:fv(g.Mz)*1e6,Vy:fv(g.Vy)*1e3,Vz:fv(g.Vz)*1e3,T:fv(g.T)*1e3});
+  const C=jchk(R.checks);
   return{checks:C,allPass:C.every(c=>c.pass),maxR:Math.max(...C.map(c=>c.r))};
 }
 
@@ -3698,19 +3706,9 @@ function scleatSum(g){const hc=fv(g.e1)+(fi(g.n)-1)*fv(g.p1)+fv(g.e1);
   ['Gauge e₂_s',g.e2s+' mm'],['Cleat h_c',rd(hc,0)+' mm'],['Cleat t_c',g.tc+' mm'],
   ['Cleat',g.cleatGrade],['Column',g.colGrade],['Beam',g.beamGrade]];}
 
-function readSplice(){return{
-  N:gv('sp-N'),V:gv('sp-V'),boltSize:gv('sp-boltSize'),
-  nw:gv('sp-nw'),p1w:gv('sp-p1w'),e1w:gv('sp-e1w'),e2w:gv('sp-e2w'),
-  nf:gv('sp-nf'),p1f:gv('sp-p1f'),e1f:gv('sp-e1f'),e2f:gv('sp-e2f'),
-  bf:gv('sp-bf'),tf:gv('sp-tf'),tw:gv('sp-tw'),d:gv('sp-d'),
-  tfp:gv('sp-tfp'),bfp:gv('sp-bfp'),twp:gv('sp-twp'),Lcp:gv('sp-Lcp'),
-  colGrade:gv('sp-colGrade'),platGrade:gv('sp-platGrade')};}
-function spliceSum(g){return[
-  ['N_Ed',g.N+' kN'],['V_Ed',g.V+' kN'],['Bolts',g.boltSize+' Gr.8.8'],
-  ['Web bolts/plate',g.nw+'×'],['Flange bolts/plate',g.nf+'×'],
-  ['Col b_f',g.bf+' mm'],['Col t_f',g.tf+' mm'],['Col t_w',g.tw+' mm'],
-  ['Flange plate',g.bfp+'×'+g.tfp+' mm'],['Web plate t',g.twp+' mm'],
-  ['Cover L_cp',g.Lcp+' mm'],['Column',g.colGrade],['Plates',g.platGrade]];}
+function readSplice(){const k=['type','bolt','cls','up','upGrade','lo','loGrade','plGrade','tdiv','N','NG','My','Mz','Vy','Vz','T','fB','ft','fnr','fp','fg','fe1c','fe1p','wh','wt','wnr','wp1','wnc','wp2','we1c','we1p'];const g={};k.forEach(x=>g[x]=gv('sp-'+x));return g;}
+function spliceSum(g){return[['Type',g.type==='bearing'?'bearing':'non-bearing'],['Upper / lower',g.up+' / '+g.lo],['N_Ed / N_G',g.N+' / '+g.NG+' kN'],['M_y / V_y',g.My+' kN·m / '+g.Vy+' kN'],['Tie',g.T+' kN'],
+  ['Flange plates',g.fB+'×'+g.ft+' '+g.plGrade+', '+g.fnr+' rows × 2 each side'],['Web plates',g.wh+'×'+g.wt+', '+g.wnr+'×'+g.wnc+' each side'],['Bolts',g.bolt+' '+g.cls]];}
 
 function readBase(){return{N:gv('ba-N'),M:gv('ba-M'),V:gv('ba-V'),col:gv('ba-col'),colGrade:gv('ba-colGrade'),B:gv('ba-B'),D:gv('ba-D'),tp:gv('ba-tp'),
   platGrade:gv('ba-platGrade'),aw:gv('ba-aw'),awW:gv('ba-awW'),fck:gv('ba-fck'),alpha:gv('ba-alpha'),bolt:gv('ba-bolt'),cls:gv('ba-cls'),ex:gv('ba-ex'),w:gv('ba-w'),
