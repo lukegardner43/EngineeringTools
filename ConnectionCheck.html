@@ -96,7 +96,8 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14p
 .diag-panel{display:flex;flex-direction:column;align-items:center;gap:12px;padding:8px 0;}
 .diag-title{font-weight:700;font-size:16px;color:var(--txt);letter-spacing:.3px;text-transform:uppercase;}
 .diag-desc{font-size:12px;color:var(--mut);text-align:center;max-width:380px;line-height:1.7;}
-.diag-wrap{background:#fff;border:1px solid var(--bdr2);border-radius:var(--r);padding:16px;width:100%;}
+.diag-wrap{background:#fff;border:1px solid var(--bdr2);border-radius:var(--r);padding:6px;width:100%;}
+.diag-note{font-size:10.5px;color:var(--muted);font-family:var(--mono);margin-top:-4px;}
 .diag-legend{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;font-size:11px;color:var(--mut);font-family:var(--mono);}
 .leg{display:flex;align-items:center;gap:5px;}
 .leg-sw{width:14px;height:10px;border-radius:1px;}
@@ -809,6 +810,544 @@ const Joints = (() => {
 if (typeof module !== 'undefined') module.exports = { Joints };
 
 </script>
+<script id="joint-diagrams">
+/* ===== CONNECTION DIAGRAMS (EngineeringTools ConnectionCheck) =====
+   Parametric, to-scale drafting views of each joint, drawn from the current inputs: an elevation and a plan or section,
+   with bolts, welds, dimension chains, labels and the design actions. Pure functions returning SVG strings.
+   Model units mm; each view maps a model box onto a pixel box (x right, y up). */
+const JD = (() => {
+  'use strict';
+  const C = { steel: '#e7ecf1', web: '#eef2f5', edge: '#2f3b47', plate: '#f6d58c', plateEdge: '#94700f', pack: '#e3d3ae', bolt: '#3a424b', boltDark: '#1f252b',
+    weld: '#1a1f24', dim: '#1b67b0', txt: '#222a31', mute: '#7a8590', cl: '#97a2ac', load: '#cc3426', conc: '#f1efea', concEdge: '#8b8478', grout: '#ddd7ca', paper: '#ffffff' };
+  const FS = 'font-family="Saira,Arial,Helvetica,sans-serif"', FM = 'font-family="JetBrains Mono,Consolas,monospace"';
+  const W = 920, H = 520;
+  const DEFS = `<defs>
+<pattern id="jdCut" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect width="6" height="6" fill="#c7d0d9"/><line x1="0" y1="0" x2="0" y2="6" stroke="#6f7d8a" stroke-width="0.9"/></pattern>
+<pattern id="jdPlCut" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(-45)"><rect width="5" height="5" fill="#efc560"/><line x1="0" y1="0" x2="0" y2="5" stroke="#94700f" stroke-width="0.8"/></pattern>
+<pattern id="jdConc" patternUnits="userSpaceOnUse" width="26" height="26"><rect width="26" height="26" fill="${C.conc}"/><circle cx="5" cy="6" r="1.3" fill="#b3ab9d"/><circle cx="17" cy="15" r="1.7" fill="#c0b8aa"/><circle cx="9" cy="21" r="1" fill="#a9a091"/><path d="M19 4 l3 2 l-3 2 z" fill="#c5bdaf"/><path d="M2 14 l2.5 -2 l1.5 3 z" fill="#bdb5a7"/></pattern>
+<pattern id="jdGrout" patternUnits="userSpaceOnUse" width="8" height="8"><rect width="8" height="8" fill="${C.grout}"/><circle cx="2" cy="2" r="0.7" fill="#9e9687"/><circle cx="6" cy="6" r="0.7" fill="#9e9687"/></pattern>
+<marker id="jdLd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${C.load}"/></marker>
+</defs>`;
+  const num = v => { const a = Math.abs(v); return a >= 100 || Number.isInteger(+v.toFixed(1)) ? Math.round(v).toString() : v.toFixed(1); };
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // ---------- views ----------
+  function view(box, bb) {
+    const w = bb[2] - bb[0], h = bb[3] - bb[1], k = Math.min(box[2] / w, box[3] / h);
+    const ox = box[0] + (box[2] - w * k) / 2 - bb[0] * k, oy = box[1] + (box[3] - h * k) / 2 + bb[3] * k;
+    return { k, X: x => ox + x * k, Y: y => oy - y * k, box };
+  }
+  const ST = {
+    steel: `fill="${C.steel}" stroke="${C.edge}" stroke-width="1.1"`, web: `fill="${C.web}" stroke="${C.edge}" stroke-width="1.1"`,
+    cut: `fill="url(#jdCut)" stroke="${C.edge}" stroke-width="1.2"`, plate: `fill="${C.plate}" stroke="${C.plateEdge}" stroke-width="1.1"`,
+    plateCut: `fill="url(#jdPlCut)" stroke="${C.plateEdge}" stroke-width="1.1"`, pack: `fill="${C.pack}" stroke="${C.plateEdge}" stroke-width="0.9"`,
+    conc: `fill="url(#jdConc)" stroke="${C.concEdge}" stroke-width="1"`, grout: `fill="url(#jdGrout)" stroke="${C.concEdge}" stroke-width="0.8"`,
+    ghost: `fill="none" stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="6 3"`, outline: `fill="none" stroke="${C.edge}" stroke-width="1.1"`,
+    bg: `fill="${C.paper}" stroke="none"`,
+  };
+  const R = (v, x0, y0, x1, y1, st = 'steel') => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)); return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${(Math.abs(x1 - x0) * v.k).toFixed(1)}" height="${(Math.abs(y1 - y0) * v.k).toFixed(1)}" ${ST[st]}/>`; };
+  const P = (v, pts, st = 'steel') => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + v.X(p[0]).toFixed(1) + ' ' + v.Y(p[1]).toFixed(1)).join(' ')} Z" ${ST[st]}/>`;
+  const LS = { e: `stroke="${C.edge}" stroke-width="1.1"`, t: `stroke="${C.edge}" stroke-width="0.55"`, c: `stroke="${C.cl}" stroke-width="0.7" stroke-dasharray="14 3 2 3"`,
+    h: `stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="5 3"`, d: `stroke="${C.dim}" stroke-width="0.7"` };
+  const Ln = (v, x0, y0, x1, y1, k = 'e') => `<line x1="${v.X(x0).toFixed(1)}" y1="${v.Y(y0).toFixed(1)}" x2="${v.X(x1).toFixed(1)}" y2="${v.Y(y1).toFixed(1)}" ${LS[k]}/>`;
+  const lnP = (x0, y0, x1, y1, k = 'e') => `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" ${LS[k]}/>`;
+  function Tx(x, y, s, o = {}) {
+    const sz = o.size || 11, col = o.color || C.txt, anc = o.anchor || 'start', w = o.weight || 400, rot = o.rot ? ` transform="rotate(${o.rot} ${x.toFixed(1)} ${y.toFixed(1)})"` : '';
+    const body = esc(s).replace(/_\{([^}]*)\}|_([A-Za-z0-9]+)/g, (m, p1, p2) => `<tspan baseline-shift="sub" font-size="78%">${p1 || p2}</tspan>`);
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${sz}" fill="${col}" text-anchor="${anc}" font-weight="${w}" ${o.mono ? FM : FS} paint-order="stroke" stroke="${C.paper}" stroke-width="3" stroke-linejoin="round"${rot}>${body}</text>`;
+  }
+  const tw = (s, sz = 10) => String(s).replace(/_/g, '').length * sz * 0.6;
+  // ---------- dimensions (tick terminators) ----------
+  const tick = (x, y) => `<line x1="${(x - 3.5).toFixed(1)}" y1="${(y + 3.5).toFixed(1)}" x2="${(x + 3.5).toFixed(1)}" y2="${(y - 3.5).toFixed(1)}" stroke="${C.dim}" stroke-width="1.3"/>`;
+  // horizontal chain: xs (model), measured from model level y, dimension line at off px (negative: below)
+  function DH(v, xs, y, off, labels) {
+    const Yf = v.Y(y), Yd = Yf - off, s = Math.sign(off) || 1; let o = '';
+    xs.forEach(x => { o += lnP(v.X(x), Yf - s * 3, v.X(x), Yd - s * 4, 'd'); });
+    o += lnP(v.X(xs[0]) - 4, Yd, v.X(xs[xs.length - 1]) + 4, Yd, 'd');
+    xs.forEach(x => { o += tick(v.X(x), Yd); });
+    for (let i = 0; i < xs.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(xs[i + 1] - xs[i])); if (lab === '') continue;
+      const a = v.X(xs[i]), b = v.X(xs[i + 1]), wpx = Math.abs(b - a), tW = tw(lab);
+      const ty = off > 0 ? Yd - 4 : Yd + 11;
+      if (wpx > tW + 6) o += Tx((a + b) / 2, ty, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true });
+      else o += Tx(Math.max(a, b) + 3 + (i === xs.length - 2 ? 2 : 0), ty + (off > 0 ? -9 : 9) * (i % 2), lab, { size: 10, color: C.dim, mono: true });
+    }
+    return o;
+  }
+  function DV(v, ys, x, off, labels) {
+    const Xf = v.X(x), Xd = Xf + off, s = Math.sign(off) || 1; let o = '';
+    ys.forEach(y => { o += lnP(Xf + s * 3, v.Y(y), Xd + s * 4, v.Y(y), 'd'); });
+    o += lnP(Xd, v.Y(ys[0]) + 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), Xd, v.Y(ys[ys.length - 1]) - 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), 'd');
+    ys.forEach(y => { o += tick(Xd, v.Y(y)); });
+    for (let i = 0; i < ys.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(ys[i + 1] - ys[i])); if (lab === '') continue;
+      const a = v.Y(ys[i]), b = v.Y(ys[i + 1]), hpx = Math.abs(b - a), tW = tw(lab);
+      const tx = off > 0 ? Xd + 11 : Xd - 4;
+      if (hpx > tW + 6) o += Tx(tx, (a + b) / 2, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true, rot: -90 });
+      else o += Tx(off > 0 ? Xd + 5 : Xd - 5, (a + b) / 2 + 3.5, lab, { size: 10, color: C.dim, mono: true, anchor: off > 0 ? 'start' : 'end' });
+    }
+    return o;
+  }
+  // leader with a dot at a model point and text lines at a pixel offset
+  function LD(v, x, y, dx, dy, lines, o = {}) {
+    const px = v.X(x), py = v.Y(y), ex = px + dx, ey = py + dy, s = dx >= 0 ? 1 : -1;
+    let out = `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="1.9" fill="${C.txt}"/>` + lnP(px, py, ex, ey, 't') + lnP(ex, ey, ex + s * 8, ey, 't');
+    [].concat(lines).forEach((t, i) => { out += Tx(ex + s * 11, ey + 4 + i * 13 - ([].concat(lines).length - 1) * 6.5, t, { size: o.size || 10.5, anchor: s > 0 ? 'start' : 'end', weight: i === 0 && o.bold ? 600 : 400, color: i === 0 ? C.txt : '#4b545d' }); });
+    return out;
+  }
+  // load arrow ending at pixel point (px, py); (vx, vy) is the arrow vector in pixels; label near the tail
+  function LA(px, py, vx, vy, label, o = {}) {
+    const x0 = px - vx, y0 = py - vy, lx = x0 + (o.ldx ?? 0), ly = y0 + (o.ldy ?? -6);
+    return `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${px.toFixed(1)}" y2="${py.toFixed(1)}" stroke="${C.load}" stroke-width="2.4" marker-end="url(#jdLd)"/>` +
+      (label ? Tx(lx, ly, label, { size: 11, color: C.load, weight: 600, anchor: o.anchor || 'middle' }) : '');
+  }
+  function moment(px, py, rr, label, cw = true) {
+    const a0 = cw ? 200 : -20, a1 = cw ? 340 : 160, p = a => [px + rr * Math.cos(a * Math.PI / 180), py - rr * Math.sin(a * Math.PI / 180)], [x0, y0] = p(a0), [x1, y1] = p(a1);
+    return `<path d="M${x0.toFixed(1)} ${y0.toFixed(1)} A${rr} ${rr} 0 1 ${cw ? 1 : 0} ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="${C.load}" stroke-width="2.2" marker-end="url(#jdLd)"/>` + Tx(px, py - rr - 7, label, { size: 11, color: C.load, weight: 600, anchor: 'middle' });
+  }
+  // ---------- steel symbols ----------
+  function BE(v, x, y, d) {   // bolt seen end-on: washer ring, head, centre cross
+    const px = v.X(x), py = v.Y(y), r1 = Math.max(0.95 * d * v.k, 3.2), r2 = Math.max(0.55 * d * v.k, 1.9), c = r1 + 3;
+    return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r1.toFixed(1)}" fill="#fff" stroke="${C.boltDark}" stroke-width="1"/><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r2.toFixed(1)}" fill="${C.bolt}"/>` +
+      lnP(px - c, py, px + c, py, 't') + lnP(px, py - c, px, py + c, 't');
+  }
+  // bolt seen side-on with its axis along x (dir 'x') or y: shank a0..a1 at c, head at a0, nut at a1
+  function BS(v, a0, a1, c, d, dir = 'x') {
+    const sg = Math.sign(a1 - a0) || 1, hd = 0.65 * d, nt = 0.8 * d, wh = 0.8 * d, wa = 0.15 * d, pr = 0.45 * d;
+    const seg = (s0, s1, half, fill) => dir === 'x' ? R(v, s0, c - half, s1, c + half, fill) : R(v, c - half, s0, c + half, s1, fill);
+    let o = seg(a0, a1 + sg * (wa + nt + pr), d / 2, 'bolt');
+    o += seg(a0 - sg * wa, a0, d, 'bolt') + seg(a0 - sg * (wa + hd), a0 - sg * wa, wh, 'boltH');
+    o += seg(a1, a1 + sg * wa, d, 'bolt') + seg(a1 + sg * wa, a1 + sg * (wa + nt), wh, 'boltH');
+    o += dir === 'x' ? Ln(v, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), c, 'c') : Ln(v, c, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), 'c');
+    return o;
+  }
+  ST.bolt = `fill="#59626c" stroke="${C.boltDark}" stroke-width="0.6"`; ST.boltH = `fill="${C.bolt}" stroke="${C.boltDark}" stroke-width="0.6"`;
+  // fillet weld at the corner (x, y): legs along sx (x) and sy (y), sized a (mm) but at least 4 px
+  function WD(v, x, y, a, sx, sy) {
+    const L = Math.max(a * v.k, 4.5), px = v.X(x), py = v.Y(y);
+    return `<path d="M${px.toFixed(1)} ${py.toFixed(1)} L${(px + sx * L).toFixed(1)} ${py.toFixed(1)} L${px.toFixed(1)} ${(py - sy * L).toFixed(1)} Z" fill="${C.weld}"/>`;
+  }
+  // weld seen along its length (elevation): narrow strip
+  const WS = (v, x0, y0, x1, y1) => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)), w = Math.max(Math.abs(x1 - x0) * v.k, 2.5), h = Math.max(Math.abs(y1 - y0) * v.k, 2.5);
+    return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${C.weld}" fill-opacity="0.82"/>`; };
+  // zigzag break lines through a member
+  function BK(v, x, y0, y1) {   // vertical break at model x between y0 and y1
+    const px = v.X(x), a = v.Y(Math.max(y0, y1)) - 4, b = v.Y(Math.min(y0, y1)) + 4, m = (a + b) / 2;
+    return `<path d="M${px} ${a} L${px} ${m - 7} L${px - 5} ${m - 3} L${px + 5} ${m + 3} L${px} ${m + 7} L${px} ${b}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  function BKH(v, y, x0, x1) {
+    const py = v.Y(y), a = v.X(Math.min(x0, x1)) - 4, b = v.X(Math.max(x0, x1)) + 4, m = (a + b) / 2;
+    return `<path d="M${a} ${py} L${m - 7} ${py} L${m - 3} ${py - 5} L${m + 3} ${py + 5} L${m + 7} ${py} L${b} ${py}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  // white mask to fade member ends beyond a break
+  const mask = (v, x0, y0, x1, y1) => R(v, x0, y0, x1, y1, 'bg');
+  // I section cross-section (cut), centred at (cx, cy); 'v': web vertical (depth along y), 'h': depth along x
+  function ISec(v, cx, cy, s, o = 'v', st = 'cut') {
+    const b = s.b, h = s.h, tf = s.tf, t = s.tw, r = Math.min(s.r || 0, (b - t) / 2 - 1), pts = [];
+    const arc = (ux, uy, a0, a1) => { for (let i = 0; i <= 6; i++) { const a = (a0 + (a1 - a0) * i / 6) * Math.PI / 180; pts.push([ux + r * Math.cos(a), uy + r * Math.sin(a)]); } };
+    pts.push([-b / 2, h / 2], [b / 2, h / 2], [b / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, h / 2 - tf - r, 90, 180); else pts.push([t / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, -h / 2 + tf + r, 180, 270); else pts.push([t / 2, -h / 2 + tf]);
+    pts.push([b / 2, -h / 2 + tf], [b / 2, -h / 2], [-b / 2, -h / 2], [-b / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, -h / 2 + tf + r, 270, 360); else pts.push([-t / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, h / 2 - tf - r, 0, 90); else pts.push([-t / 2, h / 2 - tf]);
+    pts.push([-b / 2, h / 2 - tf]);
+    return P(v, pts.map(([u, w]) => o === 'v' ? [cx + u, cy + w] : [cx + w, cy + u]), st);
+  }
+  // I member in side elevation: length along 'x' (a0..a1) with the depth c0..c1 across, or along 'y'
+  function IEl(v, a0, a1, c0, c1, s, dir = 'x', o = {}) {
+    const lo = Math.min(c0, c1), hi = Math.max(c0, c1), rr = s.r || 0;
+    const ln = (c, k) => dir === 'x' ? Ln(v, a0, c, a1, c, k) : Ln(v, c, a0, c, a1, k);
+    let out = dir === 'x' ? R(v, a0, lo, a1, hi, 'steel') : R(v, lo, a0, hi, a1, 'steel');
+    out += dir === 'x' ? R(v, a0, lo + s.tf, a1, hi - s.tf, 'web') : R(v, lo + s.tf, a0, hi - s.tf, a1, 'web');
+    out += ln(lo + s.tf, 'e') + ln(hi - s.tf, 'e');
+    if (rr > 0 && !o.noRoot) out += ln(lo + s.tf + rr, 't') + ln(hi - s.tf - rr, 't');
+    return out;
+  }
+  // I member seen on the flange face: width b, length along dir
+  const IFl = (v, a0, a1, cc, s, dir = 'y') => (dir === 'y' ? R(v, cc - s.b / 2, a0, cc + s.b / 2, a1, 'steel') + Ln(v, cc - s.tw / 2 - (s.r || 0), a0, cc - s.tw / 2 - (s.r || 0), a1, 'h') + Ln(v, cc + s.tw / 2 + (s.r || 0), a0, cc + s.tw / 2 + (s.r || 0), a1, 'h')
+    : R(v, a0, cc - s.b / 2, a1, cc + s.b / 2, 'steel'));
+  const title = (x, y, t, sub) => Tx(x, y, t, { size: 11.5, weight: 700, anchor: 'middle', color: C.txt }) + `<line x1="${(x - tw(t, 11.5) / 2).toFixed(1)}" y1="${(y + 3).toFixed(1)}" x2="${(x + tw(t, 11.5) / 2).toFixed(1)}" y2="${(y + 3).toFixed(1)}" stroke="${C.txt}" stroke-width="0.8"/>` + (sub ? Tx(x, y + 16, sub, { size: 10, anchor: 'middle', color: C.mute }) : '');
+  const svg = (body, h = H) => `<svg class="jd" viewBox="0 0 ${W} ${h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;background:${C.paper}" role="img">${DEFS}<rect width="${W}" height="${h}" fill="${C.paper}"/>${body}</svg>`;
+  const BOX = { L: [40, 46, 520, 400], Rt: [612, 46, 280, 400] };
+  const fv = x => { const n = parseFloat(x); return Number.isFinite(n) ? n : 0; };
+  const BOLTD = { M12: 12, M16: 16, M20: 20, M24: 24, M27: 27, M30: 30, M36: 36 };
+  const bd = sz => BOLTD[sz] || 20;
+  const range = (n, f) => Array.from({ length: Math.max(0, n) }, (_, i) => f(i));
+  return { C, W, H, BOX, DEFS, view, R, P, Ln, lnP, Tx, tw, DH, DV, LD, LA, moment, BE, BS, WD, WS, BK, BKH, mask, ISec, IEl, IFl, title, svg, num, fv, bd, range, esc, ST };
+})();
+
+/* Joint drawings: each takes the form values g (strings, as read by the page) and S(name) -> { h, b, tf, tw, r } or null. */
+const JDraw = (() => {
+  'use strict';
+  const { C, BOX, view, R, P, Ln, Tx, DH, DV, LD, LA, moment, BE, BS, WD, WS, BK, BKH, mask, ISec, IEl, IFl, title, svg, num, fv, bd, range } = JD;
+  const nint = (x, d = 1) => Math.max(d, Math.round(fv(x)));
+  const sec = (S, name, dflt) => { const s = S(name); return s ? { ...s } : { ...dflt }; };
+  const UC = { h: 260.3, b: 256.3, tf: 17.3, tw: 10.3, r: 12.7 }, UB = { h: 457, b: 191, tf: 16, tw: 9.9, r: 10.2 };
+  const secMark = (v, x0, x1, y, letter) => `${Ln(v, x0, y, x1, y, 'c')}${Tx(v.X(x0) - 4, v.Y(y) + 4, letter, { size: 11, weight: 700, anchor: 'end', color: C.dim })}${Tx(v.X(x1) + 4, v.Y(y) + 4, letter, { size: 11, weight: 700, color: C.dim })}`;
+
+  // ================= FIN PLATE =================
+  function fin(g, S) {
+    const b = sec(S, g.beamSec, UB), sp = sec(S, g.suppSec, UC); b.tw = fv(g.tw) || b.tw;
+    const face = g.face || 'flange', n = nint(g.n), p1 = fv(g.p1), e1 = fv(g.e1), e2p = fv(g.e2p), e2w = fv(g.e2w), tp = fv(g.tp), hp = fv(g.hp), lp = fv(g.lp), aw = fv(g.aw), d = bd(g.boltSize);
+    const a = lp - e2p, xbe = a - e2w, e1b = hp - e1 - (n - 1) * p1, notch = face === 'bweb';
+    const dn = notch ? sp.tf + (sp.r || 0) + 5 : 0, ytop = -Math.max(b.tf + (b.r || 0), dn) - 10, ybot = ytop - hp;
+    const Lvis = Math.max(1.05 * b.h, lp + 240), xr = Math.max(xbe, 0) + Lvis, yb = -b.h;
+    const sx0 = face === 'flange' ? -sp.h : -sp.tw / 2 - sp.b / 2, yU = Math.max(0.3 * b.h, 130), yD = yb - Math.max(0.25 * b.h, 110);
+    const v = view(BOX.L, [sx0 - 20, yD - 70, xr + 40, yU + 30]);
+    let o = '';
+    // support
+    if (face === 'flange') { o += IEl(v, yD, yU, sx0, 0, sp, 'y') + BKH(v, yU, sx0, 0) + BKH(v, yD, sx0, 0); }
+    else if (face === 'web') { const cx = -sp.tw / 2; o += R(v, cx - sp.b / 2, yD, cx + sp.b / 2, yU, 'steel') + R(v, -sp.tw, yD, 0, yU, 'web') + Ln(v, -sp.tw, yD, -sp.tw, yU) + Ln(v, 0, yD, 0, yU) + BKH(v, yU, cx - sp.b / 2, cx + sp.b / 2) + BKH(v, yD, cx - sp.b / 2, cx + sp.b / 2); }
+    else { o += ISec(v, -sp.tw / 2, -sp.h / 2, sp, 'v'); }
+    // supported beam (with a top notch when framing into a beam web at the same level)
+    const xn = notch ? -sp.tw / 2 + sp.b / 2 + 10 : Math.max(xbe, 0);
+    o += P(v, notch ? [[xbe, yb], [xbe, -dn], [xn, -dn], [xn, 0], [xr, 0], [xr, yb]] : [[xbe, yb], [xbe, 0], [xr, 0], [xr, yb]], 'web');
+    o += R(v, xn, -b.tf, xr, 0, 'steel') + R(v, xbe, yb, xr, yb + b.tf, 'steel') + Ln(v, xbe, yb + b.tf + (b.r || 0), xr, yb + b.tf + (b.r || 0), 't') + Ln(v, xn, -b.tf - (b.r || 0), xr, -b.tf - (b.r || 0), 't');
+    o += mask(v, xr, yb - 5, xr + 40, 5) + BK(v, xr, yb, 0);
+    // fin plate, weld, bolts
+    o += R(v, 0, ybot, lp, ytop, 'plate') + WS(v, 0, ybot, aw, ytop);
+    const ys = range(n, i => ytop - e1 - i * p1);
+    o += Ln(v, a, ytop + 18, a, ybot - 18, 'c') + ys.map(y => BE(v, a, y, d)).join('');
+    o += secMark(v, -30, lp + 40, ys[Math.floor((n - 1) / 2)] - (n % 2 ? 0 : p1 / 2), 'A');
+    // dimensions
+    o += DV(v, [ytop, ...ys, ybot], lp, 22, [num(e1), ...range(n - 1, () => num(p1)), num(e1b)]) + DV(v, [ytop, ybot], lp, 52, [`h_p ${num(hp)}`]);
+    o += DH(v, xbe > 1 ? [0, xbe, a, lp] : [0, a, lp], ybot, -22, xbe > 1 ? [`gap ${num(xbe)}`, num(e2w), num(e2p)] : [num(a), num(e2p)]) + DH(v, [0, a], ybot, -48, [`a = ${num(a)}`]);
+    // labels and loads
+    o += LD(v, lp * 0.35, ytop, 18, -(v.Y(ytop) - v.Y(0)) - 26, [`Fin plate ${num(hp)} × ${num(lp)} × ${num(tp)} ${g.platGrade || ''}`], { bold: true });
+    const warn = [];
+    if (xbe < 10) warn.push(`beam end gap ${num(Math.max(xbe, 0))} mm: check the clearance to the support`);
+    if (e1b < 0) warn.push(`bolt group extends ${num(-e1b)} mm beyond the plate: increase h_p or reduce n / p₁`);
+    o += warn.map((m, i) => Tx(BOX.L[0], 432 - i * 14, '⚠ ' + m, { size: 10.5, color: C.load, weight: 600 })).join('');
+    o += LD(v, a, ys[n - 1], 70, 58, [`${n} × ${g.boltSize || 'M20'} 8.8`, `p₁ ${num(p1)}, single line`]);
+    o += LD(v, aw / 2, ybot + hp * 0.25, -50, 58, [`Fillet weld ${num(aw)} leg`, 'both sides of the plate']);
+    o += Tx(v.X(xr - Lvis * 0.3), v.Y(yb) + 16, `${g.beamSec || ''} (supported beam)`, { size: 10.5, anchor: 'middle', color: C.mute, weight: 600 });
+    o += Tx(v.X(face === 'flange' ? -sp.h / 2 : -sp.tw / 2), v.Y(yU) - 8, g.suppSec || '', { size: 10.5, anchor: 'middle', color: C.mute });
+    o += Tx(v.X(face === 'flange' ? -sp.h / 2 : -sp.tw / 2), v.Y(yU) - 21, face === 'flange' ? 'COLUMN (flange face)' : face === 'web' ? 'COLUMN (web)' : 'SUPPORTING BEAM', { size: 10, anchor: 'middle', weight: 600, color: C.mute });
+    o += LA(v.X(xbe + Lvis * 0.78), v.Y(0) - 3, 0, 48, `V_Ed = ${num(fv(g.V))} kN`, { ldy: -6 });
+    if (fv(g.T) > 0) o += LA(v.X(xr) + 58, v.Y(yb / 2), 42, 0, `T ${num(fv(g.T))} kN`, { ldy: -10, ldx: 44, anchor: 'start' });
+    o += title(v.X((sx0 + xr) / 2), 462, 'ELEVATION', 'on the supported beam web');
+    // section A-A (plan through the bolts)
+    const xR = lp + 130, zw = Math.max(b.b, face === 'flange' ? sp.b : face === 'web' ? sp.h : 2 * b.b) / 2 + 25;
+    const xL = face === 'flange' ? -sp.tf - 80 : -sp.tw / 2 - sp.b / 2 - 15;
+    const w = view(BOX.Rt, [xL - 10, -zw - 45, xR + 30, zw + 25]), z0 = b.tw / 2;
+    let q = '';
+    if (face === 'flange') q += R(w, -sp.tf - 80, -sp.tw / 2, -sp.tf, sp.tw / 2, 'cut') + R(w, -sp.tf, -sp.b / 2, 0, sp.b / 2, 'cut') + mask(w, -sp.tf - 120, -sp.tw, -sp.tf - 80, sp.tw) + BK(w, -sp.tf - 80, -sp.tw / 2 - 6, sp.tw / 2 + 6);
+    else if (face === 'web') q += ISec(w, -sp.tw / 2, 0, sp, 'v');
+    else q += R(w, -sp.tw / 2 - sp.b / 2, -zw + 10, -sp.tw / 2 + sp.b / 2, zw - 10, 'steel') + R(w, -sp.tw, -zw + 10, 0, zw - 10, 'cut') + BKH(w, zw - 10, -sp.tw / 2 - sp.b / 2, -sp.tw / 2 + sp.b / 2) + BKH(w, -zw + 10, -sp.tw / 2 - sp.b / 2, -sp.tw / 2 + sp.b / 2);
+    q += R(w, notch ? xn : xbe, -b.b / 2, xR, b.b / 2, 'steel') + R(w, xbe, -z0, xR, z0, 'cut') + mask(w, xR, -b.b / 2 - 5, xR + 40, b.b / 2 + 5) + BK(w, xR, -b.b / 2, b.b / 2);
+    q += R(w, 0, z0, lp, z0 + tp, 'plateCut') + WD(w, 0, z0 + tp, aw, 1, 1) + WD(w, 0, z0, aw, 1, -1);
+    q += BS(w, -z0, z0 + tp, a, d, 'y');
+    q += DV(w, [z0, z0 + tp], lp, 16, [`t_p ${num(tp)}`]) + DH(w, [0, a, lp], -b.b / 2, -18, [num(a), num(e2p)]);
+    q += LD(w, xR - 50, 0, -10, 52, [`beam web t_w ${num(b.tw)}`]);
+    q += title(w.X((xL + xR) / 2), 462, 'SECTION A–A', 'plan through the bolt group');
+    return svg(o + q);
+  }
+
+  // ================= END PLATES (partial and full depth) =================
+  function endPlate(g, S, full) {
+    const b = full ? { h: fv(g.d), b: fv(g.bf), tf: fv(g.tf), tw: fv(g.tw), r: 10 } : sec(S, g.beamSec, UB); if (!full) b.tw = fv(g.tw) || b.tw;
+    const sp = sec(S, g.suppSec, UC); sp.tf = fv(g.tfc) || sp.tf;
+    const n = nint(g.n, 2), rows = Math.max(1, Math.round(n / 2)), p1 = fv(g.p1), e1 = fv(g.e1), e2 = fv(g.e2), gg = fv(g.g), tp = fv(g.tp), d = bd(g.boltSize);
+    const aw = fv(full ? g.aww : g.aw), af = full ? fv(g.awf) : 0, Wp = gg + 2 * e2;
+    const ytop = full ? 10 : -(b.tf + (b.r || 0) + 10), hp = full ? b.h + 20 : fv(g.hp), ybot = ytop - hp, eb = hp - e1 - (rows - 1) * p1;
+    const ys = range(rows, i => ytop - e1 - i * p1), Lvis = Math.max(0.9 * b.h, 300), xr = tp + Lvis, yb = -b.h;
+    const yU = Math.max(0.3 * b.h, 120), yD = yb - Math.max(0.25 * b.h, 110);
+    const v = view(BOX.L, [-sp.h - 20, yD - 70, xr + 50, yU + 30]);
+    let o = IEl(v, yD, yU, -sp.h, 0, sp, 'y') + BKH(v, yU, -sp.h, 0) + BKH(v, yD, -sp.h, 0);
+    o += IEl(v, tp, xr, yb, 0, b, 'x') + mask(v, xr, yb - 5, xr + 40, 5) + BK(v, xr, yb, 0);
+    o += R(v, 0, ybot, tp, ytop, 'plateCut') + WS(v, tp, Math.max(ybot, yb + b.tf), tp + aw, Math.min(ytop, -b.tf));
+    if (full) o += WD(v, tp, 0, af, 1, 1) + WD(v, tp, -b.tf, af, 1, -1) + WD(v, tp, yb, af, 1, -1) + WD(v, tp, yb + b.tf, af, 1, 1);
+    o += ys.map(y => BS(v, tp, -sp.tf, y, d, 'x')).join('');
+    o += DV(v, [ytop, ...ys, ybot], -sp.h, -22, [num(e1), ...range(rows - 1, () => num(p1)), num(eb)]) + DV(v, [ytop, ybot], -sp.h, -50, [`h_p ${num(hp)}`]);
+    o += DH(v, [-sp.tf, 0, tp], yD + 30, -18, [num(sp.tf), num(tp)]);
+    o += LD(v, tp / 2, ybot + hp * 0.15, 60, 40, [`${full ? 'Full' : 'Partial'} depth end plate`, `${num(hp)} × ${num(Wp)} × ${num(tp)} ${g.platGrade || ''}`], { bold: true });
+    o += LD(v, tp + aw / 2, ytop - hp * 0.5, 80, -20, [`Web welds ${num(aw)} leg, both sides`].concat(full ? [`Flange welds ${num(af)} leg`] : []));
+    o += LD(v, tp + 0.7 * d, ys[0], 24, -(v.Y(ys[0]) - v.Y(0)) - 30, [`${n} × ${g.boltSize || 'M20'} 8.8, ${rows} rows at p₁ ${num(p1)}`]);
+    o += Tx(v.X(-sp.h / 2), v.Y(yU) - 21, 'COLUMN (flange face)', { size: 10, anchor: 'middle', weight: 600, color: C.mute }) + Tx(v.X(-sp.h / 2), v.Y(yU) - 8, g.suppSec || '', { size: 10.5, anchor: 'middle', color: C.mute });
+    o += Tx(v.X(tp + Lvis * 0.78), v.Y(yb) + 16, full ? `Beam ${num(b.h)} deep` : (g.beamSec || ''), { size: 10.5, anchor: 'middle', color: C.mute, weight: 600 });
+    o += LA(v.X(tp + Lvis * 0.8), v.Y(0) - 3, 0, 48, `V_Ed = ${num(fv(g.V))} kN`, { ldy: -6 });
+    if (fv(g.T) > 0) o += LA(v.X(xr) + 58, v.Y(yb / 2), 42, 0, `T ${num(fv(g.T))} kN`, { ldy: -10, ldx: 44, anchor: 'start' });
+    if (eb < 0) o += Tx(BOX.L[0], 432, `⚠ bolt rows extend ${num(-eb)} mm beyond the plate: increase h_p or reduce the rows`, { size: 10.5, color: C.load, weight: 600 });
+    o += title(v.X((-sp.h + xr) / 2), 462, 'ELEVATION', 'on the beam web');
+    // view on the end plate
+    const w = view(BOX.Rt, [-Math.max(sp.b, Wp, b.b) / 2 - 35, Math.min(ybot, yb) - 60, Math.max(sp.b, Wp, b.b) / 2 + 30, Math.max(ytop, 0) + 30]);
+    let q = R(w, -sp.b / 2, Math.min(ybot, yb) - 30, sp.b / 2, Math.max(ytop, 0) + 20, 'steel') + BKH(w, Math.max(ytop, 0) + 20, -sp.b / 2, sp.b / 2) + BKH(w, Math.min(ybot, yb) - 30, -sp.b / 2, sp.b / 2);
+    q += R(w, -Wp / 2, ybot, Wp / 2, ytop, 'plate') + ISec(w, 0, -b.h / 2, b, 'v');
+    const wy0 = Math.max(ybot, yb + b.tf + (b.r || 0)), wy1 = Math.min(ytop, -b.tf - (b.r || 0));
+    q += WS(w, b.tw / 2, wy0, b.tw / 2 + aw, wy1) + WS(w, -b.tw / 2 - aw, wy0, -b.tw / 2, wy1);
+    if (full) q += WS(w, -b.b / 2, 0, b.b / 2, af) + WS(w, -b.b / 2, yb - af, b.b / 2, yb);
+    q += ys.map(y => BE(w, -gg / 2, y, d) + BE(w, gg / 2, y, d)).join('');
+    q += DH(w, [-Wp / 2, -gg / 2, gg / 2, Wp / 2], ybot, -20, [num(e2), `g ${num(gg)}`, num(e2)]) + DV(w, [ytop, ...ys, ybot], Wp / 2, 16, [num(e1), ...range(rows - 1, () => num(p1)), num(eb)]);
+    q += title(w.X(0), 462, 'VIEW ON END PLATE', 'beam cut at the plate');
+    return svg(o + q);
+  }
+
+  // ================= CLEATS (double / single) =================
+  function cleat(g, S, double) {
+    const b = sec(S, g.beamSec, UB), sp = sec(S, g.suppSec, UC); b.tw = fv(g.tw) || b.tw; sp.tf = fv(g.tfc) || sp.tf;
+    const n = nint(g.n), p1 = fv(g.p1), e1 = fv(g.e1), e2s = fv(g.e2s), e2w = fv(g.e2w), tc = fv(g.tc), lo = fv(g.lout), lw = fv(g.lweb), d = bd(g.boltSize);
+    const Lc = 2 * e1 + (n - 1) * p1, ytop = -(b.tf + (b.r || 0) + 10), ybot = ytop - Lc, gap = 10, xbw = lw - e2w;
+    const ys = range(n, i => ytop - e1 - i * p1), Lvis = Math.max(0.9 * b.h, 300), xr = gap + Lvis, yb = -b.h;
+    const yU = Math.max(0.3 * b.h, 120), yD = yb - Math.max(0.25 * b.h, 110);
+    const v = view(BOX.L, [-sp.h - 20, yD - 70, xr + 50, yU + 30]);
+    let o = IEl(v, yD, yU, -sp.h, 0, sp, 'y') + BKH(v, yU, -sp.h, 0) + BKH(v, yD, -sp.h, 0);
+    o += IEl(v, gap, xr, yb, 0, b, 'x') + mask(v, xr, yb - 5, xr + 40, 5) + BK(v, xr, yb, 0);
+    o += R(v, 0, ybot, lw, ytop, 'plate') + Ln(v, tc, ybot, tc, ytop, 'e');
+    o += ys.map(y => BS(v, tc, -sp.tf, y, d, 'x')).join('') + Ln(v, xbw, ytop + 16, xbw, ybot - 16, 'c') + ys.map(y => BE(v, xbw, y, d)).join('');
+    o += secMark(v, -30, lw + 40, ys[Math.floor((n - 1) / 2)] - (n % 2 ? 0 : p1 / 2), 'A');
+    o += DV(v, [ytop, ...ys, ybot], lw, 22, [num(e1), ...range(n - 1, () => num(p1)), num(e1)]) + DV(v, [ytop, ybot], lw, 50, [`L ${num(Lc)}`]);
+    o += DH(v, [0, xbw, lw], ybot, -22, [num(xbw), num(e2w)]);
+    o += LD(v, lw * 0.4, ytop, 20, -(v.Y(ytop) - v.Y(0)) - 26, [`${double ? '2 cleats' : 'Single cleat'} ${num(lo)} × ${num(lw)} × ${num(tc)}, length ${num(Lc)} ${g.cleatGrade || ''}`], { bold: true });
+    o += LD(v, xbw, ys[n - 1], 70, 56, [`${n} × ${g.boltSize || 'M20'} through the beam web`, double ? 'double shear' : 'single shear']);
+    o += Tx(v.X(-sp.h / 2), v.Y(yU) - 21, 'COLUMN (flange face)', { size: 10, anchor: 'middle', weight: 600, color: C.mute }) + Tx(v.X(-sp.h / 2), v.Y(yU) - 8, g.suppSec || '', { size: 10.5, anchor: 'middle', color: C.mute });
+    o += Tx(v.X(gap + Lvis * 0.55), v.Y(yb) + 16, g.beamSec || '', { size: 10.5, anchor: 'middle', color: C.mute, weight: 600 });
+    o += LA(v.X(gap + Lvis * 0.75), v.Y(0) - 3, 0, 48, `V_Ed = ${num(fv(g.V))} kN`, { ldy: -6 });
+    o += title(v.X((-sp.h + xr) / 2), 462, 'ELEVATION', 'on the beam web');
+    // section A-A
+    const zl = b.tw / 2 + lo, xR = lw + 120, zx = Math.max(sp.b / 2, zl) + 20, w = view(BOX.Rt, [-sp.tf - 90, -zx - 40, xR + 30, zx + 25]);
+    let q = R(w, -sp.tf - 80, -sp.tw / 2, -sp.tf, sp.tw / 2, 'cut') + R(w, -sp.tf, -sp.b / 2, 0, sp.b / 2, 'cut') + BK(w, -sp.tf - 80, -sp.tw / 2 - 6, sp.tw / 2 + 6);
+    q += R(w, gap, -b.b / 2, xR, b.b / 2, 'steel') + R(w, gap, -b.tw / 2, xR, b.tw / 2, 'cut') + mask(w, xR, -b.b / 2 - 5, xR + 40, b.b / 2 + 5) + BK(w, xR, -b.b / 2, b.b / 2);
+    const sides = double ? [1, -1] : [1], zb = b.tw / 2 + lo - e2s;
+    for (const s of sides) {
+      q += P(w, [[0, s * b.tw / 2], [lw, s * b.tw / 2], [lw, s * (b.tw / 2 + tc)], [tc, s * (b.tw / 2 + tc)], [tc, s * zl], [0, s * zl]], 'plateCut');
+      q += BS(w, tc, -sp.tf, s * zb, d, 'x');
+    }
+    q += BS(w, double ? -(b.tw / 2 + tc) : -b.tw / 2, b.tw / 2 + tc, xbw, d, 'y');
+    q += DV(w, double ? [-zb, zb] : [0, zb], -sp.tf - 80, -26, [double ? `${num(2 * zb)} cross-centres` : num(zb)]) + DH(w, [0, xbw, lw], -zx + 10, -14, [num(xbw), num(e2w)]);
+    q += DV(w, [b.tw / 2 + tc, zl], tc, 12, [num(lo - tc)]);
+    q += title(w.X((xR - sp.tf - 90) / 2), 462, 'SECTION A–A', 'plan through a bolt row');
+    return svg(o + q);
+  }
+
+  // ================= COLUMN SPLICE =================
+  function splice(g, S) {
+    const up = sec(S, g.up, { h: 260.3, b: 256.3, tf: 17.3, tw: 10.3, r: 12.7 }), lo = sec(S, g.lo, { h: 266.7, b: 258.8, tf: 20.5, tw: 12.8, r: 12.7 });
+    const bearing = g.type !== 'nonbearing', t0 = fv(g.tdiv), gap = bearing ? 0 : t0, tdiv = bearing ? t0 : 0, d = bd(g.bolt);
+    const fB = fv(g.fB), ft = fv(g.ft), fnr = nint(g.fnr), fp = fv(g.fp), fgg = fv(g.fg), fe1c = fv(g.fe1c), fe1p = fv(g.fe1p);
+    const wh = fv(g.wh), wt = fv(g.wt), wnr = nint(g.wnr), wp1 = fv(g.wp1), wnc = nint(g.wnc), wp2 = fv(g.wp2), we1c = fv(g.we1c), we1p = fv(g.we1p);
+    const yJ0 = 0, yJ1 = gap + tdiv;   // lower column top, upper column bottom
+    const fRows = s => range(fnr, i => s > 0 ? yJ1 + fe1c + i * fp : yJ0 - fe1c - i * fp), fHalf = fe1c + (fnr - 1) * fp + fe1p;
+    const fTop = yJ1 + fHalf, fBot = yJ0 - fHalf, Lu = fTop + Math.max(150, 0.5 * up.h), Ll = fBot - Math.max(150, 0.5 * lo.h);
+    // flange elevation
+    const bmax = Math.max(up.b, lo.b, fB), v = view(BOX.L, [-bmax / 2 - 130, Ll - 40, bmax / 2 + 150, Lu + 30]);
+    let o = R(v, -lo.b / 2, Ll, lo.b / 2, yJ0, 'steel') + R(v, -up.b / 2, yJ1, up.b / 2, Lu, 'steel');
+    if (tdiv > 0) o += R(v, -bmax / 2 - 10, yJ0, bmax / 2 + 10, yJ1, 'plate');
+    o += Ln(v, -lo.tw / 2, Ll, -lo.tw / 2, yJ0, 'h') + Ln(v, lo.tw / 2, Ll, lo.tw / 2, yJ0, 'h') + Ln(v, -up.tw / 2, yJ1, -up.tw / 2, Lu, 'h') + Ln(v, up.tw / 2, yJ1, up.tw / 2, Lu, 'h');
+    o += BKH(v, Lu, -up.b / 2, up.b / 2) + BKH(v, Ll, -lo.b / 2, lo.b / 2);
+    o += R(v, -fB / 2, fBot, fB / 2, fTop, 'plate');
+    const allF = [...fRows(-1), ...fRows(1)];
+    o += allF.map(y => BE(v, -fgg / 2, y, d) + BE(v, fgg / 2, y, d)).join('') + Ln(v, -fB / 2 - 25, (yJ0 + yJ1) / 2, fB / 2 + 25, (yJ0 + yJ1) / 2, 'c');
+    const chain = [fTop, ...fRows(1).slice().reverse(), ...fRows(-1), fBot];
+    o += DV(v, chain, fB / 2, 20, [num(fe1p), ...range(fnr - 1, () => num(fp)), num(fe1c + gap + tdiv + fe1c), ...range(fnr - 1, () => num(fp)), num(fe1p)]);
+    o += DV(v, [fTop, fBot], fB / 2, 52, [`L ${num(fTop - fBot)}`]) + DH(v, [-fB / 2, -fgg / 2, fgg / 2, fB / 2], fBot, -22, [num((fB - fgg) / 2), num(fgg), num((fB - fgg) / 2)]);
+    o += LD(v, -fB / 2, fTop - fHalf * 0.3, -40, -30, [`Flange cover plate`, `${num(fB)} × ${num(ft)} × ${num(fTop - fBot)}`], { bold: true });
+    o += LD(v, -fgg / 2, fRows(-1)[fnr - 1], -50, 40, [`${4 * fnr} × ${g.bolt || 'M20'} ${g.cls || '8.8'}`, 'per flange']);
+    o += Tx(v.X(-up.b / 2) - 10, v.Y(Lu) + 26, 'UPPER', { size: 10.5, anchor: 'end', weight: 700, color: C.mute }) + Tx(v.X(-up.b / 2) - 10, v.Y(Lu) + 40, g.up || '', { size: 10, anchor: 'end', color: C.mute }) +
+      Tx(v.X(-lo.b / 2) - 10, v.Y(Ll) - 26, 'LOWER', { size: 10.5, anchor: 'end', weight: 700, color: C.mute }) + Tx(v.X(-lo.b / 2) - 10, v.Y(Ll) - 12, g.lo || '', { size: 10, anchor: 'end', color: C.mute });
+    o += Tx(v.X(-bmax / 2 - 12), v.Y((yJ0 + yJ1) / 2) + 4, bearing ? (tdiv > 0 ? `division plate ${num(tdiv)}` : 'ends machined, full bearing') : `gap ${num(gap)} (non-bearing)`, { size: 10, anchor: 'end', color: C.dim });
+    o += LA(v.X(up.b / 2 + 40), v.Y(Lu - 40), 0, 46, `N_Ed ${num(fv(g.N))} kN`, { ldy: -8, anchor: 'start', ldx: 6 });
+    o += title(v.X(0), 462, 'ELEVATION ON FLANGE', bearing ? 'bearing splice' : 'non-bearing splice');
+    // side elevation (on web)
+    const hmax = Math.max(up.h, lo.h), wHalf = we1c + (wnr - 1) * wp1 + we1p, wTop = yJ1 + wHalf, wBot = yJ0 - wHalf;
+    const w = view(BOX.Rt, [-hmax / 2 - ft - 50, Ll - 40, hmax / 2 + ft + 70, Lu + 30]);
+    let q = IEl(w, Ll, yJ0, -lo.h / 2, lo.h / 2, lo, 'y') + IEl(w, yJ1, Lu, -up.h / 2, up.h / 2, up, 'y');
+    if (tdiv > 0) q += R(w, -hmax / 2 - 10, yJ0, hmax / 2 + 10, yJ1, 'plateCut');
+    q += BKH(w, Lu, -up.h / 2, up.h / 2) + BKH(w, Ll, -lo.h / 2, lo.h / 2);
+    q += R(w, -wh / 2, wBot, wh / 2, wTop, 'plate');
+    const wRows = s => range(wnr, i => s > 0 ? yJ1 + we1c + i * wp1 : yJ0 - we1c - i * wp1), wx = range(wnc, k => (k - (wnc - 1) / 2) * wp2);
+    q += [...wRows(1), ...wRows(-1)].map(y => wx.map(x => BE(w, x, y, d)).join('')).join('');
+    for (const s of [1, -1]) {
+      const xo = s * hmax / 2;   // cover plates aligned to the deeper column; packs on the shallower one
+      q += R(w, xo, fBot, xo + s * ft, fTop, 'plateCut');
+      const pk = (hmax - up.h) / 2, pl = (hmax - lo.h) / 2;
+      if (pk > 0.5) q += R(w, s * up.h / 2, yJ1, xo, fTop, 'pack');
+      if (pl > 0.5) q += R(w, s * lo.h / 2, fBot, xo, yJ0, 'pack');
+      q += fRows(1).map(y => BS(w, xo + s * ft, s * (up.h / 2 - up.tf), y, d, 'x')).join('') + fRows(-1).map(y => BS(w, xo + s * ft, s * (lo.h / 2 - lo.tf), y, d, 'x')).join('');
+    }
+    q += DH(w, [-hmax / 2 - ft, -hmax / 2], fTop, 14, [num(ft)]) + DH(w, [-wh / 2, wh / 2], wBot, -16, [`web plates ${num(wh)} × ${num(wt)}`]);
+    if (Math.abs(up.h - lo.h) > 1) q += LD(w, (hmax + up.h) / 4, fTop - 20, 26, -26, [`packs ${num(Math.abs(lo.h - up.h) / 2)}`]);
+    q += title(w.X(0), 462, 'SIDE ELEVATION', 'on the web');
+    return svg(o + q);
+  }
+
+  // ================= COLUMN BASE =================
+  function base(g, S) {
+    const s = sec(S, g.col, { h: 254.1, b: 254.6, tf: 14.2, tw: 8.6, r: 12.7 });
+    const B = fv(g.B), D = fv(g.D), tp = fv(g.tp), ex = fv(g.ex), wg = fv(g.w), hef = fv(g.hef), dh = fv(g.dh), cE = fv(g.c), d = bd(g.bolt), aw = fv(g.aw), tg = 40;
+    const xb = s.h / 2 + ex, yPl = tg, yTop = tg + tp, Hc = Math.max(0.9 * s.h, 300), fw = D / 2 + Math.max(cE, 150);
+    const v = view(BOX.L, [-fw - 30, -hef - 190, fw + 130, yTop + Hc + 40]);
+    let o = R(v, -fw, -hef - 110, fw, 0, 'conc') + BKH(v, -hef - 110, -fw, fw) + R(v, -D / 2 - 15, 0, D / 2 + 15, tg, 'grout');
+    o += R(v, -D / 2, yPl, D / 2, yTop, 'plateCut') + IEl(v, yTop, yTop + Hc, -s.h / 2, s.h / 2, s, 'y') + BKH(v, yTop + Hc, -s.h / 2, s.h / 2);
+    o += WD(v, s.h / 2, yTop, aw, 1, 1) + WD(v, -s.h / 2, yTop, aw, -1, 1) + WD(v, s.h / 2 - s.tf, yTop, aw, -1, 1) + WD(v, -s.h / 2 + s.tf, yTop, aw, 1, 1);
+    for (const sx of [-1, 1]) {
+      const x = sx * xb;
+      o += R(v, x - d / 2, -hef, x + d / 2, yTop + 1.6 * d, 'bolt') + R(v, x - dh / 2, -hef - 12, x + dh / 2, -hef, 'boltH');
+      o += R(v, x - d, yTop, x + d, yTop + 0.15 * d, 'bolt') + R(v, x - 0.8 * d, yTop + 0.15 * d, x + 0.8 * d, yTop + 0.95 * d, 'boltH') + Ln(v, x, yTop + 2.2 * d, x, -hef - 25, 'c');
+    }
+    o += DH(v, [-D / 2, D / 2], -hef - 110, -20, [`D ${num(D)}`]) + DH(v, [s.h / 2, xb, D / 2], yTop + Hc * 0.15, 36, [num(ex), num(D / 2 - xb)]);
+    o += DV(v, [yTop, yPl, 0], D / 2 + 15, 24, [`t_p ${num(tp)}`, `grout`]) + DV(v, [0, -hef], xb, 40, [`h_ef ${num(hef)}`]);
+    o += LD(v, -D / 2 + 30, yTop, -40, -40, [`Base plate ${num(D)} × ${num(B)} × ${num(tp)}`, g.platGrade || ''], { bold: true });
+    o += LD(v, -xb, -hef * 0.55, -50, 30, [`4 × ${g.bolt || 'M24'} ${g.cls || ''} anchors`, `head plate ${num(dh)}`]);
+    o += LD(v, -s.h / 2 - 2, yTop + 2, -50, -96, [`Welds: flanges ${num(aw)}, web ${num(fv(g.awW))}`]);
+    o += Tx(v.X(-s.h / 2) - 8, v.Y(yTop + Hc) + 14, g.col || '', { size: 10.5, anchor: 'end', weight: 600, color: C.mute }) + Tx(v.X(-fw + 12), v.Y(-30), `C${fv(g.fck)} foundation`, { size: 10, color: '#6e6658' });
+    const N = fv(g.N), M = fv(g.M), V = fv(g.V);
+    if (N) o += LA(v.X(s.h / 2) + 34, v.Y(yTop + Hc * 0.8), 0, 44 * Math.sign(N), `N ${num(N)} kN`, { anchor: 'start', ldx: 8, ldy: N > 0 ? 6 : 40 });
+    if (M) o += moment(v.X(0), v.Y(yTop + Hc * 0.5), 26, `M ${num(M)} kNm`);
+    if (V) o += LA(v.X(-D / 2) - 6, v.Y(yTop - tp / 2), 50, 0, `V ${num(V)} kN`, { ldy: -8 });
+    o += title(v.X(0), 462, 'ELEVATION', 'on the column web');
+    // plan
+    const yE = wg / 2 + cE, w = view(BOX.Rt, [-D / 2 - 40, -Math.max(B / 2, yE) - 45, D / 2 + 40, Math.max(B / 2, yE) + 20]);
+    let q = R(w, -D / 2 - 30, -yE, D / 2 + 30, yE, 'conc') + R(w, -D / 2, -B / 2, D / 2, B / 2, 'plate') + ISec(w, 0, 0, s, 'h');
+    for (const sx of [-1, 1]) for (const sy of [-1, 1]) q += BE(w, sx * xb, sy * wg / 2, d);
+    q += DH(w, [-D / 2, -xb, xb, D / 2], -B / 2, -16, [num(D / 2 - xb), num(2 * xb), num(D / 2 - xb)]) + DV(w, [B / 2, wg / 2, -wg / 2, -B / 2], D / 2, 14, [num((B - wg) / 2), `w ${num(wg)}`, num((B - wg) / 2)]);
+    if (cE > 0) q += Tx(w.X(0), w.Y(yE) + 12, `concrete edge c ${num(cE)}`, { size: 9.5, anchor: 'middle', color: '#6e6658' });
+    q += title(w.X(0), 462, 'PLAN', 'base plate and anchors');
+    return svg(o + q);
+  }
+
+  // ================= RHS TENSION SPLICE =================
+  function rsplice(g) {
+    const h = fv(g.h), b = fv(g.b), t = fv(g.t), tp = fv(g.tp), Bp = fv(g.B), nb = nint(g.nb), m = fv(g.m), e = fv(g.e), aw = fv(g.aw), d = bd(g.bolt);
+    const xb = b / 2 + m, Wp = b + 2 * (m + e), L = Math.max(1.2 * b, 220);
+    const v = view(BOX.L, [-Wp / 2 - 90, -tp - L - 70, Wp / 2 + 110, tp + L + 60]);
+    let o = '';
+    for (const s of [1, -1]) {
+      const y0 = s * tp, y1 = s * (tp + L);
+      o += R(v, -b / 2, y0, b / 2, y1, 'steel') + Ln(v, -b / 2 + t, y0, -b / 2 + t, y1, 'h') + Ln(v, b / 2 - t, y0, b / 2 - t, y1, 'h') + BKH(v, y1, -b / 2, b / 2);
+      o += R(v, -Wp / 2, 0, Wp / 2, y0, 'plateCut') + WD(v, b / 2, y0, aw, 1, s) + WD(v, -b / 2, y0, aw, -1, s);
+    }
+    for (const sx of [-1, 1]) o += BS(v, tp, -tp, sx * xb, d, 'y');
+    o += DH(v, [-Wp / 2, -xb, -b / 2, b / 2, xb, Wp / 2], -tp, -26, [num(e), num(m), `b ${num(b)}`, num(m), num(e)]) + DV(v, [tp, -tp], Wp / 2, 18, [`2 × ${num(tp)}`]);
+    o += LD(v, -Wp / 2 + 10, tp, -30, -40, [`End plates ${num(Wp)} × ${num(Bp)} × ${num(tp)}`, g.plGrade || ''], { bold: true });
+    o += LD(v, xb, -tp - d, 60, 50, [`${2 * nb} × ${g.bolt || 'M24'} ${g.cls || '8.8'}`, `${nb} each side`]);
+    o += LD(v, b / 2 + aw / 2, tp + aw / 2, 50, -60, [`Fillet weld ${num(aw)} all round`]);
+    o += LA(v.X(0), v.Y(tp + L) - 54, 0, -48, `N ${num(fv(g.N))} kN`, { anchor: 'start', ldx: 10, ldy: -18 }) + LA(v.X(0), v.Y(-tp - L) + 54, 0, 48, '', {});
+    o += Tx(v.X(0), v.Y(tp + L * 0.6), `RHS ${num(h)} × ${num(b)} × ${num(t)}`, { size: 10.5, anchor: 'middle', color: C.mute, weight: 600 });
+    o += title(v.X(0), 462, 'ELEVATION', 'on the bolted faces');
+    const w = view(BOX.Rt, [-Wp / 2 - 30, -Bp / 2 - 45, Wp / 2 + 30, Bp / 2 + 20]);
+    let q = R(w, -Wp / 2, -Bp / 2, Wp / 2, Bp / 2, 'plate') + R(w, -b / 2, -h / 2, b / 2, h / 2, 'cut') + R(w, -b / 2 + t, -h / 2 + t, b / 2 - t, h / 2 - t, 'plate');
+    const yb = range(nb, i => -Bp / 2 + Bp / (2 * nb) + i * Bp / nb);
+    for (const sx of [-1, 1]) q += yb.map(y => BE(w, sx * xb, y, d)).join('');
+    q += DH(w, [-Wp / 2, -xb, -b / 2, b / 2, xb, Wp / 2], -Bp / 2, -16, [num(e), num(m), '', num(m), num(e)]) + DV(w, [Bp / 2, -Bp / 2], Wp / 2, 14, [`B ${num(Bp)}`]) + DV(w, [h / 2, -h / 2], -b / 2, -12, [`h ${num(h)}`]);
+    q += title(w.X(0), 462, 'PLAN ON END PLATE', '');
+    return svg(o + q);
+  }
+
+  // ================= STEEL TO CONCRETE =================
+  function conc(g) {
+    const hpl = fv(g.h), rows = nint(g.rows), p = fv(g.p), gg = fv(g.g), hef = fv(g.hef), dh = fv(g.dh), c1 = fv(g.c1), hm = fv(g.hm), e = fv(g.e), d = bd(g.size), tpl = 20;
+    const ys = range(rows, i => (rows - 1) / 2 * p - i * p), yBot = ys[rows - 1] - c1, Wp = gg + 2 * Math.max(45, 2 * d), yLo = c1 > 0 ? yBot : -hpl / 2 - 160, yHi = hpl / 2 + 160;
+    const v = view(BOX.L, [-hm - 40, yLo - 60, e + 160, yHi + 20]);
+    let o = R(v, -hm, yLo, 0, yHi, 'conc') + BKH(v, yHi, -hm, 0) + (c1 > 0 ? '' : BKH(v, yLo, -hm, 0));
+    o += R(v, 0, -hpl / 2, tpl, hpl / 2, 'plateCut');
+    for (const y of ys) o += R(v, -hef, y - d / 2, tpl + 1.6 * d, y + d / 2, 'bolt') + R(v, -hef - 10, y - dh / 2, -hef, y + dh / 2, 'boltH') + R(v, tpl, y - 0.8 * d, tpl + 0.8 * d, y + 0.8 * d, 'boltH');
+    const yBr = Math.min(hpl / 2 - 30, 60);
+    o += LD(v, e + 40, -yBr - 10, 20, 34, ['bracket / fin']) + R(v, tpl, -yBr - 10, e + 60, yBr - 10, 'plate') + WD(v, tpl, yBr - 10, 6, 1, 1) + WD(v, tpl, -yBr - 10, 6, 1, -1);
+    o += LA(v.X(e), v.Y(yBr - 10) - 3, 0, 52, `V_Ed ${num(fv(g.V))} kN`, { ldy: -6 }) + Ln(v, e, yBr + 50, e, -yBr - 40, 'c');
+    if (fv(g.T) > 0) o += LA(v.X(e + 60) + 52, v.Y(-10), 42, 0, `T ${num(fv(g.T))} kN`, { ldy: -10, ldx: 44, anchor: 'start' });
+    o += DH(v, [0, e], -hpl / 2, -24, [`e ${num(e)}`]) + DH(v, [-hef, 0], ys[0], 40, [`h_ef ${num(hef)}`]);
+    if (c1 > 0) o += DV(v, [ys[rows - 1], yBot], -hm, -44, [`c₁ ${num(c1)}`]);
+    o += DV(v, [hpl / 2, ...ys, -hpl / 2], -hm, -16, [num(hpl / 2 - ys[0]), ...range(rows - 1, () => num(p)), num(hpl / 2 - ys[0])]);
+    o += LD(v, -hm * 0.5, yHi - 60, -10, -26, [`concrete C${fv(g.fck)}, ${num(hm)} thick`]);
+    o += LD(v, -hef * 0.6, ys[rows - 1], -30, 46, [`${2 * rows} × ${g.size || 'M20'} headed anchors`, `head ${num(dh)}`]);
+    o += title(v.X((e - hm) / 2), 462, 'SECTION', 'through the anchors');
+    const w = view(BOX.Rt, [-Wp / 2 - 40, Math.min(yBot, -hpl / 2) - 50, Wp / 2 + 40, hpl / 2 + 30]);
+    let q = R(w, -Wp / 2 - 30, Math.min(yBot, -hpl / 2 - 30), Wp / 2 + 30, hpl / 2 + 25, 'conc') + R(w, -Wp / 2, -hpl / 2, Wp / 2, hpl / 2, 'plate');
+    q += ys.map(y => BE(w, -gg / 2, y, d) + BE(w, gg / 2, y, d)).join('') + R(w, -5, -yBr - 10, 5, yBr - 10, 'plateCut');
+    q += DH(w, [-gg / 2, gg / 2], -hpl / 2, -18, [`g ${num(gg)}`]) + DV(w, ys.length > 1 ? ys : [ys[0], ys[0] - 0.01], Wp / 2, 14, range(rows - 1, () => `p ${num(p)}`));
+    if (c1 > 0) q += Tx(w.X(0), w.Y(yBot) + 13, `concrete edge, c₁ ${num(c1)}`, { size: 9.5, anchor: 'middle', color: '#6e6658' });
+    q += title(w.X(0), 462, 'ELEVATION ON PLATE', '');
+    return svg(o + q);
+  }
+
+  // ================= MOMENT END PLATE =================
+  function moment_(g, S) {
+    const b = sec(S, g.beam, { h: 453.4, b: 189.9, tf: 12.7, tw: 8.5, r: 10.2 }), c = sec(S, g.col, UC), splice = g.type === 'splice';
+    const bp = fv(g.bp), tp = fv(g.tp), ext = fv(g.ext), wg = fv(g.w), af = fv(g.af), aw = fv(g.aw), d = bd(g.bolt);
+    const rows = String(g.rows || '').split(/[,;\s]+/).map(Number).filter(x => x > 0), yT = ext, hp = ext + b.h + Math.max(15, Math.min(ext, 25)), yPb = yT - hp;
+    const ry = rows.map(r => yT - r), Lvis = Math.max(0.9 * b.h, 320), xr = tp + Lvis, yb = -b.h;
+    const yU = Math.max(0.3 * b.h, 130) + ext, yD = yb - Math.max(0.25 * b.h, 120);
+    const xL = splice ? -tp - Lvis : -c.h;
+    const v = view(BOX.L, [xL - 30, yD - 70, xr + 50, yU + 30]);
+    let o = '';
+    if (splice) o += IEl(v, xL, -tp, yb, 0, b, 'x') + R(v, -tp, yPb, 0, yT, 'plateCut') + mask(v, xL - 40, yb - 5, xL, 5) + BK(v, xL, yb, 0);
+    else {
+      o += IEl(v, yD, yU, -c.h, 0, c, 'y') + BKH(v, yU, -c.h, 0) + BKH(v, yD, -c.h, 0);
+      if (g.stiff === '1') o += R(v, -c.h + c.tf, yb + b.tf / 2 - 7, -c.tf, yb + b.tf / 2 + 7, 'plate');
+    }
+    o += IEl(v, tp, xr, yb, 0, b, 'x') + mask(v, xr, yb - 5, xr + 40, 5) + BK(v, xr, yb, 0) + R(v, 0, yPb, tp, yT, 'plateCut');
+    o += WD(v, tp, 0, af, 1, 1) + WD(v, tp, -b.tf, af, 1, -1) + WD(v, tp, yb, af, 1, -1) + WD(v, tp, yb + b.tf, af, 1, 1) + WS(v, tp, yb + b.tf + 5, tp + aw, -b.tf - 5);
+    o += ry.map(y => BS(v, tp, splice ? -tp : -c.tf, y, d, 'x')).join('');
+    o += DV(v, [yT, ...ry, yPb], xr - Lvis * 0.12, 26, [...rows.map((r, i) => num(i ? r - rows[i - 1] : r)), num(ry.length ? ry[ry.length - 1] - yPb : hp)]);
+    if (ext > 0) o += DV(v, [yT, 0], splice ? -tp : -c.h, splice ? -14 : -18, [`ext ${num(ext)}`]);
+    o += LD(v, tp / 2, yPb + hp * 0.12, 70, 34, [`${ext > 0 ? 'Extended' : 'Flush'} end plate`, `${num(bp)} × ${num(tp)} ${g.plGrade || ''}`], { bold: true });
+    o += LD(v, tp + 0.7 * d, ry[0] ?? yT, 30, -(v.Y(ry[0] ?? yT) - v.Y(yT)) - 34, [`${2 * rows.length} × ${g.bolt || 'M24'} ${g.cls || '8.8'}, ${rows.length} rows, gauge ${num(wg)}`]);
+    o += LD(v, tp + af / 2, yb - af / 2, 90, 30, [`Flange welds a ${num(af)}, web a ${num(aw)} (throats)`]);
+    if (!splice) o += Tx(v.X(-c.h / 2), v.Y(yU) - 8, g.col || '', { size: 10.5, anchor: 'middle', color: C.mute }) + (g.stiff === '1' ? LD(v, -c.h / 2, yb + b.tf / 2, -10, 48, ['compression stiffener']) : '');
+    o += Tx(v.X(tp + Lvis * 0.78), v.Y(yb) + 16, g.beam || '', { size: 10.5, anchor: 'middle', color: C.mute, weight: 600 });
+    o += moment(v.X(tp + Lvis * 0.72), v.Y(yb / 2), 30, `M ${num(fv(g.M))} kNm`) + LA(v.X(tp + Lvis * 0.9), v.Y(0) - 3, 0, 44, `V ${num(fv(g.V))} kN`, { ldy: -6 });
+    o += title(v.X((xL + xr) / 2), 462, 'ELEVATION', splice ? 'beam splice' : 'beam to column flange');
+    const w = view(BOX.Rt, [-Math.max(bp, c.b) / 2 - 35, yPb - 55, Math.max(bp, c.b) / 2 + 35, yT + 25]);
+    let q = splice ? '' : R(w, -c.b / 2, yPb - 25, c.b / 2, yT + 20, 'steel') + BKH(w, yT + 20, -c.b / 2, c.b / 2) + BKH(w, yPb - 25, -c.b / 2, c.b / 2);
+    q += R(w, -bp / 2, yPb, bp / 2, yT, 'plate') + ISec(w, 0, -b.h / 2, b, 'v') + ry.map(y => BE(w, -wg / 2, y, d) + BE(w, wg / 2, y, d)).join('');
+    q += DH(w, [-bp / 2, -wg / 2, wg / 2, bp / 2], yPb, -18, [num((bp - wg) / 2), `w ${num(wg)}`, num((bp - wg) / 2)]);
+    q += title(w.X(0), 462, 'VIEW ON END PLATE', '');
+    return svg(o + q);
+  }
+
+  // ================= BRACING (gusset and flat) =================
+  function brace(g) {
+    const n = nint(g.n), p1 = fv(g.p1), e1 = fv(g.e1), e2g = fv(g.e2g), e2b = fv(g.e2b), tg = fv(g.tg), hg = fv(g.hg), tb = fv(g.tb), wb = fv(g.wb), e = fv(g.e), aw = fv(g.aw), d = bd(g.boltSize);
+    const tension = g.sign !== '-1', reach = (n - 1) / 2 * p1 + e1, th = Math.min(80, Math.max(45, Math.acos(Math.min(1, Math.max(0.17, (e - 15) / reach))) * 180 / Math.PI)) * Math.PI / 180;
+    const ux = Math.cos(th), uy = -Math.sin(th), nx = Math.sin(th), ny = Math.cos(th);
+    const L = (n - 1) * p1, xc = e, yc = 0, bolts = range(n, i => { const s = (i - (n - 1) / 2) * p1; return [xc + s * ux, yc + s * uy]; });
+    const f = bolts[0], l = bolts[n - 1], bEnd = [f[0] - e1 * ux, f[1] - e1 * uy], gExt = Math.max(e1, 40), hw = wb / 2 + e2g;
+    const G = [[0, yc + hg / 2], [l[0] + gExt * ux + hw * nx, l[1] + gExt * uy + hw * ny], [l[0] + gExt * ux - hw * nx, l[1] + gExt * uy - hw * ny], [0, yc - hg / 2]];
+    const far = [l[0] + (gExt + 260) * ux, l[1] + (gExt + 260) * uy];
+    const v = view(BOX.L, [-300, far[1] - 120, far[0] + 90, yc + hg / 2 + 160]);
+    let o = IEl(v, far[1] - 50, yc + hg / 2 + 140, -260, 0, { h: 260, b: 256, tf: 17, tw: 10, r: 13 }, 'y') + BKH(v, yc + hg / 2 + 140, -260, 0) + BKH(v, far[1] - 50, -260, 0);
+    o += P(v, G, 'plate') + WS(v, 0, yc - hg / 2, aw, yc + hg / 2);
+    const bp = (s, t) => [bEnd[0] + s * ux + t * nx, bEnd[1] + s * uy + t * ny], Lb = Math.hypot(far[0] - bEnd[0], far[1] - bEnd[1]);
+    o += P(v, [bp(0, wb / 2), bp(Lb, wb / 2), bp(Lb, -wb / 2), bp(0, -wb / 2)], 'steel');
+    o += `<line x1="${v.X(bEnd[0] - 40 * ux)}" y1="${v.Y(bEnd[1] - 40 * uy)}" x2="${v.X(far[0])}" y2="${v.Y(far[1])}" stroke="${C.cl}" stroke-width="0.7" stroke-dasharray="14 3 2 3"/>`;
+    o += bolts.map(([x, y]) => BE(v, x, y, d)).join('');
+    const fx = v.X(far[0]), fy = v.Y(far[1]);
+    o += tension ? LA(fx + 30 * Math.cos(th) * 1.4, fy + 30 * Math.sin(th) * 1.4, 42 * Math.cos(th), 42 * Math.sin(th), `N ${num(fv(g.N))} kN (tension)`, { ldx: 50, ldy: 4, anchor: 'start' }) : LA(fx + 2, fy + 2, -42 * Math.cos(th), -42 * Math.sin(th), `N ${num(fv(g.N))} kN (compression)`, { ldx: 8, ldy: 16, anchor: 'start' });
+    o += DH(v, [0, xc], yc + hg / 2, 30, [`e ${num(e)}`]) + DV(v, [yc + hg / 2, yc - hg / 2], -260, -18, [`h_g ${num(hg)}`]);
+    o += LD(v, G[1][0] - 20, G[1][1] - 10, 50, -30, [`Gusset t ${num(tg)} ${g.gussGrade || ''}`], { bold: true }) + LD(v, aw / 2, yc + hg * 0.3, -60, -60, [`Weld ${num(aw)} leg, both sides`]);
+    o += LD(v, l[0], l[1], 60, 10, [`${n} × ${g.boltSize || 'M20'} 8.8, p₁ ${num(p1)}`, `e₁ ${num(e1)}`]) + LD(v, (bEnd[0] + far[0]) / 2 + 60 * ux, (bEnd[1] + far[1]) / 2 + 60 * uy, 30, 30, [`Flat ${num(wb)} × ${num(tb)}`]);
+    o += title(v.X(far[0] / 2 - 120), 462, 'ELEVATION', 'gusset on the frame member');
+    // section across the brace through a bolt
+    const W2 = wb / 2 + e2g + 20, w = view(BOX.Rt, [-W2 - 30, -tg - 70, W2 + 40, tb + 70]);
+    let q = R(w, -W2, -tg, W2, 0, 'plateCut') + R(w, -wb / 2, 0, wb / 2, tb, 'cut') + BS(w, tb, -tg, 0, d, 'y');
+    q += DH(w, [-wb / 2, 0, wb / 2], tb, 22, [num(wb / 2), num(wb / 2)]) + DV(w, [tb, 0, -tg], W2, 14, [`t_b ${num(tb)}`, `t_g ${num(tg)}`]) + DH(w, [wb / 2, wb / 2 + e2g], -tg, -18, [num(e2g)]);
+    q += title(w.X(0), 462, 'SECTION', 'across the brace at a bolt');
+    return svg(o + q);
+  }
+
+  function draw(id, g, S) {
+    try {
+      switch (id) {
+        case 'fin': return fin(g, S);
+        case 'pdep': return endPlate(g, S, false);
+        case 'fdep': return endPlate(g, S, true);
+        case 'dcleat': return cleat(g, S, true);
+        case 'scleat': return cleat(g, S, false);
+        case 'splice': return splice(g, S);
+        case 'base': return base(g, S);
+        case 'rsplice': return rsplice(g);
+        case 'conc': return conc(g);
+        case 'moment': return moment_(g, S);
+        case 'brace': return brace(g);
+      }
+    } catch (e) { return `<div style="color:#999;font-size:11px;padding:8px">Diagram unavailable for these inputs (${String(e.message).replace(/</g, '&lt;')})</div>`; }
+    return '';
+  }
+  return { draw };
+})();
+
+
+</script>
 <script>
 // ─── DATA ────────────────────────────────────────────────────
 const BOLT={M16:{d:16,d0:18,As:157},M20:{d:20,d0:22,As:245},M24:{d:24,d0:26,As:353},M27:{d:27,d0:30,As:459}};
@@ -1295,865 +1834,6 @@ function svgStart(w,h){
 </defs>`;
 }
 
-function diagFin(){
-  // Fin Plate connection - SCI P358 §5 elevation.
-  // Primary beam (supporting) shown as I-section END-ON: flanges top/bottom,
-  // web vertical. Fin plate welded to primary beam web, secondary beam
-  // (supported) bolted to fin plate, coming in from the right with top flange
-  // notched. Plate is SIZED so top and bottom bolt edge distances are equal.
-  const W=620, H=470;
-  const s=svgStart(W,H);
-
-  // ─── PRIMARY BEAM (supporting, drawn end-on) ──────────────
-  const ccx=100, cbf=160, ctf=20, ctw=14;
-  const cFaceX=ccx+cbf/2;                    // right flange face
-  const col =
-    `<rect x="${ccx-cbf/2}" y="0" width="${cbf}" height="${ctf}" ${D.sec}/>
-     <rect x="${ccx-ctw/2}" y="${ctf}" width="${ctw}" height="${H-2*ctf}" ${D.web}/>
-     <rect x="${ccx-cbf/2}" y="${H-ctf}" width="${cbf}" height="${ctf}" ${D.sec}/>`;
-
-  // ─── BOLT GROUP SIZING (drives plate height) ────────────
-  // Plate sized so e1 top = e1 bottom. ph = 2*e1 + (n-1)*p1
-  const n=4, e1=40, p1=70, e2p=50;
-  const plp=140;                             // plate length (horizontal)
-  const ph = 2*e1 + (n-1)*p1;                // plate height = 2*40 + 3*70 = 290
-
-  // ─── SECONDARY BEAM (supported, coming in from right) ────
-  // Beam depth must exceed plate + notch + small clearances.
-  // Bolt group vertical centre = beam CL, so plate is centred about beam CL.
-  const bcy=H/2;                              // beam CL
-  const btf=18;
-  const ndn=38;                               // top-flange notch depth
-  const nln=plp+12;                           // notch length (past plate + 12mm)
-  // Beam depth chosen so: notch(38) + 15 gap + plate(290) + 15 gap + bot flange(18)
-  const bd = ndn + 15 + ph + 15 + btf;        // = 376
-  const btop=bcy-bd/2, bbot=bcy+bd/2;
-  const bx=cFaceX;                            // beam FLUSH with primary beam face
-  const blen=W-bx-16;
-  // Top flange present only past the notch
-  const topFlg=`<rect x="${bx+nln}" y="${btop}" width="${blen-nln}" height="${btf}" ${D.sec}/>`;
-  // Web: L-shaped outline with the top-flange notch cutout
-  const webPoly =
-    `<polygon points="
-       ${bx},${btop+ndn}
-       ${bx+nln},${btop+ndn}
-       ${bx+nln},${btop+btf}
-       ${bx+blen},${btop+btf}
-       ${bx+blen},${bbot-btf}
-       ${bx},${bbot-btf}" ${D.web}/>`;
-  const botFlg=`<rect x="${bx}" y="${bbot-btf}" width="${blen}" height="${btf}" ${D.sec}/>`;
-  // Emphasise notch re-entrant corner
-  const notchLine =
-    `<polyline points="${bx},${btop+ndn} ${bx+nln},${btop+ndn} ${bx+nln},${btop}"
-       fill="none" stroke="#1a1a1a" stroke-width="1.6"/>`;
-  const beam = topFlg + webPoly + botFlg + notchLine;
-
-  // ─── FIN PLATE (centred about beam CL, welded to primary beam web) ──
-  const ptop = bcy - ph/2;
-  const pbot = bcy + ph/2;
-  const px   = cFaceX;                        // plate starts at primary beam face
-  const plate = `<rect x="${px}" y="${ptop}" width="${plp}" height="${ph}" ${D.plt}/>`;
-
-  // ─── FILLET WELDS (double fillet, both sides, full plate height) ──
-  const wld =
-    `<line x1="${px}" y1="${ptop}" x2="${px}" y2="${ptop+ph}" stroke="#1a1a1a" stroke-width="3.2"/>
-     <polygon points="${px},${ptop} ${px+11},${ptop} ${px},${ptop+11}" ${D.wld}/>
-     <polygon points="${px},${ptop+ph} ${px+11},${ptop+ph} ${px},${ptop+ph-11}" ${D.wld}/>`;
-
-  // ─── BOLT GROUP (n = 4, single vertical line) ────────────
-  const boltX=px+plp-e2p;
-  const bY=[];
-  for(let i=0;i<n;i++) bY.push(ptop+e1+i*p1);
-  const bolts=bY.map(y=>bolt(boltX,y)).join('');
-
-  // ─── DIMENSIONS ──────────────────────────────────────
-  // Right of plate: e1, p1×3, e1, h_p
-  let dimsR =
-    dimV(px+plp+20, ptop, bY[0], 'e₁', px+plp+32);
-  for(let i=0;i<n-1;i++){
-    dimsR += dimV(px+plp+20, bY[i], bY[i+1], 'p₁', px+plp+32);
-  }
-  dimsR +=
-    dimV(px+plp+20, bY[n-1], pbot, 'e₁', px+plp+32) +
-    dimV(px+plp+62, ptop, pbot, 'h_p', px+plp+76);
-  // Below plate: z_p (eccentricity) + e2_p + L_p
-  const dimsB =
-    dimH(cFaceX, boltX, bbot+34, 'z_p', bbot+46) +
-    dimH(boltX, px+plp, bbot+34, 'e₂_p', bbot+46) +
-    dimH(px, px+plp, bbot+62, 'L_p', bbot+74);
-  // Above: notch d_n (left of beam), l_n (above notch)
-  const dimsT =
-    dimV(bx-18, btop, btop+ndn, 'd_n', bx-34) +
-    dimH(bx, bx+nln, btop-16, 'l_n', btop-4);
-  const dims = dimsR + dimsB + dimsT;
-
-  // ─── LABELS & CALLOUTS ───────────────────────────────
-  const labs =
-    // Primary beam label (above)
-    `<text ${D.txt} x="${ccx}" y="${btop/2-6}" text-anchor="middle">Primary beam</text>
-     <text ${D.sml} x="${ccx}" y="${btop/2+8}" text-anchor="middle">(supporting)</text>` +
-    // Fin plate callout
-    `<line x1="${px+plp-8}" y1="${ptop+4}" x2="${px+plp+60}" y2="${btop-36}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.txt} x="${px+plp+64}" y="${btop-40}">Fin plate</text>
-     <text ${D.sml} x="${px+plp+64}" y="${btop-28}">t_p × L_p × h_p</text>` +
-    // Secondary beam label
-    label(bx+blen-8, btop-36, 'Secondary beam', 'end') +
-    slabel(bx+blen-8, btop-24, '(supported, notched UB)', 'end') +
-    // Weld callout
-    `<line x1="${px+2}" y1="${ptop+ph*0.5}" x2="${ccx-cbf/2-8}" y2="${H-6}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${ccx-cbf/2-12}" y="${H-20}" text-anchor="end">Double fillet weld,</text>
-     <text ${D.sml} x="${ccx-cbf/2-12}" y="${H-8}" text-anchor="end">leg a_w each side</text>` +
-    // Notch callout
-    `<line x1="${bx+nln}" y1="${btop+ndn-4}" x2="${bx+nln+30}" y2="${btop-50}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${bx+nln+34}" y="${btop-52}">top-flange notch</text>` +
-    // Grade note
-    `<text ${D.sml} x="${boltX}" y="${bbot+94}" text-anchor="middle">n bolts, Grade 8.8</text>`;
-
-  // ─── APPLIED SHEAR V_Ed (vertical, on beam) ──────────
-  const fax = boltX + 200;
-  const force =
-    `<line x1="${fax}" y1="${bcy-90}" x2="${fax}" y2="${bcy+btf/2}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
-     <text ${D.grn} x="${fax+10}" y="${bcy-30}">V_Ed</text>`;
-
-  return s + col + beam + plate + wld + bolts + dims + labs + force + '</svg>';
-}
-
-function diagPDEP(){
-  // Partial Depth End Plate connection - SCI P358 §4.5 elevation.
-  // Primary beam (supporting) shown end-on as I-section. End plate welded to
-  // SECONDARY beam web only (not flanges - defining feature of PDEP), bolted
-  // through the primary beam flange face. Tops of both beams level.
-  const W=620, H=440;
-  const s=svgStart(W,H);
-
-  // ─── PRIMARY BEAM (supporting, drawn end-on) ──────────────
-  const ccx=100, cbf=160, ctf=20, ctw=14;
-  const cFaceX=ccx+cbf/2;                    // right flange face
-  const col =
-    `<rect x="${ccx-cbf/2}" y="0" width="${cbf}" height="${ctf}" ${D.sec}/>
-     <rect x="${ccx-ctw/2}" y="${ctf}" width="${ctw}" height="${H-2*ctf}" ${D.web}/>
-     <rect x="${ccx-cbf/2}" y="${H-ctf}" width="${cbf}" height="${ctf}" ${D.sec}/>`;
-
-  // ─── BOLT GROUP & PLATE SIZING ──────────────────────────
-  const n=4, e1=40, p1=60;
-  const ph = 2*e1 + (n-1)*p1;                // plate height = 260
-  const ptk=14;                               // plate thickness
-
-  // ─── SECONDARY BEAM (coming in from right) ────────────
-  // Tops of both beams level: secondary beam top = primary beam top + primary_tf
-  const btop = ctf;                           // top of secondary beam = top of primary flange
-  const btf=18;
-  const bd = ph + 2*15 + btf;                 // plate sits inside flanges with 15mm clearance
-  const bbot = btop + bd;
-  const bcy = (btop+bbot)/2;
-  // End plate sits AGAINST primary beam face (between column & beam end)
-  const px = cFaceX;                          // plate starts at primary beam face
-  const bx = cFaceX + ptk;                    // secondary beam starts after plate
-  const blen = W-bx-16;
-  // Secondary beam (full elevation)
-  const topFlg=`<rect x="${bx}" y="${btop}" width="${blen}" height="${btf}" ${D.sec}/>`;
-  const botFlg=`<rect x="${bx}" y="${bbot-btf}" width="${blen}" height="${btf}" ${D.sec}/>`;
-  const web    =`<rect x="${bx}" y="${btop+btf}" width="${blen}" height="${bd-2*btf}" ${D.web}/>`;
-  const beam = topFlg + web + botFlg;
-
-  // ─── END PLATE (partial depth - sits between flanges) ──
-  const ptop=btop+btf+15, pbot=bbot-btf-15;
-  const plate=`<rect x="${px}" y="${ptop}" width="${ptk}" height="${ph}" ${D.plt}/>`;
-
-  // ─── FILLET WELDS (plate to beam web only) ────────────
-  // Weld is on the RIGHT face of the plate (against beam web).
-  const wwx=cFaceX+ptk;
-  const wld =
-    weldTri(wwx, ptop, ptop+ph, 1) +
-    weldTri(wwx, ptop, ptop+ph,-1);
-
-  // ─── BOLTS (through plate AND primary beam flange) ────
-  const boltX = cFaceX + ptk/2;               // bolt CL at plate centre
-  const bY=[];
-  for(let i=0;i<n;i++) bY.push(ptop+e1+i*p1);
-  const bolts=bY.map(y=>bolt(boltX,y)).join('');
-
-  // ─── DIMENSIONS ──────────────────────────────────────
-  let dimsR =
-    dimV(bx+blen+20, ptop, bY[0], 'e₁', bx+blen+32);
-  for(let i=0;i<n-1;i++){
-    dimsR += dimV(bx+blen+20, bY[i], bY[i+1], 'p₁', bx+blen+32);
-  }
-  dimsR +=
-    dimV(bx+blen+20, bY[n-1], pbot, 'e₁', bx+blen+32) +
-    dimV(bx+blen+64, ptop, pbot, 'h_p', bx+blen+78);
-  // Plate thickness
-  const dimsT = dimV(bx+blen+20, btop, btop+btf, 't_f', bx+blen+34);
-
-  // ─── LABELS & CALLOUTS ───────────────────────────────
-  const labs =
-    // Primary beam label - in clear area LEFT of secondary beam, below primary beam top flange
-    `<text ${D.txt} x="${ccx}" y="${bbot+60}" text-anchor="middle">Primary beam</text>
-     <text ${D.sml} x="${ccx}" y="${bbot+74}" text-anchor="middle">(supporting)</text>` +
-    // Secondary beam label - below beam, right side
-    `<text ${D.txt} x="${bx+blen-10}" y="${bbot+60}" text-anchor="end">Secondary beam</text>
-     <text ${D.sml} x="${bx+blen-10}" y="${bbot+74}" text-anchor="end">(supported)</text>` +
-    // End plate callout
-    `<line x1="${px+ptk-2}" y1="${ptop-4}" x2="${px+ptk+50}" y2="${btop+btf+4}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${px+ptk+54}" y="${btop+btf+8}">End plate (partial depth)</text>` +
-    // Weld callout
-    `<line x1="${wwx+8}" y1="${bcy}" x2="${bx+blen-120}" y2="${bbot+30}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${bx+blen-116}" y="${bbot+33}">Double fillet weld, to beam web only</text>` +
-    // Grade note
-    `<text ${D.sml} x="${boltX}" y="${bbot+100}" text-anchor="middle">n bolts, Grade 8.8</text>` +
-    // "Tops level" note - use a horizontal leader to the join
-    `<line x1="${cFaceX+10}" y1="${btop-2}" x2="${cFaceX+140}" y2="${btop-22}" stroke="#3366aa" stroke-width="0.7"/>
-     <text ${D.sml} x="${cFaceX+144}" y="${btop-24}" style="fill:#3366aa">Tops of both beams level</text>`;
-
-  // ─── APPLIED SHEAR V_Ed ──────────────────────────────
-  const fax=bx+blen-200;
-  const force =
-    `<line x1="${fax}" y1="${bcy-80}" x2="${fax}" y2="${bcy+btf/2}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
-     <text ${D.grn} x="${fax+10}" y="${bcy-20}">V_Ed</text>`;
-
-  return s + col + beam + plate + wld + bolts + dimsR + dimsT + labs + force + '</svg>';
-}
-
-function diagFDEP(){
-  // Full Depth End Plate connection - SCI P358 §4.7 elevation.
-  // Full-depth plate welded to web AND both flanges of the secondary beam,
-  // then bolted through primary beam flange face.
-  const W=640, H=440;
-  const s=svgStart(W,H);
-
-  // ─── PRIMARY BEAM (supporting, end-on) ──────────────────
-  const ccx=100, cbf=160, ctf=20, ctw=14;
-  const cFaceX=ccx+cbf/2;
-  const col =
-    `<rect x="${ccx-cbf/2}" y="0" width="${cbf}" height="${ctf}" ${D.sec}/>
-     <rect x="${ccx-ctw/2}" y="${ctf}" width="${ctw}" height="${H-2*ctf}" ${D.web}/>
-     <rect x="${ccx-cbf/2}" y="${H-ctf}" width="${cbf}" height="${ctf}" ${D.sec}/>`;
-
-  // ─── SECONDARY BEAM + PLATE ─────────────────────────────
-  const bcy=H/2, bd=280, btf=20;
-  const btop=bcy-bd/2, bbot=bcy+bd/2;
-  const ptk=16, px=cFaceX;                   // plate on RIGHT of primary beam face
-  const bx=cFaceX+ptk;                       // beam starts AFTER plate
-  const blen=W-bx-16;
-  const topFlg=`<rect x="${bx}" y="${btop}" width="${blen}" height="${btf}" ${D.sec}/>`;
-  const botFlg=`<rect x="${bx}" y="${bbot-btf}" width="${blen}" height="${btf}" ${D.sec}/>`;
-  const web    =`<rect x="${bx}" y="${btop+btf}" width="${blen}" height="${bd-2*btf}" ${D.web}/>`;
-  const plate=`<rect x="${px}" y="${btop}" width="${ptk}" height="${bd}" ${D.plt}/>`;
-
-  // ─── WELDS ──────────────────────────────────────────
-  // Web weld on RIGHT face of plate, between flanges
-  const wwx=px+ptk;
-  const wldWeb = weldTri(wwx, btop+btf, bbot-btf, 1) +
-                 weldTri(wwx, btop+btf, bbot-btf,-1);
-  // Flange welds - along beam flange inner face, next to plate
-  const fwLen=70;
-  const wldFlg = weldH(wwx, wwx+fwLen, btop+btf,-1) +
-                 weldH(wwx, wwx+fwLen, bbot-btf, 1);
-
-  // ─── BOLTS (4 off, 2 above + 2 below CL) ───────────
-  const e1=40, p1=70;
-  const boltX=px+ptk/2;
-  const bY=[btop+e1, btop+e1+p1, bbot-e1-p1, bbot-e1];
-  const bolts=bY.map(y=>bolt(boltX,y)).join('');
-
-  // ─── DIMENSIONS ───────────────────────────────────
-  const dimsR =
-    dimV(bx+blen+20, btop, bY[0], 'e₁', bx+blen+32) +
-    dimV(bx+blen+20, bY[0], bY[1], 'p₁', bx+blen+32) +
-    dimV(bx+blen+20, bY[1], bY[2], 'p', bx+blen+32) +
-    dimV(bx+blen+20, bY[2], bY[3], 'p₁', bx+blen+32) +
-    dimV(bx+blen+20, bY[3], bbot, 'e₁', bx+blen+32) +
-    dimV(bx+blen+64, btop, bbot, 'h_p = d', bx+blen+84);
-
-  // ─── LABELS & CALLOUTS ───────────────────────────
-  const labs =
-    `<text ${D.txt} x="${ccx}" y="${bbot+60}" text-anchor="middle">Primary beam</text>
-     <text ${D.sml} x="${ccx}" y="${bbot+74}" text-anchor="middle">(supporting)</text>` +
-    `<text ${D.txt} x="${bx+blen-10}" y="${bbot+60}" text-anchor="end">Secondary beam</text>
-     <text ${D.sml} x="${bx+blen-10}" y="${bbot+74}" text-anchor="end">(supported)</text>` +
-    // End plate callout
-    `<line x1="${px+ptk-2}" y1="${btop+bd*0.28}" x2="${px+ptk+80}" y2="${btop+bd*0.15}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${px+ptk+84}" y="${btop+bd*0.15+4}">End plate (full depth)</text>` +
-    // Web weld callout
-    `<line x1="${wwx+4}" y1="${bcy}" x2="${wwx+100}" y2="${bcy+40}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${wwx+104}" y="${bcy+44}">Web weld (both sides)</text>` +
-    // Flange weld callout
-    `<line x1="${wwx+fwLen/2}" y1="${btop+btf+2}" x2="${wwx+fwLen+50}" y2="${btop-26}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${wwx+fwLen+54}" y="${btop-28}">Flange weld</text>` +
-    `<text ${D.sml} x="${boltX+140}" y="${bbot+100}" text-anchor="middle">4 bolts, Grade 8.8</text>`;
-
-  // ─── APPLIED SHEAR V_Ed ─────────────────────────
-  const fax=bx+blen-130;
-  const force =
-    `<line x1="${fax}" y1="${bcy-110}" x2="${fax}" y2="${bcy+btf/2}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
-     <text ${D.grn} x="${fax+10}" y="${bcy-30}">V_Ed</text>`;
-
-  return s + col + topFlg + web + botFlg + plate + wldWeb + wldFlg + bolts +
-         dimsR + labs + force + '</svg>';
-}
-
-function diagCleat(){
-  // Double Angle Cleat - pure ELEVATION view (per reference drawing).
-  // Primary beam (supporting) drawn end-on as I-section. Cleats seen edge-on
-  // as two thin vertical rectangles (outstanding leg + web leg edge). The
-  // two bolt columns (support bolts + web bolts) are the main features.
-  // Secondary beam behind, notched top flange. Not covered by P358.
-  const W=620, H=460;
-  const s=svgStart(W,H);
-
-  // ─── PRIMARY BEAM (end-on) ─────────────────────────────
-  const ccx=100, cbf=160, ctf=20, ctw=14;
-  const cFaceX=ccx+cbf/2;
-  const col =
-    `<rect x="${ccx-cbf/2}" y="0" width="${cbf}" height="${ctf}" ${D.sec}/>
-     <rect x="${ccx-ctw/2}" y="${ctf}" width="${ctw}" height="${H-2*ctf}" ${D.web}/>
-     <rect x="${ccx-cbf/2}" y="${H-ctf}" width="${cbf}" height="${ctf}" ${D.sec}/>`;
-
-  // ─── CLEAT & BOLT SIZING ─────────────────────────────
-  // Reference shows 4 support bolts + 4 web bolts at same vertical positions
-  const n=4, e1=35, p1=55;
-  const Lout = 2*e1 + (n-1)*p1;              // cleat length = 235
-  const bcy = H/2;
-  const cTop = bcy - Lout/2;
-  const cBot = bcy + Lout/2;
-  const tc = 10;                              // cleat thickness in elevation
-
-  // ─── SECONDARY BEAM (behind, notched) ────────────────
-  const btf=18;
-  const ndn=32;                               // top-flange notch depth
-  const bd = Lout + 2*25 + btf;               // ensure cleats fit with clearance
-  const btop=bcy-bd/2, bbot=bcy+bd/2;
-  const bx=cFaceX;                            // beam flush with primary beam
-  const blen=W-bx-16;
-  const cleatLen = 55;                        // web-leg length (horizontal extent)
-  const nln = cleatLen + 20;                  // notch length just past cleats
-  // Beam web outline with top-flange notch
-  const webPoly =
-    `<polygon points="
-       ${bx},${btop+ndn}
-       ${bx+nln},${btop+ndn}
-       ${bx+nln},${btop+btf}
-       ${bx+blen},${btop+btf}
-       ${bx+blen},${bbot-btf}
-       ${bx},${bbot-btf}" ${D.web}/>`;
-  const topFlg=`<rect x="${bx+nln}" y="${btop}" width="${blen-nln}" height="${btf}" ${D.sec}/>`;
-  const botFlg=`<rect x="${bx}" y="${bbot-btf}" width="${blen}" height="${btf}" ${D.sec}/>`;
-  const notchLine =
-    `<polyline points="${bx},${btop+ndn} ${bx+nln},${btop+ndn} ${bx+nln},${btop}"
-       fill="none" stroke="#1a1a1a" stroke-width="1.6"/>`;
-  const beam = topFlg + webPoly + botFlg + notchLine;
-
-  // ─── CLEAT (elevation: thin rectangle seen edge-on) ───
-  // In pure elevation, you see just the edge of the outstanding leg, which is
-  // a thin vertical rectangle right at the primary beam face.
-  const cleat = `<rect x="${cFaceX}" y="${cTop}" width="${tc}" height="${Lout}" ${D.plt}/>`;
-
-  // ─── TWO BOLT COLUMNS (matches reference) ────────────
-  // Support bolts - go through cleat outstanding leg + primary beam flange
-  const sbx = cFaceX + tc/2;
-  const bY = [];
-  for(let i=0;i<n;i++) bY.push(cTop + e1 + i*p1);
-  const sbolts = bY.map(y=>bolt(sbx,y)).join('');
-  // Web bolts - go through cleat web leg + secondary beam web, offset right
-  const wbx = cFaceX + tc + cleatLen - 18;
-  const wbolts = bY.map(y=>bolt(wbx,y)).join('');
-
-  // ─── DIMENSIONS ────────────────────────────────────
-  let dims =
-    dimV(cFaceX-22, cTop, bY[0], 'e₁', cFaceX-34);
-  for(let i=0;i<n-1;i++){
-    dims += dimV(cFaceX-22, bY[i], bY[i+1], 'p₁', cFaceX-34);
-  }
-  dims += dimV(cFaceX-22, bY[n-1], cBot, 'e₁', cFaceX-34) +
-          dimV(cFaceX-64, cTop, cBot, 'L_cleat', cFaceX-80) +
-          dimH(sbx, wbx, bbot+28, 'gauge', bbot+40);
-
-  // ─── LABELS & CALLOUTS ────────────────────────────
-  const labs =
-    // Primary beam label - below everything in clear area
-    `<text ${D.txt} x="${ccx}" y="${H-20}" text-anchor="middle">Primary beam</text>
-     <text ${D.sml} x="${ccx}" y="${H-6}" text-anchor="middle">(supporting)</text>` +
-    label(bx+blen-8, btop-28, 'Secondary beam', 'end') +
-    slabel(bx+blen-8, btop-16, '(notched UB)', 'end') +
-    // Cleat callout
-    `<line x1="${cFaceX+tc+2}" y1="${cTop+6}" x2="${cFaceX+tc+90}" y2="${btop-22}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.txt} x="${cFaceX+tc+94}" y="${btop-26}">Angle cleats × 2</text>
-     <text ${D.sml} x="${cFaceX+tc+94}" y="${btop-14}">(N/S and F/S)</text>` +
-    // Support bolts callout - leader going UP-LEFT into clear area above primary beam
-    `<line x1="${sbx-6}" y1="${bY[0]}" x2="${sbx-60}" y2="${btop-40}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${sbx-64}" y="${btop-44}" text-anchor="end">support bolts</text>
-     <text ${D.sml} x="${sbx-64}" y="${btop-32}" text-anchor="end">(cleats to primary beam)</text>` +
-    // Web bolts callout
-    `<line x1="${wbx+6}" y1="${bY[n-1]}" x2="${wbx+60}" y2="${bbot+6}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${wbx+64}" y="${bbot+10}">web bolts</text>
-     <text ${D.sml} x="${wbx+64}" y="${bbot+22}">(cleats to secondary beam)</text>` +
-    // "No site welds" pill
-    `<rect x="${bx+blen-130}" y="${bbot+60}" width="120" height="18" rx="3"
-       fill="#f0f9f2" stroke="#1a5e28" stroke-width="0.8"/>
-     <text ${D.sml} x="${bx+blen-70}" y="${bbot+73}" text-anchor="middle"
-       style="fill:#1a5e28;font-weight:600">No site welds</text>`;
-
-  // ─── APPLIED SHEAR V_Ed ────────────────────────
-  const fax=bx+blen-200;
-  const force =
-    `<line x1="${fax}" y1="${bcy-100}" x2="${fax}" y2="${bcy+btf/2}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
-     <text ${D.grn} x="${fax+10}" y="${bcy-30}">V_Ed</text>`;
-
-  return s + col + beam + cleat + sbolts + wbolts + dims + labs + force + '</svg>';
-}
-
-function diagSCleat(){
-  // Single Angle Cleat - EC3-1-8 / ECCS Pub.126.
-  // Single angle: outstanding leg bolted to column flange, web leg bolted through
-  // beam web. Whole connection carries full V_Ed on a single plane - limits
-  // capacity vs double cleat. Not covered by P358.
-  const W=620, H=460;
-  const s=svgStart(W,H);
-
-  // ─── PRIMARY BEAM (end-on) ───────────────────────────
-  const ccx=100, cbf=160, ctf=20, ctw=14;
-  const cFaceX=ccx+cbf/2;
-  const col =
-    `<rect x="${ccx-cbf/2}" y="0" width="${cbf}" height="${ctf}" ${D.sec}/>
-     <rect x="${ccx-ctw/2}" y="${ctf}" width="${ctw}" height="${H-2*ctf}" ${D.web}/>
-     <rect x="${ccx-cbf/2}" y="${H-ctf}" width="${cbf}" height="${ctf}" ${D.sec}/>`;
-
-  // ─── CLEAT & BOLT SIZING ────────────────────────────
-  const n=4, e1=35, p1=55;
-  const Lout = 2*e1 + (n-1)*p1;
-  const bcy = H/2;
-  const cTop = bcy - Lout/2, cBot = bcy + Lout/2;
-  const tc = 10;
-
-  // ─── SECONDARY BEAM ─────────────────────────────────
-  const btf=18;
-  const ndn=32;
-  const bd = Lout + 2*25 + btf;
-  const btop=bcy-bd/2, bbot=bcy+bd/2;
-  const bx=cFaceX;
-  const blen=W-bx-16;
-  const cleatLen = 55;
-  const nln = cleatLen + 20;
-  const webPoly =
-    `<polygon points="
-       ${bx},${btop+ndn}
-       ${bx+nln},${btop+ndn}
-       ${bx+nln},${btop+btf}
-       ${bx+blen},${btop+btf}
-       ${bx+blen},${bbot-btf}
-       ${bx},${bbot-btf}" ${D.web}/>`;
-  const topFlg=`<rect x="${bx+nln}" y="${btop}" width="${blen-nln}" height="${btf}" ${D.sec}/>`;
-  const botFlg=`<rect x="${bx}" y="${bbot-btf}" width="${blen}" height="${btf}" ${D.sec}/>`;
-  const notchLine =
-    `<polyline points="${bx},${btop+ndn} ${bx+nln},${btop+ndn} ${bx+nln},${btop}"
-       fill="none" stroke="#1a1a1a" stroke-width="1.6"/>`;
-  const beam = topFlg + webPoly + botFlg + notchLine;
-
-  // ─── SINGLE CLEAT (edge-on in elevation) ────────────
-  const cleat = `<rect x="${cFaceX}" y="${cTop}" width="${tc}" height="${Lout}" ${D.plt}/>`;
-
-  // ─── TWO BOLT COLUMNS ──────────────────────────────
-  const sbx = cFaceX + tc/2;
-  const bY = [];
-  for(let i=0;i<n;i++) bY.push(cTop + e1 + i*p1);
-  const sbolts = bY.map(y=>bolt(sbx,y)).join('');
-  const wbx = cFaceX + tc + cleatLen - 18;
-  const wbolts = bY.map(y=>bolt(wbx,y)).join('');
-
-  // ─── DIMENSIONS ────────────────────────────────────
-  let dims =
-    dimV(cFaceX-22, cTop, bY[0], 'e₁', cFaceX-34);
-  for(let i=0;i<n-1;i++){
-    dims += dimV(cFaceX-22, bY[i], bY[i+1], 'p₁', cFaceX-34);
-  }
-  dims += dimV(cFaceX-22, bY[n-1], cBot, 'e₁', cFaceX-34) +
-          dimV(cFaceX-64, cTop, cBot, 'L_cleat', cFaceX-80) +
-          dimH(sbx, wbx, bbot+28, 'gauge', bbot+40);
-
-  // ─── LABELS & CALLOUTS ────────────────────────────
-  const labs =
-    `<text ${D.txt} x="${ccx}" y="${H-20}" text-anchor="middle">Primary beam</text>
-     <text ${D.sml} x="${ccx}" y="${H-6}" text-anchor="middle">(supporting)</text>` +
-    label(bx+blen-8, btop-28, 'Secondary beam', 'end') +
-    slabel(bx+blen-8, btop-16, '(notched UB)', 'end') +
-    `<line x1="${cFaceX+tc+2}" y1="${cTop+6}" x2="${cFaceX+tc+90}" y2="${btop-22}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.txt} x="${cFaceX+tc+94}" y="${btop-26}">Single angle cleat</text>
-     <text ${D.sml} x="${cFaceX+tc+94}" y="${btop-14}">(one side only)</text>` +
-    `<line x1="${sbx-6}" y1="${bY[0]}" x2="${sbx-60}" y2="${btop-40}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${sbx-64}" y="${btop-44}" text-anchor="end">support bolts</text>` +
-    `<line x1="${wbx+6}" y1="${bY[n-1]}" x2="${wbx+60}" y2="${bbot+6}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${wbx+64}" y="${bbot+10}">web bolts</text>` +
-    // Capacity warning pill
-    `<rect x="${bx+blen-170}" y="${bbot+60}" width="160" height="18" rx="3"
-       fill="#fff8ed" stroke="#c47a0a" stroke-width="0.8"/>
-     <text ${D.sml} x="${bx+blen-90}" y="${bbot+73}" text-anchor="middle"
-       style="fill:#c47a0a;font-weight:600">Full V on one cleat</text>`;
-
-  // ─── APPLIED SHEAR V_Ed ─────────────────────────
-  // ─── APPLIED SHEAR V_Ed ─────────────────────────
-  const fax=bx+blen-190;
-  const force =
-    `<line x1="${fax}" y1="${bcy-100}" x2="${fax}" y2="${bcy+btf/2}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
-     <text ${D.grn} x="${fax+10}" y="${bcy-30}">V_Ed</text>`;
-
-  return s + col + beam + cleat + sbolts + wbolts + dims + labs + force + '</svg>';
-}
-
-function diagSplice(){
-  // Column Splice - SCI P358 §6 ELEVATION looking at the column web side.
-  // Column runs vertically. Bearing interface at mid-height (thin horizontal
-  // gap). Flange cover plates visible as thin strips on LEFT & RIGHT of the
-  // column body; Web cover plate visible as a wider plate on the column CL.
-  // Break lines top and bottom indicate column continues.
-  const W=580, H=520;
-  const s=svgStart(W,H);
-
-  // ─── COLUMN BODY (as seen on web face - flange depth × height) ──
-  // "Column depth" = horizontal extent (flange-to-flange); flanges seen at
-  // the left and right edges as thin vertical strips.
-  const cx=W/2;
-  const cWidth=160;                          // flange depth (horizontal extent)
-  const ctf=16;                              // flange width (seen edge-on, thin)
-  const cLeft=cx-cWidth/2, cRight=cx+cWidth/2;
-  const colTop=40, colBot=H-40;
-  const gap=12;                              // bearing gap at mid-height
-  const midY=H/2;
-  const upBot=midY-gap/2, loTop=midY+gap/2;
-
-  // Column body - draw as solid rectangles (upper + lower, with flanges darker)
-  const colUpper =
-    `<rect x="${cLeft}" y="${colTop}" width="${cWidth}" height="${upBot-colTop}" ${D.web}/>
-     <rect x="${cLeft}" y="${colTop}" width="${ctf}" height="${upBot-colTop}" ${D.sec}/>
-     <rect x="${cRight-ctf}" y="${colTop}" width="${ctf}" height="${upBot-colTop}" ${D.sec}/>`;
-  const colLower =
-    `<rect x="${cLeft}" y="${loTop}" width="${cWidth}" height="${colBot-loTop}" ${D.web}/>
-     <rect x="${cLeft}" y="${loTop}" width="${ctf}" height="${colBot-loTop}" ${D.sec}/>
-     <rect x="${cRight-ctf}" y="${loTop}" width="${ctf}" height="${colBot-loTop}" ${D.sec}/>`;
-
-  // ─── BEARING INTERFACE ─────────────────────────────
-  const bearing =
-    `<line x1="${cLeft-20}" y1="${upBot}" x2="${cRight+20}" y2="${upBot}"
-       stroke="#444" stroke-width="1"/>
-     <line x1="${cLeft-20}" y1="${loTop}" x2="${cRight+20}" y2="${loTop}"
-       stroke="#444" stroke-width="1"/>`;
-
-  // ─── BREAK SYMBOLS at top and bottom of column ─────
-  const brk = (y)=>
-    `<polyline points="${cLeft},${y} ${cLeft+cWidth*0.2},${y-8} ${cLeft+cWidth*0.4},${y+8} ${cLeft+cWidth*0.6},${y-8} ${cLeft+cWidth*0.8},${y+8} ${cRight},${y}"
-      fill="none" stroke="#1a1a1a" stroke-width="1.2"/>`;
-  const breaks = brk(colTop) + brk(colBot);
-
-  // ─── WEB COVER PLATE (centre of column, spans bearing gap) ─
-  const wph=140, wpw=60;
-  const wpy=midY-wph/2;
-  const wpx=cx-wpw/2;
-  const webPlate=`<rect x="${wpx}" y="${wpy}" width="${wpw}" height="${wph}" ${D.plt}/>`;
-  // Web bolts: 2×2 above splice + 2×2 below splice (4 total in 2 columns)
-  const wbxL=wpx+14, wbxR=wpx+wpw-14;
-  const wbYsT=[midY-50, midY-22];
-  const wbYsB=[midY+22, midY+50];
-  const webBolts =
-    wbYsT.concat(wbYsB).map(y=>bolt(wbxL,y)+bolt(wbxR,y)).join('');
-
-  // ─── FLANGE COVER PLATES (on LEFT and RIGHT column edges) ─
-  const fph=wph, fpw=22;
-  const fpy=midY-fph/2;
-  const fpL=cLeft-fpw/2;                     // straddles left flange
-  const fpR=cRight-fpw/2;
-  const flgPlates=
-    `<rect x="${fpL}" y="${fpy}" width="${fpw}" height="${fph}" ${D.plt}/>
-     <rect x="${fpR}" y="${fpy}" width="${fpw}" height="${fph}" ${D.plt}/>`;
-  // Flange bolts: 2 above + 2 below on each plate
-  const fbxL=fpL+fpw/2, fbxR=fpR+fpw/2;
-  const fbYs=[midY-50, midY-22, midY+22, midY+50];
-  const flgBolts=fbYs.map(y=>bolt(fbxL,y)+bolt(fbxR,y)).join('');
-
-  // ─── DIMENSIONS ────────────────────────────────
-  const dims =
-    dimV(cRight+fpw/2+16, upBot, loTop, 'gap', cRight+fpw/2+36) +
-    dimV(cRight+fpw/2+50, wpy, wpy+wph, 'L_cp', cRight+fpw/2+70);
-
-  // ─── LABELS & CALLOUTS ───────────────────────
-  const labs =
-    // Upper / Lower column labels
-    `<text ${D.txt} x="${cLeft-80}" y="${colTop+60}" text-anchor="middle">Upper</text>
-     <text ${D.txt} x="${cLeft-80}" y="${colTop+76}" text-anchor="middle">column</text>` +
-    `<text ${D.txt} x="${cLeft-80}" y="${colBot-76}" text-anchor="middle">Lower</text>
-     <text ${D.txt} x="${cLeft-80}" y="${colBot-60}" text-anchor="middle">column</text>` +
-    // Web cover plate callout
-    `<line x1="${wpx-2}" y1="${wpy+10}" x2="${wpx-38}" y2="${wpy-28}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${wpx-42}" y="${wpy-32}" text-anchor="end">Web cover plate</text>
-     <text ${D.sml} x="${wpx-42}" y="${wpy-20}" text-anchor="end">(both sides of web)</text>` +
-    // Flange cover plate callout
-    `<line x1="${fpR+fpw}" y1="${fpy+20}" x2="${fpR+fpw+40}" y2="${fpy-16}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${fpR+fpw+44}" y="${fpy-20}">Flange cover plate</text>
-     <text ${D.sml} x="${fpR+fpw+44}" y="${fpy-8}">(× 4 total, each flange)</text>` +
-    // Bearing surface note
-    `<line x1="${cLeft-4}" y1="${midY}" x2="${cLeft-40}" y2="${midY+30}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${cLeft-44}" y="${midY+34}" text-anchor="end">bearing surface</text>`;
-
-  // ─── APPLIED FORCES (N, V) ──────────────────
-  const force =
-    `<line x1="${cx}" y1="${8}" x2="${cx}" y2="${colTop-4}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
-     <text ${D.grn} x="${cx+8}" y="${colTop-10}">N_Ed</text>` +
-    `<line x1="${cRight+120}" y1="${midY}" x2="${cRight+fpw/2+100}" y2="${midY}" stroke="#1a5e28" stroke-width="3" marker-end="url(#arr)"/>
-     <text ${D.grn} x="${cRight+124}" y="${midY+5}">V_Ed</text>`;
-
-  return s + colUpper + colLower + bearing + breaks + webPlate + webBolts +
-         flgPlates + flgBolts + dims + labs + force + '</svg>';
-}
-
-function diagBase(){
-  // Column Base connection - SCI P358 §7 elevation.
-  // Column welded to base plate via fillet welds, base plate bedded on grout
-  // onto a concrete foundation, with holding-down bolts cast into the concrete.
-  // Shows cantilever 'c' (P358 effective outstand), base plate thickness t_p,
-  // base plate width B_p, grout layer and HD bolts.
-  const W=600, H=480;
-  const s=svgStart(W,H);
-
-  // ─── COLUMN (UC, sitting above base plate) ─────────────
-  const cx=W/2, ctf=18, ctw=14, cbf=130;
-  const colTopY=20, colBotY=260;
-  const col =
-    `<rect x="${cx-cbf/2}" y="${colTopY}" width="${cbf}" height="${ctf}" ${D.sec}/>
-     <rect x="${cx-ctw/2}" y="${colTopY+ctf}" width="${ctw}" height="${colBotY-colTopY-2*ctf}" ${D.web}/>
-     <rect x="${cx-cbf/2}" y="${colBotY-ctf}" width="${cbf}" height="${ctf}" ${D.sec}/>`;
-
-  // ─── WELDS (fillet welds, column flanges to base plate) ─
-  const wldCol =
-    weldH(cx-cbf/2, cx-ctw/2, colBotY, 1) +
-    weldH(cx+ctw/2, cx+cbf/2, colBotY, 1);
-
-  // ─── BASE PLATE ──────────────────────────────────────
-  const bpw=280, bph=20;
-  const bpx=cx-bpw/2, bpy=colBotY;
-  const basePlate=`<rect x="${bpx}" y="${bpy}" width="${bpw}" height="${bph}" ${D.plt}/>`;
-
-  // ─── GROUT LAYER ────────────────────────────────────
-  const grty=bpy+bph, grth=14;
-  const grout =
-    `<rect x="${bpx-14}" y="${grty}" width="${bpw+28}" height="${grth}"
-       fill="#e8e8e8" stroke="#888" stroke-width="0.8" stroke-dasharray="4,2"/>
-     <text ${D.sml} x="${cx}" y="${grty+grth/2+3}" text-anchor="middle">grout</text>`;
-
-  // ─── CONCRETE FOUNDATION ───────────────────────────
-  const cony=grty+grth, conh=120;
-  const conc =
-    `<rect x="${bpx-48}" y="${cony}" width="${bpw+96}" height="${conh}" ${D.hat} stroke="#777" stroke-width="1"/>
-     <text ${D.sml} x="${cx}" y="${cony+conh/2+3}" text-anchor="middle">Concrete foundation</text>`;
-
-  // ─── HOLDING-DOWN BOLTS (4 off - show 2 in this elevation) ─
-  const hdInset=36;
-  const hdx1=bpx+hdInset, hdx2=bpx+bpw-hdInset;
-  const hdShaftBot=cony+conh-8;
-  const hdBolts =
-    // Shafts embedded in concrete
-    `<line x1="${hdx1}" y1="${bpy}" x2="${hdx1}" y2="${hdShaftBot}" stroke="#444" stroke-width="3"/>
-     <line x1="${hdx2}" y1="${bpy}" x2="${hdx2}" y2="${hdShaftBot}" stroke="#444" stroke-width="3"/>` +
-    // Anchor (bottom) - horizontal washer plate
-    `<rect x="${hdx1-10}" y="${hdShaftBot}" width="20" height="5" fill="#444"/>
-     <rect x="${hdx2-10}" y="${hdShaftBot}" width="20" height="5" fill="#444"/>` +
-    // Nut + washer at base plate level
-    bolt(hdx1, bpy+bph/2, 7) + bolt(hdx2, bpy+bph/2, 7);
-
-  // ─── DIMENSIONS ────────────────────────────────────
-  const dims =
-    // Cantilever distances left & right of column flange (below base plate)
-    dimH(bpx, cx-cbf/2, bpy+bph+34, 'c', bpy+bph+46) +
-    dimH(cx+cbf/2, bpx+bpw, bpy+bph+34, 'c', bpy+bph+46) +
-    // Overall base plate width (below concrete foundation)
-    dimH(bpx, bpx+bpw, cony+conh+22, 'B_p', cony+conh+34) +
-    // Base plate thickness (left of plate)
-    dimV(bpx-22, bpy, bpy+bph, 't_p', bpx-36) +
-    // Grout thickness
-    dimV(bpx+bpw+16, grty, grty+grth, '25 grout', bpx+bpw+46);
-
-  // ─── LABELS & CALLOUTS ───────────────────────────
-  const labs =
-    // Column label - mid-column on the left
-    label(cx-cbf/2-90, colTopY+100, 'Column') +
-    // Top-of-foundation symbol (▽ level) + label to the right of foundation
-    `<polygon points="${bpx+bpw+12},${grty+grth+2} ${bpx+bpw+20},${grty+grth+2} ${bpx+bpw+16},${grty+grth+10}"
-       fill="#1a1a1a"/>
-     <line x1="${bpx+bpw+2}" y1="${grty+grth+6}" x2="${bpx+bpw+26}" y2="${grty+grth+6}" stroke="#1a1a1a" stroke-width="0.8"/>
-     <text ${D.sml} x="${bpx+bpw+30}" y="${grty+grth+9}">top of foundation</text>` +
-    // Base plate callout
-    `<line x1="${bpx+bpw-20}" y1="${bpy+2}" x2="${bpx+bpw+40}" y2="${bpy-18}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.txt} x="${bpx+bpw+44}" y="${bpy-22}">Base plate</text>` +
-    // HD bolt callout
-    `<line x1="${hdx1-8}" y1="${cony+40}" x2="${hdx1-60}" y2="${cony+60}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${hdx1-64}" y="${cony+64}" text-anchor="end">HD bolts (cast-in),</text>
-     <text ${D.sml} x="${hdx1-64}" y="${cony+76}" text-anchor="end">anchor plate at foot</text>` +
-    // Fillet weld callout
-    `<line x1="${cx-cbf/2-2}" y1="${colBotY-2}" x2="${cx-cbf/2-50}" y2="${colBotY-30}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${cx-cbf/2-54}" y="${colBotY-34}" text-anchor="end">Fillet weld,</text>
-     <text ${D.sml} x="${cx-cbf/2-54}" y="${colBotY-22}" text-anchor="end">leg a_w</text>`;
-
-  return s + col + wldCol + basePlate + grout + conc + hdBolts +
-         dims + labs + '</svg>';
-}
-
-function diagBrace(){
-  // Bracing Connection - per reference drawing.
-  // Column (vertical) on LEFT, beam (horizontal) comes in at the TOP from the
-  // right and is bolted to the column with 3 bolts through a simple shear
-  // connection. Gusset plate sits below the beam bottom flange, welded to the
-  // beam bottom flange and column flange, with a chamfered corner where the
-  // brace (SHS) attaches. SHS brace bolted to gusset with 4 bolts in 2×2.
-  // S.O.P. (Setting Out Point) marked at the intersection of member working
-  // lines (column CL × beam CL × brace CL).
-  const W=680, H=540;
-  const s=svgStart(W,H);
-
-  // ─── COLUMN (vertical, left - simple rectangle w/ break lines) ──
-  const ccx=100, cWidth=110;
-  const cLeft=ccx-cWidth/2, cRight=ccx+cWidth/2;
-  const col =
-    `<rect x="${cLeft}" y="0" width="${cWidth}" height="${H}" ${D.web}/>
-     <rect x="${cLeft}" y="0" width="14" height="${H}" ${D.sec}/>
-     <rect x="${cRight-14}" y="0" width="14" height="${H}" ${D.sec}/>`;
-  // Break lines at top & bottom of column
-  const brk = (y)=>
-    `<polyline points="${cLeft-6},${y} ${cLeft+cWidth*0.25},${y-10} ${cLeft+cWidth*0.5},${y+10} ${cLeft+cWidth*0.75},${y-10} ${cRight+6},${y+4}"
-      fill="none" stroke="#1a1a1a" stroke-width="1.2"/>`;
-  const breaks = brk(50) + brk(H-50);
-
-  // ─── BEAM (horizontal at TOP, coming in from right) ──
-  const btf=18, bd=120;
-  const bTop=140, bBot=bTop+bd;
-  const bcy=(bTop+bBot)/2;
-  const bLeft=cRight;                          // beam flush with column right face
-  const bRight=W-30;                           // beam break at right edge
-  const topFlg=`<rect x="${bLeft}" y="${bTop}" width="${bRight-bLeft}" height="${btf}" ${D.sec}/>`;
-  const botFlg=`<rect x="${bLeft}" y="${bBot-btf}" width="${bRight-bLeft}" height="${btf}" ${D.sec}/>`;
-  const bweb   =`<rect x="${bLeft}" y="${bTop+btf}" width="${bRight-bLeft}" height="${bd-2*btf}" ${D.web}/>`;
-  // Break line on right end of beam
-  const brkB =
-    `<polyline points="${bRight-20},${bTop} ${bRight-14},${bcy-8} ${bRight-2},${bcy+8} ${bRight-14},${bBot}"
-      fill="none" stroke="#1a1a1a" stroke-width="1.2"/>`;
-
-  // ─── BEAM-TO-COLUMN CONNECTION (3 bolts through column flange) ──
-  const bcBoltX = cRight - 7;                  // bolts in column flange centre
-  const bcBoltsY = [bTop+25, bcy, bBot-25];
-  const bcBolts = bcBoltsY.map(y=>bolt(bcBoltX, y)).join('');
-
-  // ─── SETTING OUT POINT (S.O.P.) at column CL × beam CL ──
-  const sopX=ccx, sopY=bcy;
-  const sop =
-    `<circle cx="${sopX}" cy="${sopY}" r="5" fill="white" stroke="#1a1a1a" stroke-width="1.2"/>
-     <line x1="${sopX-7}" y1="${sopY}" x2="${sopX+7}" y2="${sopY}" stroke="#1a1a1a" stroke-width="0.8"/>
-     <line x1="${sopX}" y1="${sopY-7}" x2="${sopX}" y2="${sopY+7}" stroke="#1a1a1a" stroke-width="0.8"/>`;
-  // Column CL (dash-dot vertical) through SOP
-  const colCL =
-    `<line x1="${ccx}" y1="10" x2="${ccx}" y2="${H-10}"
-       stroke="#1a1a1a" stroke-width="0.6" stroke-dasharray="16,3,2,3"/>`;
-  // Beam CL (dash-dot horizontal) through SOP
-  const beamCL =
-    `<line x1="${cLeft-10}" y1="${bcy}" x2="${W-6}" y2="${bcy}"
-       stroke="#1a1a1a" stroke-width="0.6" stroke-dasharray="16,3,2,3"/>`;
-
-  // ─── GUSSET PLATE (chamfered rectangle below beam) ──
-  const gTop = bBot;                           // on beam bottom flange
-  const gLeft = cRight;                        // on column right face
-  const gBot = gTop + 180;                     // extent below beam
-  const gRight = gLeft + 220;
-  const chamfer = 100;                          // chamfer on bottom-right corner
-  const gusset =
-    `<polygon points="
-       ${gLeft},${gTop}
-       ${gRight},${gTop}
-       ${gRight},${gBot-chamfer}
-       ${gRight-chamfer},${gBot}
-       ${gLeft},${gBot}" ${D.plt}/>`;
-
-  // ─── GUSSET WELDS (along beam bottom flange + along column face) ──
-  const wldBeam = weldH(gLeft+8, gRight-8, gTop, -1);
-  const wldCol  = weldTri(gLeft, gTop+8, gBot-8, 1);
-
-  // ─── BRACE (SHS at 45°, connects to chamfered corner) ──
-  const cosA=Math.SQRT1_2, sinA=Math.SQRT1_2;
-  // Chamfer midpoint
-  const chamMidX = gRight - chamfer/2;
-  const chamMidY = gBot - chamfer/2;
-  // Brace axis: passes through SOP at 45° down-right
-  // Start brace from just inside chamfer face, extend down-right
-  const axDX = cosA, axDY = sinA;             // axis unit vector (down-right)
-  const pDX  = -sinA, pDY = cosA;             // perpendicular
-  const brW=40;                                // SHS size (as drawn)
-  const brLen=160;                             // length shown
-  // Start brace on chamfer face, extend down-right
-  const bsX = chamMidX, bsY = chamMidY;
-  const beX = bsX + brLen*axDX;
-  const beY = bsY + brLen*axDY;
-  const bp1x = bsX + pDX*brW/2, bp1y = bsY + pDY*brW/2;
-  const bp2x = bsX - pDX*brW/2, bp2y = bsY - pDY*brW/2;
-  const bp3x = beX - pDX*brW/2, bp3y = beY - pDY*brW/2;
-  const bp4x = beX + pDX*brW/2, bp4y = beY + pDY*brW/2;
-  const brace =
-    `<polygon points="${bp1x},${bp1y} ${bp2x},${bp2y} ${bp3x},${bp3y} ${bp4x},${bp4y}" ${D.sec}/>`;
-  // Break line on brace far end
-  const brkBrace =
-    `<polyline points="${beX-8*axDX+10*pDX},${beY-8*axDY+10*pDY} ${beX-14*axDX+4*pDX},${beY-14*axDY+4*pDY} ${beX-2*axDX-4*pDX},${beY-2*axDY-4*pDY} ${beX-8*axDX-10*pDX},${beY-8*axDY-10*pDY}"
-      fill="none" stroke="#1a1a1a" stroke-width="1.2"/>`;
-
-  // ─── BOLTS: 4 in 2×2 pattern on the gusset (on brace axis) ──
-  // Distance along axis from chamfer centre, two rows × two columns (p1 apart)
-  const eAx=30, pAx=40, pTr=24;                // edge, along-axis pitch, transverse pitch
-  // Bolt positions in gusset: two columns perpendicular to brace axis, two rows along
-  const rowsA = [eAx, eAx+pAx];
-  const colsT = [-pTr/2, pTr/2];
-  const boltPts = [];
-  rowsA.forEach(a => colsT.forEach(t => {
-    const bx = chamMidX - a*axDX + t*pDX;     // go INTO gusset (opposite brace direction)
-    const by = chamMidY - a*axDY + t*pDY;
-    boltPts.push([bx,by]);
-  }));
-  const braceBolts = boltPts.map(([x,y])=>bolt(x,y)).join('');
-
-  // ─── Brace CL (dash-dot, through SOP along brace axis) ──
-  const braceCL_len = 360;
-  const bcl_x1 = sopX - 60*axDX, bcl_y1 = sopY - 60*axDY;   // upper-left end
-  const bcl_x2 = sopX + braceCL_len*axDX, bcl_y2 = sopY + braceCL_len*axDY;
-  const braceCLdash =
-    `<line x1="${bcl_x1}" y1="${bcl_y1}" x2="${bcl_x2}" y2="${bcl_y2}"
-       stroke="#1a1a1a" stroke-width="0.6" stroke-dasharray="16,3,2,3"/>`;
-
-  // ─── DIMENSIONS ────────────────────────────────
-  const dims =
-    dimH(cRight, gLeft+14, gBot+28, 'Y', gBot+40);
-
-  // ─── LABELS & CALLOUTS ───────────────────────
-  const labs =
-    // SOP label
-    `<line x1="${sopX+8}" y1="${sopY-4}" x2="${sopX-44}" y2="${sopY-44}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.sml} x="${sopX-48}" y="${sopY-48}" text-anchor="end" style="font-weight:600">S.O.P.</text>` +
-    // Beam label
-    `<line x1="${bLeft+90}" y1="${bTop-2}" x2="${bLeft+140}" y2="${bTop-30}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.txt} x="${bLeft+144}" y="${bTop-32}">Beam (per plan)</text>` +
-    // Column label
-    `<text ${D.txt} x="${ccx}" y="30" text-anchor="middle" style="font-weight:600">Column</text>` +
-    // Gusset callout
-    `<line x1="${gLeft+40}" y1="${gBot-20}" x2="${gLeft+40}" y2="${gBot+50}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.txt} x="${gLeft+44}" y="${gBot+54}">Gusset plate</text>` +
-    // Brace callout - leader from brace side to clear area above-right
-    `<line x1="${beX+20*pDX-20*axDX}" y1="${beY+20*pDY-20*axDY}" x2="${W-120}" y2="${H-100}" stroke="#555" stroke-width="0.7"/>
-     <text ${D.txt} x="${W-116}" y="${H-100}">SHS bracing</text>
-     <text ${D.sml} x="${W-116}" y="${H-88}">(CL OF SHS)</text>`;
-
-  return s + colCL + beamCL + col + breaks +
-         topFlg + bweb + botFlg + brkB + bcBolts +
-         gusset + wldBeam + wldCol +
-         braceCLdash + brace + brkBrace + braceBolts +
-         sop + dims + labs + '</svg>';
-}
-
-const DIAGRAMS={
-  fin:diagFin, pdep:diagPDEP, fdep:diagFDEP,
-  dcleat:diagCleat, scleat:diagSCleat,
-  splice:diagSplice, base:diagBase, brace:diagBrace,
-};
-
 // ─── INPUT FORMS ──────────────────────────────────────────────
 function formFin(){return`
 <div class="card"><div class="card-title">Section Sizes</div>
@@ -2550,13 +2230,6 @@ function calcRSplice(g){
   const C=jchk(R.checks);
   return{checks:C,allPass:C.every(c=>c.pass),maxR:Math.max(...C.map(c=>c.r))};
 }
-function diagRSplice(){
-  const s=svgStart(360,230);
-  return s+`<rect x="150" y="20" width="60" height="80" fill="none" stroke="#888" stroke-width="2"/><rect x="150" y="130" width="60" height="80" fill="none" stroke="#888" stroke-width="2"/>
-  <rect x="100" y="100" width="160" height="12" fill="#666"/><rect x="100" y="118" width="160" height="12" fill="#666"/>
-  <line x1="120" y1="94" x2="120" y2="136" stroke="#ffb000" stroke-width="3"/><line x1="240" y1="94" x2="240" y2="136" stroke="#ffb000" stroke-width="3"/>
-  <text x="180" y="226" text-anchor="middle" font-size="10" fill="#999" font-family="monospace">RHS end plates, bolts on two sides (T-stubs)</text></svg>`;
-}
 function formConc(){return`
 <div class="card"><div class="card-title">Applied Loads</div>
   <div class="g3">
@@ -2594,13 +2267,6 @@ function calcConc(g){
     fck:fv(g.fck),cracked:g.crk==='1',c1:fv(g.c1),hMember:fv(g.hm)});
   const C=jchk(R.checks);
   return{checks:C,allPass:C.every(c=>c.pass),maxR:Math.max(...C.map(c=>c.r))};
-}
-function diagConc(){
-  const s=svgStart(360,230);
-  return s+`<rect x="40" y="10" width="90" height="210" fill="url(#hatch)" stroke="#888"/><rect x="130" y="50" width="12" height="130" fill="#666"/>
-  <rect x="142" y="100" width="120" height="10" fill="#666"/><line x1="70" y1="80" x2="142" y2="80" stroke="#ffb000" stroke-width="3"/><line x1="70" y1="150" x2="142" y2="150" stroke="#ffb000" stroke-width="3"/>
-  <line x1="215" y1="60" x2="215" y2="98" stroke="#c33" stroke-width="2"/><polygon points="211,92 219,92 215,100" fill="#c33"/><text x="222" y="70" font-size="11" fill="#c33" font-family="monospace">V</text>
-  <text x="180" y="226" text-anchor="middle" font-size="10" fill="#999" font-family="monospace">plate on cast-in headed anchors</text></svg>`;
 }
 function formMoment(){return`
 <div class="card"><div class="card-title">Joint and Loads</div>
@@ -2652,13 +2318,6 @@ function calcMoment(g){
     bolt:Joints.bolt(g.bolt,g.cls),rows,w:fv(g.w),af:fv(g.af),aw:fv(g.aw),alpha:fv(g.alpha)>0?fv(g.alpha):null,stiffComp:g.stiff==='1',Ncol:fv(g.Nc)*1e3,M:fv(g.M)*1e6,V:fv(g.V)*1e3});
   const C=jchk(R.checks);
   return{checks:C,allPass:C.every(c=>c.pass),maxR:Math.max(...C.map(c=>c.r))};
-}
-function diagMoment(){
-  const s=svgStart(360,260);
-  return s+`<rect x="60" y="10" width="40" height="240" fill="#ddd" stroke="#888"/><rect x="100" y="30" width="12" height="200" fill="#666"/>
-  <rect x="112" y="60" width="200" height="10" fill="#999"/><rect x="112" y="180" width="200" height="10" fill="#999"/><rect x="112" y="70" width="200" height="110" fill="#eee" stroke="#bbb"/>
-  ${[45,85,120,165].map(y=>`<line x1="70" y1="${y}" x2="118" y2="${y}" stroke="#ffb000" stroke-width="3"/>`).join('')}
-  <text x="200" y="252" text-anchor="middle" font-size="10" fill="#999" font-family="monospace">extended end plate: tension rows, compression at the bottom flange</text></svg>`;
 }
 function formBrace(){return`
 <div class="card"><div class="card-title">Applied Loads <em style="font-weight:400;letter-spacing:0;text-transform:none;font-size:10px">in bracing member</em></div>
@@ -3629,9 +3288,17 @@ function switchJt(id){
   if(id==='base')   setTimeout(attachBase,50);
 }
 
+const READERS={fin:()=>readFin(),pdep:()=>readPDEP(),fdep:()=>readFDEP(),dcleat:()=>readDCleat(),scleat:()=>readSCleat(),splice:()=>readSplice(),base:()=>readBase(),
+  brace:()=>readBrace(),rsplice:()=>readRSplice(),conc:()=>readConc(),moment:()=>readMoment()};
+const diagSec=n=>{const c=SECTIONS[n];return c?{h:c.d,b:c.b,tf:c.tf,tw:c.tw,r:c.r}:null;};
+function drawDiag(){
+  const w=document.getElementById('diag-svg'); if(!w||!READERS[activeId]) return;
+  let g={}; try{g=READERS[activeId]();}catch(e){}
+  w.innerHTML=JDraw.draw(activeId,g,diagSec);
+}
+let diagTimer=null;
+function queueDiag(){clearTimeout(diagTimer);diagTimer=setTimeout(drawDiag,120);}
 function showDiag(jt){
-  const diagFns={fin:diagFin,pdep:diagPDEP,fdep:diagFDEP,
-    dcleat:diagCleat,scleat:diagSCleat,splice:diagSplice,base:diagBase,brace:diagBrace,rsplice:diagRSplice,conc:diagConc,moment:diagMoment};
   const notP358=['dcleat','scleat'];
   const disclaimer=notP358.includes(jt.id)?
     `<div style="background:var(--accent-dim);border:1px solid var(--bdr2);border-radius:4px;padding:7px 10px;font-size:10.5px;color:var(--mut);margin-top:8px">
@@ -3640,11 +3307,20 @@ function showDiag(jt){
     <div class="diag-panel">
       <div class="diag-title">${jt.label}</div>
       <div class="diag-desc">${jt.desc}</div>
-      <div class="diag-wrap">${diagFns[jt.id]?diagFns[jt.id]():''}</div>
+      <div class="diag-wrap" id="diag-svg"></div>
+      <div class="diag-note">Drawn to scale from the inputs and redrawn as they change.</div>
       ${disclaimer}
       <div style="color:var(--muted);font-size:10px;font-family:var(--mono);margin-top:4px">${jt.ref}</div>
     </div>`;
+  drawDiag(); setTimeout(drawDiag,90);
 }
+document.addEventListener('input',e=>{if(e.target.closest&&e.target.closest('#input-panel'))queueDiag();});
+document.addEventListener('change',e=>{if(e.target.closest&&e.target.closest('#input-panel'))queueDiag();});
+// rasterise the current drawing for the PDF report
+function svgToPNG(svgText,scale=3){return new Promise((res,rej)=>{
+  const m=svgText.match(/viewBox="0 0 ([0-9.]+) ([0-9.]+)"/),w=m?+m[1]:920,h=m?+m[2]:520;
+  const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=w*scale;c.height=h*scale;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(img,0,0,c.width,c.height);res({url:c.toDataURL('image/png'),w,h});};
+  img.onerror=rej;img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svgText.replace('<svg ','<svg width="'+w+'" height="'+h+'" '));});}
 
 function doCalc(){
   const eb=document.getElementById('err-box');
@@ -3665,7 +3341,7 @@ function doCalc(){
     else if(activeId==='conc'){g=readConc();res=calcConc(g);sum=concSum(g);}
     else if(activeId==='moment'){g=readMoment();res=calcMoment(g);sum=momentSum(g);}
     else{g=readPDEP();res=calcPDEP(g);sum=pdepSum(g);}
-    document.getElementById('diag-area').innerHTML='';
+    drawDiag();
     renderRes(res,jt.label,sum);
   }catch(e){eb.textContent='Error: '+e.message;eb.style.display='block';}
 }
@@ -3996,6 +3672,9 @@ async function exportPDF(){
   h1(`1. ${type} - Input Summary`);
   summary.forEach(([k,v])=>row(k,v,''));
   y+=3;
+
+  // connection drawing (from the inputs)
+  try{const el=document.querySelector('#diag-svg svg');if(el){const png=await svgToPNG(el.outerHTML,3),hMM=TW*png.h/png.w;pageCheck(hMM+4);doc.addImage(png.url,'PNG',M,y,TW,hMM);y+=hMM+4;}}catch(e){}
 
   // 2. Design checks
   h1('2. Design Checks');

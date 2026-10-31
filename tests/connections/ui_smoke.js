@@ -29,6 +29,18 @@ const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`);
     if (id === 'moment') truth('moment: M_j,Rd reported', /Moment Resistance M_j,Rd/.test(txt) && /Panel Shear/.test(txt));
     if (id === 'conc') truth('conc: EN 1992-4 anchor checks reported', /Concrete Cone/.test(txt) && /Pry-out/.test(txt));
   }
+  // parametric drawings: every joint draws an elevation and a second view from its inputs, redraws on input and stays with the results
+  for (const id of ['fin', 'pdep', 'fdep', 'dcleat', 'scleat', 'splice', 'base', 'rsplice', 'conc', 'moment', 'brace']) {
+    w.switchJt(id); await wait(150);
+    const sv = w.document.querySelector('#diag-svg svg.jd'), txt = sv ? sv.textContent : '';
+    truth(`${id}: drawing with two titled views`, !!sv && (txt.match(/ELEVATION|SECTION|VIEW ON|PLAN/g) || []).length >= 2);
+  }
+  w.switchJt('fin'); await wait(150);
+  const nC = () => w.document.querySelectorAll('#diag-svg svg circle').length, c0 = nC();
+  const nIn = w.document.getElementById('fin-n'); nIn.value = '4'; nIn.dispatchEvent(new w.Event('input', { bubbles: true })); await wait(250);
+  truth('fin: drawing redraws with an extra bolt when n changes', nC() > c0);
+  truth('fin: bolts beyond the plate are flagged on the drawing', /beyond the plate/.test(w.document.getElementById('diag-svg').textContent));
+  w.doCalc(); await wait(60); truth('drawing stays visible after the calculation', !!w.document.querySelector('#diag-svg svg.jd'));
   near_ = (nm, a, b, t) => truth(`${nm}: ${a.toFixed(0)} vs ${b}`, Math.abs(a - b) <= t * b);
   near_('plastic modulus helper, 457x191x67 UKB (datasheet 1481 cm³)', w.eval("wplI(SECTIONS['457×191×67 UKB'])") / 1e3, 1481, 0.01);
   near_('plastic modulus helper, 254x254x89 UKC (datasheet 1246 cm³)', w.eval("wplI(SECTIONS['254×254×89 UKC'])") / 1e3, 1246, 0.01);
