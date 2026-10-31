@@ -137,6 +137,8 @@ Steel Masonry Support and Windpost limits:
 
 ## Batch 2: Concrete and precast, EN 1992
 
+Build order and the planned CalcPad round trip / EngineeringSuite repo: see [docs/plans/engineering-suite-and-calcpad.md](docs/plans/engineering-suite-and-calcpad.md). Every concrete tool is cross-checked against The Concrete Centre's Eurocode spreadsheets (TCC series, run in LibreOffice; the spreadsheets themselves are not in this repo).
+
 | Tedds entry | Module | Status |
 |---|---|---|
 | RC Column Design | RC Column Design | Done (existing) |

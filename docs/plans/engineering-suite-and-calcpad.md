@@ -1,0 +1,129 @@
+# Plan: EngineeringSuite: the full EC2 concrete suite, with CalcPad round trip in every tool
+
+> **Status (31 Oct 2026): parked to execute later.** The concrete tools in section 1 are being built now in this repo
+> (EngineeringTools) in the order listed. Sections 2–3 (the EngineeringSuite repo and the CalcPad round trip) start once the
+> prerequisites in section 4 step 1 are in place. Tools built meanwhile keep their calculation steps structured, so their
+> CalcPad scripts can be added without reworking the engines.
+
+## Context
+Luke wants two things:
+- the whole concrete suite to Eurocode 2 (UK NA);
+- every tool's calculation to be editable as a live CalcPad sheet, with the right diagrams in it.
+
+Editing should work both ways. Inputs round-trip between the tool and CalcPad. Variables that come from a tool are locked against renaming.
+
+CalcPad (`lukegardner43/CalcPad`) is his WYSIWYG Perega calc-sheet app:
+- each line is a chip with units;
+- documents are `.perega` JSON whose pages are HTML;
+- it has projects of checks and Word export.
+
+The tools live in `lukegardner43/EngineeringTools`, and their sources currently exist only in my working area.
+
+Decisions taken in this conversation:
+- **New repo:** `lukegardner43/EngineeringSuite` combines the tools and CalcPad. It is the source of truth.
+- **Old repos:** both EngineeringTools and CalcPad keep receiving updates, synced from the new repo.
+- **Round trip:** inputs go both ways; tool variable names are locked.
+- **Scope:** every tool gets the link, steel included.
+- **Foundations:** the concrete foundation and retaining calcs join this suite.
+- **TCC spreadsheets:** only the Eurocode (TCC) sheets are used. They are downloaded privately for checking only and never committed.
+- **Double-tee:** EC2 only. It is checked against the worked examples in *Reinforced Concrete Design to Eurocode 2* (Mosley, Bungey & Hulse). Luke still needs to send that chapter.
+
+## 1. Concrete tools to build (in order)
+Every tool gets a TCC cross-check: the same inputs are run through the TCC sheet in LibreOffice. The harness already works on TCC11.
+
+| # | Tool | Covers (BS EN 1992-1-1 + UK NA unless stated) | TCC check |
+|---|---|---|---|
+| 1 | **RC Section Design Toolkit** | Rectangular, flanged or circular section: bending (rectangular block, K′ from δ), N–M, shear, torsion, crack control (tables and calculated wk, axial tension), span/depth, cover, anchorage and laps, bar tables | TCC11, TCC12, TCC14, TCC15, TCC101 |
+| 2 | **RC Beam Analysis & Design** | Continuous beams with cantilevers (free-end supports), G/Q pattern loading, redistribution, flanged sections, bar and link selection per zone, curtailment, crack and deflection checks, torsion | TCC41, TCC41R, TCC43 (wide beams) |
+| 3 | **RC Slab Design** | One-way continuous, two-way (coefficient tables), ribbed/waffle | TCC31, TCC31R, TCC32, TCC94 |
+| 4 | **RC Flat Slab & Punching Shear** | Equivalent frame, column/middle strips, punching 6.4 with links | TCC33, TCC13 |
+| 5 | **RC Slab FEM** | Port of the FEMTool Mindlin–Reissner plate tool, with EC2 design of the results | (against tools 3–4) |
+| 6 | **RC Column Design** (rework of the existing tool) | 5.8 slenderness, biaxial bending, circular sections, fire | TCC53, TCC54 |
+| 7 | **RC Wall Design** | Braced/unbraced and plain/reinforced walls, 5.8, 9.6, 12; core walls | TCC63 |
+| 8 | **RC Corbel & Nib Design** | Strut-and-tie 6.5 / Annex J, nibs | — |
+| 9 | **RC Stair Design** | Single flight with landings | TCC71 |
+| 10 | **RC 2D Analysis & Design** | 2D Frame Analysis engine plus EC2 beam/column design | TCC21 (subframe) |
+| 11 | **Prestressed Beam (precast double-tee and general)** | Pretensioned: transfer/service stresses, losses, ULS bending, shear (uncracked and cracked), camber/deflection | Mosley/Bungey/Hulse worked examples (chapter needed); TCC42 where applicable |
+| 12 | **Precast Hollowcore Slab** | EN 1168 + EC2: shear 6.2.2(2), bending, bearings | — |
+| 13 | **Precast Column / Wall / Stair** | EC2 member checks plus lifting/demoulding | — |
+| 14 | **Precast Connections** | Bearings (10.9.5), half-joints (strut-and-tie), grouted sleeve splices (manufacturer data) | — |
+| 15 | **Pad Foundation** | Bearing pressures, bending, shear, punching | TCC81 |
+| 16 | **Pile Cap** | Truss and bending methods, shear | TCC82 |
+| 17 | **Retaining Wall** | Cantilever wall: stability and EC2 stem/base design | TCC62 |
+| 18 | **Basement Wall** | Propped wall | TCC61 |
+
+All tools share one **EC2 core** (`src/ec2/core.js`). It is started, and already matches TCC11's rectangular-beam results exactly.
+
+## 2. EngineeringSuite repo (new source of truth)
+```
+index.html                  suite home: tool cards + "CalcPad"
+calcpad/                    CalcPad app (from CalcPad repo, history kept), Beta/ layer
+tools/*.html                built, self-contained tool pages (same names as today)
+src/<tool>/{engine.js,ui.html,build.py}   sources moved from my working area into the repo
+src/common/                 style.css, sections.js, ec3/ec2 cores, joints, drawings, calcpad-bridge.js
+tests/<tool>/               existing suites + new ones; tests/calcpad/ round-trip tests
+build.py                    builds every page; sync.py publishes to the two old repos
+```
+- **History:** history is kept by merging both repos in (`git subtree add --prefix=…` or `merge --allow-unrelated-histories`).
+- **Sources in the repo:** they stop living only in my working area, so builds become reproducible by anyone.
+- **`sync.py`:**
+  - copies the built tool pages and tests to `EngineeringTools`, and `calcpad/` to `CalcPad`;
+  - adjusts the cross-link base URL for each site (suite: `./calcpad/`; old sites: `../CalcPad/` and `../EngineeringTools/`);
+  - commits and pushes all three with the attribution lines.
+- **Shared storage:** all three sites are on `lukegardner43.github.io`, so they share localStorage. CalcPad autosaves and projects carry over because the key names stay the same.
+
+## 3. CalcPad round trip
+**Tool side (`src/common/calcpad-bridge.js`, built into every page):**
+- **Calc script:** each tool writes a `calcScript(state, results)`, an ordered list of items. Items are headings, prose with clause references, `input(key, name, value, unit, label)`, `expr(name, expression, [unit])`, `value(name, v, unit, 'from analysis')`, `image(id, svg → PNG data URL at 2×, width, caption)` and checks (utilisation expressions).
+  - Closed-form design steps are written as **live CalcPad expressions**, for example `K = M_Ed/(b*d^2*f_ck)` and `V_Rdc = … [#MPa]` using CalcPad's "#" forms for the empirical formulas.
+  - Results CalcPad cannot compute (envelopes, finite-element Mcr, iteration) go in as values and are listed as *derived from analysis*.
+- **Buttons:** **Open in CalcPad**, **Download .perega**, **Copy as CalcPad text**.
+- **On load:** the tool accepts a hand-off (`localStorage et_handoff`, `?from=calcpad`) or a `.perega` file. It applies the stored state, then overrides each input with the current CalcPad value of its locked chip, then recalculates.
+- **Images:** all diagrams (section sketches, bending-moment and shear envelopes, elevations, connection drawings) are rasterised to PNG, because CalcPad's Word export embeds only PNG/JPEG/GIF/BMP.
+
+**CalcPad side (changes in `calcpad/index.html`):**
+1. **Import route** (`?import=1` + `localStorage calcpad_import`, or a `.perega` v3 file). Pages arrive as blocks `{t:'h'|'line'|'img', …}`. Lines go through the existing paste path (`pasteLineToFragment` / `insertPastedText`), so they become real, evaluated chips. Images become `.calc-img-wrap` images (as `insertImageSrc` does), each carrying `data-et-img` so later updates can replace it. The sheet opens as a check in the current project (or a new one), keyed by `meta.et.sheetId`.
+2. **Locked names:** tool chips carry `data-et-lock`.
+   - Editing a locked chip (`startEditVarDefChip` / `startEditDefinitionLine` → `commitDefinitionLine`) keeps its name. A new value or expression is accepted; a rename is refused with a note.
+   - Paste duplicate handling (`buildRenameMap`) never renames a locked name.
+   - Deleting a locked chip asks first.
+3. **In-place update:** an import for an existing `sheetId` updates the chips by locked name instead of rebuilding the document.
+   - Input values and analysis values are refreshed, and images are replaced by id.
+   - New items are inserted after their predecessor.
+   - Prose and lines the user added are kept.
+   - A tool expression the user has edited is kept and marked *modified from tool*.
+4. **Open in tool:** the button appears when `meta.et.tool` exists. It sends the current values of the input chips plus `meta.et.state` back (`et_handoff`) and opens the tool.
+5. **Stale-analysis banner:** after each `rebuildVars()`, CalcPad compares the input chips with `meta.et.inputsAtExport`. If anything feeding the analysis changed, it shows "re-run in the tool". The closed-form checks keep recalculating live in CalcPad meanwhile.
+
+**Limit stated in every tool:** method changes made in CalcPad stay in CalcPad. The tool's engine is code, so only inputs flow back.
+
+## 4. Order of work
+1. **Prerequisites from Luke:**
+   - create an empty public repo `lukegardner43/EngineeringSuite` and turn on Pages;
+   - approve push access (`add_repo` with push) for EngineeringSuite, EngineeringTools and CalcPad;
+   - send the prestressed chapter.
+2. **Set up the repo:**
+   - merge both repos in with history;
+   - move all sources from my working area into `src/`;
+   - make `build.py` rebuild every page byte-identically;
+   - run every existing suite green;
+   - write `sync.py`.
+3. **Build the bridge:**
+   - `calcpad-bridge.js` and the CalcPad import, lock, in-place update, Open-in-tool and banner changes;
+   - a round-trip test harness;
+   - first used on tool 1 (Section Toolkit) and tool 2 (RC Beam).
+4. **Concrete tools 1–18** in the table's order, each with its CalcPad script, TCC cross-check, tests and push. Tool 11 waits for the chapter.
+5. **Retrofit the steel tools** with calc scripts, roughly two or three per push, ConnectionCheck and the frame tools last because they're the largest.
+6. **Throughout:** keep the ROADMAP and index current, and run `sync.py` after each push.
+
+## 5. Verification
+- **Engine vs independent reference:** a Python reference for each tool, as for steel (node tests).
+- **Engine vs TCC:** a LibreOffice UNO harness drives the TCC workbook copies in the scratch area (not committed). Its outputs are stored as reference numbers in `tests/<tool>/ref_tcc.json`. Known, explained differences are documented (e.g. TCC takes k for minimum crack steel from the beam width, and caps span/depth at 40K).
+- **Engine vs CalcPad sheet (Playwright):**
+  - load `calcpad/index.html` with the tool's import and read the chip values; every live expression must reproduce the engine's numbers (1e-6);
+  - edit an input chip and click Open in tool; the tool must reflect it;
+  - re-export to the same sheet; the user's added paragraph and edited expression must survive and the names stay locked;
+  - attempt a rename; it must be refused;
+  - Word export must contain the PNG diagrams.
+- Existing suites (steel, frame, joints) stay green, and built pages are byte-identical after the move.
+- `sync.py` dry run before each real sync, then a check that the old sites' pages match the suite's.
