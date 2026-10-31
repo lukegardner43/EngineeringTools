@@ -28,7 +28,7 @@ Status key: **Done** means it's in this repo with tests. **Partial** means an ex
 |---|---|---|---|
 | Steel Member Design | Steel Member Design | Done | EN 1993-1-1 6.2, 6.3, Annex A/B + UK NA; EN 1993-1-5 4.4, 5, 6, 7 |
 | Steel Member Analysis & Design | Steel Beam Analysis & Design | Done | + EN 1990 combinations, vertical and horizontal loads |
-| Steel Beam Analysis & Design | Steel Beam Analysis & Design | Done | separate page (split from Steel Member Design, October 2026): continuous spans, cantilevers, pattern loading, web bearing |
+| Steel Beam Analysis & Design | Steel Beam Analysis & Design | Done | separate page (split from Steel Member Design, October 2026): continuous spans, cantilevers (free end supports; a single member with a free end is fixed at the other), mechanism check, pattern loading, web bearing |
 | Steel Column Design | Steel Member Design | Done | 6.3.1, 6.3.3 Annex A or B |
 | Steel section classification | Steel Member Design / Steel Beam Analysis & Design | Done | Table 5.2 sheets 1-3 |
 | Beam Analysis | Beam Analysis | Done | stiffness method; springs, hinges, EI per member; EN 1990 combinations |
@@ -173,7 +173,7 @@ Steel Masonry Support and Windpost limits:
 
 ## Steel Member Design and Steel Beam Analysis & Design verification (`node tests/steel-member/run_all.js`)
 
-The two pages are built from one template and carry the same engine; `tests/steel-member/ui_smoke.js` (jsdom, 18 checks) confirms the engines are identical, each page shows only its own inputs, calculates, prints and keeps its own saved inputs.
+The two pages are built from one template and carry the same engine; `tests/steel-member/ui_smoke.js` (jsdom, 29 checks) confirms the engines are identical, each page shows only its own inputs, calculates, prints and keeps its own saved inputs, and drives the end supports (free ends, the automatic fixed root of a single cantilever, overhangs, mechanisms refused, older saved states).
 
 - **Beam analysis:** 30 closed-form checks (simply supported, fixed, propped, continuous, cantilever, couples, triangular load, three-span coefficients).
 - **Mcr:** finite-element solution against the closed-form uniform-moment result, against an independent Galerkin solution (`reference/galerkin.py`), against the exact tension-flange-restraint solution, and against the classical cantilever result.

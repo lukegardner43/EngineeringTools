@@ -177,15 +177,15 @@ table.t th:first-child,table.t td:first-child{text-align:left;}
         <div class="seg hidden"><button id="mA"></button><button id="mB"></button></div>
 
         <div id="modeA">
-          <div class="section-title">Spans <span class="aux">m</span></div>
-          <div class="grid3">
-            <div class="form-group"><label>Left cantilever</label><input type="number" id="cantL" value="0" step="0.1" min="0"></div>
-            <div class="form-group"><label>Left end</label><select id="endL"><option value="pinned">Pinned</option><option value="fixed">Fixed</option></select></div>
-            <div class="form-group"><label>Right end</label><select id="endR"><option value="pinned">Pinned</option><option value="fixed">Fixed</option></select></div>
+          <div class="section-title">Spans and supports <span class="aux">m</span></div>
+          <div class="grid2">
+            <div class="form-group"><label>Left end support</label><select id="endL"><option value="pinned">Pinned</option><option value="fixed">Fixed</option><option value="free">Free (cantilever)</option></select></div>
+            <div class="form-group"><label>Right end support</label><select id="endR"><option value="pinned">Pinned</option><option value="fixed">Fixed</option><option value="free">Free (cantilever)</option></select></div>
           </div>
           <div class="rows" id="spanRows"></div>
           <button class="addbtn" id="addSpan">+ Add span</button>
-          <div class="form-group" style="margin-top:10px"><label>Right cantilever</label><input type="number" id="cantR" value="0" step="0.1" min="0"></div>
+          <div class="help">Members run left to right; internal supports are pinned with the beam continuous over them. A free end makes the end member a cantilever (an overhang when there are more members; a single member with a free end is fixed at the other end).</div>
+          <div class="err hidden" id="mechWarn" style="margin-top:8px"></div>
 
           <div class="section-title" style="margin-top:14px">Characteristic loads <span class="aux">kN, kN/m, kNm, m</span></div>
           <div class="rows" id="loadRows"></div>
@@ -1979,18 +1979,30 @@ function secInfo() {
 }
 
 // ---------- spans, loads, restraints ----------
+// member lengths in order, the end supports ('free' = cantilever tip) -> cantilevers, spans and a mechanism check
+function geometry() {
+  const Ls = [...document.querySelectorAll('#spanRows .row')].map(r => +r.querySelector('.L').value), n = Ls.length;
+  const l = $('endL').value, r = $('endR').value, fl = l === 'free', fr = r === 'free' && n > (fl ? 1 : 0);
+  const spans = Ls.slice(fl ? 1 : 0, fr ? n - 1 : n), nSup = (n - 1) + (l !== 'free') + (r !== 'free'), nFix = (l === 'fixed') + (r === 'fixed');
+  const mech = nSup < 1 || (nSup === 1 && !nFix) ? (n === 1 ? 'Mechanism: a single member needs two supports, or one fixed support with the other end free (a cantilever).' : 'Mechanism: with both ends free there must be at least two internal supports.') : '';
+  return { Ls, cantL: fl ? Ls[0] : 0, cantR: fr ? Ls[n - 1] : 0, spans, endL: fl ? 'pinned' : l, endR: r === 'free' ? 'pinned' : r, mech };
+}
 function members() {
-  const spans = [...document.querySelectorAll('#spanRows .row')].map(r => +r.querySelector('.L').value);
-  const out = [];
-  if (+$('cantL').value > 0) out.push({ kind: 'cantL', name: 'Left cantilever' });
-  spans.forEach((_, i) => out.push({ kind: 'span', name: `Span ${i + 1}` }));
-  if (+$('cantR').value > 0) out.push({ kind: 'cantR', name: 'Right cantilever' });
+  const g = geometry(), out = [];
+  if (g.cantL > 0) out.push({ kind: 'cantL', name: 'Left cantilever' });
+  g.spans.forEach((_, i) => out.push({ kind: 'span', name: `Span ${i + 1}` }));
+  if (g.cantR > 0) out.push({ kind: 'cantR', name: 'Right cantilever' });
   return out;
+}
+// a single member with a free end is a cantilever: the other end becomes fixed
+function autoSupport(changed) {
+  const n = document.querySelectorAll('#spanRows .row').length, other = changed === 'endL' ? 'endR' : 'endL';
+  if (n === 1 && $(changed).value === 'free' && $(other).value !== 'fixed') $(other).value = 'fixed';
 }
 function spanRow(L = 6) {
   const d = document.createElement('div'); d.className = 'row span';
-  d.innerHTML = `<div><label>Length (m)</label><input class="L" type="number" step="0.1" min="0.1" value="${L}"></div><div></div><div></div><button class="xbtn" title="Remove span">&times;</button>`;
-  d.querySelector('.xbtn').onclick = () => { if (document.querySelectorAll('#spanRows .row').length > 1) { d.remove(); refreshMembers(); } };
+  d.innerHTML = `<div><label class="mname">Length (m)</label><input class="L" type="number" step="0.1" min="0.1" value="${L}"></div><div></div><div></div><button class="xbtn" title="Remove member">&times;</button>`;
+  d.querySelector('.xbtn').onclick = () => { if (document.querySelectorAll('#spanRows .row').length > 1) { d.remove(); for (const e of ['endL', 'endR']) if ($(e).value === 'free') autoSupport(e); refreshMembers(); } };
   d.querySelector('.L').oninput = refreshMembers;
   $('spanRows').appendChild(d);
 }
@@ -2041,7 +2053,9 @@ function refreshMembers() {
   const prev = [...document.querySelectorAll('#restrRows .row')].map(rowRestraint);
   $('restrRows').innerHTML = '';
   mem.forEach((m, i) => $('restrRows').appendChild(restrRow(m, i, prev[i])));
-  $('endL').disabled = +$('cantL').value > 0; $('endR').disabled = +$('cantR').value > 0;
+  const g = geometry(), rows = [...document.querySelectorAll('#spanRows .row')];
+  rows.forEach((d, i) => { d.querySelector('.mname').textContent = `${mem[i] ? mem[i].name : 'Member ' + (i + 1)} (m)`; });
+  $('mechWarn').textContent = g.mech; $('mechWarn').classList.toggle('hidden', !g.mech);
 }
 function rowRestraint(d) {
   return { mode: d.querySelector('.rm').value, pts: d.querySelector('.rp').value, tip: d.querySelector('.tip')?.value, ky: d.querySelector('.ky')?.value };
@@ -2053,8 +2067,7 @@ function collect() {
     v: 1, mode, series: $('series').value, section: $('section').value, grade: $('grade').value, annex: $('annex').value,
     custom: { h: $('cH').value, b: $('cB').value, tw: $('cTw').value, tf: $('cTf').value, r: $('cR').value, rolled: $('cRolled').value },
     proj: { name: $('pName').value, job: $('pJob').value, ref: $('pRef').value, by: $('pBy').value },
-    spans: [...document.querySelectorAll('#spanRows .row')].map(r => +r.querySelector('.L').value),
-    cantL: +$('cantL').value, cantR: +$('cantR').value, endL: $('endL').value, endR: $('endR').value,
+    ...(g => ({ mems: g.Ls, spans: g.spans, cantL: g.cantL, cantR: g.cantR, endL: $('endL').value, endR: $('endR').value, mech: g.mech }))(geometry()),
     loads: [...document.querySelectorAll('#loadRows .row')].map(d => ({ case: d.querySelector('.cs').value, dir: d.querySelector('.dir').value, member: +d.dataset.member, type: d.querySelector('.ty').value, ...d._vals })),
     sw: $('sw').checked, rule: $('rule').value, psi0: +$('psi0').value, NA: +$('NA').value,
     restr: [...document.querySelectorAll('#restrRows .row')].map(rowRestraint), destab: $('destab').checked, brittle: $('defl').value === '1', ssS: +$('ssS').value, ssP: +$('ssP').value, cEnd: +$('cEnd').value,
@@ -2066,8 +2079,9 @@ function applyState(s) {
   $('series').value = s.series; fillSections(); if (s.section) $('section').value = s.section; $('annex').value = s.annex || 'B'; $('grade').value = s.grade;
   Object.entries({ cH: 'h', cB: 'b', cTw: 'tw', cTf: 'tf', cR: 'r', cRolled: 'rolled' }).forEach(([id, k]) => $(id).value = s.custom[k]);
   $('pName').value = s.proj.name || ''; $('pJob').value = s.proj.job || ''; $('pRef').value = s.proj.ref || ''; $('pBy').value = s.proj.by || '';
-  $('cantL').value = s.cantL; $('cantR').value = s.cantR; $('endL').value = s.endL; $('endR').value = s.endR;
-  $('spanRows').innerHTML = ''; (s.spans.length ? s.spans : [6]).forEach(L => spanRow(L));
+  const mems = s.mems || [...(s.cantL > 0 ? [s.cantL] : []), ...s.spans, ...(s.cantR > 0 ? [s.cantR] : [])];   // states saved before the free-end option: cantilever lengths
+  $('endL').value = s.mems ? s.endL : s.cantL > 0 ? 'free' : s.endL; $('endR').value = s.mems ? s.endR : s.cantR > 0 ? 'free' : s.endR;
+  $('spanRows').innerHTML = ''; (mems.length ? mems : [6]).forEach(L => spanRow(L));
   $('loadRows').innerHTML = ''; s.loads.forEach(l => loadRow(l));
   refreshMembers();
   [...document.querySelectorAll('#restrRows .row')].forEach((d, i) => { const p = s.restr[i]; if (!p) return; d.querySelector('.rm').value = p.mode; d.querySelector('.rp').value = p.pts || ''; if (p.tip && d.querySelector('.tip')) d.querySelector('.tip').value = p.tip; if (p.ky && d.querySelector('.ky')) d.querySelector('.ky').value = p.ky; d.querySelector('.rp').disabled = p.mode !== 'points'; });
@@ -2102,9 +2116,10 @@ function buildBeamInput(s, sec) {
   });
   const ky = mem.map((m, i) => m.kind === 'span' ? +(s.restr[i]?.ky || 1) : 2.0);
   const tipRestrained = { L: s.restr[0]?.tip === 'restr', R: s.restr[mem.length - 1]?.tip === 'restr' };
-  if (s.spans.some(L => !(L > 0))) throw new Error('Every span needs a positive length');
+  if (s.mech) throw new Error(s.mech);
+  if ((s.mems || s.spans).some(L => !(L > 0))) throw new Error('Every member needs a positive length');
   return { sec, grade: s.grade, annex: s.annex || 'B', spans: s.spans.map(L => L * 1000), cantL: s.cantL * 1000, cantR: s.cantR * 1000,
-    endLeft: s.endL, endRight: s.endR, loads, selfWeight: s.sw, rule: s.rule, psi0: s.psi0, N: s.NA * 1e3,
+    endLeft: s.endL === 'free' ? 'pinned' : s.endL, endRight: s.endR === 'free' ? 'pinned' : s.endR, loads, selfWeight: s.sw, rule: s.rule, psi0: s.psi0, N: s.NA * 1e3,
     restraint, tipRestrained, ky, destab: s.destab, defl: { brittle: s.brittle }, ssSupport: s.ssS ?? 100, ssPoint: s.ssP ?? 50, cEnd: s.cEnd ?? 0 };
 }
 
@@ -2405,9 +2420,9 @@ function run() {
 // ---------- init ----------
 $('series').onchange = fillSections; $('section').onchange = secInfo; ['cH', 'cB', 'cTw', 'cTf', 'cR', 'cRolled'].forEach(id => $(id).oninput = secInfo);
 $('mA').onclick = () => setMode('A'); $('mB').onclick = () => setMode('B');
-$('addSpan').onclick = () => { if (document.querySelectorAll('#spanRows .row').length < 4) { spanRow(6); refreshMembers(); } };
+$('addSpan').onclick = () => { if (document.querySelectorAll('#spanRows .row').length < 6) { spanRow(6); refreshMembers(); } };
+$('endL').onchange = () => { autoSupport('endL'); refreshMembers(); }; $('endR').onchange = () => { autoSupport('endR'); refreshMembers(); };
 $('addLoad').onclick = () => loadRow({ case: 'Q', member: 0, type: 'udl', w: 5 });
-$('cantL').oninput = refreshMembers; $('cantR').oninput = refreshMembers;
 $('calc').onclick = run;
 if (!applyState(load())) {
   $('series').value = 'UKC'; fillSections();
