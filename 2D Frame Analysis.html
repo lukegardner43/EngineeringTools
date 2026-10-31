@@ -1,0 +1,2155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2D Frame Analysis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Saira:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0e1014; --surf:#16191f; --surf2:#1c2027; --bdr:#2a2f38; --bdr2:#3a4250;
+  --txt:#e6e8ec; --mut:#8b93a0; --faint:#59616d;
+  --accent:#ffb000; --accent-dim:#3a2e12;
+  --pass:#3ecf8e; --warn:#ffb000; --fail:#ff5d5d;
+  --r:2px;
+  --sans:'Saira',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --mono:'JetBrains Mono','SF Mono',Consolas,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5;min-height:100vh;padding:20px 16px;
+  background-image:linear-gradient(rgba(255,255,255,.014) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.014) 1px,transparent 1px);
+  background-size:32px 32px;}
+.container{max-width:1280px;margin:0 auto;}
+.page-hdr{margin-bottom:16px;}
+.home-lnk{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--mut);text-decoration:none;margin-bottom:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.5px;transition:color .15s;}
+.home-lnk:hover{color:var(--accent);}
+.home-lnk svg{width:12px;height:12px;}
+.page-hdr h1{font-size:20px;font-weight:600;margin-bottom:2px;}
+.page-hdr p{font-size:12px;color:var(--mut);}
+.main-grid{display:grid;grid-template-columns:minmax(340px,1fr) 1.55fr;gap:16px;align-items:start;}
+@media(max-width:1024px){.main-grid{grid-template-columns:1fr;}}
+.main-grid > div{min-width:0;}
+#results table.t{display:block;overflow-x:auto;white-space:nowrap;}
+.chk{align-items:flex-start;}
+@media(max-width:560px){body{padding:14px 10px;} .card{padding:14px 12px;} .ck{grid-template-columns:1fr 1fr 48px;gap:8px;} .grid3{grid-template-columns:1fr 1fr;}
+  .row.span{grid-template-columns:1fr 28px;} .row.span > div:nth-child(2),.row.span > div:nth-child(3){display:none;} .row.load .vals{grid-template-columns:1fr 1fr;}}
+.card{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--r);padding:16px 18px;margin-bottom:14px;}
+.section-title{font-size:11px;font-weight:600;color:var(--accent);font-family:var(--mono);margin:4px 0 12px;text-transform:uppercase;letter-spacing:1.5px;border-bottom:1px solid var(--bdr);padding-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.section-title .aux{color:var(--faint);letter-spacing:.5px;font-weight:500;}
+.form-group{margin-bottom:10px;}
+.form-group label,.lbl{display:block;font-size:11.5px;margin-bottom:4px;color:var(--mut);font-weight:500;}
+input[type="number"],input[type="text"],select{background:var(--surf2);border:1px solid var(--bdr2);color:var(--txt);padding:0 8px;height:32px;border-radius:var(--r);font-family:var(--mono);font-size:13px;width:100%;transition:border-color .15s,box-shadow .15s;}
+input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-dim);}
+select option{background:var(--surf);color:var(--txt);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+.chk{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut);margin:6px 0;cursor:pointer;}
+.chk input{width:15px;height:15px;accent-color:var(--accent);}
+.help{font-size:10.5px;color:var(--faint);margin-top:3px;line-height:1.45;}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--bdr2);border-radius:var(--r);overflow:hidden;margin-bottom:12px;}
+.seg button{background:var(--surf2);color:var(--mut);border:none;padding:8px;font-family:var(--mono);font-size:11.5px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;}
+.seg button.on{background:var(--accent-dim);color:var(--accent);}
+.rows{display:flex;flex-direction:column;gap:6px;margin-bottom:8px;}
+.row{display:grid;gap:6px;align-items:end;background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--r);padding:8px;}
+.row label{font-size:10px;color:var(--faint);margin-bottom:2px;display:block;font-family:var(--mono);text-transform:uppercase;letter-spacing:.4px;}
+.row input,.row select{height:28px;font-size:12px;padding:0 6px;}
+.row.span{grid-template-columns:1fr 1.6fr 1fr 28px;}
+.row.load{grid-template-columns:52px 64px 1.1fr 1.1fr 28px;}
+.row.load .vals{grid-column:1 / span 3;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+.xbtn{height:28px;width:28px;background:transparent;border:1px solid var(--bdr2);color:var(--faint);border-radius:var(--r);cursor:pointer;font-size:15px;line-height:1;}
+.xbtn:hover{color:var(--fail);border-color:var(--fail);}
+.addbtn{background:transparent;border:1px dashed var(--bdr2);color:var(--mut);border-radius:var(--r);padding:6px 10px;font-family:var(--mono);font-size:11px;cursor:pointer;width:100%;}
+.addbtn:hover{color:var(--accent);border-color:var(--accent);}
+.btn{padding:10px;border:none;border-radius:var(--r);font-weight:700;cursor:pointer;font-family:var(--sans);font-size:14px;width:100%;background:var(--accent);color:#1a1208;text-transform:uppercase;letter-spacing:.8px;}
+.btn:hover{filter:brightness(1.08);}
+.btn2{width:100%;padding:9px;background:var(--surf2);border:1px solid var(--bdr2);border-radius:var(--r);font-size:12.5px;color:var(--mut);cursor:pointer;font-family:var(--mono);letter-spacing:.4px;margin-top:8px;}
+.btn2:hover{border-color:var(--accent);color:var(--accent);}
+.hidden{display:none!important;}
+/* results */
+.placeholder{display:flex;align-items:center;justify-content:center;min-height:260px;color:var(--faint);font-size:13px;text-align:center;}
+.verdict{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--bdr2);border-left:4px solid var(--pass);background:var(--surf2);margin-bottom:14px;}
+.verdict.fail{border-left-color:var(--fail);}
+.verdict .big{font-family:var(--mono);font-size:22px;font-weight:700;}
+.verdict .sub{font-size:11.5px;color:var(--mut);}
+.checks{display:flex;flex-direction:column;gap:6px;margin-bottom:6px;}
+.ck{display:grid;grid-template-columns:1.25fr 2fr 56px;gap:10px;align-items:center;font-size:12px;}
+.ck .nm{color:var(--txt);} .ck .nm small{display:block;color:var(--faint);font-family:var(--mono);font-size:10px;}
+.bar{height:8px;background:var(--surf2);border:1px solid var(--bdr);position:relative;}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--pass);}
+.bar i.hi{background:var(--warn);} .bar i.over{background:var(--fail);}
+.ck .u{font-family:var(--mono);text-align:right;font-weight:600;}
+.ck .u.over{color:var(--fail);}
+.diag{width:100%;height:auto;display:block;margin-bottom:6px;}
+.dlabel{font-family:var(--mono);font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:1px;margin:10px 0 2px;}
+table.t{width:100%;border-collapse:collapse;font-size:11.5px;font-family:var(--mono);margin-bottom:8px;}
+table.t th{color:var(--faint);font-weight:500;text-align:right;padding:4px 6px;border-bottom:1px solid var(--bdr);font-size:10.5px;}
+table.t td{padding:4px 6px;border-bottom:1px solid var(--bdr);text-align:right;}
+table.t th:first-child,table.t td:first-child{text-align:left;}
+.note{font-size:11px;color:var(--mut);background:var(--surf2);border:1px solid var(--bdr);border-left:3px solid var(--bdr2);padding:8px 10px;margin-top:8px;line-height:1.55;}
+.err{color:var(--fail);font-size:12px;padding:10px;border:1px solid var(--fail);margin-bottom:12px;}
+.busy{opacity:.55;pointer-events:none;}
+/* ---------- print: A4 calculation sheet ---------- */
+#report{display:none;}
+@media print{
+  @page{size:A4;margin:12mm 12mm 14mm;}
+  body{background:#fff;color:#000;padding:0;background-image:none;font-size:9.5pt;}
+  .container{display:none;}
+  #report{display:block;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  #report table.wrap{width:100%;border-collapse:collapse;}
+  #report thead td{padding:0 0 3mm;}
+  .rh{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;border:0.6pt solid #000;font-size:8pt;}
+  .rh div{padding:1.2mm 2mm;border-right:0.6pt solid #000;}
+  .rh div:last-child{border-right:none;}
+  .rh b{display:block;font-size:6.5pt;color:#444;font-weight:normal;text-transform:uppercase;letter-spacing:.3pt;}
+  .rh .ttl{grid-column:1 / -1;border-top:0.6pt solid #000;border-right:none;font-weight:bold;font-size:10pt;}
+  .rs{margin:0 0 3.5mm;}
+  .rs h2,.rs h3{break-after:avoid;}
+  .rl,.rt,.rsvg,.rp,.rt tr{break-inside:avoid;}
+  .rs h2{font-size:10pt;margin:3mm 0 1.5mm;padding-bottom:0.8mm;border-bottom:0.8pt solid #000;}
+  .rs h3{font-size:9pt;margin:2mm 0 1mm;}
+  .rl{display:grid;grid-template-columns:1fr 92px 132px;gap:2mm;padding:0.5mm 0;font-size:8.6pt;}
+  .rl .cl{text-align:right;color:#444;font-size:7.5pt;}
+  .rl .rv{text-align:right;font-weight:bold;}
+  .ok{color:#0a7a3e;} .ng{color:#c00;}
+  .rt{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;}
+  .rt th,.rt td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;}
+  .rt th{background:#eee;font-weight:bold;}
+  .rt td:first-child,.rt th:first-child,.rt.lft td,.rt.lft th{text-align:left;}
+  .rp{font-size:8.3pt;line-height:1.45;margin:1mm 0;}
+  .rsvg{width:100%;height:auto;}
+  .rsvg *{vector-effect:non-scaling-stroke;}
+}
+
+.container.wide{max-width:1500px;}
+.tb{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;}
+.tb .grp{display:flex;gap:2px;background:var(--surf2);border:1px solid var(--bdr2);border-radius:var(--r);padding:2px;}
+.tb button{background:transparent;border:none;color:var(--mut);font-family:var(--mono);font-size:11.5px;padding:6px 9px;cursor:pointer;border-radius:var(--r);display:flex;align-items:center;gap:5px;white-space:nowrap;}
+.tb button:hover{color:var(--txt);background:var(--bdr);}
+.tb button.on{background:var(--accent-dim);color:var(--accent);}
+.tb button:disabled{opacity:.35;cursor:default;}
+.tb button svg{width:15px;height:15px;}
+.tb select{width:auto;height:30px;font-size:12px;max-width:270px;}
+.tb .sp{flex:1;}
+.tb .lab{font-size:10.5px;color:var(--faint);font-family:var(--mono);text-transform:uppercase;letter-spacing:.6px;}
+.work{display:grid;grid-template-columns:1fr 380px;gap:14px;align-items:start;}
+@media(max-width:1100px){.work{grid-template-columns:1fr;}}
+.cvwrap{position:relative;padding:0;overflow:hidden;height:640px;user-select:none;}
+#cv{width:100%;height:100%;display:block;background:#12151a;cursor:crosshair;touch-action:none;}
+#cv.pan{cursor:grabbing;} #cv.sel{cursor:default;}
+.cv-info{position:absolute;left:10px;bottom:8px;font-family:var(--mono);font-size:10.5px;color:var(--faint);pointer-events:none;}
+.cv-hint{position:absolute;left:10px;top:8px;font-size:11.5px;color:var(--mut);pointer-events:none;background:rgba(18,21,26,.82);padding:4px 8px;border-radius:2px;max-width:70%;}
+.cv-err{position:absolute;left:50%;top:10px;transform:translateX(-50%);background:#3a1717;border:1px solid var(--fail);color:#ffb3b3;font-size:12px;padding:6px 10px;border-radius:2px;max-width:80%;}
+.cv-zoom{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:4px;}
+.cv-zoom button{width:30px;height:30px;background:var(--surf2);border:1px solid var(--bdr2);color:var(--mut);cursor:pointer;font-size:15px;border-radius:2px;}
+.cv-zoom button:hover{color:var(--accent);border-color:var(--accent);}
+.cv-legend{position:absolute;right:10px;bottom:8px;font-family:var(--mono);font-size:10.5px;color:var(--mut);background:rgba(18,21,26,.85);padding:5px 8px;border:1px solid var(--bdr);text-align:right;pointer-events:none;}
+.tip{position:absolute;pointer-events:none;background:rgba(14,16,20,.94);border:1px solid var(--bdr2);color:var(--txt);font-family:var(--mono);font-size:11px;padding:6px 8px;line-height:1.5;border-radius:2px;white-space:nowrap;display:none;z-index:5;}
+.side{padding:0;}
+.tabs{display:flex;border-bottom:1px solid var(--bdr);}
+.tabs button{flex:1;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--mut);font-family:var(--mono);font-size:11px;padding:10px 4px;cursor:pointer;text-transform:uppercase;letter-spacing:.5px;}
+.tabs button.on{color:var(--accent);border-bottom-color:var(--accent);}
+.pane{padding:14px 16px;max-height:600px;overflow:auto;}
+.pane h3{font-size:11px;color:var(--accent);font-family:var(--mono);text-transform:uppercase;letter-spacing:1.2px;margin:6px 0 10px;font-weight:600;}
+.pane .muted{color:var(--mut);font-size:12px;line-height:1.6;}
+table.e{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11.5px;}
+table.e th{color:var(--faint);font-weight:500;text-align:left;padding:4px 3px;border-bottom:1px solid var(--bdr);font-size:10.5px;}
+table.e td{padding:2px 3px;border-bottom:1px solid var(--bdr);}
+table.e input,table.e select{height:26px;font-size:11.5px;padding:0 4px;}
+table.e td.n{text-align:right;}
+table.e tr.selr td{background:var(--accent-dim);}
+.xb{background:transparent;border:1px solid var(--bdr2);color:var(--faint);width:24px;height:24px;border-radius:2px;cursor:pointer;}
+.xb:hover{color:var(--fail);border-color:var(--fail);}
+.ab{background:transparent;border:1px dashed var(--bdr2);color:var(--mut);padding:5px 10px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:2px;margin:6px 6px 0 0;}
+.ab:hover{color:var(--accent);border-color:var(--accent);}
+.ld{background:var(--surf2);border:1px solid var(--bdr);padding:8px;margin-bottom:8px;border-radius:2px;}
+.ld .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+.ld label{font-size:10px;color:var(--faint);font-family:var(--mono);display:block;margin-bottom:2px;}
+.ld input,.ld select{height:28px;font-size:12px;}
+.kv{display:grid;grid-template-columns:1fr auto;gap:2px 10px;font-family:var(--mono);font-size:11.5px;margin:6px 0;}
+.kv span:nth-child(odd){color:var(--mut);}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:20;}
+.modal.on{display:flex;}
+.modal .box{background:var(--surf);border:1px solid var(--bdr2);width:min(560px,94vw);padding:18px 20px;border-radius:2px;max-height:92vh;overflow:auto;}
+.wz-types{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px;}
+.wz-types button{background:var(--surf2);border:1px solid var(--bdr2);color:var(--mut);padding:8px 4px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:2px;}
+.wz-types button.on{border-color:var(--accent);color:var(--accent);}
+.res-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+@media(max-width:900px){.res-grid{grid-template-columns:1fr;}}
+table.t td.l,table.t th.l{text-align:left;}
+#report{display:none;}
+@media print{ #report{display:block;} .rsvg{width:100%;height:auto;} }
+</style>
+</head>
+<body>
+<div class="container wide">
+  <div class="page-hdr">
+    <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
+    <h1>2D Frame Analysis</h1>
+    <p>Plane frames, trusses and continuous beams &nbsp;·&nbsp; stiffness method with releases, springs, member loads, load cases, BS EN 1990 combinations and envelopes &nbsp;·&nbsp; optional second-order P-Δ and α<sub>cr</sub></p>
+  </div>
+  <div class="card tb" id="toolbar">
+    <div class="grp" id="modes">
+      <button data-m="select" title="Select, move nodes, pan (V)">↖ Select</button>
+      <button data-m="node" title="Add nodes (N)">● Node</button>
+      <button data-m="member" title="Draw members node to node (M)">╱ Member</button>
+      <button data-m="support" title="Click a node to cycle its support (S)">▲ Support</button>
+      <button data-m="release" title="Click a member end to pin it; its middle to make a truss bar (R)">○ Release</button>
+      <button data-m="load" title="Click a node or member to add a load in the current case (L)">↓ Load</button>
+    </div>
+    <div class="grp"><button id="bWizard" title="Generate a truss, portal, continuous beam or multi-storey frame">⚙ Wizard</button><button id="bUndo" title="Undo (Ctrl+Z)">↶</button><button id="bRedo" title="Redo (Ctrl+Y)">↷</button><button id="bFit" title="Fit to view (F)">⤢ Fit</button></div>
+    <span class="lab">Loads in</span><select id="curCase"></select>
+    <div class="sp"></div>
+    <div class="grp" id="views">
+      <button data-v="model">Model</button><button data-v="defl">Deflection</button><button data-v="N">Axial</button><button data-v="V">Shear</button><button data-v="M">Moment</button><button data-v="R">Reactions</button>
+    </div>
+    <select id="resSel" title="Load case, combination or envelope shown"></select>
+    <div class="grp"><button id="bSm" title="Smaller diagrams">−</button><button id="bLg" title="Larger diagrams">+</button></div>
+  </div>
+  <div class="work">
+    <div class="card cvwrap" id="cvwrap">
+      <svg id="cv" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="cv-hint" id="hint"></div>
+      <div class="cv-err" id="err" style="display:none"></div>
+      <div class="cv-zoom"><button id="zIn" title="Zoom in">+</button><button id="zOut" title="Zoom out">−</button></div>
+      <div class="cv-legend" id="legend"></div>
+      <div class="cv-info" id="info"></div>
+      <div class="tip" id="tip"></div>
+    </div>
+    <div class="card side">
+      <div class="tabs" id="tabs"><button data-t="prop">Edit</button><button data-t="tables">Tables</button><button data-t="cases">Cases</button><button data-t="results">Results</button></div>
+      <div class="pane" id="pane"></div>
+    </div>
+  </div>
+  <div class="card" id="summary"></div>
+</div>
+<div class="modal" id="wizard"><div class="box" id="wzbox"></div></div>
+<div id="report"></div>
+<script id="sections">
+// [designation, mass kg/m, h, b, tw, tf, r (mm), A cm2, Iy, Iz cm4, Wel,y, Wel,z, Wpl,y, Wpl,z cm3, It cm4, Iw dm6]
+const SECTION_DATA=[
+['127×76×13 UKB',13,127,76,4,7.6,7.6,16.5,473,56,75,15,84,23,2.85,0.002],
+['152×89×16 UKB',16,152.4,88.7,4.5,7.7,7.6,20.3,834,90,109,20,123,31,3.56,0.0047],
+['178×102×19 UKB',19,177.8,101.2,4.8,7.9,7.6,24.3,1356,137,153,27,171,42,4.41,0.0099],
+['203×102×23 UKB',23.1,203.2,101.8,5.4,9.3,7.6,29.4,2105,164,207,32,234,50,7.02,0.0154],
+['203×133×25 UKB',25.1,203.2,133.2,5.7,7.8,7.6,32,2340,308,230,46,258,71,5.96,0.0294],
+['203×133×30 UKB',30,206.8,133.9,6.4,9.6,7.6,38.2,2896,385,280,57,314,88,10.3,0.0374],
+['254×102×22 UKB',22,254,101.6,5.7,6.8,7.6,28,2841,119,224,23,259,37,4.15,0.0182],
+['254×102×25 UKB',25.2,257.2,101.9,6,8.4,7.6,32,3415,149,266,29,306,46,6.42,0.023],
+['254×102×28 UKB',28.3,260.4,102.2,6.3,10,7.6,36.1,4005,179,308,35,353,55,9.57,0.028],
+['254×146×31 UKB',31.1,251.4,146.1,6,8.6,7.6,39.7,4413,448,351,61,393,94,8.55,0.066],
+['254×146×37 UKB',37,256,146.4,6.3,10.9,7.6,47.2,5537,571,433,78,483,119,15.3,0.0857],
+['254×146×43 UKB',43,259.6,147.3,7.2,12.7,7.6,54.8,6544,677,504,92,566,141,23.9,0.103],
+['305×102×25 UKB',24.8,305.1,101.6,5.8,7,7.6,31.6,4455,123,292,24,342,39,4.77,0.0273],
+['305×102×28 UKB',28.2,308.7,101.8,6,8.8,7.6,35.9,5366,155,348,31,403,48,7.4,0.0349],
+['305×102×33 UKB',32.8,312.7,102.4,6.6,10.8,7.6,41.8,6501,194,416,38,481,60,12.2,0.0442],
+['305×127×37 UKB',37,304.4,123.4,7.1,10.7,8.9,47.2,7171,336,471,54,539,85,14.8,0.0725],
+['305×127×42 UKB',41.9,307.2,124.3,8,12.1,8.9,53.4,8196,389,534,63,614,98,21.1,0.0846],
+['305×127×48 UKB',48.1,311,125.3,9,14,8.9,61.2,9575,461,616,74,711,116,31.8,0.102],
+['305×165×40 UKB',40.3,303.4,165,6,10.2,8.9,51.3,8503,764,560,93,623,142,14.7,0.164],
+['305×165×46 UKB',46.1,306.6,165.7,6.7,11.8,8.9,58.7,9899,896,646,108,720,166,22.2,0.195],
+['305×165×54 UKB',54,310.4,166.9,7.9,13.7,8.9,68.8,11696,1063,754,127,846,196,34.8,0.234],
+['356×171×45 UKB',45,351.4,171.1,7,9.7,12.7,57.8,12195,811,694,95,783,147,16.9,0.237],
+['356×171×51 UKB',51,355,171.5,7.4,11.5,12.7,65.4,14265,969,804,113,904,174,25.1,0.286],
+['356×171×57 UKB',57,358,172.2,8.1,13,12.7,73,16168,1109,903,129,1018,199,34.9,0.33],
+['356×171×67 UKB',67.1,363.4,173.2,9.1,15.7,12.7,86,19592,1362,1078,157,1219,243,57.7,0.412],
+['406×140×39 UKB',39,398,141.8,6.4,8.6,12.7,50.1,12679,410,637,58,733,91,11.6,0.155],
+['406×140×46 UKB',46,403.2,142.2,6.8,11.2,12.7,59.1,15856,538,787,76,897,118,20.2,0.207],
+['406×140×53 UKB',53.3,406.6,143.3,7.9,12.9,12.7,68.4,18454,635,908,89,1040,139,30.4,0.246],
+['406×178×54 UKB',54.1,402.6,177.7,7.7,10.9,12.7,69.4,18893,1022,939,115,1064,179,24.3,0.392],
+['406×178×60 UKB',60.1,406.4,177.9,7.9,12.8,12.7,77,21767,1203,1071,135,1209,209,34.8,0.466],
+['406×178×67 UKB',67.1,409.4,178.8,8.8,14.3,12.7,86,24502,1365,1197,153,1355,237,47.9,0.533],
+['406×178×74 UKB',74.2,412.8,179.5,9.5,16,12.7,95,27481,1546,1331,172,1510,267,64.9,0.608],
+['406×178×85 UKB',85.3,417.2,181.9,10.9,18.2,12.7,109,31874,1831,1528,201,1742,313,95.7,0.729],
+['406×260×100 UKB',99.99,415,260,10,16.9,12.7,127,39944,4955,1925,381,2139,582,102,1.96],
+['406×260×114 UKB',114.9,420,261,11.6,19.3,12.7,146,46323,5725,2206,439,2466,671,152,2.3],
+['406×260×149 UKB',149.62,431,265,14.9,25,12.7,191,62026,7766,2878,586,3257,900,327,3.2],
+['457×152×52 UKB',52.3,449.8,152.4,7.6,10.9,12.7,67.1,21586,645,960,85,1106,134,22.6,0.311],
+['457×152×60 UKB',59.8,454.6,152.9,8.1,13.3,12.7,76.7,25717,795,1131,104,1298,163,35.4,0.387],
+['457×152×67 UKB',67.2,458,153.8,9,15,12.7,86,29144,913,1273,119,1463,187,49.6,0.448],
+['457×152×74 UKB',74.2,462,154.4,9.6,17,12.7,95,32891,1047,1424,136,1637,213,68.2,0.518],
+['457×152×82 UKB',82.1,465.8,155.3,10.5,18.9,12.7,105,36806,1185,1580,153,1822,241,92,0.592],
+['457×191×67 UKB',67.1,453.4,189.9,8.5,12.7,12.7,86,29597,1452,1306,153,1481,238,38.7,0.705],
+['457×191×74 UKB',74.3,457,190.4,9,14.5,12.7,95.1,33536,1672,1468,176,1663,272,53.6,0.818],
+['457×191×82 UKB',82,460,191.3,9.9,16,12.7,105,37268,1871,1620,196,1842,304,71.4,0.922],
+['457×191×89 UKB',89.3,463.4,191.9,10.5,17.7,12.7,114,41232,2090,1780,218,2024,339,93.3,1.04],
+['457×191×98 UKB',98.3,467.2,192.8,11.4,19.6,12.7,126,45944,2348,1967,244,2243,379,124,1.18],
+['457×191×106 UKB',105.8,469.2,194,12.6,20.6,12.7,135,49090,2515,2093,259,2399,406,149,1.27],
+['457×191×133 UKB',133.3,480.6,196.7,15.3,26.3,12.7,170,64058,3350,2666,341,3080,535,298,1.73],
+['457×191×161 UKB',161.4,492,199.4,18,32,12.7,206,79996,4251,3252,426,3789,672,524,2.25],
+['457×280×113 UKB',113,463,280,10.8,17.3,20,147,56724,6338,2450,453,2727,694,132,3.15],
+['457×280×128 UKB',128,467,282,12.2,19.6,20,166,64820,7337,2776,520,3103,799,189,3.67],
+['457×280×144 UKB',144,472,283,13.6,22.1,20,187,73727,8362,3124,591,3508,908,266,4.23],
+['457×280×158 UKB',158,476,284,15,23.9,20,203,80756,9142,3393,644,3829,992,337,4.67],
+['457×280×177 UKB',177,482,286,16.6,26.9,20,228,92134,10511,3823,735,4335,1134,473,5.44],
+['457×280×193 UKB',193,489,283,17,30.5,20,249,103476,11545,4232,816,4808,1256,641,6.07],
+['457×280×213 UKB',213,495,285,18.5,33.5,20,274,115446,12954,4664,909,5326,1402,843,6.9],
+['457×280×235 UKB',235,501,287,20.6,36.6,20,302,128452,14459,5128,1008,5893,1557,1106,7.8],
+['457×280×260 UKB',260,509,289,22.6,40.4,20,334,144803,16303,5690,1128,6579,1747,1479,8.95],
+['457×280×286 UKB',286,517,291,24.4,44.4,20,366,162187,18297,6274,1258,7297,1949,1942,10.2],
+['457×280×315 UKB',315,525,293,26.9,48.5,20,403,180967,20414,6894,1393,8076,2165,2537,11.6],
+['533×165×66 UKB',65.7,524.7,165.1,8.9,11.4,12.7,83.7,35028,859,1335,104,1561,166,32,0.566],
+['533×165×74 UKB',74.7,529.1,165.9,9.7,13.6,12.7,95.2,41058,1040,1552,125,1808,200,47.9,0.691],
+['533×165×85 UKB',84.8,534.9,166.5,10.3,16.5,12.7,108,48631,1275,1818,153,2107,243,73.8,0.857],
+['533×210×82 UKB',82.2,528.3,208.8,9.6,13.2,12.7,105,47539,2007,1800,192,2059,300,51.5,1.33],
+['533×210×92 UKB',92.1,533.1,209.3,10.1,15.6,12.7,117,55227,2389,2072,228,2360,355,75.7,1.6],
+['533×210×101 UKB',101,536.7,210,10.8,17.4,12.7,129,61519,2692,2292,256,2612,399,101,1.81],
+['533×210×109 UKB',109,539.5,210.8,11.6,18.8,12.7,139,66822,2943,2477,279,2829,436,126,1.99],
+['533×210×122 UKB',122,544.5,211.9,12.7,21.3,12.7,155,76043,3388,2793,320,3196,500,178,2.32],
+['533×210×138 UKB',138.3,549.1,213.9,14.7,23.6,12.7,176,86088,3864,3136,361,3613,568,250,2.67],
+['533×312×150 UKB',150.6,542.5,312,12.7,20.3,12.7,192,100633,10285,3710,659,4142,1009,216,7.01],
+['533×312×165 UKB',165,546,313,14,22.2,12.7,211,110955,11359,4064,726,4555,1113,283,7.79],
+['533×312×182 UKB',181.5,550.7,314.5,15.2,24.4,12.7,231,123222,12667,4475,806,5030,1237,373,8.77],
+['533×312×196 UKB',196,554,316,16.5,26.3,12.7,250,133993,13852,4837,877,5457,1349,470,9.64],
+['533×312×219 UKB',218.7,560.3,317.4,18.3,29.2,12.7,279,150976,15589,5389,982,6109,1514,642,11],
+['533×312×248 UKB',248,571,315,19,34.5,12.7,314,177499,18003,6217,1143,7062,1759,977,13],
+['533×312×272 UKB',273.2,577.1,320.2,21.1,37.6,12.7,348,198578,20615,6882,1288,7859,1985,1288,15],
+['610×178×82 UKB',81.8,598.6,177.9,10,12.8,20,106,57487,1209,1921,136,2252,220,57,1.04],
+['610×178×92 UKB',92.2,603,178.8,10.9,15,20,120,66195,1439,2196,161,2569,260,81,1.24],
+['610×178×100 UKB',100.3,607.4,179.2,11.3,17.2,20,130,74145,1661,2441,185,2844,298,107,1.45],
+['610×229×101 UKB',101.2,602.6,227.6,10.5,14.8,20,131,77398,2917,2569,256,2939,402,86.7,2.52],
+['610×229×113 UKB',113,607.6,228.2,11.1,17.3,20,146,88936,3437,2927,301,3339,471,123,2.99],
+['610×229×125 UKB',125.1,612.2,229,11.9,19.6,20,161,100228,3935,3274,344,3734,537,168,3.45],
+['610×229×140 UKB',139.9,617.2,230.2,13.1,22.1,20,180,113395,4509,3674,392,4200,614,233,3.99],
+['610×305×149 UKB',149.2,612.4,304.8,11.8,19.7,20,191,126738,9309,4139,611,4625,938,208,8.18],
+['610×305×179 UKB',179,620.2,307.1,14.1,23.6,20,229,153886,11410,4962,743,5578,1145,351,10.2],
+['610×305×238 UKB',238.1,635.8,311.4,18.4,31.4,20,304,210333,15839,6616,1017,7517,1575,803,14.5],
+['610×324×155 UKB',155,611,324,12.7,19,20,199,130552,10785,4273,666,4784,1024,210,9.45],
+['610×324×174 UKB',174,616,325,14,21.6,20,224,148722,12376,4829,762,5418,1172,298,10.9],
+['610×324×195 UKB',195,622,327,15.4,24.4,20,251,169453,14242,5449,871,6130,1342,418,12.7],
+['610×324×217 UKB',217,628,328,16.5,27.7,20,280,192362,16319,6126,995,6904,1533,586,14.7],
+['610×324×241 UKB',241,635,329,17.9,31,20,310,216996,18433,6835,1121,7727,1728,802,16.8],
+['610×324×262 UKB',262,641,327,19,34,20,335,237554,19854,7412,1214,8405,1874,1028,18.3],
+['610×324×285 UKB',285,647,329,20.6,37.1,20,366,262288,22069,8108,1342,9231,2073,1329,20.5],
+['610×324×307 UKB',307,653,330,22.1,39.9,20,393,285235,23958,8736,1452,9985,2248,1646,22.5],
+['610×324×341 UKB',341,661,333,24.4,43.9,20,436,319846,27097,9678,1627,11123,2525,2196,25.8],
+['610×324×372 UKB',372,669,335,26.4,48,20,476,354794,30175,10607,1802,12250,2799,2850,29.1],
+['686×254×125 UKB',125.2,677.9,253,11.7,16.2,20,161,119448,4385,3524,347,4040,544,124,4.8],
+['686×254×140 UKB',140.1,683.5,253.7,12.4,19,20,180,137723,5186,4030,409,4604,640,179,5.72],
+['686×254×152 UKB',152.4,687.5,254.5,13.2,21,20,196,151811,5786,4416,455,5047,712,231,6.43],
+['686×254×170 UKB',170.2,692.9,255.8,14.5,23.7,20,218,171782,6633,4958,519,5677,813,322,7.43],
+['686×254×192 UKB',192.6,702,254,15.5,27.9,20,245,199444,7646,5682,602,6505,943,480,8.69],
+['762×267×134 UKB',133.9,750,264.4,12,15.5,20,172,152061,4790,4055,362,4683,571,125,6.46],
+['762×267×147 UKB',146.9,754,265.2,12.8,17.5,20,188,169871,5457,4506,412,5195,648,166,7.4],
+['762×267×161 UKB',161,758,266,13.8,19.3,20,205,187252,6075,4941,457,5700,721,215,8.29],
+['762×267×173 UKB',173,762.2,266.7,14.3,21.6,20,221,206651,6852,5422,514,6237,809,277,9.4],
+['762×267×185 UKB',185,766,267,14.9,23.6,20,237,224146,7512,5852,563,6725,885,343,10.4],
+['762×267×197 UKB',196.8,769.8,268,15.6,25.4,20,252,241326,8177,6270,610,7206,960,417,11.3],
+['838×292×176 UKB',175.9,834.9,291.7,14,18.8,20,225,247120,7800,5920,535,6836,843,227,13],
+['838×292×194 UKB',193.8,840.7,292.4,14.7,21.7,20,248,280274,9068,6668,620,7668,974,312,15.2],
+['838×292×210 UKB',210,846,293,15.4,24.4,20,269,311719,10259,7369,700,8456,1098,413,17.3],
+['838×292×226 UKB',226.5,850.9,293.8,16.1,26.8,20,289,340802,11361,8010,773,9183,1212,522,19.3],
+['838×292×252 UKB',250.7,859,292.1,17,31,20,320,387599,12916,9024,884,10333,1384,746,22.1],
+['914×305×201 UKB',200.9,903,303.3,15.1,20.2,19.1,256,325254,9423,7204,621,8352,982,291,18.4],
+['914×305×224 UKB',224.2,910.4,304.1,15.9,23.9,19.1,286,376414,11236,8269,739,9535,1163,422,22.1],
+['914×305×239 UKB',238.3,915,305,16.5,25.9,19.1,304,406472,12285,8885,806,10231,1267,515,24.3],
+['914×305×253 UKB',253.4,918.4,305.5,17.3,27.9,19.1,323,436305,13301,9501,871,10942,1370,626,26.4],
+['914×305×271 UKB',271,923,307,18.4,30,19.1,346,471633,14518,10220,946,11785,1491,770,28.9],
+['914×305×289 UKB',289.1,926.6,307.7,19.5,32,19.1,368,504187,15597,10883,1014,12570,1601,926,31.2],
+['914×305×313 UKB',313,932,309,21.1,34.5,19.1,398,548297,17039,11766,1103,13631,1747,1162,34.3],
+['914×305×345 UKB',345.1,943,308,22.1,39.9,19.1,440,625645,19515,13269,1267,15349,2002,1649,39.8],
+['914×305×381 UKB',381.5,950.7,310.3,24.4,43.9,20,486,697408,21975,14671,1416,17042,2247,2208,45.2],
+['914×419×343 UKB',343.3,911.8,418.5,19.4,32,24.1,437,625780,39156,13726,1871,15478,2889,1193,75.8],
+['914×419×388 UKB',388,921,420.5,21.4,36.6,24.1,494,719635,45438,15627,2161,17666,3340,1734,88.9],
+['1016×305×222 UKB',222,970.3,300,16,21.1,30,283,407961,9546,8409,636,9808,1019,390,21.5],
+['1016×305×249 UKB',248.7,980.1,300,16.5,26,30,317,481192,11754,9819,784,11350,1244,582,26.8],
+['1016×305×272 UKB',272.3,990.1,300,16.5,31,30,347,553974,14004,11190,934,12827,1469,835,32.2],
+['1016×305×314 UKB',314.3,999.9,300,19.1,35.9,30,400,644063,16232,12883,1082,14850,1712,1264,37.7],
+['1016×305×350 UKB',349.4,1008,302,21.1,40,30,445,722965,18460,14345,1223,16591,1940,1718,43.2],
+['1016×305×393 UKB',392.7,1015.9,303,24.4,43.9,30,500,807503,20496,15897,1353,18538,2167,2330,48.4],
+['1016×305×415 UKB',415,1020,304,26,46,30,529,853121,21707,16728,1428,19573,2296,2704,51.5],
+['1016×305×437 UKB',437,1026.1,305.4,26.9,49,30,557,910322,23447,17743,1535,20769,2467,3185,56],
+['1016×305×487 UKB',486.7,1036.3,308.5,30,54.1,30,620,1021884,26721,19722,1732,23208,2799,4299,64.4],
+['1016×305×494 UKB',493.9,1036,309,31,54,30,629,1027960,26824,19845,1736,23414,2817,4396,64.7],
+['1016×305×584 UKB',583.8,1056,314,36,64,30,744,1246072,33433,23600,2130,28040,3474,7154,82.3],
+['152×152×23 UKC',23,152.4,152.2,5.8,6.8,7.6,29.2,1250,400,164,53,182,80,4.63,0.0212],
+['152×152×30 UKC',30,157.6,152.9,6.5,9.4,7.6,38.3,1748,560,222,73,248,112,10.5,0.0308],
+['152×152×37 UKC',37,161.8,154.4,8,11.5,7.6,47.1,2210,706,273,91,309,140,19.2,0.0399],
+['152×152×44 UKC',44,166,155.9,9.5,13.6,7.6,56.1,2703,860,326,110,372,169,31.7,0.0499],
+['152×152×51 UKC',51.2,170.2,157.4,11,15.7,7.6,65.2,3227,1022,379,130,438,199,48.8,0.061],
+['203×203×46 UKC',46.1,203.2,203.6,7.2,11,12.7,59.2,4605,1549,453,152,502,231,23.3,0.143],
+['203×203×52 UKC',52,206.2,204.3,7.9,12.5,12.7,66.8,5296,1778,514,174,572,265,33.2,0.167],
+['203×203×60 UKC',60,209.6,205.8,9.4,14.2,12.7,76.9,6162,2065,588,201,660,306,49.1,0.197],
+['203×203×71 UKC',71,215.8,206.4,10,17.3,12.7,90.9,7655,2538,709,246,803,374,82.7,0.25],
+['203×203×86 UKC',86.1,222.2,209.1,12.7,20.5,12.7,110,9486,3128,854,299,981,457,140,0.318],
+['203×203×100 UKC',99.6,228.6,210.3,14.5,23.7,12.7,127,11335,3680,992,350,1153,535,214,0.386],
+['203×203×113 UKC',113.5,235,212.1,16.3,26.9,12.7,145,13338,4286,1135,404,1333,619,311,0.464],
+['203×203×127 UKC',127.5,241.4,213.9,18.1,30.1,12.7,163,15474,4921,1282,460,1521,705,435,0.549],
+['254×254×73 UKC',73.1,254.1,254.6,8.6,14.2,20,95.2,11643,3910,916,307,1014,467,66.1,0.563],
+['254×254×81 UKC',81,256,255,9.4,15.6,20,104,12801,4316,1000,339,1112,515,85.4,0.624],
+['254×254×89 UKC',88.9,260.3,256.3,10.3,17.3,20,115,14504,4860,1114,379,1246,577,114,0.717],
+['254×254×101 UKC',101,264,257,11.9,19.6,20,131,16603,5552,1258,432,1419,658,163,0.829],
+['254×254×107 UKC',107.1,266.7,258.8,12.8,20.5,20,138,17747,5931,1331,458,1507,699,188,0.899],
+['254×254×115 UKC',115,269,259,13.5,22.1,20,148,19171,6409,1425,495,1621,755,231,0.977],
+['254×254×132 UKC',132,276.3,261.3,15.3,25.3,20,170,22765,7535,1648,577,1892,881,341,1.19],
+['254×254×149 UKC',149,282,263,17.3,28.4,20,192,26167,8627,1856,656,2151,1003,479,1.39],
+['254×254×167 UKC',167.1,289.1,265.2,19.2,31.7,20,215,30234,9875,2092,745,2446,1140,661,1.64],
+['305×305×97 UKC',96.9,307.9,305.3,9.9,15.4,20,125,22504,7310,1462,479,1612,727,98.4,1.56],
+['305×305×107 UKC',107,311,306,10.9,17,20,138,25055,8125,1611,531,1785,807,130,1.76],
+['305×305×118 UKC',117.9,314.5,307.4,12,18.7,20,152,27927,9061,1776,590,1977,897,171,1.98],
+['305×305×129 UKC',129,318,308,13.1,20.6,20,167,31035,10041,1952,652,2184,992,224,2.22],
+['305×305×137 UKC',136.9,320.5,309.2,13.8,21.7,20,176,33070,10702,2064,692,2316,1054,261,2.39],
+['305×305×143 UKC',143,323,309,14,22.9,20,184,35029,11272,2169,730,2439,1110,300,2.54],
+['305×305×158 UKC',158.1,327.1,311.2,15.8,25,20,203,39002,12572,2385,808,2700,1232,394,2.87],
+['305×305×179 UKC',179,333,313,18,28.1,20,229,44796,14381,2690,919,3073,1403,558,3.34],
+['305×305×198 UKC',198.1,339.9,314.5,19.1,31.4,20,254,51159,16303,3010,1037,3460,1583,758,3.88],
+['305×305×202 UKC',202,341,315,20.1,31.8,20,260,52247,16592,3064,1053,3530,1610,800,3.97],
+['305×305×226 UKC',226,348,317,22.1,35.6,20,290,59829,18934,3438,1195,3995,1827,1109,4.62],
+['305×305×240 UKC',240,352.5,318.4,23,37.7,20,307,64458,20319,3657,1276,4267,1953,1307,5.03],
+['305×305×253 UKC',253,356,319,24.4,39.6,20,324,68490,21468,3848,1346,4511,2061,1517,5.37],
+['305×305×283 UKC',282.9,365.3,322.2,26.8,44.1,20,362,79127,24641,4332,1530,5125,2345,2084,6.36],
+['356×368×129 UKC',129,355.6,368.6,10.4,17.5,20,166,40591,14613,2283,793,2502,1200,161,4.18],
+['356×368×134 UKC',134,356,369,11.2,18,20,172,41866,15081,2352,817,2585,1239,177,4.31],
+['356×368×147 UKC',147,360,370,12.3,19.8,20,189,46647,16725,2591,904,2862,1371,233,4.84],
+['356×368×153 UKC',152.9,362,370.5,12.3,20.7,20,196,48935,17556,2704,948,2987,1436,261,5.11],
+['356×368×162 UKC',162,364,371,13.3,21.8,20,208,51897,18565,2851,1001,3163,1518,307,5.43],
+['356×368×177 UKC',177,368.2,372.6,14.4,23.8,20,227,57464,20532,3121,1102,3478,1672,396,6.09],
+['356×368×179 UKC',179,368,374,15,23.9,20,230,57940,20853,3149,1115,3514,1693,407,6.17],
+['356×368×196 UKC',196,372,374,16.4,26.2,20,252,63988,22861,3440,1223,3861,1858,531,6.83],
+['356×368×202 UKC',201.9,374.6,374.7,16.5,27,20,259,66607,23692,3556,1265,3994,1921,576,7.16],
+['356×406×216 UKC',216,375,394,17.3,27.7,20,277,71495,28257,3813,1434,4286,2178,652,8.52],
+['356×406×235 UKC',235.1,381,394.8,18.4,30.2,20,301,79431,30997,4170,1570,4709,2385,834,9.54],
+['356×406×237 UKC',237,380,395,18.9,30.2,20,302,79134,31045,4165,1572,4709,2389,842,9.5],
+['356×406×262 UKC',262,387,398,21.1,33.3,20,336,89764,35023,4639,1760,5283,2678,1134,11],
+['356×406×287 UKC',287.1,393.6,399,22.6,36.5,20,367,100221,38682,5093,1939,5835,2951,1474,12.3],
+['356×406×314 UKC',314,399,401,24.9,39.6,20,401,110589,42609,5543,2125,6397,3239,1891,13.8],
+['356×406×340 UKC',339.9,406.4,403,26.6,42.9,20,434,122889,46859,6048,2326,7022,3546,2391,15.5],
+['356×406×347 UKC',347,407,404,27.2,43.7,20,443,125301,48091,6157,2381,7162,3631,2532,15.9],
+['356×406×382 UKC',382,416,406,29.8,48,20,489,141674,53623,6811,2642,7988,4033,3348,18.2],
+['356×406×393 UKC',393,419,407,30.6,49.2,20,502,146964,55374,7015,2721,8245,4156,3611,18.9],
+['356×406×421 UKC',421,425,409,32.8,52.6,20,539,159938,60089,7526,2938,8904,4492,4417,20.8],
+['356×406×463 UKC',463,435,412,35.8,57.4,20,591,180519,67044,8300,3255,9901,4982,5747,23.9],
+['356×406×467 UKC',467,436.6,412.2,35.8,58,20,596,183349,67842,8399,3292,10025,5037,5905,24.3],
+['356×406×509 UKC',509,446,416,39.1,62.7,20,650,204886,75411,9188,3626,11056,5556,7514,27.7],
+['356×406×551 UKC',551,455.6,418.5,42.1,67.5,20,703,227284,82681,9977,3951,12099,6062,9381,31.1],
+['356×406×592 UKC',592,465,421,45,72.3,20,756,250519,90184,10775,4284,13162,6578,11530,34.8],
+['356×406×634 UKC',633.9,474.6,424,47.6,77,20,809,275191,98138,11597,4629,14258,7112,13920,38.8]
+];
+// PFC: as above + cy (cm, centroid from back of web)
+const PFC_DATA=[
+['150×75×18 PFC',17.9,150,75,5.5,10,12,22.8,861,131,115,26.6,132,47.3,6.1,0.0047,2.58],
+['150×90×24 PFC',23.9,150,90,6.5,12,12,30.4,1162,253,155,44.4,179,77,11.8,0.0089,3.3],
+['180×75×20 PFC',20.3,180,75,6,10.5,12,25.9,1370,146,152,28.8,176,52,7.34,0.0075,2.41],
+['180×90×26 PFC',26.1,180,90,6.5,12.5,12,33.2,1817,277,202,47.4,232,83.5,13.3,0.0141,3.17],
+['200×75×23 PFC',23.4,200,75,6,12.5,12,29.9,1963,170,196,33.8,227,60.8,11.1,0.0107,2.48],
+['200×90×30 PFC',29.7,200,90,7,14,12,37.9,2523,314,252,53.4,291,94.6,18.3,0.0197,3.12],
+['230×75×26 PFC',25.7,230,75,6.5,12.5,12,32.7,2748,181,239,34.8,278,63.2,11.8,0.0153,2.3],
+['230×90×32 PFC',32.2,230,90,7.5,14,12,41,3518,334,306,55,355,99.2,19.3,0.0279,2.92],
+['260×75×28 PFC',27.6,260,75,7,12,12,35.1,3619,185,278,34.4,328,62,11.7,0.0203,2.1],
+['260×90×35 PFC',34.8,260,90,8,14,12,44.4,4728,353,364,56.3,425,102.1,20.6,0.0379,2.74],
+['300×90×41 PFC',41.4,300,90,9,15.5,12,52.7,7218,404,481,63.1,568,114,28.8,0.0581,2.6],
+['300×100×46 PFC',45.5,300,100,9,16.5,15,58,8229,568,549,81.7,641,148.3,36.8,0.0813,3.05]
+];
+</script>
+<script id="engine">
+/* ===== EC3 MEMBER ENGINE =====
+   Clean-room implementation from BS EN 1990, BS EN 1993-1-1, BS EN 1993-1-5 and their UK National Annexes.
+   Units: N, mm. Axial force N positive in COMPRESSION. Sagging My positive. */
+const EC3 = (() => {
+  'use strict';
+  const E = 210000, G = 81000;        // EN 1993-1-1 3.2.6(1)
+  const GM0 = 1.0, GM1 = 1.0;         // UK NA to BS EN 1993-1-1, NA.2.15
+  const ETA = 1.0;                    // UK NA to BS EN 1993-1-5 (shear area factor)
+
+  // ReH by nominal thickness from the product standard, as required by UK NA NA.2.4
+  const GRADES = {
+    S235: { std: 'BS EN 10025-2', fy: [[16, 235], [40, 225], [63, 215], [80, 215], [100, 215], [150, 195]] },
+    S275: { std: 'BS EN 10025-2', fy: [[16, 275], [40, 265], [63, 255], [80, 245], [100, 235], [150, 225]] },
+    S355: { std: 'BS EN 10025-2', fy: [[16, 355], [40, 345], [63, 335], [80, 325], [100, 315], [150, 295]] },
+    S460: { std: 'BS EN 10025-4', fy: [[16, 460], [40, 440], [63, 430], [80, 410], [100, 400], [120, 385]] },
+  };
+  function yieldStrength(grade, t) {
+    const g = GRADES[grade];
+    for (const [lim, f] of g.fy) if (t <= lim) return f;
+    throw new Error(`${grade}: element thickness ${t} mm outside the product standard table`);
+  }
+
+  // ---------- Sections ----------
+  // shape: 'I' (rolled UKB/UKC or welded), 'PFC' (rolled parallel flange channel), 'RHS' (SHS/RHS), 'CHS'.
+  // Axes: y-y major (horizontal), z-z minor. For RHS and CHS tw/tf hold the wall thickness t; nw = number of webs.
+  function fromRow(r) {
+    const [name, mass, h, b, tw, tf, rr, A, Iy, Iz, Wely, Welz, Wply, Wplz, It, Iw] = r;
+    return { shape: 'I', nw: 1, name, mass, h, b, tw, tf, r: rr, A: A * 1e2, Iy: Iy * 1e4, Iz: Iz * 1e4, Wely: Wely * 1e3, Welz: Welz * 1e3,
+      Wply: Wply * 1e3, Wplz: Wplz * 1e3, It: It * 1e4, Iw: Iw * 1e12, rolled: true, productStd: 'BS EN 10025-2 (S460: -4)' };
+  }
+  // Rolled parallel flange channel from a datasheet row (+ centroid cy from the back of the web, cm).
+  // Shear centre: thin-walled result e = 3b'^2 tf / (6b' tf + h' tw) from the web centreline, on the side away from the flanges.
+  function fromRowPFC(r) {
+    const [name, mass, h, b, tw, tf, rr, A, Iy, Iz, Wely, Welz, Wply, Wplz, It, Iw, cy] = r;
+    const bp = b - tw / 2, hp = h - tf, e = 3 * bp * bp * tf / (6 * bp * tf + hp * tw);
+    return { shape: 'PFC', nw: 1, name, mass, h, b, tw, tf, r: rr, A: A * 1e2, Iy: Iy * 1e4, Iz: Iz * 1e4, Wely: Wely * 1e3, Welz: Welz * 1e3,
+      Wply: Wply * 1e3, Wplz: Wplz * 1e3, It: It * 1e4, Iw: Iw * 1e12, cy: cy * 10, eSC: e, y0: cy * 10 - tw / 2 + e,
+      rolled: true, productStd: 'BS EN 10025-2 (S460: -4)' };
+  }
+  // Spandrel (square r x r minus the quarter disc centred at the far corner): area, centroid offset from the corner,
+  // second moment about its own centroid (verified by direct integration).
+  function spandrel(r) {
+    const As = (1 - Math.PI / 4) * r * r, e = r ? r * (10 - 3 * Math.PI) / (12 - 3 * Math.PI) : 0;
+    return { As, e, Ic: (1 - 5 * Math.PI / 16) * r ** 4 - As * e * e };
+  }
+  // Doubly symmetric I-section from dimensions (root radius r for rolled, 0 for welded). SCI P363 formulae.
+  function customI({ name = 'Custom I', h, b, tw, tf, r = 0, rolled = false }) {
+    const { As, e, Ic } = spandrel(r);
+    const hw = h - 2 * tf, A = 2 * b * tf + hw * tw + 4 * As;
+    const yf = h / 2 - tf - e, zf = tw / 2 + e;
+    const Iy = (b * h ** 3 - (b - tw) * hw ** 3) / 12 + 4 * (Ic + As * yf * yf);
+    const Iz = 2 * tf * b ** 3 / 12 + hw * tw ** 3 / 12 + 4 * (Ic + As * zf * zf);
+    let It;
+    if (r > 0) {
+      const a1 = -0.042 + 0.2204 * tw / tf + 0.1355 * r / tf - 0.0865 * r * tw / tf ** 2 - 0.0725 * tw ** 2 / tf ** 2;
+      const D1 = ((tf + r) ** 2 + tw * (r + tw / 4)) / (2 * r + tf);
+      It = 2 / 3 * b * tf ** 3 + 1 / 3 * hw * tw ** 3 + 2 * a1 * D1 ** 4 - 0.420 * tf ** 4;
+    } else It = (2 * b * tf ** 3 + (h - tf) * tw ** 3) / 3;
+    return { shape: 'I', nw: 1, name, mass: A * 7850e-6, h, b, tw, tf, r, A, Iy, Iz, Wely: Iy / (h / 2), Welz: Iz / (b / 2),
+      Wply: b * tf * (h - tf) + tw * hw * hw / 4 + 4 * As * yf, Wplz: tf * b * b / 2 + hw * tw * tw / 4 + 4 * As * zf,
+      It, Iw: Iz * (h - tf) ** 2 / 4, rolled, productStd: rolled ? 'BS EN 10025-2' : 'BS EN 10025-2 (plate)' };
+  }
+  // Hollow sections from nominal dimensions. Corner radii: hot-finished BS EN 10210-2 ro = 1.5t, ri = t;
+  // cold-formed BS EN 10219-2 ro = 2t (t <= 6), 2.5t (t <= 10), 3t (t > 10), ri = ro - t. It, Wt per those standards.
+  function hollowRadii(t, cold) {
+    if (!cold) return [1.5 * t, t];
+    const ro = t <= 6 ? 2 * t : t <= 10 ? 2.5 * t : 3 * t;
+    return [ro, ro - t];
+  }
+  function roundedRect(H, B, r) {               // solid rectangle H (along z) x B with four corners of radius r
+    const { As, e, Ic } = spandrel(r), zc = H / 2 - e, yc = B / 2 - e;
+    return { A: B * H - 4 * As, Iy: B * H ** 3 / 12 - 4 * (Ic + As * zc * zc), Iz: H * B ** 3 / 12 - 4 * (Ic + As * yc * yc),
+      Sy: B * H * H / 8 - 2 * As * zc, Sz: H * B * B / 8 - 2 * As * yc };    // S = first moment of the half area
+  }
+  function rhs({ h, b, t, cold = false, name }) {
+    const [ro, ri] = hollowRadii(t, cold);
+    const o = roundedRect(h, b, ro), i = roundedRect(h - 2 * t, b - 2 * t, ri);
+    const A = o.A - i.A, Iy = o.Iy - i.Iy, Iz = o.Iz - i.Iz;
+    const Rc = (ro + ri) / 2, hp = 2 * ((b - t) + (h - t)) - 2 * Rc * (4 - Math.PI), Ah = (b - t) * (h - t) - Rc * Rc * (4 - Math.PI);
+    const K = 2 * Ah * t / hp, It = t ** 3 * hp / 3 + 2 * K * Ah;
+    const kind = Math.abs(h - b) < 1e-9 ? 'SHS' : 'RHS';
+    return { shape: 'RHS', nw: 2, cold, name: name || `${h}×${b}×${t} ${kind}`, mass: A * 7850e-6, h, b, t, tw: t, tf: t, r: ro, ro, ri,
+      A, Iy, Iz, Wely: Iy / (h / 2), Welz: Iz / (b / 2), Wply: 2 * (o.Sy - i.Sy), Wplz: 2 * (o.Sz - i.Sz), It, Wt: It / (t + K / t), Iw: 0,
+      rolled: !cold, productStd: cold ? 'BS EN 10219-1' : 'BS EN 10210-1' };
+  }
+  function chs({ d, t, cold = false, name }) {
+    const di = d - 2 * t, I = Math.PI / 64 * (d ** 4 - di ** 4), A = Math.PI / 4 * (d * d - di * di), Wpl = (d ** 3 - di ** 3) / 6;
+    return { shape: 'CHS', nw: 0, cold, name: name || `${d}×${t} CHS`, mass: A * 7850e-6, h: d, b: d, d, t, tw: t, tf: t, r: 0,
+      A, Iy: I, Iz: I, Wely: 2 * I / d, Welz: 2 * I / d, Wply: Wpl, Wplz: Wpl, It: 2 * I, Wt: 4 * I / d, Iw: 0,
+      rolled: !cold, productStd: cold ? 'BS EN 10219-1' : 'BS EN 10210-1' };
+  }
+  const isHollow = s => s.shape === 'RHS' || s.shape === 'CHS';
+
+  // ---------- Classification, Table 5.2 ----------
+  function internalLimits(alpha, psi, eps) {    // Table 5.2 sheet 1, internal compression parts
+    if (alpha <= 0) return [Infinity, Infinity, Infinity];
+    return [alpha > 0.5 ? 396 * eps / (13 * alpha - 1) : 36 * eps / alpha,
+      alpha > 0.5 ? 456 * eps / (13 * alpha - 1) : 41.5 * eps / alpha,
+      psi > -1 ? 42 * eps / (0.67 + 0.33 * psi) : 62 * eps * (1 - psi) * Math.sqrt(-psi)];
+  }
+  const clsOf = (ratio, lim) => ratio <= lim[0] ? 1 : ratio <= lim[1] ? 2 : ratio <= lim[2] ? 3 : 4;
+  // bending: major-axis bending present; biax: minor-axis bending present as well (walls then taken in compression)
+  function classify(s, fy, N, bending, biax = false) {
+    const eps = Math.sqrt(235 / fy);
+    if (s.shape === 'CHS') {                      // Table 5.2 sheet 3
+      const ratio = s.d / s.t, lim = [50 * eps * eps, 70 * eps * eps, 90 * eps * eps], c = clsOf(ratio, lim);
+      const tube = { c: s.d, ratio, lim, cls: c, kind: 'tube' };
+      return { eps, tube, flange: tube, web: tube, cls: c };
+    }
+    if (s.shape === 'RHS') {                      // c = b - 3t, h - 3t (Table 5.2 note for hollow sections)
+      const cf = s.b - 3 * s.t, cw = s.h - 3 * s.t;
+      const fl = internalLimits(1, 1, eps), rf = cf / s.t;
+      let alpha, psi;
+      if (!bending || biax) { alpha = N > 0 ? 1 : 0; psi = N > 0 ? 1 : -1; if (biax) { alpha = 1; psi = 1; } }
+      else { alpha = Math.min(1, 0.5 + N / (2 * fy * 2 * s.t * cw)); psi = Math.max(-3, Math.min(1, 2 * N / (s.A * fy) - 1)); }
+      const wl = internalLimits(alpha, psi, eps), rw = cw / s.t;
+      const fcls = (!bending && !(N > 0) && !biax) ? 1 : clsOf(rf, fl), wcls = clsOf(rw, wl);
+      return { eps, flange: { c: cf, ratio: rf, lim: fl, cls: fcls, kind: 'internal' }, web: { c: cw, ratio: rw, alpha, psi, lim: wl, cls: wcls }, cls: Math.max(fcls, wcls) };
+    }
+    const cf = s.shape === 'PFC' ? s.b - s.tw - s.r : (s.b - s.tw - 2 * s.r) / 2, rf = cf / s.tf;
+    const fl = [9 * eps, 10 * eps, 14 * eps];
+    const fcls = clsOf(rf, fl);
+    const cw = s.h - 2 * s.tf - 2 * s.r, rw = cw / s.tw;
+    let alpha, psi;
+    if (!bending) { alpha = N > 0 ? 1 : 0; psi = N > 0 ? 1 : -1; }
+    else { alpha = Math.min(1, 0.5 + N / (2 * s.tw * fy * cw)); psi = Math.max(-3, Math.min(1, 2 * N / (s.A * fy) - 1)); }
+    const wl = internalLimits(alpha, psi, eps);
+    const wcls = clsOf(rw, wl);
+    return { eps, flange: { c: cf, ratio: rf, lim: fl, cls: fcls, kind: 'outstand' }, web: { c: cw, ratio: rw, alpha, psi, lim: wl, cls: wcls }, cls: Math.max(fcls, wcls) };
+  }
+
+  // ---------- Effective sections, EN 1993-1-5 4.4 ----------
+  function kSigmaInternal(psi) {                // Table 4.1 (tabulated values at psi = 1, 0, -1)
+    if (Math.abs(psi - 1) < 1e-9) return 4.0;
+    if (Math.abs(psi) < 1e-9) return 7.81;
+    if (Math.abs(psi + 1) < 1e-9) return 23.9;
+    if (psi >= 0) return 8.2 / (1.05 + psi);
+    if (psi >= -1) return 7.81 - 6.29 * psi + 9.78 * psi * psi;
+    return 5.98 * (1 - psi) ** 2;
+  }
+  function rhoInternal(cb, t, eps, psi) {
+    const ks = kSigmaInternal(psi), lp = (cb / t) / (28.4 * eps * Math.sqrt(ks));
+    const rho = lp <= 0.5 + Math.sqrt(0.085 - 0.055 * psi) ? 1 : Math.min(1, (lp - 0.055 * (3 + psi)) / (lp * lp));
+    return { ks, lp, rho };
+  }
+  function rhoOutstand(c, t, eps) {             // Table 4.2, uniform compression (k_sigma = 0.43)
+    const lp = (c / t) / (28.4 * eps * Math.sqrt(0.43));
+    return { ks: 0.43, lp, rho: lp <= 0.748 ? 1 : Math.min(1, (lp - 0.188) / (lp * lp)) };
+  }
+  // Effective area under uniform compression (only Class 4 elements are reduced)
+  function aeffCompression(s, fy) {
+    const k = classify(s, fy, 1, false), eps = k.eps;
+    if (s.shape === 'CHS') {
+      if (k.cls === 4) throw new Error('Class 4 CHS (BS EN 1993-1-6) is outside the scope of this tool');
+      return { Aeff: s.A, rhoW: 1, rhoF: 1, cls: k.cls };
+    }
+    let Aeff = s.A, rhoW = 1, rhoF = 1;
+    if (s.shape === 'RHS') {
+      if (k.web.cls === 4) { rhoW = rhoInternal(k.web.c, s.t, eps, 1).rho; Aeff -= 2 * (1 - rhoW) * k.web.c * s.t; }
+      if (k.flange.cls === 4) { rhoF = rhoInternal(k.flange.c, s.t, eps, 1).rho; Aeff -= 2 * (1 - rhoF) * k.flange.c * s.t; }
+      return { Aeff, rhoW, rhoF, cls: k.cls };
+    }
+    if (k.web.cls === 4) { rhoW = rhoInternal(k.web.c, s.tw, eps, 1).rho; Aeff -= (1 - rhoW) * k.web.c * s.tw; }
+    if (k.flange.cls === 4) { rhoF = rhoOutstand(k.flange.c, s.tf, eps).rho; Aeff -= (s.shape === 'PFC' ? 2 : 4) * (1 - rhoF) * k.flange.c * s.tf; }
+    return { Aeff, rhoW, rhoF, cls: k.cls };
+  }
+  // Holes (ineffective strips) removed from the gross section: [{A, z, I}], z from the gross centroid (+ = compression side)
+  function withHoles(s, holes) {
+    const Ah = holes.reduce((a, h) => a + h.A, 0), Aeff = s.A - Ah;
+    const shift = -holes.reduce((a, h) => a + h.A * h.z, 0) / Aeff;
+    const I0 = s.Iy - holes.reduce((a, h) => a + h.I + h.A * h.z * h.z, 0);
+    const Ieff = I0 - Aeff * shift * shift;
+    return { Aeff, shift, Ieff, Weff: Ieff / (s.h / 2 - shift) };   // compression fibre is the further one (shift < 0)
+  }
+  // Web strip that is ineffective for a stress ratio psi (Table 4.1), web element spanning z in [-c/2 + zb, c/2 + zb]
+  function webHole(c, t, eps, psi) {
+    const r = rhoInternal(c, t, eps, psi);
+    let be1, beff, bc;
+    if (psi < 0) { bc = c / (1 - psi); beff = r.rho * bc; be1 = 0.4 * beff; }
+    else { bc = c; beff = r.rho * c; be1 = 2 * beff / (5 - psi); }
+    return { ...r, psi, bc, beff, be1, be2: beff - be1, hole: bc - beff };
+  }
+  // Effective section modulus for major-axis bending (EN 1993-1-5 4.4). Stress ratio of the web from the effective
+  // compression flange and gross web (4.4(3)).
+  function weffBending(s, fy) {
+    const k = classify(s, fy, 0, true), eps = k.eps;
+    if (k.cls < 4) return { Weff: s.Wely, Ieff: s.Iy, rho: 1, lp: null, shift: 0, reduced: false };
+    if (s.shape === 'CHS') throw new Error('Class 4 CHS (BS EN 1993-1-6) is outside the scope of this tool');
+    const holes = [];
+    let fl = null;
+    if (s.shape === 'RHS' && k.flange.cls === 4) {
+      fl = rhoInternal(k.flange.c, s.t, eps, 1);
+      const hf = (1 - fl.rho) * k.flange.c;
+      holes.push({ A: hf * s.t, z: s.h / 2 - s.t / 2, I: hf * s.t ** 3 / 12 });
+    }
+    const z0 = holes.length ? withHoles(s, holes).shift : 0;
+    const c = k.web.c, t = s.tw, nw = s.nw;
+    const psi = Math.max(-3, (-c / 2 - z0) / (c / 2 - z0));
+    const w = webHole(c, t, eps, psi);
+    if (w.hole > 0) holes.push({ A: nw * w.hole * t, z: c / 2 - w.be1 - w.hole / 2, I: nw * t * w.hole ** 3 / 12 });
+    const r = withHoles(s, holes);
+    return { ...r, rho: w.rho, lp: w.lp, ks: w.ks, psi, beff: w.beff, be1: w.be1, be2: w.be2, hole: w.hole, flange: fl, reduced: r.Weff < s.Wely - 1e-6 };
+  }
+  // Section modulus for bending resistance by class (6.2.5(2))
+  function wyByClass(s, fy, cls) { return cls <= 2 ? s.Wply : cls === 3 ? s.Wely : weffBending(s, fy).Weff; }
+
+  // ---------- Shear, 6.2.6 and EN 1993-1-5 5 ----------
+  // Load parallel to the web (z direction)
+  function shear(s, fy) {
+    const eps = Math.sqrt(235 / fy);
+    if (s.shape === 'CHS') { const Av = 2 * s.A / Math.PI, Vpl = Av * fy / Math.sqrt(3) / GM0; return { Av, Vpl, hw: s.d, slender: false, Vb: Infinity, VRd: Vpl }; }
+    const hw = s.h - 2 * s.tf, tw = s.tw, nw = s.nw;
+    let Av;
+    if (s.shape === 'RHS') Av = s.A * s.h / (s.b + s.h);                                     // 6.2.6(3)(f)
+    else if (s.shape === 'PFC') Av = Math.max(s.A - 2 * s.b * s.tf + (tw + s.r) * s.tf, ETA * hw * tw);   // (b)
+    else Av = s.rolled ? Math.max(s.A - 2 * s.b * s.tf + (tw + 2 * s.r) * s.tf, ETA * hw * tw) : ETA * hw * tw;  // (a), (d)
+    const Vpl = Av * fy / Math.sqrt(3) / GM0;
+    const slender = hw / tw > 72 * eps / ETA;
+    let Vb = Infinity, lw = null, chiw = null;
+    if (slender) {   // unstiffened web(s), stiffeners at supports only, non-rigid end post, flange contribution ignored
+      lw = hw / (86.4 * tw * eps);
+      chiw = lw < 0.83 / ETA ? ETA : 0.83 / lw;
+      Vb = nw * Math.min(chiw * fy * hw * tw / (Math.sqrt(3) * GM1), ETA * fy * hw * tw / (Math.sqrt(3) * GM1));
+    }
+    return { Av, Vpl, hw, slender, lw, chiw, Vb, VRd: Math.min(Vpl, Vb) };
+  }
+  // Load parallel to the flanges (y direction), 6.2.6(3)(e)-(g)
+  function shearZ(s, fy) {
+    let Av;
+    if (s.shape === 'CHS') Av = 2 * s.A / Math.PI;
+    else if (s.shape === 'RHS') Av = s.A * s.b / (s.b + s.h);
+    else Av = s.A - (s.h - 2 * s.tf) * s.tw;
+    const Vpl = Av * fy / Math.sqrt(3) / GM0;
+    return { Av, Vpl, VRd: Vpl };
+  }
+
+  // Exact plastic N-M interaction of a CHS (stress blocks either side of a straight neutral axis): MN for given n
+  function chsMN(s, fyr, N) {
+    const Ro = s.d / 2, Ri = Ro - s.t;
+    const seg = (R, z) => { if (z >= R) return { A: 0, S: 0 }; if (z <= -R) return { A: Math.PI * R * R, S: 0 };
+      return { A: R * R * Math.acos(z / R) - z * Math.sqrt(R * R - z * z), S: 2 / 3 * (R * R - z * z) ** 1.5 }; };
+    const above = z => { const o = seg(Ro, z), i = seg(Ri, z); return { A: o.A - i.A, S: o.S - i.S }; };
+    const Ntot = s.A * fyr;
+    if (Math.abs(N) >= Ntot) return 0;
+    let lo = -Ro, hi = Ro;                       // compression above z0: N = fyr (2 A_above - A)
+    for (let it = 0; it < 80; it++) { const m = (lo + hi) / 2; if (fyr * (2 * above(m).A - s.A) > Math.abs(N)) lo = m; else hi = m; }
+    return 2 * fyr * above((lo + hi) / 2).S;
+  }
+
+  // ---------- Cross-section resistance at one station, 6.2 ----------
+  // N (+ compression), My (major), V (parallel to web), Mz (minor), Vz (parallel to flanges)
+  function sectionCheck(s, fy, N, My, V, Mz = 0, Vz = 0) {
+    const bending = Math.abs(My) > 1e-6 || Math.abs(Mz) > 1e-6, biax = Math.abs(Mz) > 1e-6;
+    const cl = classify(s, fy, N, bending, biax);
+    if (!isHollow(s) && cl.flange.cls === 4) throw new Error('Class 4 flange: outside the scope of this tool');
+    if (s.shape === 'CHS' && cl.cls === 4) throw new Error('Class 4 CHS (BS EN 1993-1-6) is outside the scope of this tool');
+    const sh = shear(s, fy), shz = shearZ(s, fy);
+    const comp = aeffCompression(s, fy);
+    const hw = s.h - 2 * s.tf, Aw = s.shape === 'CHS' ? sh.Av : s.nw * hw * s.tw;
+    const uV = Math.max(Math.abs(V) / sh.VRd, Math.abs(Vz) / shz.VRd);
+    // 6.2.8 reduction for stocky webs; webs susceptible to shear buckling use EN 1993-1-5 7.1 instead (below)
+    const Vres = s.shape === 'CHS' ? Math.hypot(V, Vz) : Math.abs(V);
+    const rho = !sh.slender && Vres > 0.5 * sh.VRd ? (2 * Vres / sh.VRd - 1) ** 2 : 0;
+    const rhoZ = s.shape !== 'CHS' && Math.abs(Vz) > 0.5 * shz.VRd ? (2 * Math.abs(Vz) / shz.VRd - 1) ** 2 : 0;
+    const NRd = N > 0 ? (comp.cls === 4 ? comp.Aeff : s.A) * fy / GM0 : s.A * fy / GM0;
+    const out = { cls: cl, shear: sh, shearZ: shz, rho, rhoZ, uV, NRd, uN: Math.abs(N) / NRd };
+    const sd = (m, r) => m <= 1e-6 ? 0 : r <= 0 ? Infinity : m / r;
+    if (cl.cls <= 2) {
+      const An = Math.abs(N);
+      if (s.shape === 'CHS') {                       // reduced yield strength on the whole section for shear (conservative)
+        const fyr = (1 - rho) * fy / GM0, Mpl = s.Wply * fyr, MN = chsMN(s, fyr, An), M = Math.hypot(My, Mz);
+        const n = An / (s.A * fyr);
+        Object.assign(out, { method: 'plastic', Mply: Mpl, Mplz: Mpl, MNy: MN, MNz: MN, n, uMy: Math.abs(My) / Mpl, uNM: sd(M, MN), interaction: 'CHS: resultant moment, exact plastic N-M' });
+        out.uM = Math.max(out.uNM, n);
+      } else {
+        const Ar = s.A - rho * Aw;                    // 6.2.10: reduced yield strength on the shear area
+        const Npl = Ar * fy / GM0, n = An / Npl;
+        const Mply = Math.min(s.Wply, s.Wply - rho * Aw * Aw / (4 * s.nw * s.tw)) * fy / GM0;
+        const Mplz = (1 - rhoZ) * s.Wplz * fy / GM0;
+        let MNy, MNz, ay, bz, a = null, allowY = false, rule;
+        if (s.shape === 'RHS') {                     // (6.39), (6.40), 6.2.9.1(6)
+          const aw = Math.min(0.5, (s.A - 2 * s.b * s.t) / s.A), af = Math.min(0.5, (s.A - 2 * s.h * s.t) / s.A);
+          MNy = Math.max(0, Math.min(Mply, Mply * (1 - n) / (1 - 0.5 * aw)));
+          MNz = Math.max(0, Math.min(Mplz, Mplz * (1 - n) / (1 - 0.5 * af)));
+          ay = bz = Math.min(6, 1.66 / (1 - 1.13 * n * n)); a = aw; rule = 'RHS (6.39)/(6.40)';
+        } else if (s.shape === 'PFC') {              // plastic neutral axis in the web while N <= web capacity, then linear
+          const twr = s.tw * (1 - rho), Nw = (hw - 2 * s.r) * twr * fy / GM0;
+          const Mw = Math.max(0, Mply - Nw * Nw / (4 * twr * fy / GM0));
+          MNy = An <= Nw ? Mply - An * An / (4 * twr * fy / GM0) : Math.max(0, Mw * (1 - (An - Nw) / (Npl - Nw)));
+          MNz = Math.max(0, Mplz * (1 - n));          // linear (6.2.1(7)), conservative
+          ay = bz = 1; rule = 'channel: web stress block, linear about z, unity exponents';
+        } else {                                     // I and H: 6.2.9.1(4), (5)
+          a = Math.min(0.5, (Ar - 2 * s.b * s.tf) / Ar);
+          allowY = An <= 0.25 * Npl && An <= 0.5 * hw * s.tw * (1 - rho) * fy / GM0;
+          MNy = Math.max(0, allowY ? Mply : Math.min(Mply, Mply * (1 - n) / (1 - 0.5 * a)));
+          MNz = Math.max(0, n <= a ? Mplz : n >= 1 ? 0 : Mplz * (1 - ((n - a) / (1 - a)) ** 2));
+          ay = 2; bz = Math.max(1, 5 * n); rule = 'I/H (6.36)-(6.38)';
+        }
+        const uMy = sd(Math.abs(My), MNy), uMz = sd(Math.abs(Mz), MNz);
+        const uNM = Math.abs(Mz) > 1e-6 ? uMy ** ay + uMz ** bz : uMy;          // 6.2.9.1(6), eq. 6.41
+        Object.assign(out, { method: 'plastic', Mply, Mplz, MNy, MNz, n, a, allowY, ay, bz, rule, uMy: Math.abs(My) / Mply, uNM, uM: Math.max(uNM, n) });
+      }
+    } else {
+      const W0 = cl.cls === 4 ? weffBending(s, fy).Weff : s.Wely;
+      const Wy = s.shape === 'CHS' ? (1 - rho) * W0 : W0 - rho * s.nw * s.tw * hw ** 3 / (6 * s.h);
+      const Wz = (1 - Math.max(rhoZ, s.shape === 'CHS' ? rho : 0)) * s.Welz;
+      const Aeff = N > 0 ? comp.Aeff : s.A;
+      const sig = s.shape === 'CHS' ? Math.abs(N) / Aeff + Math.hypot(My, Mz) / Wy
+        : Math.abs(N) / Aeff + Math.abs(My) / Wy + Math.abs(Mz) / Wz;              // 6.2.9.2 / 6.2.9.3, eN = 0
+      Object.assign(out, { method: cl.cls === 4 ? 'effective' : 'elastic', W0, Wy, Wz, Aeff, uNM: sig / (fy / GM0), uMy: Math.abs(My) / (Wy * fy / GM0) });
+      out.uM = out.uNM;
+    }
+    if (sh.slender) {               // EN 1993-1-5 7.1(1): eta1 + (1 - Mf,Rd/Mpl,Rd)(2 eta3 - 1)^2 <= 1 for eta3 > 0.5
+      const eta3 = Math.abs(V) / sh.Vb;
+      if (eta3 > 0.5) {
+        const Af = 2 * s.b * s.tf, n = Math.abs(N) / (s.A * fy / GM0), a = Math.min(0.5, (s.A - Af) / s.A);
+        const Mpl = s.Wply * fy / GM0;                                     // irrespective of class (7.1(1))
+        const MplN = Math.max(0, s.shape === 'RHS' || n > Math.min(0.25, 0.5 * s.nw * hw * s.tw / s.A) ? Math.min(Mpl, Mpl * (1 - n) / (1 - 0.5 * a)) : Mpl);   // 6.2.9.1 (6.36)/(6.39), <= Mpl
+        const Mf = Math.max(0, s.b * s.tf * (s.h - s.tf) * fy / GM0 * (1 - Math.abs(N) / (Af * fy / GM0)));      // 5.4(2)
+        const Mv = MplN - (MplN - Mf) * (2 * Math.min(1, eta3) - 1) ** 2;
+        const u71 = Math.abs(My) <= 1e-6 ? 0 : Mv > 0 ? Math.abs(My) / Mv : Infinity;
+        out.en71 = { eta3, Mpl: MplN, Mf, Mv, u: u71 };
+        out.uM = Math.max(out.uM, u71);
+      }
+    }
+    out.util = Math.max(out.uV, out.uM, out.uN);
+    return out;
+  }
+
+  // ---------- Resistance to transverse forces, EN 1993-1-5 section 6 (unstiffened webs of I sections and channels) ----------
+  // type 'a': force applied through one flange and resisted by shear in the web (internal supports, point loads);
+  // type 'c': force near an unstiffened end, c = distance from the end of the member to the edge of the bearing.
+  // ss: stiff bearing length (6.3). fyf = fyw. Flange width for m1 limited to 15 eps tf each side of the web (6.5(1)).
+  function webBearing(s, fy, { ss, c = 0, type = 'a' }) {
+    if (isHollow(s)) throw new Error('Web bearing to BS EN 1993-1-5 section 6 is for I sections and channels');
+    const eps = Math.sqrt(235 / fy), hw = s.h - 2 * s.tf, tw = s.tw, tf = s.tf;
+    const bfEff = s.shape === 'PFC' ? Math.min(s.b, tw + 15 * eps * tf) : Math.min(s.b, tw + 30 * eps * tf);
+    const kF = type === 'c' ? Math.min(6, 2 + 6 * (ss + c) / hw) : 6;          // 6.4, no transverse stiffeners
+    const Fcr = 0.9 * kF * E * tw ** 3 / hw;                                 // (6.5)
+    const m1 = bfEff / tw;                                                   // (6.8), fyf = fyw
+    const calc = m2 => {
+      const lyA = ss + 2 * tf * (1 + Math.sqrt(m1 + m2));                     // (6.10)
+      let ly = lyA, le = null;
+      if (type === 'c') {
+        le = Math.min(kF * E * tw * tw / (2 * fy * hw), ss + c);             // (6.13)
+        ly = Math.min(lyA, le + tf * Math.sqrt(m1 / 2 + (le / tf) ** 2 + m2), le + tf * Math.sqrt(m1 + m2));   // (6.11), (6.12)
+      }
+      return { ly, le, lamF: Math.sqrt(ly * tw * fy / Fcr) };                // (6.4)
+    };
+    let m2 = 0.02 * (hw / tf) ** 2, r = calc(m2);                            // (6.9): m2 applies only if lambda_F > 0.5
+    if (r.lamF <= 0.5) { m2 = 0; r = calc(0); }
+    const chiF = Math.min(1, 0.5 / r.lamF), Leff = chiF * r.ly;              // (6.3), (6.2)
+    return { type, ss, c, hw, bfEff, kF, Fcr, m1, m2, ly: r.ly, le: r.le, lamF: r.lamF, chiF, Leff, FRd: fy * Leff * tw / GM1 };   // (6.1)
+  }
+
+  // ---------- Buckling curves ----------
+  const ALPHA = { a0: 0.13, a: 0.21, b: 0.34, c: 0.49, d: 0.76 };
+  function fbCurves(s, grade) {               // Table 6.2
+    const hi = grade === 'S460';
+    if (isHollow(s)) { const c = s.cold ? 'c' : hi ? 'a0' : 'a'; return { y: c, z: c }; }
+    if (s.shape === 'PFC') return { y: 'c', z: 'c' };            // U-sections
+    const hb = s.h / s.b, t = s.tf;
+    if (!s.rolled) return t <= 40 ? { y: 'b', z: 'c' } : { y: 'c', z: 'd' };
+    if (hb > 1.2) return t <= 40 ? (hi ? { y: 'a0', z: 'a0' } : { y: 'a', z: 'b' }) : (hi ? { y: 'a', z: 'a' } : { y: 'b', z: 'c' });
+    return t <= 100 ? (hi ? { y: 'a', z: 'a' } : { y: 'b', z: 'c' }) : (hi ? { y: 'c', z: 'c' } : { y: 'd', z: 'd' });
+  }
+  function chiFlex(lam, curve) {              // 6.3.1.2
+    const a = ALPHA[curve], phi = 0.5 * (1 + a * (lam - 0.2) + lam * lam);
+    const chi = lam <= 0.2 ? 1 : Math.min(1, 1 / (phi + Math.sqrt(phi * phi - lam * lam)));
+    return { alpha: a, phi, chi };
+  }
+  // UK NA NA.2.17 for 6.3.2.3 (lambda_LT,0 = 0.4, beta = 0.75 for rolled sections and hot-finished and cold-formed hollow
+  // sections; 0.2 / 1.0 for welded) and its curve table; 6.3.2.2 otherwise. CHS: not susceptible to LTB.
+  function ltbParams(s) {
+    const hb = s.h / s.b;
+    if (s.shape === 'CHS') return { method: 'none', lam0: Infinity, beta: 1, curve: 'a', none: true };
+    if (s.shape === 'RHS') {
+      if (!s.cold) return { method: '6.3.2.3', lam0: 0.4, beta: 0.75, curve: hb <= 2 ? 'b' : hb <= 3.1 ? 'c' : 'd' };
+      return { method: '6.3.2.3', lam0: 0.4, beta: 0.75, curve: hb <= 2 ? 'c' : 'd' };
+    }
+    if (s.shape === 'PFC') return { method: '6.3.2.3', lam0: 0.4, beta: 0.75, curve: 'd' };   // all other hot-rolled sections
+    if (s.rolled) return { method: '6.3.2.3', lam0: 0.4, beta: 0.75, curve: hb <= 2 ? 'b' : hb <= 3.1 ? 'c' : 'd' };
+    if (hb <= 3.1) return { method: '6.3.2.3', lam0: 0.2, beta: 1.0, curve: hb <= 2 ? 'c' : 'd' };
+    return { method: '6.3.2.2', lam0: 0.2, beta: 1.0, curve: 'd' };
+  }
+  function chiLT(lam, MEd_over_Mcr, p, kc) {
+    const a = ALPHA[p.curve];
+    if (lam <= p.lam0 || MEd_over_Mcr <= p.lam0 * p.lam0) return { alpha: a, phi: null, chi: 1, f: 1, chiMod: 1, ignored: true };
+    const phi = 0.5 * (1 + a * (lam - p.lam0) + p.beta * lam * lam);
+    const chi = Math.min(1, 1 / (lam * lam), 1 / (phi + Math.sqrt(phi * phi - p.beta * lam * lam)));
+    let f = 1;
+    if (p.method === '6.3.2.3') f = Math.min(1, 1 - 0.5 * (1 - kc) * (1 - 2 * (lam - 0.8) ** 2));
+    const chiMod = Math.min(1, 1 / (lam * lam), chi / f);
+    return { alpha: a, phi, chi, f, chiMod, ignored: false };
+  }
+
+  // ---------- Elastic critical moment by finite elements ----------
+  // DOFs per node: [v, v', phi, phi']. Lateral displacement of a point at height z above the shear centre = v - z*phi.
+  // Second-order energy: -∫ M phi v'' dx - ½∫ q a phi² dx  (M sagging +, q downward +, a above shear centre +).
+  const GP = [0.0694318442029737, 0.3300094782075719, 0.6699905217924281, 0.9305681557970263];
+  const GW = [0.1739274225687269, 0.3260725774312731, 0.3260725774312731, 0.1739274225687269];
+  function hermite(xi, le) {
+    return {
+      N: [1 - 3 * xi * xi + 2 * xi ** 3, le * (xi - 2 * xi * xi + xi ** 3), 3 * xi * xi - 2 * xi ** 3, le * (-xi * xi + xi ** 3)],
+      B: [(-6 + 12 * xi) / (le * le), (-4 + 6 * xi) / le, (6 - 12 * xi) / (le * le), (-2 + 6 * xi) / le],
+      D: [6 * (xi * xi - xi) / le, 1 - 4 * xi + 3 * xi * xi, 6 * (xi - xi * xi) / le, 3 * xi * xi - 2 * xi] };
+  }
+  function symEigenvalues(A) {                // Householder tridiagonalisation + implicit QL (values only)
+    const n = A.length, a = A.map(r => Float64Array.from(r)), d = new Float64Array(n), e = new Float64Array(n);
+    for (let i = n - 1; i > 0; i--) {
+      const l = i - 1; let h = 0, scale = 0;
+      if (l > 0) {
+        for (let k = 0; k <= l; k++) scale += Math.abs(a[i][k]);
+        if (scale === 0) e[i] = a[i][l];
+        else {
+          for (let k = 0; k <= l; k++) { a[i][k] /= scale; h += a[i][k] * a[i][k]; }
+          let f = a[i][l], g = f >= 0 ? -Math.sqrt(h) : Math.sqrt(h);
+          e[i] = scale * g; h -= f * g; a[i][l] = f - g; f = 0;
+          for (let j = 0; j <= l; j++) {
+            g = 0;
+            for (let k = 0; k <= j; k++) g += a[j][k] * a[i][k];
+            for (let k = j + 1; k <= l; k++) g += a[k][j] * a[i][k];
+            e[j] = g / h; f += e[j] * a[i][j];
+          }
+          const hh = f / (h + h);
+          for (let j = 0; j <= l; j++) {
+            f = a[i][j]; e[j] = g = e[j] - hh * f;
+            for (let k = 0; k <= j; k++) a[j][k] -= (f * e[k] + g * a[i][k]);
+          }
+        }
+      } else e[i] = a[i][l];
+      d[i] = h;
+    }
+    for (let i = 0; i < n; i++) d[i] = a[i][i];
+    for (let i = 1; i < n; i++) e[i - 1] = e[i];
+    e[n - 1] = 0;
+    for (let l = 0; l < n; l++) {
+      let iter = 0, m;
+      do {
+        for (m = l; m < n - 1; m++) { const dd = Math.abs(d[m]) + Math.abs(d[m + 1]); if (Math.abs(e[m]) <= 1e-14 * dd) break; }
+        if (m !== l) {
+          if (iter++ === 80) throw new Error('eigenvalue iteration did not converge');
+          let g = (d[l + 1] - d[l]) / (2 * e[l]), r = Math.hypot(g, 1);
+          g = d[m] - d[l] + e[l] / (g + (g >= 0 ? r : -r));
+          let s = 1, c = 1, p = 0, i, early = false;
+          for (i = m - 1; i >= l; i--) {
+            const f = s * e[i], b = c * e[i];
+            e[i + 1] = r = Math.hypot(f, g);
+            if (r === 0) { d[i + 1] -= p; e[m] = 0; early = true; break; }
+            s = f / r; c = g / r; g = d[i + 1] - p; r = (d[i] - g) * s + 2 * c * b;
+            p = s * r; d[i + 1] = g + p; g = c * r - b;
+          }
+          if (early) continue;
+          d[l] -= p; e[l] = g; e[m] = 0;
+        }
+      } while (m !== l);
+    }
+    return Array.from(d);
+  }
+
+  /* LTB finite element model of one segment (geometry, stiffness and restraints fixed; loads supplied later).
+     o: { L, EIz, GIt, EIw, hs, restraints:[{x, type:'fork'|'fixed'}], topRestrained, nEl, extraNodes:[x] }
+     Because the geometric stiffness is linear in the loads, C = L^-1 Kg L^-T can be formed per load group
+     and combined linearly per load combination; lambda = 1 / (largest positive eigenvalue of C). */
+  function ltbModel(o) {
+    const nEl = o.nEl || 16, L = o.L;
+    const raw = [0, L, ...o.restraints.map(r => r.x), ...(o.extraNodes || [])].map(x => Math.min(L, Math.max(0, x))).sort((x, y) => x - y);
+    const keys = [];
+    for (const x of raw) if (!keys.length || x - keys[keys.length - 1] > 1e-3) keys.push(x);
+    keys[0] = 0; if (L - keys[keys.length - 1] > 1e-3) keys.push(L); else keys[keys.length - 1] = L;
+    const nodes = [];
+    for (let i = 0; i < keys.length - 1; i++) {
+      const x0 = keys[i], x1 = keys[i + 1], k = Math.max(2, Math.round(nEl * (x1 - x0) / L));
+      for (let j = 0; j < k; j++) nodes.push(x0 + (x1 - x0) * j / k);
+    }
+    nodes.push(L);
+    const nn = nodes.length;
+    // Map each physical DOF [v, v', phi, phi'] to (generalised free DOF, coefficient); -1 = fixed.
+    // Top flange held laterally: v = c*phi, v' = c*phi' (c = hs/2), so only phi, phi' remain.
+    const c = o.hs / 2, top = !!o.topRestrained;
+    const nodeOf = x => { let b = 0; for (let i = 1; i < nn; i++) if (Math.abs(nodes[i] - x) < Math.abs(nodes[b] - x)) b = i; return b; };
+    const fixed = new Set();
+    for (const r of o.restraints) {
+      const i = nodeOf(r.x);
+      if (top) { fixed.add(2 * i); if (r.type === 'fixed') fixed.add(2 * i + 1); }
+      else { fixed.add(4 * i); fixed.add(4 * i + 2); if (r.type === 'fixed') { fixed.add(4 * i + 1); fixed.add(4 * i + 3); } }
+    }
+    const ngen = top ? 2 * nn : 4 * nn, gIdx = new Int32Array(ngen);
+    let n = 0;
+    for (let g = 0; g < ngen; g++) gIdx[g] = fixed.has(g) ? -1 : n++;
+    const map = new Int32Array(4 * nn), coef = new Float64Array(4 * nn);
+    for (let i = 0; i < nn; i++) {
+      if (top) { map[4 * i] = gIdx[2 * i]; coef[4 * i] = c; map[4 * i + 1] = gIdx[2 * i + 1]; coef[4 * i + 1] = c; map[4 * i + 2] = gIdx[2 * i]; coef[4 * i + 2] = 1; map[4 * i + 3] = gIdx[2 * i + 1]; coef[4 * i + 3] = 1; }
+      else for (let k = 0; k < 4; k++) { map[4 * i + k] = gIdx[4 * i + k]; coef[4 * i + k] = 1; }
+    }
+    const add = (A, p, q, v) => { const ip = map[p], iq = map[q]; if (ip < 0 || iq < 0 || v === 0) return; A[ip * n + iq] += coef[p] * coef[q] * v; };
+    const vD = [0, 1, 4, 5], pD = [2, 3, 6, 7];
+    const K = new Float64Array(n * n), ke = new Float64Array(64);
+    for (let e = 0; e < nn - 1; e++) {
+      const le = nodes[e + 1] - nodes[e], l2 = le * le, l3 = l2 * le;
+      const kb = [12, 6 * le, -12, 6 * le, 6 * le, 4 * l2, -6 * le, 2 * l2, -12, -6 * le, 12, -6 * le, 6 * le, 2 * l2, -6 * le, 4 * l2];
+      const ks = [36, 3 * le, -36, 3 * le, 3 * le, 4 * l2, -3 * le, -l2, -36, -3 * le, 36, -3 * le, 3 * le, -l2, -3 * le, 4 * l2];
+      ke.fill(0);
+      for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+        ke[vD[i] * 8 + vD[j]] = o.EIz * kb[i * 4 + j] / l3;
+        ke[pD[i] * 8 + pD[j]] = o.EIw * kb[i * 4 + j] / l3 + o.GIt * ks[i * 4 + j] / (30 * le);
+      }
+      for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) add(K, 4 * e + i, 4 * e + j, ke[i * 8 + j]);
+    }
+    for (let j = 0; j < n; j++) {               // Cholesky K = L L^T in place
+      let s = K[j * n + j];
+      for (let k = 0; k < j; k++) s -= K[j * n + k] * K[j * n + k];
+      if (s <= 0) throw new Error('Mcr model is unstable: check the lateral restraints');
+      const d = Math.sqrt(s); K[j * n + j] = d;
+      for (let i = j + 1; i < n; i++) { let t = K[i * n + j]; for (let k = 0; k < j; k++) t -= K[i * n + k] * K[j * n + k]; K[i * n + j] = t / d; }
+    }
+    // Kg for a loading: M (moment fn, sagging +), q (N/mm downward fn), P [{x,P}], a (load height above shear centre).
+    // Monosymmetric sections: o.zj (Wagner, mm, positive when the top flange - in compression under sagging - is the larger)
+    // adds the term 1/2 int M (2 z_j) phi'^2 to the second-order energy (stabilising when M z_j > 0).
+    const zj = o.zj || 0;
+    function kg(M, q, P, a) {
+      const Kg = new Float64Array(n * n), kge = new Float64Array(64);
+      for (let e = 0; e < nn - 1; e++) {
+        const x0 = nodes[e], le = nodes[e + 1] - x0;
+        kge.fill(0);
+        for (let g = 0; g < 4; g++) {
+          const xi = GP[g], x = x0 + xi * le, w = GW[g] * le, h = hermite(xi, le), m = M ? M(x) : 0, qa = a && q ? q(x) * a : 0;
+          for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+            const cpl = w * m * h.N[i] * h.B[j];   // phi_i x v''_j : Kg = d²/du² of [∫M phi v'' + ½∫q a phi²]
+            kge[pD[i] * 8 + vD[j]] += cpl; kge[vD[j] * 8 + pD[i]] += cpl;
+            if (qa) kge[pD[i] * 8 + pD[j]] += w * qa * h.N[i] * h.N[j];
+            if (zj && m) kge[pD[i] * 8 + pD[j]] -= 2 * w * m * zj * h.D[i] * h.D[j];
+          }
+        }
+        for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) add(Kg, 4 * e + i, 4 * e + j, kge[i * 8 + j]);
+      }
+      if (a && P) for (const p of P) { const i = nodeOf(p.x); if (Math.abs(nodes[i] - p.x) < 1e-3) add(Kg, 4 * i + 2, 4 * i + 2, p.P * a); }
+      return Kg;
+    }
+    function toC(Kg) {                          // C = L^-1 Kg L^-T (flat, symmetric)
+      const Z = new Float64Array(n * n), C = new Float64Array(n * n);
+      for (let col = 0; col < n; col++) for (let i = 0; i < n; i++) {
+        let s = Kg[i * n + col];
+        for (let k = 0; k < i; k++) s -= K[i * n + k] * Z[k * n + col];
+        Z[i * n + col] = s / K[i * n + i];
+      }
+      for (let row = 0; row < n; row++) for (let i = 0; i < n; i++) {
+        let s = Z[row * n + i];
+        for (let k = 0; k < i; k++) s -= K[i * n + k] * C[row * n + k];
+        C[row * n + i] = s / K[i * n + i];
+      }
+      for (let i = 0; i < n; i++) for (let j = 0; j < i; j++) { const v = 0.5 * (C[i * n + j] + C[j * n + i]); C[i * n + j] = C[j * n + i] = v; }
+      return C;
+    }
+    function lambda(C) {                        // critical load factor
+      const rows = [];
+      for (let i = 0; i < n; i++) rows.push(C.subarray(i * n, i * n + n));
+      const mu = symEigenvalues(rows);
+      let muMax = -Infinity, scale = 0;
+      for (const v of mu) { if (v > muMax) muMax = v; if (Math.abs(v) > scale) scale = Math.abs(v); }
+      return muMax > 1e-9 * scale && muMax > 0 ? 1 / muMax : Infinity;
+    }
+    return { n, nodes, kg, toC, lambda };
+  }
+
+  /* o: { L, EIz, GIt, EIw, hs, M:x=>N.mm, q:x=>N/mm (opt), P:[{x,P}] (opt), a (mm, opt),
+          restraints:[{x, type:'fork'|'fixed'}], topRestrained:bool, nEl }
+     Returns the critical load factor lambda on the given loading (Infinity when no positive buckling load exists). */
+  function mcrFE(o) {
+    const a = o.a || 0, P = o.P || [];
+    const md = ltbModel({ ...o, extraNodes: a ? P.map(p => p.x) : [] });
+    return md.lambda(md.toC(md.kg(o.M, o.q, P, a)));
+  }
+
+  /* Critical axial force by finite elements (2 DOF/node Hermite) for EI w_iv + (N i02 - GJ) w_ii = 0.
+     Flexural buckling: EI = EIz (or EIy), GJ = 0, i02 = 1.  Torsional buckling (6.3.1.4): EI = EIw, GJ = GIt, i02 = i0^2.
+     o: { L, EI, GJ, i02, restraints:[{x, type:'pin'|'fork'|'fixed'}], nEl }. Returns Ncr (0 for a mechanism). */
+  function ncrFE(o) {
+    const L = o.L, GJ = o.GJ || 0, i02 = o.i02 || 1, nEl = o.nEl || 40;
+    const keys = [...new Set([0, L, ...o.restraints.map(r => Math.min(L, Math.max(0, r.x)))].map(x => +x.toFixed(3)))].sort((a, b) => a - b);
+    const nodes = [];
+    for (let i = 0; i < keys.length - 1; i++) {
+      const x0 = keys[i], x1 = keys[i + 1], k = Math.max(4, Math.round(nEl * (x1 - x0) / L));
+      for (let j = 0; j < k; j++) nodes.push(x0 + (x1 - x0) * j / k);
+    }
+    nodes.push(L);
+    const nn = nodes.length, nodeOf = x => { let b = 0; for (let i = 1; i < nn; i++) if (Math.abs(nodes[i] - x) < Math.abs(nodes[b] - x)) b = i; return b; };
+    const fixed = new Set();
+    for (const r of o.restraints) { const i = nodeOf(r.x); fixed.add(2 * i); if (r.type === 'fixed') fixed.add(2 * i + 1); }
+    const idx = new Int32Array(2 * nn); let n = 0;
+    for (let g = 0; g < 2 * nn; g++) idx[g] = fixed.has(g) ? -1 : n++;
+    const K = new Float64Array(n * n), Gm = new Float64Array(n * n);
+    for (let e = 0; e < nn - 1; e++) {
+      const le = nodes[e + 1] - nodes[e], l2 = le * le, l3 = l2 * le;
+      const kb = [12, 6 * le, -12, 6 * le, 6 * le, 4 * l2, -6 * le, 2 * l2, -12, -6 * le, 12, -6 * le, 6 * le, 2 * l2, -6 * le, 4 * l2];
+      const ks = [36, 3 * le, -36, 3 * le, 3 * le, 4 * l2, -3 * le, -l2, -36, -3 * le, 36, -3 * le, 3 * le, -l2, -3 * le, 4 * l2];
+      for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+        const p = idx[2 * e + i], q = idx[2 * e + j]; if (p < 0 || q < 0) continue;
+        K[p * n + q] += o.EI * kb[i * 4 + j] / l3 + GJ * ks[i * 4 + j] / (30 * le);
+        Gm[p * n + q] += i02 * ks[i * 4 + j] / (30 * le);
+      }
+    }
+    for (let j = 0; j < n; j++) {               // Cholesky K = L L^T
+      let s = K[j * n + j];
+      for (let k = 0; k < j; k++) s -= K[j * n + k] * K[j * n + k];
+      if (s <= 1e-9 * Math.abs(K[j * n + j] || 1)) return 0;   // mechanism: no stability under any compression
+      const d = Math.sqrt(s); K[j * n + j] = d;
+      for (let i = j + 1; i < n; i++) { let t = K[i * n + j]; for (let k = 0; k < j; k++) t -= K[i * n + k] * K[j * n + k]; K[i * n + j] = t / d; }
+    }
+    const Z = new Float64Array(n * n), C = new Float64Array(n * n);
+    for (let col = 0; col < n; col++) for (let i = 0; i < n; i++) { let s = Gm[i * n + col]; for (let k = 0; k < i; k++) s -= K[i * n + k] * Z[k * n + col]; Z[i * n + col] = s / K[i * n + i]; }
+    for (let row = 0; row < n; row++) for (let i = 0; i < n; i++) { let s = Z[row * n + i]; for (let k = 0; k < i; k++) s -= K[i * n + k] * C[row * n + k]; C[row * n + i] = s / K[i * n + i]; }
+    for (let i = 0; i < n; i++) for (let j = 0; j < i; j++) { const v = 0.5 * (C[i * n + j] + C[j * n + i]); C[i * n + j] = C[j * n + i] = v; }
+    const rows = []; for (let i = 0; i < n; i++) rows.push(C.subarray(i * n, i * n + n));
+    const mu = Math.max(...symEigenvalues(rows));
+    return mu > 0 ? 1 / mu : Infinity;
+  }
+
+  // Closed-form Mcr for uniform moment between forks (used for reporting C1)
+  function mcrUniform(s, L) {
+    return Math.PI / L * Math.sqrt(E * s.Iz * G * s.It * (1 + Math.PI ** 2 * E * s.Iw / (L * L * G * s.It)));
+  }
+
+  // ---------- Equivalent uniform moment factors, Annex B Table B.3 ----------
+  function cmFactor(xs, Ms, hasUdl, hasPoint) {
+    const n = xs.length, L = xs[n - 1] - xs[0];
+    const Ma = Ms[0], Mb = Ms[n - 1];
+    const lin = x => Ma + (Mb - Ma) * (x - xs[0]) / L;
+    let kmax = -1, tmax = 0;
+    for (let k = 1; k < n - 1; k++) { const t = Math.abs(Ms[k] - lin(xs[k])); if (t > tmax) { tmax = t; kmax = k; } }
+    const Mh = Math.abs(Ma) >= Math.abs(Mb) ? Ma : Mb, Mo = Mh === Ma ? Mb : Ma;
+    const scale = Math.max(...Ms.map(Math.abs));
+    if (scale === 0) return { Cm: 1, row: 'zero' };
+    const psi = Mh !== 0 ? Mo / Mh : 1;
+    if (tmax <= 1e-6 * scale || kmax < 0) return { Cm: Math.max(0.4, 0.6 + 0.4 * psi), row: 'linear', psi };
+    const Mss = Ms[kmax];
+    const f = (udl, pt) => Math.max(0.4, hasUdl && hasPoint ? Math.max(udl, pt) : hasPoint ? pt : udl);
+    if (Math.abs(Mss) <= Math.abs(Mh)) {
+      const as = Mss / Mh;
+      let Cm;
+      if (as >= 0) Cm = f(0.2 + 0.8 * as, 0.2 + 0.8 * as);
+      else if (psi >= 0) Cm = f(0.1 - 0.8 * as, -0.8 * as);
+      else Cm = f(0.1 * (1 - psi) - 0.8 * as, 0.2 * (-psi) - 0.8 * as);
+      return { Cm, row: 'alpha_s', psi, alphaS: as, Ms: Mss, Mh };
+    }
+    const ah = Mh / Mss;
+    let Cm;
+    if (ah >= 0 || psi >= 0) Cm = f(0.95 + 0.05 * ah, 0.90 + 0.10 * ah);
+    // last row, concentrated load: printed copies are reported to read 0.90 - 0.10 ah(1+2psi), which does not join the row
+    // above at psi = 0; until checked against BS EN 1993-1-1 + AC:2009 the larger of the two readings is taken
+    else Cm = f(0.95 + 0.05 * ah * (1 + 2 * psi), 0.90 + 0.10 * Math.abs(ah * (1 + 2 * psi)));
+    return { Cm, row: 'alpha_h', psi, alphaH: ah, Ms: Mss, Mh };
+  }
+
+  // ---------- Interaction factors, Annex B (Method 2) ----------
+  function annexB({ cls, lamY, lamZ, nY, nZ, Cmy, Cmz, CmLT, torsional }) {
+    let kyy, kzz, kyz, kzy;
+    if (cls <= 2) {
+      kyy = Cmy * Math.min(1 + (lamY - 0.2) * nY, 1 + 0.8 * nY);
+      kzz = Cmz * Math.min(1 + (2 * lamZ - 0.6) * nZ, 1 + 1.4 * nZ);
+      kyz = 0.6 * kzz;
+      if (!torsional) kzy = 0.6 * kyy;
+      else if (lamZ < 0.4) kzy = Math.min(0.6 + lamZ, 1 - 0.1 * lamZ * nZ / (CmLT - 0.25));
+      else kzy = Math.max(1 - 0.1 * lamZ * nZ / (CmLT - 0.25), 1 - 0.1 * nZ / (CmLT - 0.25));
+    } else {
+      kyy = Cmy * Math.min(1 + 0.6 * lamY * nY, 1 + 0.6 * nY);
+      kzz = Cmz * Math.min(1 + 0.6 * lamZ * nZ, 1 + 0.6 * nZ);
+      kyz = kzz;
+      kzy = !torsional ? 0.8 * kyy : Math.max(1 - 0.05 * lamZ * nZ / (CmLT - 0.25), 1 - 0.05 * nZ / (CmLT - 0.25));
+    }
+    return { kyy, kyz, kzy, kzz };
+  }
+
+  // ---------- Interaction factors, Annex A (Method 1) ----------
+  // o: { cls, N, My, Mz, NRk, chiY, chiZ, lamY, lamZ, Ncry, Ncrz, NcrT, NcrTF, Cmy0, Cmz0, lam0, C1, chiLT, aLT,
+  //      Wply, Wely, Wplz, Welz, fy, epsY (My/N A/Wel, or Aeff/Weff for Class 4), torsional (open section) }
+  function annexA(o) {
+    const n = o.N, ry = n / o.Ncry, rz = n / o.Ncrz;
+    const muY = (1 - ry) / (1 - o.chiY * ry), muZ = (1 - rz) / (1 - o.chiZ * rz);
+    const aLT = o.torsional ? Math.max(0, o.aLT) : 0;
+    // Table A.2: Cm factors; lam0 limit with C1 and the torsional(-flexural) critical forces
+    const NcrTF = o.NcrTF ?? o.NcrT;
+    const lim0 = 0.2 * Math.sqrt(o.C1 || 1) * Math.pow(Math.max(0, (1 - rz) * (1 - (Number.isFinite(NcrTF) ? n / NcrTF : 0))), 0.25);
+    let Cmy, Cmz = o.Cmz0, CmLT, small = !(o.lam0 > lim0);
+    if (small || !o.torsional) { Cmy = o.Cmy0; CmLT = 1.0; }
+    else {
+      const se = Number.isFinite(o.epsY) ? Math.sqrt(o.epsY) * aLT : Infinity;
+      Cmy = se === Infinity ? 1 : o.Cmy0 + (1 - o.Cmy0) * se / (1 + se);
+      const tT = Number.isFinite(o.NcrT) ? n / o.NcrT : 0;
+      CmLT = Math.max(1, Cmy * Cmy * aLT / Math.sqrt(Math.max(1e-12, (1 - rz) * (1 - tT))));
+    }
+    const chiLT = o.torsional ? o.chiLT : 1;
+    let kyy, kyz, kzy, kzz, C = null;
+    if (o.cls <= 2) {
+      const wy = Math.min(1.5, o.Wply / o.Wely), wz = Math.min(1.5, o.Wplz / o.Welz);
+      const npl = n / (o.NRk / GM1), lmax = Math.max(o.lamY, o.lamZ);
+      const MplyRd = o.Wply * o.fy / GM1, MplzRd = o.Wplz * o.fy / GM1, l0 = o.lam0 || 0, lz4 = o.lamZ ** 4;
+      const bLT = 0.5 * aLT * l0 * l0 * (o.My / (chiLT * MplyRd)) * (o.Mz / MplzRd);
+      const cLT = 10 * aLT * l0 * l0 / (5 + lz4) * o.My / (Cmy * chiLT * MplyRd);
+      const dLT = 2 * aLT * l0 / (0.1 + lz4) * o.My / (Cmy * chiLT * MplyRd) * o.Mz / (Cmz * MplzRd);
+      const eLT = 1.7 * aLT * l0 / (0.1 + lz4) * o.My / (Cmy * chiLT * MplyRd);
+      const Cyy = Math.max(o.Wely / o.Wply, 1 + (wy - 1) * ((2 - 1.6 / wy * Cmy * Cmy * lmax - 1.6 / wy * Cmy * Cmy * lmax * lmax) * npl - bLT));
+      const Cyz = Math.max(0.6 * Math.sqrt(wz / wy) * o.Welz / o.Wplz, 1 + (wz - 1) * ((2 - 14 * Cmz * Cmz * lmax * lmax / wz ** 5) * npl - cLT));
+      const Czy = Math.max(0.6 * Math.sqrt(wy / wz) * o.Wely / o.Wply, 1 + (wy - 1) * ((2 - 14 * Cmy * Cmy * lmax * lmax / wy ** 5) * npl - dLT));
+      // Czz as corrected by EN 1993-1-1:2005/AC:2009 (eLT inside the bracket multiplied by npl)
+      const Czz = Math.max(o.Welz / o.Wplz, 1 + (wz - 1) * (2 - 1.6 / wz * Cmz * Cmz * lmax - 1.6 / wz * Cmz * Cmz * lmax * lmax - eLT) * npl);
+      kyy = Cmy * CmLT * muY / (1 - ry) / Cyy;
+      kyz = Cmz * muY / (1 - rz) / Cyz * 0.6 * Math.sqrt(wz / wy);          // Table A.1: kyz with Cyz, kzy with Czy
+      kzy = Cmy * CmLT * muZ / (1 - ry) / Czy * 0.6 * Math.sqrt(wy / wz);
+      kzz = Cmz * muZ / (1 - rz) / Czz;
+      C = { wy, wz, npl, lmax, bLT, cLT, dLT, eLT, Cyy, Cyz, Czy, Czz };
+    } else {
+      kyy = Cmy * CmLT * muY / (1 - ry);
+      kyz = Cmz * muY / (1 - rz);
+      kzy = Cmy * CmLT * muZ / (1 - ry);
+      kzz = Cmz * muZ / (1 - rz);
+    }
+    return { kyy, kyz, kzy, kzz, Cmy, Cmz, CmLT, muY, muZ, aLT, lim0, lam0: o.lam0, C1: o.C1, smallLam0: small, C };
+  }
+  // Table A.2 Cmi,0: end moments only (psi = ratio of end moments) or transverse loading (general expression)
+  function cm0Linear(psi, N, Ncr) { return 0.79 + 0.21 * psi + 0.36 * (psi - 0.33) * N / Ncr; }
+  function cm0Transverse(EI, L, delta, Mmax, N, Ncr) { return Mmax > 0 ? 1 + (Math.PI ** 2 * EI * Math.abs(delta) / (L * L * Math.abs(Mmax)) - 1) * N / Ncr : 1; }
+
+  return { E, G, GM0, GM1, ETA, GRADES, ALPHA, yieldStrength, fromRow, fromRowPFC, customI, rhs, chs, hollowRadii, isHollow, spandrel, classify, webBearing, internalLimits, kSigmaInternal, rhoInternal, rhoOutstand, aeffCompression, weffBending, wyByClass, ncrFE, shear, shearZ, chsMN,
+    sectionCheck, fbCurves, chiFlex, ltbParams, chiLT, ltbModel, mcrFE, mcrUniform, cmFactor, annexB, annexA, cm0Linear, cm0Transverse, symEigenvalues };
+})();
+if (typeof module !== 'undefined') module.exports = { EC3 };
+
+/* ===== 2D FRAME ANALYSIS ENGINE (EngineeringTools) =====
+   Plane frames and trusses by the direct stiffness method. Euler-Bernoulli members with axial stiffness; a moment release
+   gives the member end its own rotation degree of freedom (a member released at both ends is a truss bar); nodal supports
+   with fixed or spring degrees of freedom; nodal forces and member loads (point loads, point moments, full or partial
+   trapezoidal distributed loads in global, projected or local directions, self weight); load cases, linear combinations
+   and envelopes; optional second-order analysis (P-Delta by the consistent geometric stiffness, iterated per combination)
+   and the elastic critical load factor alpha_cr (exact stability-function member stiffness, Wittrick-Williams count). Results
+   along each member by statics (N, V, M) and by integrating the curvature (deflection). Skyline LDL^T solver with reverse
+   Cuthill-McKee ordering, one factorisation shared by all first-order load cases and combinations.
+   Units: m, kN, kNm; sections A (cm2), I (cm4), E (GPa = kN/mm2), mass (kg/m). Global x right, y up, anticlockwise rotations
+   and moments positive; member local x from end i to end j, local y 90 degrees anticlockwise from local x; internal N
+   tension positive, M sagging positive (tension on the local -y face), V = dM/dx. */
+const Frame2D = (() => {
+  'use strict';
+  const G = 9.81;
+  const props = (sec, L) => { const EA = sec.E * 1e6 * sec.A * 1e-4, EI = Math.max(sec.E * 1e6 * sec.I * 1e-8, 1e-9 * EA * L * L); return { EA, EI, w: (sec.mass || 0) * G / 1000 }; };
+  function kLocal(EA, EI, L) {
+    const a = EA / L, b = 12 * EI / L ** 3, c = 6 * EI / L ** 2, d = 4 * EI / L, e = 2 * EI / L;
+    return [[a, 0, 0, -a, 0, 0], [0, b, c, 0, -b, c], [0, c, d, 0, -c, e], [-a, 0, 0, a, 0, 0], [0, -b, -c, 0, b, -c], [0, c, e, 0, -c, d]];
+  }
+  function kgLocal(N, L) {   // consistent geometric stiffness, N tension positive
+    const f = N / L, k = Array.from({ length: 6 }, () => new Array(6).fill(0));
+    const t = [[6 / 5, L / 10, -6 / 5, L / 10], [L / 10, 2 * L * L / 15, -L / 10, -L * L / 30], [-6 / 5, -L / 10, 6 / 5, -L / 10], [L / 10, -L * L / 30, -L / 10, 2 * L * L / 15]], ix = [1, 2, 4, 5];
+    for (let p = 0; p < 4; p++) for (let q = 0; q < 4; q++) k[ix[p]][ix[q]] = f * t[p][q];
+    return k;
+  }
+  const barK = (EA, L) => { const k = Array.from({ length: 6 }, () => new Array(6).fill(0)), a = EA / L; k[0][0] = k[3][3] = a; k[0][3] = k[3][0] = -a; return k; };
+  const barKg = (N, L) => { const k = Array.from({ length: 6 }, () => new Array(6).fill(0)), f = N / L; k[1][1] = k[4][4] = f; k[1][4] = k[4][1] = -f; return k; };
+  // simply supported equivalent loads of a pin-ended bar from the fixed-end (consistent) vector
+  const ssLoads = (p, L) => { const m = (p[2] + p[5]) / L; return [p[0], p[1] - m, 0, p[3], p[4] + m, 0]; };
+  const T6 = (c, s) => [[c, s, 0, 0, 0, 0], [-s, c, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0], [0, 0, 0, c, s, 0], [0, 0, 0, -s, c, 0], [0, 0, 0, 0, 0, 1]];
+  const mv = (A, v) => A.map(r => r.reduce((t, x, k) => t + x * v[k], 0));
+  const mtv = (A, v) => A[0].map((_, j) => A.reduce((t, r, k) => t + r[j] * v[k], 0));
+  const rot = (k, c, s) => {   // T^T k T, T = diag(R, R), R = [[c, s, 0], [-s, c, 0], [0, 0, 1]]
+    const R = [[c, s, 0], [-s, c, 0], [0, 0, 1]], out = [new Array(6), new Array(6), new Array(6), new Array(6), new Array(6), new Array(6)], t = [0, 0, 0];
+    for (let I = 0; I < 6; I += 3) for (let J = 0; J < 6; J += 3) for (let i = 0; i < 3; i++) {
+      for (let b = 0; b < 3; b++) t[b] = R[0][i] * k[I][J + b] + R[1][i] * k[I + 1][J + b] + R[2][i] * k[I + 2][J + b];   // (R^T k)_ib
+      for (let j = 0; j < 3; j++) out[I + i][J + j] = t[0] * R[0][j] + t[1] * R[1][j] + t[2] * R[2][j];
+    }
+    return out;
+  };
+  // ---------- model preparation: dof numbering (3 per node + one per released member end) ----------
+  function prepare(m) {
+    if (!m.nodes.length) throw new Error('Add nodes and members to analyse');
+    const idx = new Map(m.nodes.map((n, k) => [n.id, k])), names = [];
+    m.nodes.forEach(n => names.push(`node ${n.id} x`, `node ${n.id} y`, `node ${n.id} rotation`));
+    let n = 3 * m.nodes.length;
+    const mems = m.members.map(mem => {
+      const a = m.nodes[idx.get(mem.i)], b = m.nodes[idx.get(mem.j)];
+      if (!a || !b) throw new Error(`Member ${mem.id}: missing node`);
+      const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy);
+      if (!(L > 1e-6)) throw new Error(`Member ${mem.id} has zero length`);
+      if (!(mem.sec && mem.sec.A > 0 && mem.sec.E > 0)) throw new Error(`Member ${mem.id}: section area and modulus must be positive`);
+      const ri = !!(mem.relI || mem.truss), rj = !!(mem.relJ || mem.truss), ia = idx.get(mem.i), ja = idx.get(mem.j), bar = ri && rj;
+      // pinned at both ends: a bar (axial stiffness, string geometric stiffness, simply supported member loads); one release: own end rotation dof
+      const dof = [3 * ia, 3 * ia + 1, ri && !bar ? (names.push(`member ${mem.id} end i rotation`), n++) : 3 * ia + 2, 3 * ja, 3 * ja + 1, rj && !bar ? (names.push(`member ${mem.id} end j rotation`), n++) : 3 * ja + 2];
+      return { mem, L, c: dx / L, s: dy / L, ...props(mem.sec, L), dof, bar };
+    });
+    const groups = m.nodes.map((_, k) => [3 * k, 3 * k + 1, 3 * k + 2]); for (let d = 3 * m.nodes.length; d < n; d++) groups.push([d]);
+    const byMem = new Map(); for (const ld of m.loads || []) if (ld.member != null) { if (!byMem.has(ld.member)) byMem.set(ld.member, []); byMem.get(ld.member).push(ld); }
+    return { idx, nodes: m.nodes, mems, n, names, groups, byMem, perm: order(n, groups, mems.map(e => e.dof)) };
+  }
+  // ---------- profile (skyline) LDL^T solver with reverse Cuthill-McKee ordering ----------
+  function order(n, groups, elems) {
+    const gOf = new Int32Array(n).fill(-1); groups.forEach((g, k) => g.forEach(d => { gOf[d] = k; }));
+    const adj = groups.map(() => new Set());
+    for (const el of elems) { const gs = [...new Set(el.map(d => gOf[d]))]; for (const x of gs) for (const y of gs) if (x !== y) adj[x].add(y); }
+    const deg = adj.map(q => q.size), seen = new Uint8Array(groups.length), seq = [];
+    while (seq.length < groups.length) {
+      let start = -1; for (let k = 0; k < groups.length; k++) if (!seen[k] && (start < 0 || deg[k] < deg[start])) start = k;
+      const q = [start]; seen[start] = 1;
+      for (let h = 0; h < q.length; h++) { const g = q[h]; seq.push(g); [...adj[g]].filter(x => !seen[x]).sort((x, y) => deg[x] - deg[y]).forEach(x => { seen[x] = 1; q.push(x); }); }
+    }
+    seq.reverse();
+    const perm = new Int32Array(n); let k = 0; for (const g of seq) for (const d of groups[g]) perm[d] = k++;
+    return perm;
+  }
+  function sky(n, perm, elems) {
+    const f = new Int32Array(n); for (let i = 0; i < n; i++) f[i] = i;
+    for (const el of elems) { let lo = n; for (const d of el) lo = Math.min(lo, perm[d]); for (const d of el) if (lo < f[perm[d]]) f[perm[d]] = lo; }
+    const ptr = new Int32Array(n + 1); for (let j = 0; j < n; j++) ptr[j + 1] = ptr[j] + (j - f[j] + 1);
+    const a = new Float64Array(ptr[n]), d = new Float64Array(n), fixedNew = new Uint8Array(n);
+    const at = (p, q) => ptr[q] + p - f[q];
+    return {
+      addEl(dofs, k) { for (let x = 0; x < dofs.length; x++) for (let y = 0; y < dofs.length; y++) { const p = perm[dofs[x]], q = perm[dofs[y]]; if (p <= q && k[x][y]) a[at(p, q)] += k[x][y]; } },
+      addDiag(i, v) { const q = perm[i]; a[at(q, q)] += v; },
+      diag(i) { const q = perm[i]; return a[at(q, q)]; },
+      fix(i) { const q = perm[i]; fixedNew[q] = 1; for (let p = f[q]; p < q; p++) a[at(p, q)] = 0; for (let j = q + 1; j < n; j++) if (f[j] <= q) a[at(q, j)] = 0; a[at(q, q)] = 1; },
+      factor(countOnly = false) {   // returns { neg, zero (new index of the first zero pivot, -1 if none) }
+        let scale = 0; for (let j = 0; j < n; j++) scale = Math.max(scale, Math.abs(a[at(j, j)]));
+        let neg = 0;
+        for (let j = 0; j < n; j++) {
+          const fj = f[j], pj = ptr[j];
+          for (let i = fj + 1; i < j; i++) { const fi = f[i], pi = ptr[i], r0 = Math.max(fi, fj); let sm = 0; for (let r = r0; r < i; r++) sm += a[pi + r - fi] * a[pj + r - fj]; a[pj + i - fj] -= sm; }
+          let dj = a[pj + j - fj];
+          for (let i = fj; i < j; i++) { const g = a[pj + i - fj], l = g / d[i]; a[pj + i - fj] = l; dj -= l * g; }
+          if (countOnly) { if (dj === 0 || !Number.isFinite(dj)) dj = -1e-300; }   // Sturm count: sign only
+          else if (!(Math.abs(dj) > 1e-12 * scale)) return { neg, zero: j };
+          if (dj < 0) neg++;
+          d[j] = dj; a[pj + j - fj] = dj;
+        }
+        return { neg, zero: -1 };
+      },
+      solve(bOld) {
+        const b = new Float64Array(n); for (let i = 0; i < n; i++) b[perm[i]] = fixedNew[perm[i]] ? 0 : bOld[i];
+        for (let j = 0; j < n; j++) { const fj = f[j], pj = ptr[j]; let sm = 0; for (let i = fj; i < j; i++) sm += a[pj + i - fj] * b[i]; b[j] -= sm; }
+        for (let j = 0; j < n; j++) b[j] /= d[j];
+        for (let j = n - 1; j >= 0; j--) { const fj = f[j], pj = ptr[j], x = b[j]; for (let i = fj; i < j; i++) b[i] -= a[pj + i - fj] * x; }
+        const u = new Float64Array(n); for (let i = 0; i < n; i++) u[i] = fixedNew[perm[i]] ? 0 : b[perm[i]];
+        return u;
+      },
+      oldOf(q) { for (let i = 0; i < n; i++) if (perm[i] === q) return i; return -1; },
+    };
+  }
+  // ---------- member loads, local components ----------
+  function memberLoads(m, e, factors, list) {
+    const out = { dist: [], pts: [], mom: [] }, { L, c, s } = e;
+    const toLocal = (fx, fy) => [fx * c + fy * s, -fx * s + fy * c];
+    for (const ld of list || m.loads) {
+      const f = factors[ld.case]; if (!f || ld.member !== e.mem.id) continue;
+      if (ld.type === 'udl') {
+        const a = Math.max(0, Math.min(L, +ld.a || 0)), b = Math.max(a, Math.min(L, ld.b == null || ld.b === '' ? L : +ld.b));
+        if (b - a < 1e-9) continue;
+        const w1 = (+ld.w1 || 0) * f, w2 = (ld.w2 == null || ld.w2 === '' ? +ld.w1 || 0 : +ld.w2) * f, dir = ld.dir || 'GY';
+        let q1, q2;
+        if (dir === 'LY') { q1 = [0, w1]; q2 = [0, w2]; }
+        else if (dir === 'LX') { q1 = [w1, 0]; q2 = [w2, 0]; }
+        else { const gx = dir[1] === 'X', pr = dir === 'GYP' ? Math.abs(c) : dir === 'GXP' ? Math.abs(s) : 1; q1 = toLocal(gx ? w1 * pr : 0, gx ? 0 : w1 * pr); q2 = toLocal(gx ? w2 * pr : 0, gx ? 0 : w2 * pr); }
+        out.dist.push({ a, b, q1, q2 });
+      } else if (ld.type === 'point') {
+        const a = Math.max(0, Math.min(L, ld.a == null || ld.a === '' ? L / 2 : +ld.a)), P = (+ld.P || 0) * f, dir = ld.dir || 'GY';
+        out.pts.push({ a, P: dir === 'LY' ? [0, P] : dir === 'LX' ? [P, 0] : toLocal(dir === 'GX' ? P : 0, dir === 'GX' ? 0 : P) });
+      } else if (ld.type === 'moment') out.mom.push({ a: Math.max(0, Math.min(L, ld.a == null || ld.a === '' ? L / 2 : +ld.a)), M: (+ld.M || 0) * f });
+    }
+    let sw = 0; for (const cs of m.cases) if (cs.selfWeight && factors[cs.id]) sw += factors[cs.id];
+    if (sw && e.w > 0) { const q = toLocal(0, -e.w * sw); out.dist.push({ a: 0, b: L, q1: q, q2: q }); }
+    return out;
+  }
+  const GP = [[-0.906179845938664, 0.236926885056189], [-0.538469310105683, 0.478628670499366], [0, 0.568888888888889], [0.538469310105683, 0.478628670499366], [0.906179845938664, 0.236926885056189]];
+  function shape(L, x) {
+    const t = x / L;
+    return { a1: 1 - t, a2: t, n1: 1 - 3 * t * t + 2 * t ** 3, n2: L * (t - 2 * t * t + t ** 3), n3: 3 * t * t - 2 * t ** 3, n4: L * (-t * t + t ** 3),
+      d1: (-6 * t + 6 * t * t) / L, d2: 1 - 4 * t + 3 * t * t, d3: (6 * t - 6 * t * t) / L, d4: -2 * t + 3 * t * t };
+  }
+  // equivalent (consistent) nodal loads in local coordinates; minus the fixed-end forces
+  function eqLoads(L, ml) {
+    const p = [0, 0, 0, 0, 0, 0];
+    const add = (x, qx, qy, w) => { const N = shape(L, x); p[0] += w * qx * N.a1; p[3] += w * qx * N.a2; p[1] += w * qy * N.n1; p[2] += w * qy * N.n2; p[4] += w * qy * N.n3; p[5] += w * qy * N.n4; };
+    for (const d of ml.dist) { const h = (d.b - d.a) / 2, mid = (d.a + d.b) / 2; for (const [z, w] of GP) { const x = mid + h * z, t = (x - d.a) / (d.b - d.a); add(x, d.q1[0] + (d.q2[0] - d.q1[0]) * t, d.q1[1] + (d.q2[1] - d.q1[1]) * t, w * h); } }
+    for (const q of ml.pts) add(q.a, q.P[0], q.P[1], 1);
+    for (const q of ml.mom) { const N = shape(L, q.a); p[1] += q.M * N.d1; p[2] += q.M * N.d2; p[4] += q.M * N.d3; p[5] += q.M * N.d4; }
+    return p;
+  }
+  // ---------- assembly and solution ----------
+  function supportFixity(P) {
+    const fixed = new Set(), springs = [];
+    P.nodes.forEach((nd, k) => { const sp = nd.sup || {}; ['ux', 'uy', 'rz'].forEach((d, j) => { const v = sp[d]; if (v === 'f' || v === true) fixed.add(3 * k + j); else if (typeof v === 'number' && v > 0) springs.push([3 * k + j, v]); }); });
+    return { fixed, springs };
+  }
+  // assemble and factor K (+ Kg(N)); rotations of nodes where every member is pinned have no stiffness and are held
+  function system(P, N) {
+    const S = sky(P.n, P.perm, P.mems.map(e => e.dof)), kls = [];
+    P.mems.forEach((e, k) => {
+      const kl = e.bar ? barK(e.EA, e.L) : kLocal(e.EA, e.EI, e.L);
+      if (N) { const g = e.bar ? barKg(N[k], e.L) : kgLocal(N[k], e.L); for (let i = 0; i < 6; i++) for (let j = 0; j < 6; j++) kl[i][j] += g[i][j]; }
+      kls.push(kl); S.addEl(e.dof, rot(kl, e.c, e.s));
+    });
+    const { fixed, springs } = supportFixity(P); springs.forEach(([i, v]) => S.addDiag(i, v));
+    let maxd = 1; for (let i = 0; i < P.n; i++) maxd = Math.max(maxd, Math.abs(S.diag(i)));
+    const autoHeld = [];
+    P.nodes.forEach((nd, k) => { const r = 3 * k + 2; if (!fixed.has(r) && Math.abs(S.diag(r)) < 1e-9 * maxd) { fixed.add(r); autoHeld.push(nd.id); } });
+    for (const i of fixed) S.fix(i);
+    const fz = S.factor();
+    if (fz.zero >= 0) throw new Error(`Unstable structure (mechanism): ${P.names[S.oldOf(fz.zero)]} is unrestrained. Check the supports and releases.`);
+    if (fz.neg > 0) throw new Error('The stiffness matrix is not positive definite: the loads exceed the elastic critical load (second-order analysis)');
+    return { S, kls, fixed, autoHeld };
+  }
+  function solveFactors(m, P, factors, N, sys) {
+    sys = sys || system(P, N);
+    const n = P.n, F = new Float64Array(n), Fn = new Float64Array(n);
+    const per = P.mems.map(e => { const ml = memberLoads(m, e, factors, P.byMem.get(e.mem.id) || []), p = e.bar ? ssLoads(eqLoads(e.L, ml), e.L) : eqLoads(e.L, ml), pg = mtv(T6(e.c, e.s), p); e.dof.forEach((I, a) => { F[I] += pg[a]; }); return { ml, p }; });
+    for (const ld of m.loads) if (ld.type === 'node' && factors[ld.case]) { const k = P.idx.get(ld.node); if (k === undefined) continue; const f = factors[ld.case]; Fn[3 * k] += (+ld.Fx || 0) * f; Fn[3 * k + 1] += (+ld.Fy || 0) * f; Fn[3 * k + 2] += (+ld.Mz || 0) * f; }
+    for (let i = 0; i < n; i++) F[i] += Fn[i];
+    for (const id of sys.autoHeld) { const r = 3 * P.idx.get(id) + 2; if (Math.abs(F[r]) > 1e-9) throw new Error(`Node ${id}: a moment is applied where every member is pinned (mechanism)`); }
+    const u = sys.S.solve(F), R = new Float64Array(n);
+    const mres = P.mems.map((e, k) => {
+      const T = T6(e.c, e.s), ul = mv(T, e.dof.map(i => u[i])), ku = mv(sys.kls[k], ul), f = ku.map((v, i) => v - per[k].p[i]), kg = mtv(T, ku);
+      e.dof.forEach((I, a) => { R[I] += kg[a]; });
+      return { f, ul, ml: per[k].ml, N0: (f[3] - f[0]) / 2 };
+    });
+    for (let i = 0; i < n; i++) R[i] -= F[i];
+    return { u, R, fixed: sys.fixed, mres, autoHeld: sys.autoHeld };
+  }
+  // ---------- results along a member ----------
+  function stations(e, r, nseg = 48) {
+    const L = e.L, ml = r.ml, xs = new Set(); for (let k = 0; k <= nseg; k++) xs.add(L * k / nseg);
+    for (const d of ml.dist) { xs.add(d.a); xs.add(d.b); }
+    for (const q of [...ml.pts, ...ml.mom]) { xs.add(q.a); if (q.a > 1e-6) xs.add(q.a - 1e-6); if (q.a < L - 1e-6) xs.add(q.a + 1e-6); }
+    const X = [...xs].filter(x => x >= 0 && x <= L).sort((a, b) => a - b);
+    const [Ni, Vi, Mi] = r.f;
+    // load resultants left of x (distributed loads linear over [a, b]: closed-form integrals)
+    const D = ml.dist.map(d => { const w = d.b - d.a || 1; return [d.a, d.b, d.q1[0], d.q1[1], (d.q2[0] - d.q1[0]) / w, (d.q2[1] - d.q1[1]) / w]; }), Pt = ml.pts, Mo = ml.mom;
+    const at = x => {
+      let Qx = 0, Qy = 0, Mq = 0;
+      for (let k = 0; k < D.length; k++) {
+        const [a, b0, qx, qy, sx, sy] = D[k], b = b0 < x ? b0 : x; if (b <= a) continue;
+        const l = b - a, xa = x - a; Qx += l * (qx + sx * l / 2); Qy += l * (qy + sy * l / 2); Mq += qy * (xa * l - l * l / 2) + sy * (xa * l * l / 2 - l * l * l / 3);
+      }
+      for (let k = 0; k < Pt.length; k++) { const q = Pt[k]; if (q.a < x) { Qx += q.P[0]; Qy += q.P[1]; Mq += q.P[1] * (x - q.a); } }
+      for (let k = 0; k < Mo.length; k++) if (Mo[k].a < x) Mq -= Mo[k].M;
+      return { x, N: -(Ni + Qx), V: Vi + Qy, M: -Mi + Vi * x + Mq };
+    }, st = X.map(at);
+    // v'' = M / EI (local y up; sagging M positive: v'' > 0 ... sign: hogging end moment -> v'' < 0)
+    const [u1, v1, , u2, v2] = r.ul, th = [0], vv = [0], uu = [0];
+    for (let k = 1; k < st.length; k++) {
+      const h = st[k].x - st[k - 1].x, k0 = st[k - 1].M / e.EI, k1 = st[k].M / e.EI, km = h > 0 ? at((st[k].x + st[k - 1].x) / 2).M / e.EI : k0;   // curvature quadratic over the step
+      th.push(th[k - 1] + h / 6 * (k0 + 4 * km + k1)); vv.push(vv[k - 1] + th[k - 1] * h + h * h * (k0 / 6 + km / 3)); uu.push(uu[k - 1] + (st[k - 1].N + st[k].N) / 2 * h / e.EA);
+    }
+    const nL = st.length - 1, c1 = (v2 - v1 - vv[nL]) / L, c2 = (u2 - u1 - uu[nL]) / L;
+    st.forEach((p, k) => { p.v = v1 + vv[k] + c1 * p.x; p.u = u1 + uu[k] + c2 * p.x; p.dx = p.u * e.c - p.v * e.s; p.dy = p.u * e.s + p.v * e.c; p.vr = vv[k] + c1 * p.x - (v2 - v1) * p.x / L; });
+    return st;
+  }
+  function pack(P, r) {
+    const nodes = {}, reactions = {};
+    P.nodes.forEach((nd, k) => {
+      nodes[nd.id] = { ux: r.u[3 * k], uy: r.u[3 * k + 1], rz: r.u[3 * k + 2] };
+      const sp = nd.sup || {}, keys = ['ux', 'uy', 'rz'], kind = keys.map(d => sp[d] === 'f' || sp[d] === true ? 'f' : typeof sp[d] === 'number' && sp[d] > 0 ? 'k' : '');
+      if (kind.some(Boolean)) reactions[nd.id] = kind.map((t, j) => t === 'f' ? r.R[3 * k + j] : t === 'k' ? -sp[keys[j]] * r.u[3 * k + j] : 0);
+    });
+    const members = {};
+    P.mems.forEach((e, k) => {
+      const st = stations(e, r.mres[k]); let Mx = st[0], Mn = st[0], Va = st[0], Nx = st[0], Nn = st[0], Dm = st[0], Dl = st[0], dm = -1;
+      for (const p of st) { if (p.M > Mx.M) Mx = p; if (p.M < Mn.M) Mn = p; if (Math.abs(p.V) > Math.abs(Va.V)) Va = p; if (p.N > Nx.N) Nx = p; if (p.N < Nn.N) Nn = p; const d = p.dx * p.dx + p.dy * p.dy; if (d > dm) { dm = d; Dm = p; } if (Math.abs(p.vr) > Math.abs(Dl.vr)) Dl = p; }
+      members[e.mem.id] = { L: e.L, c: e.c, s: e.s, end: r.mres[k].f, ul: r.mres[k].ul, st, Mmax: Mx, Mmin: Mn, Vabs: Va, Nmax: Nx, Nmin: Nn, dmax: Dm, dloc: Dl };
+    });
+    return { nodes, reactions, members, autoHeld: r.autoHeld };
+  }
+  function run(m, P, factors, second, sys1) {
+    let r = solveFactors(m, P, factors, null, sys1), it = 0, converged = true;
+    if (second) {
+      let N = r.mres.map(x => x.N0); converged = false;
+      for (it = 1; it <= 50; it++) {
+        const r2 = solveFactors(m, P, factors, N), N2 = r2.mres.map(x => x.N0), d = Math.max(0, ...N2.map((v, k) => Math.abs(v - N[k]))), sc = Math.max(1, ...N2.map(Math.abs));
+        r = r2; N = N2; if (d < 1e-7 * sc) { converged = true; break; }
+      }
+    }
+    return { ...pack(P, r), iterations: it, converged };
+  }
+  /* model: { nodes: [{ id, x, y, sup: { ux, uy, rz } ('f' fixed, number = spring kN/m or kNm/rad) }], members: [{ id, i, j, sec: { A, I, E, mass, name }, relI, relJ, truss }],
+       cases: [{ id, name, type: 'G'|'Q'|'S'|'W'|'A', selfWeight }], loads: [...], combos: [{ id, name, kind: 'ULS'|'SLS', f: { caseId: factor } }] }
+     opts: { second (P-Delta for combinations), acr (alpha_cr for each combination) } */
+  function analyse(model, opts = {}) {
+    const P = prepare(model), cases = {}, combos = {}, sys1 = system(P, null);
+    for (const c of model.cases) cases[c.id] = run(model, P, { [c.id]: 1 }, false, sys1);
+    for (const c of model.combos || []) {
+      const res = run(model, P, c.f, !!opts.second && c.kind !== 'SLS', sys1);
+      if (opts.acr && c.kind !== 'SLS') { try { res.acr = alphaCr(model, P, c.f, sys1); } catch (e) { res.acr = null; res.acrErr = e.message; } }
+      combos[c.id] = res;
+    }
+    const uls = (model.combos || []).filter(c => c.kind !== 'SLS').map(c => c.id);
+    return { cases, combos, ndof: P.n, envelope: uls.length ? envelope(model, combos, uls) : null };
+  }
+  function envelope(model, combos, ids) {
+    const members = {};
+    for (const mem of model.members) {
+      const all = ids.map(id => combos[id].members[mem.id]), n = all[0].st.length, same = all.every(a => a.st.length === n && a.st.every((p, k) => Math.abs(p.x - all[0].st[k].x) < 1e-9));
+      const mx = f => { let v = -Infinity; for (const a of all) { const x = f(a); if (x > v) v = x; } return v; };
+      let st = null;
+      if (same) { st = all[0].st.map(p => ({ x: p.x, Mmax: -Infinity, Mmin: Infinity, Vmax: -Infinity, Vmin: Infinity, Nmax: -Infinity, Nmin: Infinity }));
+        for (const a of all) for (let k = 0; k < n; k++) { const p = a.st[k], o = st[k]; if (p.M > o.Mmax) o.Mmax = p.M; if (p.M < o.Mmin) o.Mmin = p.M; if (p.V > o.Vmax) o.Vmax = p.V; if (p.V < o.Vmin) o.Vmin = p.V; if (p.N > o.Nmax) o.Nmax = p.N; if (p.N < o.Nmin) o.Nmin = p.N; } }
+      members[mem.id] = { Mmax: mx(a => a.Mmax.M), Mmin: -mx(a => -a.Mmin.M), Vabs: mx(a => Math.abs(a.Vabs.V)), Nmax: mx(a => a.Nmax.N), Nmin: -mx(a => -a.Nmin.N), st };
+    }
+    const reactions = {};
+    for (const id of ids) for (const [nid, R] of Object.entries(combos[id].reactions)) { const e = reactions[nid] || (reactions[nid] = { max: [-Infinity, -Infinity, -Infinity], min: [Infinity, Infinity, Infinity] }); R.forEach((v, j) => { e.max[j] = Math.max(e.max[j], v); e.min[j] = Math.min(e.min[j], v); }); }
+    return { members, reactions };
+  }
+  // ---------- elastic critical load factor ----------
+  // Exact member stiffness with axial compression P (Livesley stability functions; q = P L^2 / EI, q < 0 in tension):
+  // near-end stiffness s EI/L, carry-over s c EI/L, sway terms from moment equilibrium of the deflected member.
+  function stab(q) {
+    if (Math.abs(q) < 0.05) return [4 - 2 * q / 15 - 11 * q * q / 6300 - q ** 3 / 27000, 2 + q / 30 + 13 * q * q / 12600 + 11 * q ** 3 / 378000];
+    if (q > 0) { const f = Math.sqrt(q), sn = Math.sin(f), cs = Math.cos(f), D = 2 - 2 * cs - f * sn; return [f * (sn - f * cs) / D, f * (f - sn) / D]; }
+    const f = Math.sqrt(-q);
+    if (f > 30) return [f * (f - 1) / (f - 2), f / (f - 2)];
+    const sh = Math.sinh(f), ch = Math.cosh(f), D = 2 - 2 * ch + f * sh; return [f * (f * ch - sh) / D, f * (sh - f) / D];
+  }
+  function kStab(EA, EI, L, P) {
+    const q = P * L * L / EI, [a, b] = stab(q), t = a + b, k1 = EI / L ** 3 * (2 * t - q), k2 = EI / L ** 2 * t, ka = EI / L * a, kb = EI / L * b, x = EA / L;
+    return [[x, 0, 0, -x, 0, 0], [0, k1, k2, 0, -k1, k2], [0, k2, ka, 0, -k2, kb], [-x, 0, 0, x, 0, 0], [0, -k1, -k2, 0, k1, -k2], [0, k2, kb, 0, -k2, ka]];
+  }
+  // buckling loads of the member clamped at both ends below q: roots of 4 sin(x)(sin x - x cos x) = 0, x = sqrt(q)/2
+  // (x = n pi symmetric modes; tan x = x antisymmetric modes, one in each (n pi, n pi + pi/2), n >= 1)
+  function clampedCount(q) {
+    if (!(q > 0)) return 0;
+    const x = Math.sqrt(q) / 2, n0 = Math.floor(x / Math.PI);
+    return n0 < 1 ? 0 : 2 * n0 - 1 + (x - n0 * Math.PI >= Math.PI / 2 || Math.tan(x) >= x ? 1 : 0);
+  }
+  // alpha_cr = the lowest a > 0 at which the frame with member forces a N (N from the first-order combination) has a
+  // non-trivial equilibrium. Wittrick-Williams: the number of eigenvalues below a is J0 + s{K(a)}, J0 the clamped-member
+  // eigenvalues below a and s the number of negative pivots of the exact stiffness matrix; a is bracketed and bisected.
+  // Bars (pinned both ends) carry axial force and the string stiffness N/L only.
+  function alphaCr(model, P, factors, sys1) {
+    const N = solveFactors(model, P, factors, null, sys1).mres.map(x => x.N0);
+    if (!N.some(v => v < -1e-9)) return Infinity;
+    const { fixed, springs } = supportFixity(P); sys1.autoHeld.forEach(id => fixed.add(3 * P.idx.get(id) + 2));
+    const q1 = P.mems.map((e, k) => e.bar ? 0 : -N[k] * e.L * e.L / e.EI), dofs = P.mems.map(e => e.dof);
+    const count = lam => {
+      let j0 = 0; for (const q of q1) j0 += clampedCount(lam * q);
+      if (j0 > 0) return j0;
+      const S = sky(P.n, P.perm, dofs);
+      P.mems.forEach((e, k) => S.addEl(e.dof, rot(e.bar ? (() => { const kb = barK(e.EA, e.L), g = barKg(lam * N[k], e.L); return kb.map((r, i) => r.map((v, j) => v + g[i][j])); })() : kStab(e.EA, e.EI, e.L, -lam * N[k]), e.c, e.s)));
+      springs.forEach(([i, v]) => S.addDiag(i, v)); for (const i of fixed) S.fix(i);
+      return S.factor(true).neg;
+    };
+    let hi = 1, lo = 0;
+    while (count(hi) === 0) { lo = hi; hi *= 2; if (hi > 1e7) return Infinity; }
+    for (let it = 0; it < 80 && hi - lo > 1e-7 * hi; it++) { const mid = (lo + hi) / 2; if (count(mid) > 0) hi = mid; else lo = mid; }
+    return (lo + hi) / 2;
+  }
+  // ---------- EN 1990 combinations (UK NA, Table NA.A1.2(B): 6.10 or 6.10a/b; characteristic SLS) ----------
+  const PSI0 = { Q: 0.7, S: 0.5, W: 0.5 };
+  function en1990(cases, rule = '6.10') {
+    const Gs = cases.filter(c => c.type === 'G'), Vs = cases.filter(c => ['Q', 'S', 'W'].includes(c.type)), out = [];
+    const gSet = gf => Object.fromEntries(Gs.map(c => [c.id, gf]));
+    const nm = f => Object.entries(f).filter(([, v]) => v).map(([id, v]) => `${+v.toFixed(3)}${(cases.find(c => c.id === id) || {}).name || id}`).join(' + ');
+    const push = (kind, f) => { const name = nm(f); if (name && !out.some(o => o.name === name && o.kind === kind)) out.push({ id: `${kind}${out.length + 1}`, name, kind, f }); };
+    const psi = c => PSI0[c.type] ?? 0.7;
+    // wind cases are alternatives (directions): at most one wind case in any combination
+    const Ws = Vs.filter(v => v.type === 'W'), nonW = Vs.filter(v => v.type !== 'W');
+    const accompanying = lead => (lead.type === 'W' ? [null] : Ws.length ? Ws : [null]).map(w => [...nonW.filter(v => v !== lead), ...(w ? [w] : [])]);
+    if (!Vs.length) push('ULS', gSet(1.35));
+    for (const lead of Vs) for (const others of accompanying(lead)) {
+      if (rule === '6.10') { const f = gSet(1.35); f[lead.id] = 1.5; others.forEach(o => { f[o.id] = 1.5 * psi(o); }); push('ULS', f); }
+      else { const fa = gSet(1.35); [lead, ...others].forEach(o => { fa[o.id] = 1.5 * psi(o); }); push('ULS', fa); const fb = gSet(1.25); fb[lead.id] = 1.5; others.forEach(o => { fb[o.id] = 1.5 * psi(o); }); push('ULS', fb); }
+    }
+    for (const w of Ws) { const f = gSet(1.0); f[w.id] = 1.5; push('ULS', f); }   // uplift / overturning with favourable permanent actions
+    for (const lead of Vs) for (const others of accompanying(lead)) { const f = gSet(1.0); f[lead.id] = 1; others.forEach(o => { f[o.id] = psi(o); }); push('SLS', f); }
+    if (!Vs.length) push('SLS', gSet(1.0));
+    return out;
+  }
+  return { analyse, en1990, kLocal, kgLocal, kStab, stab, clampedCount, eqLoads, shape, prepare, alphaCr: (m, f) => { const P = prepare(m); return alphaCr(m, P, f, system(P, null)); } };
+})();
+if (typeof module !== 'undefined') module.exports = { Frame2D };
+
+</script>
+<script id="ui">
+'use strict';
+const $ = id => document.getElementById(id);
+const STORE = 'et-frame2d-v1';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const f1 = v => !Number.isFinite(v) ? '–' : Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2);
+const f3 = v => !Number.isFinite(v) ? '–' : (+v.toFixed(3)).toString();
+// ---------------- sections and materials ----------------
+const HOLLOW = { SHS: [40, 50, 60, 70, 80, 90, 100, 120, 140, 150, 160, 180, 200, 250, 300], RHS: [[60, 40], [80, 40], [100, 50], [100, 60], [120, 60], [120, 80], [150, 100], [160, 80], [200, 100], [200, 120], [250, 150], [300, 200]],
+  CHS: [42.4, 48.3, 60.3, 76.1, 88.9, 114.3, 139.7, 168.3, 193.7, 219.1, 273, 323.9], T: [3.2, 4, 5, 6.3, 8, 10, 12.5] };
+const MATS = { steel: { name: 'Steel', E: 210 }, conc: { name: 'Concrete C30/37', E: 33 }, c24: { name: 'Timber C24', E: 11 }, gl28: { name: 'Glulam GL28h', E: 12.6 }, custom: { name: 'Custom', E: 210 } };
+const FAM = ['UKB', 'UKC', 'PFC', 'SHS', 'RHS', 'CHS', 'Custom'];
+function famList(f) {
+  if (['UKB', 'UKC', 'PFC'].includes(f)) return SECTION_DATA.filter(r => r[0].endsWith(f)).map(r => r[0]);
+  if (f === 'SHS') return HOLLOW.SHS.flatMap(b => HOLLOW.T.filter(t => t <= b / 8).map(t => `${b}×${b}×${t} SHS`));
+  if (f === 'RHS') return HOLLOW.RHS.flatMap(([h, b]) => HOLLOW.T.filter(t => t <= b / 6).map(t => `${h}×${b}×${t} RHS`));
+  if (f === 'CHS') return HOLLOW.CHS.flatMap(d => HOLLOW.T.filter(t => t <= d / 10 && t >= d / 60).map(t => `${d}×${t} CHS`));
+  return [];
+}
+function secProps(fam, name, axis) {   // A cm2, I cm4, mass kg/m (steel)
+  if (['UKB', 'UKC', 'PFC'].includes(fam)) { const r = SECTION_DATA.find(x => x[0] === name); if (!r) return null; return { A: r[7], I: axis === 'z' ? r[9] : r[8], mass: r[1] }; }
+  if (fam === 'SHS' || fam === 'RHS') { const [h, b, t] = name.split(/[×\s]/).map(Number), s = EC3.rhs({ h, b, t }); return { A: s.A / 100, I: (axis === 'z' ? s.Iz : s.Iy) / 1e4, mass: s.mass }; }
+  if (fam === 'CHS') { const [d, t] = name.split(/[×\s]/).map(Number), s = EC3.chs({ d, t }); return { A: s.A / 100, I: s.Iy / 1e4, mass: s.mass }; }
+  return null;
+}
+function makeSec(o) {   // { fam, name, axis, mat, A, I, mass, E }
+  const mat = MATS[o.mat] ? o.mat : 'steel', p = o.fam === 'Custom' ? { A: +o.A, I: +o.I, mass: +o.mass || 0 } : secProps(o.fam, o.name, o.axis || 'y');
+  if (!p) return makeSec({ fam: 'UKB', name: '457×191×67 UKB', axis: 'y', mat: 'steel' });
+  const E = mat === 'custom' ? +o.E || 210 : MATS[mat].E, massF = mat === 'steel' || mat === 'custom' ? 1 : mat === 'conc' ? 2500 / 7850 : 450 / 7850;
+  return { fam: o.fam, name: o.fam === 'Custom' ? (o.name || 'Custom') : o.name, axis: o.axis || 'y', mat, A: p.A, I: p.I, mass: o.fam === 'Custom' ? p.mass : p.mass * massF, E };
+}
+const secLabel = s => s.fam === 'Custom' ? `Custom A ${f3(s.A)} cm², I ${f3(s.I)} cm⁴` : `${s.name}${s.axis === 'z' ? ' (minor)' : ''}${s.mat !== 'steel' ? ' · ' + MATS[s.mat].name : ''}`;
+// ---------------- state ----------------
+const S = { model: null, sel: null, mode: 'select', pending: null, view: { cx: 0, cy: 0, k: 40 }, show: 'model', resKey: null, grid: 0.5, scaleMul: 1, hist: [], fut: [], res: null, err: null, tab: 'prop', curCase: null, hover: null, labels: true, tables: 'nodes' };
+const newId = (arr, pre) => { let k = arr.length + 1; while (arr.some(o => o.id === pre + k)) k++; return pre + k; };
+function defaultModel() { return wizardBuild('truss', { kind: 'pratt', span: 12, panels: 6, depth: 1.5, chord: '120×120×8 SHS', web: '80×80×5 SHS', G: 6, Q: 9 }); }
+function snapshot() { return JSON.stringify(S.model); }
+function commit(prev) { if (prev !== undefined) { S.hist.push(prev); if (S.hist.length > 120) S.hist.shift(); S.fut = []; } changed(); }
+function edit(fn) { const prev = snapshot(); fn(S.model); commit(prev); }
+function undo() { if (!S.hist.length) return; S.fut.push(snapshot()); S.model = JSON.parse(S.hist.pop()); S.sel = null; changed(); }
+function redo() { if (!S.fut.length) return; S.hist.push(snapshot()); S.model = JSON.parse(S.fut.pop()); S.sel = null; changed(); }
+function changed() {
+  const m = S.model;
+  if (!m.cases.some(c => c.id === S.curCase)) S.curCase = m.cases[0] ? m.cases[0].id : null;
+  if (m.autoCombos !== false) m.combos = Frame2D.en1990(m.cases, m.rule || '6.10');
+  try { localStorage.setItem(STORE, JSON.stringify({ v: 1, model: m })); } catch (e) { /* storage unavailable */ }
+  compute(); render(); renderPane(); renderSummary(); toolbarState();
+}
+function engineModel() {
+  const m = S.model;
+  return { nodes: m.nodes, members: m.members.map(x => ({ ...x, sec: x.sec })), cases: m.cases, loads: m.loads, combos: m.combos };
+}
+// analysis runs synchronously on every committed change so results never lag the model
+function compute() {
+  try { const t0 = performance.now(); S.res = Frame2D.analyse(engineModel(), { second: !!S.model.second, acr: !!S.model.acr }); S.res.ms = performance.now() - t0; S.err = null; }
+  catch (e) { S.res = null; S.err = e.message; }
+  fillResSel();
+}
+function analyseNow() { compute(); render(); renderSummary(); renderPane(); }
+// ---------------- geometry helpers ----------------
+const node = id => S.model.nodes.find(n => n.id === id), mem = id => S.model.members.find(m => m.id === id);
+const W2S = (x, y) => [S.view.cx + x * S.view.k, S.view.cy - y * S.view.k];
+const S2W = (px, py) => [(px - S.view.cx) / S.view.k, (S.view.cy - py) / S.view.k];
+const snap = v => Math.round(v / S.grid) * S.grid;
+function cvSize() { const r = $('cv').getBoundingClientRect(); return [r.width || 900, r.height || 640]; }
+function fit() {
+  const ns = S.model.nodes, [W, H] = cvSize(); if (!ns.length) { S.view = { cx: W / 2, cy: H / 2, k: 40 }; render(); return; }
+  const xs = ns.map(n => n.x), ys = ns.map(n => n.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const k = Math.min((W - 300) / Math.max(x1 - x0, 1), (H - 250) / Math.max(y1 - y0, 1), 260);
+  S.view = { k, cx: W / 2 - (x0 + x1) / 2 * k, cy: H / 2 + (y0 + y1) / 2 * k + 6 }; render();
+}
+function hit(px, py) {
+  let best = null, bd = 9;
+  for (const n of S.model.nodes) { const [x, y] = W2S(n.x, n.y), d = Math.hypot(px - x, py - y); if (d < bd) { bd = d; best = { type: 'node', id: n.id }; } }
+  if (best) return best;
+  bd = 7;
+  for (const m of S.model.members) {
+    const a = node(m.i), b = node(m.j); if (!a || !b) continue;
+    const [x1, y1] = W2S(a.x, a.y), [x2, y2] = W2S(b.x, b.y), L2 = (x2 - x1) ** 2 + (y2 - y1) ** 2; if (!L2) continue;
+    const t = Math.max(0, Math.min(1, ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / L2)), d = Math.hypot(px - x1 - t * (x2 - x1), py - y1 - t * (y2 - y1));
+    if (d < bd) { bd = d; best = { type: 'member', id: m.id, t }; }
+  }
+  return best;
+}
+// ---------------- rendering ----------------
+const PAL = { bg: '#12151a', grid: '#1b1f26', grid2: '#232832', axis: '#2c333e', mem: '#a9b8c8', memT: '#8fb0d6', node: '#dfe5ec', sel: '#ffb000', sup: '#9aa6b2', load: '#ff7a59', loadD: '#ffb48f', txt: '#c9d1da', mute: '#6f7a86',
+  M: '#ffb000', V: '#57b6ff', Np: '#5aa9ff', Nm: '#ff6b6b', D: '#3ecf8e', R: '#ff7a59', fillA: 0.28 };
+const PALP = { bg: '#ffffff', grid: '#ffffff', grid2: '#ffffff', axis: '#ffffff', mem: '#28323c', memT: '#28323c', node: '#28323c', sel: '#28323c', sup: '#28323c', load: '#c4361f', loadD: '#c4361f', txt: '#222', mute: '#666',
+  M: '#b07800', V: '#1c6fb5', Np: '#1c6fb5', Nm: '#c4361f', D: '#1b8a55', R: '#c4361f', fillA: 0.22 };
+function arrowHead(x, y, ang, sz, col) { const a1 = ang + 2.65, a2 = ang - 2.65; return `<path d="M${x} ${y} L${x + sz * Math.cos(a1)} ${y + sz * Math.sin(a1)} L${x + sz * Math.cos(a2)} ${y + sz * Math.sin(a2)} Z" fill="${col}"/>`; }
+function arrow(x0, y0, x1, y1, col, w = 1.6, head = 7) { const ang = Math.atan2(y1 - y0, x1 - x0); return `<line x1="${x0}" y1="${y0}" x2="${x1 - Math.cos(ang) * head * 0.8}" y2="${y1 - Math.sin(ang) * head * 0.8}" stroke="${col}" stroke-width="${w}"/>` + arrowHead(x1, y1, ang, head, col); }
+const T = (x, y, s, col, o = {}) => `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" fill="${col}" font-size="${o.size || 11}" font-family="${o.mono === false ? 'Saira,Arial' : 'JetBrains Mono,Consolas,monospace'}" text-anchor="${o.anchor || 'middle'}" ${o.bg ? `paint-order="stroke" stroke="${o.bg}" stroke-width="3" stroke-linejoin="round"` : ''} font-weight="${o.w || 400}">${esc(s)}</text>`;
+function supSym(n, P) {
+  const sp = n.sup || {}, [x, y] = W2S(n.x, n.y), fx = sp.ux === 'f', fy = sp.uy === 'f', fr = sp.rz === 'f', springs = ['ux', 'uy', 'rz'].filter(d => typeof sp[d] === 'number' && sp[d] > 0);
+  let o = '', c = P.sup;
+  const hatch = (x0, y0, x1, y1, dx, dy) => { let h = `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="${c}" stroke-width="1.6"/>`; const n = 6; for (let i = 0; i <= n; i++) { const px = x0 + (x1 - x0) * i / n, py = y0 + (y1 - y0) * i / n; h += `<line x1="${px}" y1="${py}" x2="${px + dx}" y2="${py + dy}" stroke="${c}" stroke-width="0.9"/>`; } return h; };
+  if (fx && fy && fr) o += hatch(x - 16, y, x + 16, y, -6, 7);
+  else if (fx && fy) o += `<path d="M${x} ${y} L${x - 10} ${y + 15} L${x + 10} ${y + 15} Z" fill="none" stroke="${c}" stroke-width="1.5"/>` + hatch(x - 15, y + 15, x + 15, y + 15, -5, 6);
+  else if (fy && !fx) o += `<path d="M${x} ${y} L${x - 10} ${y + 13} L${x + 10} ${y + 13} Z" fill="none" stroke="${c}" stroke-width="1.5"/><circle cx="${x - 5}" cy="${y + 17}" r="3.2" fill="none" stroke="${c}" stroke-width="1.3"/><circle cx="${x + 5}" cy="${y + 17}" r="3.2" fill="none" stroke="${c}" stroke-width="1.3"/>` + hatch(x - 14, y + 21, x + 14, y + 21, -5, 6) + (fr ? `<line x1="${x - 12}" y1="${y - 3}" x2="${x + 12}" y2="${y - 3}" stroke="${c}" stroke-width="2.2"/>` : '');
+  else if (fx && !fy) o += `<path d="M${x} ${y} L${x - 13} ${y - 10} L${x - 13} ${y + 10} Z" fill="none" stroke="${c}" stroke-width="1.5"/><circle cx="${x - 17}" cy="${y - 5}" r="3.2" fill="none" stroke="${c}" stroke-width="1.3"/><circle cx="${x - 17}" cy="${y + 5}" r="3.2" fill="none" stroke="${c}" stroke-width="1.3"/>` + hatch(x - 21, y - 14, x - 21, y + 14, -6, -5);
+  else if (fr) o += `<rect x="${x - 7}" y="${y - 7}" width="14" height="14" fill="none" stroke="${c}" stroke-width="1.5"/>`;
+  for (const d of springs) { if (d === 'uy') o += `<path d="M${x} ${y} l0 5 l-6 3 l12 4 l-12 4 l12 4 l-6 3 l0 5" fill="none" stroke="${c}" stroke-width="1.3"/>` + hatch(x - 10, y + 28, x + 10, y + 28, -4, 5);
+    else if (d === 'ux') o += `<path d="M${x} ${y} l-5 0 l-3 -6 l-4 12 l-4 -12 l-4 12 l-3 -6 l-5 0" fill="none" stroke="${c}" stroke-width="1.3"/>` + hatch(x - 28, y - 10, x - 28, y + 10, -5, -4);
+    else o += `<path d="M${x + 9} ${y} A9 9 0 1 1 ${x} ${y - 9}" fill="none" stroke="${c}" stroke-width="1.3"/>`; }
+  return o;
+}
+function loadSym(P, caseId, faded) {
+  const m = S.model, out = [], col = faded ? P.mute : P.load, colD = faded ? P.mute : P.loadD;
+  const nodeLoads = m.loads.filter(l => l.case === caseId && l.type === 'node'), memLoads = m.loads.filter(l => l.case === caseId && l.type !== 'node');
+  const wmax = Math.max(1e-9, ...memLoads.filter(l => l.type === 'udl').map(l => Math.max(Math.abs(+l.w1 || 0), Math.abs(+(l.w2 ?? l.w1) || 0)))), Lpx = 34;
+  for (const l of nodeLoads) {
+    const n = node(l.node); if (!n) continue; const [x, y] = W2S(n.x, n.y);
+    if (+l.Fy) { const s = Math.sign(+l.Fy); out.push(arrow(x, y + s * 44, x, y + s * 6, col, 2, 8) + T(x + 5, y + s * 50 + (s > 0 ? 9 : -2), `${f1(Math.abs(+l.Fy))} kN`, col, { anchor: 'start', bg: P.bg, size: 10.5 })); }
+    if (+l.Fx) { const s = Math.sign(+l.Fx); out.push(arrow(x - s * 46, y, x - s * 6, y, col, 2, 8) + T(x - s * 48, y - 5, `${f1(Math.abs(+l.Fx))} kN`, col, { anchor: s > 0 ? 'end' : 'start', bg: P.bg, size: 10.5 })); }
+    if (+l.Mz) { const r = 16, s = Math.sign(+l.Mz); out.push(`<path d="M${x + r} ${y} A${r} ${r} 0 1 ${s > 0 ? 0 : 1} ${x} ${y - r}" fill="none" stroke="${col}" stroke-width="1.8"/>` + arrowHead(x, y - r, s > 0 ? Math.PI : 0, 7, col) + T(x + r + 4, y - r, `${f1(Math.abs(+l.Mz))} kNm`, col, { anchor: 'start', bg: P.bg, size: 10.5 })); }
+  }
+  for (const l of memLoads) {
+    const mm = mem(l.member); if (!mm) continue; const a = node(mm.i), b = node(mm.j); if (!a || !b) continue;
+    const L = Math.hypot(b.x - a.x, b.y - a.y), c = (b.x - a.x) / L, s = (b.y - a.y) / L, dir = l.dir || 'GY';
+    const pt = t => W2S(a.x + c * t, a.y + s * t), unit = dir === 'LY' ? [-s, c] : dir === 'LX' ? [c, s] : dir[1] === 'X' ? [1, 0] : [0, 1];   // load direction (world)
+    if (l.type === 'udl') {
+      const x0 = Math.max(0, +l.a || 0), x1 = l.b == null || l.b === '' ? L : Math.min(L, +l.b), w1 = +l.w1 || 0, w2 = l.w2 == null || l.w2 === '' ? w1 : +l.w2, nA = Math.max(2, Math.round((x1 - x0) * S.view.k / 26));
+      const pts = []; let g = '';
+      for (let i = 0; i <= nA; i++) { const t = x0 + (x1 - x0) * i / nA, w = w1 + (w2 - w1) * i / nA, h = Lpx * Math.abs(w) / wmax, sg = Math.sign(w) || -1, [px, py] = pt(t), tx = px - unit[0] * sg * h * 1, ty = py + unit[1] * sg * h;
+        pts.push([tx, ty]); if (Math.abs(w) > 1e-9) g += arrow(tx, ty, px - unit[0] * sg * 3, py + unit[1] * sg * 3, colD, 1.1, 6); }
+      g += `<polyline points="${pts.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ')}" fill="none" stroke="${colD}" stroke-width="1.3"/>`;
+      const lab = `${f1(Math.abs(w1))}${w2 !== w1 ? '→' + f1(Math.abs(w2)) : ''} kN/m${dir === 'GYP' || dir === 'GXP' ? ' (proj.)' : dir[0] === 'L' ? ' (local)' : ''}`, mid = pts[Math.floor(pts.length / 2)];
+      out.push(g + T(mid[0], mid[1] - 5, lab, colD, { bg: P.bg, size: 10.5 }));
+    } else if (l.type === 'point') {
+      const P0 = +l.P || 0, sg = Math.sign(P0) || -1, [px, py] = pt(Math.min(L, l.a == null || l.a === '' ? L / 2 : +l.a));
+      out.push(arrow(px - unit[0] * sg * 44, py + unit[1] * sg * 44, px - unit[0] * sg * 4, py + unit[1] * sg * 4, col, 2, 8) + T(px - unit[0] * sg * 50 + 4, py + unit[1] * sg * 50 - 3, `${f1(Math.abs(P0))} kN`, col, { anchor: 'start', bg: P.bg, size: 10.5 }));
+    } else if (l.type === 'moment') {
+      const [px, py] = pt(Math.min(L, l.a == null || l.a === '' ? L / 2 : +l.a)), r = 14, sg = Math.sign(+l.M || 1);
+      out.push(`<path d="M${px + r} ${py} A${r} ${r} 0 1 ${sg > 0 ? 0 : 1} ${px} ${py - r}" fill="none" stroke="${col}" stroke-width="1.8"/>` + arrowHead(px, py - r, sg > 0 ? Math.PI : 0, 7, col) + T(px + r + 3, py - r, `${f1(Math.abs(+l.M))} kNm`, col, { anchor: 'start', bg: P.bg, size: 10.5 }));
+    }
+  }
+  return out.join('');
+}
+function resultSet() {
+  if (!S.res || !S.resKey) return null;
+  const [kind, id] = S.resKey.split(':');
+  if (kind === 'case') return S.res.cases[id] ? { r: S.res.cases[id], label: `Case ${(S.model.cases.find(c => c.id === id) || {}).name || id}` } : null;
+  if (kind === 'combo') return S.res.combos[id] ? { r: S.res.combos[id], label: (S.model.combos.find(c => c.id === id) || {}).name || id, combo: S.model.combos.find(c => c.id === id) } : null;
+  if (kind === 'env' && S.res.envelope) return { env: S.res.envelope, label: 'ULS envelope' };
+  return null;
+}
+function diagram(P, rs) {
+  const v = S.show, m = S.model, out = [], labels = [];
+  const val = (st, k) => k === 'M' ? st.M : k === 'V' ? st.V : st.N;
+  // scale: largest ordinate ~ 9 % of the view's larger side
+  let maxA = 0;
+  for (const mm of m.members) {
+    if (rs.env) { const e = rs.env.members[mm.id]; if (!e) continue; maxA = Math.max(maxA, v === 'M' ? Math.max(Math.abs(e.Mmax), Math.abs(e.Mmin)) : v === 'V' ? e.Vabs : Math.max(Math.abs(e.Nmax), Math.abs(e.Nmin))); }
+    else { const r = rs.r.members[mm.id]; if (!r) continue; for (const st of r.st) maxA = Math.max(maxA, Math.abs(val(st, v))); }
+  }
+  const [W, H] = cvSize(), kPx = maxA > 1e-9 ? 0.085 * Math.max(W, H) * S.scaleMul / maxA : 0, col = v === 'M' ? P.M : v === 'V' ? P.V : P.Np;
+  for (const mm of m.members) {
+    const a = node(mm.i), b = node(mm.j); if (!a || !b) continue;
+    const L = Math.hypot(b.x - a.x, b.y - a.y), c = (b.x - a.x) / L, s = (b.y - a.y) / L, nx = -s, ny = c;   // local y in world
+    const sgn = v === 'M' ? -1 : 1;   // bending moment drawn on the tension side
+    const curves = rs.env ? (rs.env.members[mm.id] && rs.env.members[mm.id].st ? [rs.env.members[mm.id].st.map(p => ({ x: p.x, val: p[v + 'max'] })), rs.env.members[mm.id].st.map(p => ({ x: p.x, val: p[v + 'min'] }))] : []) : [rs.r.members[mm.id].st.map(p => ({ x: p.x, val: val(p, v) }))];
+    curves.forEach((cv, ci) => {
+      const pts = cv.map(p => { const wx = a.x + c * p.x, wy = a.y + s * p.x, [px, py] = W2S(wx, wy); return [px + nx * sgn * p.val * kPx, py - ny * sgn * p.val * kPx, p]; });
+      const [ax, ay] = W2S(a.x, a.y), [bx, by] = W2S(b.x, b.y);
+      if (v === 'N') {
+        // axial: the member drawn in the colour of its force (tension blue, compression red), width with |N|, value at mid-length
+        if (ci) return;
+        const mid = cv[Math.floor(cv.length / 2)].val, ends = [cv[0].val, cv[cv.length - 1].val], vmax = Math.max(...cv.map(p => Math.abs(p.val)));
+        const wpx = 2 + 9 * Math.abs(mid) / (maxA || 1), cl = Math.abs(mid) < 1e-6 * (maxA || 1) ? P.mute : mid >= 0 ? P.Np : P.Nm;
+        out.push(`<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="${cl}" stroke-width="${wpx.toFixed(1)}" stroke-opacity="0.85" stroke-linecap="butt"/>`);
+        if (vmax > 0.01 * maxA) { const mx = (ax + bx) / 2, my = (ay + by) / 2, ang = Math.atan2(by - ay, bx - ax) * 180 / Math.PI, a2 = ang > 90 || ang < -90 ? ang + 180 : ang;
+          const lab = Math.abs(ends[0] - ends[1]) > 0.02 * vmax ? `${f1(ends[0])}…${f1(ends[1])}` : f1(mid);
+          out.push(`<text x="${mx}" y="${my}" dy="${-wpx / 2 - 4}" fill="${cl}" font-size="10.5" font-weight="600" font-family="JetBrains Mono,monospace" text-anchor="middle" transform="rotate(${a2.toFixed(1)} ${mx} ${my})" paint-order="stroke" stroke="${P.bg}" stroke-width="3">${lab}</text>`); }
+        return;
+      } else {
+        out.push(`<path d="M${ax} ${ay} ${pts.map(p => 'L' + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ')} L${bx} ${by} Z" fill="${col}" fill-opacity="${ci ? P.fillA * 0.6 : P.fillA}" stroke="none"/>` +
+          `<polyline points="${pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ')}" fill="none" stroke="${col}" stroke-width="1.4"/>`);
+      }
+      // labels: extremes and ends, skipping small values
+      if (v === 'N') return;
+      const ext = [pts.reduce((q, p) => p[2].val > q[2].val ? p : q), pts.reduce((q, p) => p[2].val < q[2].val ? p : q), pts[0], pts[pts.length - 1]];
+      for (const p of ext) if (Math.abs(p[2].val) > 0.03 * maxA) labels.push({ x: p[0] + nx * sgn * Math.sign(p[2].val) * 8, y: p[1] - ny * sgn * Math.sign(p[2].val) * 8 + 4, t: f1(p[2].val), col: v === 'N' ? (p[2].val >= 0 ? P.Np : P.Nm) : col });
+    });
+  }
+  // de-duplicate labels that overlap
+  const placed = [];
+  for (const l of labels) { if (placed.some(p => Math.abs(p.x - l.x) < 28 && Math.abs(p.y - l.y) < 11)) continue; placed.push(l); }
+  return out.join('') + placed.map(l => T(l.x, l.y, l.t, l.col, { bg: P.bg, size: 10.5, w: 600 })).join('') + (maxA ? '' : '');
+}
+function deflected(P, rs) {
+  const m = S.model; let dmax = 0, out = '';
+  for (const mm of m.members) { const r = rs.r.members[mm.id]; if (r) dmax = Math.max(dmax, r.dmax ? Math.hypot(r.dmax.dx, r.dmax.dy) : 0); }
+  const [W, H] = cvSize(), k = dmax > 1e-12 ? 0.07 * Math.max(W, H) * S.scaleMul / (dmax * S.view.k) : 0;
+  for (const mm of m.members) {
+    const a = node(mm.i), r = rs.r.members[mm.id]; if (!a || !r) continue;
+    const pts = r.st.map(p => W2S(a.x + r.c * p.x + p.dx * k, a.y + r.s * p.x + p.dy * k));
+    out += `<polyline points="${pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ')}" fill="none" stroke="${P.D}" stroke-width="2"/>`;
+  }
+  // node displacement labels (mm)
+  const lab = [];
+  for (const n of m.nodes) { const d = rs.r.nodes[n.id]; if (!d) continue; const t = Math.hypot(d.ux, d.uy) * 1000; if (t > 0.05 * dmax * 1000) { const [x, y] = W2S(n.x + d.ux * k, n.y + d.uy * k); lab.push(T(x + 6, y - 6, `${f1(t)} mm`, P.D, { anchor: 'start', bg: P.bg, size: 10.5 })); } }
+  return out + lab.join('') + `<desc>scale ${k.toFixed(1)}</desc>`;
+}
+function reactionsSym(P, rs) {
+  const out = [];
+  const R = rs.env ? Object.fromEntries(Object.entries(rs.env.reactions).map(([k, e]) => [k, e.max.map((v, j) => Math.abs(v) >= Math.abs(e.min[j]) ? v : e.min[j])])) : rs.r.reactions;
+  for (const [nid, r] of Object.entries(R)) {
+    const n = node(nid); if (!n) continue; const [x, y] = W2S(n.x, n.y);
+    if (Math.abs(r[1]) > 1e-6) { const s = Math.sign(r[1]); out.push(arrow(x, y + s * 52 + 18 * (s > 0 ? 1 : 0), x, y + s * 24, P.R, 2.2, 9) + T(x + 6, y + s * 60 + 22 * (s > 0 ? 1 : 0), `${f1(r[1])} kN`, P.R, { anchor: 'start', bg: P.bg, w: 600 })); }
+    if (Math.abs(r[0]) > 1e-6) { const s = Math.sign(r[0]); out.push(arrow(x - s * 64, y + 30, x - s * 24, y + 30, P.R, 2.2, 9) + T(x - s * 66, y + 26, `${f1(r[0])} kN`, P.R, { anchor: s > 0 ? 'end' : 'start', bg: P.bg, w: 600 })); }
+    if (Math.abs(r[2]) > 1e-6) { const rr = 20, s = Math.sign(r[2]); out.push(`<path d="M${x + rr} ${y} A${rr} ${rr} 0 1 ${s > 0 ? 0 : 1} ${x} ${y - rr}" fill="none" stroke="${P.R}" stroke-width="2"/>` + arrowHead(x, y - rr, s > 0 ? Math.PI : 0, 8, P.R) + T(x + rr + 4, y - rr - 2, `${f1(r[2])} kNm`, P.R, { anchor: 'start', bg: P.bg, w: 600 })); }
+  }
+  return out.join('');
+}
+function drawModel(P, opts = {}) {
+  const m = S.model, [W, H] = opts.size || cvSize(); let g = '';
+  if (!opts.print) {
+    // grid
+    const step = S.grid * S.view.k, big = step < 14 ? Math.ceil(14 / step) : 1, st = step * big;
+    if (st >= 8) { let x0 = S.view.cx % st, y0 = S.view.cy % st, d = ''; for (let x = x0; x < W; x += st) d += `M${x.toFixed(1)} 0V${H}`; for (let y = y0; y < H; y += st) d += `M0 ${y.toFixed(1)}H${W}`; g += `<path d="${d}" stroke="${P.grid}" stroke-width="1"/>`; }
+    g += `<line x1="${S.view.cx}" y1="0" x2="${S.view.cx}" y2="${H}" stroke="${P.axis}"/><line x1="0" y1="${S.view.cy}" x2="${W}" y2="${S.view.cy}" stroke="${P.axis}"/>`;
+  }
+  const rs = resultSet(), show = opts.show || S.show, showRes = show !== 'model' && rs && !S.err;
+  // members
+  for (const mm of m.members) {
+    const a = node(mm.i), b = node(mm.j); if (!a || !b) continue; const [x1, y1] = W2S(a.x, a.y), [x2, y2] = W2S(b.x, b.y), sel = S.sel && S.sel.type === 'member' && S.sel.id === mm.id && !opts.print;
+    const L = Math.hypot(x2 - x1, y2 - y1) || 1, ux = (x2 - x1) / L, uy = (y2 - y1) / L, bar = mm.truss || (mm.relI && mm.relJ);
+    g += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${sel ? P.sel : showRes && show !== 'defl' ? P.mute : bar ? P.memT : P.mem}" stroke-width="${sel ? 3.6 : showRes ? 1.6 : 2.6}" stroke-linecap="round"/>`;
+    if (mm.relI && !bar) g += `<circle cx="${x1 + ux * 9}" cy="${y1 + uy * 9}" r="3.6" fill="${P.bg}" stroke="${sel ? P.sel : P.mem}" stroke-width="1.4"/>`;
+    if (mm.relJ && !bar) g += `<circle cx="${x2 - ux * 9}" cy="${y2 - uy * 9}" r="3.6" fill="${P.bg}" stroke="${sel ? P.sel : P.mem}" stroke-width="1.4"/>`;
+    if (S.labels && !showRes) { const ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI, a2 = ang > 90 || ang < -90 ? ang + 180 : ang; g += `<text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2}" dy="-5" fill="${P.mute}" font-size="10" font-family="JetBrains Mono,monospace" text-anchor="middle" transform="rotate(${a2.toFixed(1)} ${(x1 + x2) / 2} ${(y1 + y2) / 2})" paint-order="stroke" stroke="${P.bg}" stroke-width="3">${esc(mm.id)}</text>`; }
+  }
+  if (showRes) {
+    if (show === 'defl' && rs.r) g += deflected(P, rs);
+    else if (['M', 'V', 'N'].includes(show)) g += diagram(P, rs);
+  }
+  for (const n of m.nodes) g += supSym(n, P);
+  if (show === 'model' || opts.loads) g += loadSym(P, opts.caseId || S.curCase, false);
+  if (show === 'R' && rs) g += reactionsSym(P, rs);
+  const pinned = new Set(m.nodes.filter(n => { const at = m.members.filter(mm => mm.i === n.id || mm.j === n.id); return at.length && at.every(mm => mm.truss || (mm.i === n.id ? mm.relI : mm.relJ)); }).map(n => n.id));
+  for (const n of m.nodes) { const [x, y] = W2S(n.x, n.y), sel = S.sel && S.sel.type === 'node' && S.sel.id === n.id && !opts.print, pend = S.pending === n.id;
+    g += pinned.has(n.id) && !sel && !pend ? `<circle cx="${x}" cy="${y}" r="4.6" fill="${P.bg}" stroke="${P.node}" stroke-width="1.6"/>` : `<circle cx="${x}" cy="${y}" r="${sel || pend ? 5.5 : 3.8}" fill="${sel || pend ? P.sel : P.node}" stroke="${P.bg}" stroke-width="1.5"/>`;
+    if (S.labels && !(showRes && show !== 'model')) g += T(x - 7, y - 8, n.id, P.mute, { anchor: 'end', size: 10, bg: P.bg }); }
+  return g;
+}
+function render() {
+  const svg = $('cv'), [W, H] = cvSize();
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  let g = drawModel(PAL);
+  // rubber band for member drawing, hover highlight
+  if (S.mode === 'member' && S.pending && S.mouse) { const a = node(S.pending); if (a) { const [x, y] = W2S(a.x, a.y), [mx, my] = S.mouseSnap ? W2S(...S.mouseSnap) : S.mouse; g += `<line x1="${x}" y1="${y}" x2="${mx}" y2="${my}" stroke="${PAL.sel}" stroke-width="1.6" stroke-dasharray="6 4"/>`; } }
+  if (S.hover && !S.drag) { if (S.hover.type === 'node') { const n = node(S.hover.id); if (n) { const [x, y] = W2S(n.x, n.y); g += `<circle cx="${x}" cy="${y}" r="8" fill="none" stroke="${PAL.sel}" stroke-width="1" stroke-opacity="0.7"/>`; } }
+    else if (S.hover.type === 'member') { const mm = mem(S.hover.id), a = mm && node(mm.i), b = mm && node(mm.j); if (a && b) { const [x1, y1] = W2S(a.x, a.y), [x2, y2] = W2S(b.x, b.y); g += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${PAL.sel}" stroke-width="7" stroke-opacity="0.18" stroke-linecap="round"/>`; } } }
+  if (S.mode !== 'select' && S.mouseSnap && !S.hover) { const [x, y] = W2S(...S.mouseSnap); g += `<circle cx="${x}" cy="${y}" r="3" fill="none" stroke="${PAL.sel}" stroke-width="1"/>`; }
+  if (S.probe) g += S.probe;
+  svg.innerHTML = g;
+  $('err').style.display = S.err ? 'block' : 'none'; $('err').textContent = S.err || '';
+  const rs = resultSet();
+  $('legend').innerHTML = S.show === 'model' ? `loads: ${esc((S.model.cases.find(c => c.id === S.curCase) || {}).name || '–')}` : rs ? `${{ defl: 'Deflected shape', N: 'Axial force (kN), tension +', V: 'Shear force (kN)', M: 'Bending moment (kNm), tension side', R: 'Reactions' }[S.show]}<br>${esc(rs.label)}${rs.r && rs.r.acr ? ` · α<sub>cr</sub> ${acrTxt(rs.r.acr)}` : ''}${rs.r && rs.r.iterations ? ` · P-Δ ${rs.r.iterations} it.` : ''}` : 'no results';
+  const m = S.model;
+  $('info').textContent = `${m.nodes.length} nodes · ${m.members.length} members · grid ${S.grid} m${S.res ? ` · ${S.res.ndof} dof · ${S.res.ms.toFixed(0)} ms` : ''}${S.mouseW ? ` · x ${S.mouseW[0].toFixed(2)}, y ${S.mouseW[1].toFixed(2)} m` : ''}`;
+  $('hint').textContent = { select: 'Click to select · drag a node to move it · drag empty space to pan · wheel to zoom · Delete removes the selection', node: 'Click to add a node (snaps to the grid)', member: S.pending ? 'Click the next node or a grid point (Esc to stop)' : 'Click the start node or a grid point', support: 'Click a node to cycle: pinned → fixed → roller (y) → roller (x) → free', release: 'Click near a member end to pin it, or its middle to make a truss bar', load: `Click a node (point load) or a member (UDL) to add a load to ${(S.model.cases.find(c => c.id === S.curCase) || {}).name || 'the current case'}` }[S.mode];
+}
+// ---------------- canvas interaction ----------------
+function evPt(e) { const r = $('cv').getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
+function addNodeAt(x, y) { const ex = S.model.nodes.find(n => Math.abs(n.x - x) < 1e-6 && Math.abs(n.y - y) < 1e-6); if (ex) return ex.id; const id = newId(S.model.nodes, 'N'); S.model.nodes.push({ id, x: +x.toFixed(4), y: +y.toFixed(4), sup: {} }); return id; }
+const SUPS = [{}, { ux: 'f', uy: 'f' }, { ux: 'f', uy: 'f', rz: 'f' }, { uy: 'f' }, { ux: 'f' }];
+const supKey = sp => JSON.stringify({ ux: sp.ux === 'f' ? 'f' : undefined, uy: sp.uy === 'f' ? 'f' : undefined, rz: sp.rz === 'f' ? 'f' : undefined });
+function onDown(e) {
+  if (e.button === 2) { S.pending = null; render(); return; }
+  const [px, py] = evPt(e), h = hit(px, py), [wx, wy] = S2W(px, py), sx = snap(wx), sy = snap(wy);
+  S.downAt = [px, py]; S.moved = false;
+  if (S.mode === 'select') {
+    if (h && h.type === 'node') { S.sel = h; S.drag = { id: h.id, prev: snapshot() }; }
+    else if (h) { S.sel = { type: 'member', id: h.id }; }
+    else { S.sel = null; S.pan = { x: px, y: py, cx: S.view.cx, cy: S.view.cy }; $('cv').classList.add('pan'); }
+    S.tab = 'prop'; render(); renderPane(); tabsState(); return;
+  }
+  if (S.mode === 'node') { if (h && h.type === 'node') { S.sel = h; } else edit(m => { const id = addNodeAt(sx, sy); S.sel = { type: 'node', id }; }); renderPane(); return; }
+  if (S.mode === 'member') {
+    const prev = snapshot(); let id;
+    if (h && h.type === 'node') id = h.id; else { id = addNodeAt(sx, sy); }
+    if (S.pending && S.pending !== id) {
+      const dup = S.model.members.some(mm => (mm.i === S.pending && mm.j === id) || (mm.j === S.pending && mm.i === id));
+      if (!dup) { const mid = newId(S.model.members, 'M'); S.model.members.push({ id: mid, i: S.pending, j: id, sec: { ...S.model.defSec }, relI: false, relJ: false, truss: !!S.model.defTruss }); S.sel = { type: 'member', id: mid }; }
+    }
+    S.pending = id; commit(prev); return;
+  }
+  if (!h) return;
+  if (S.mode === 'support' && h.type === 'node') edit(() => { const n = node(h.id), k = SUPS.findIndex(sp => supKey(sp) === supKey(n.sup || {})); n.sup = { ...SUPS[(k + 1) % SUPS.length] }; S.sel = h; });
+  else if (S.mode === 'release' && h.type === 'member') edit(() => { const mm = mem(h.id); if (h.t < 0.3) mm.relI = !mm.relI; else if (h.t > 0.7) mm.relJ = !mm.relJ; else { mm.truss = !mm.truss; if (mm.truss) { mm.relI = mm.relJ = false; } } S.sel = { type: 'member', id: h.id }; });
+  else if (S.mode === 'load' && S.curCase) edit(() => {
+    if (h.type === 'node') S.model.loads.push({ case: S.curCase, type: 'node', node: h.id, Fx: 0, Fy: -10, Mz: 0 });
+    else S.model.loads.push({ case: S.curCase, type: 'udl', member: h.id, w1: -5, w2: '', a: 0, b: '', dir: 'GY' });
+    S.sel = h.type === 'node' ? h : { type: 'member', id: h.id };
+  });
+  S.tab = 'prop'; renderPane(); tabsState();
+}
+function onMove(e) {
+  const [px, py] = evPt(e), [wx, wy] = S2W(px, py); S.mouse = [px, py]; S.mouseW = [wx, wy];
+  if (S.downAt && Math.hypot(px - S.downAt[0], py - S.downAt[1]) > 3) S.moved = true;
+  if (S.pan) { S.view.cx = S.pan.cx + px - S.pan.x; S.view.cy = S.pan.cy + py - S.pan.y; render(); return; }
+  if (S.drag && S.moved) { const n = node(S.drag.id); n.x = snap(wx); n.y = snap(wy); S.dragged = true; render(); renderPaneLight(); return; }
+  const h = hit(px, py); S.hover = h; S.mouseSnap = h && h.type === 'node' ? [node(h.id).x, node(h.id).y] : [snap(wx), snap(wy)];
+  probe(px, py, h); render();
+}
+function onUp() {
+  if (S.drag) { if (S.dragged) { S.hist.push(S.drag.prev); S.fut = []; changed(); } S.drag = null; S.dragged = false; }
+  S.pan = null; S.downAt = null; $('cv').classList.remove('pan');
+}
+function onWheel(e) { e.preventDefault(); const [px, py] = evPt(e), f = Math.exp(-e.deltaY * 0.0015), k = Math.max(2, Math.min(4000, S.view.k * f)), r = k / S.view.k; S.view.cx = px - (px - S.view.cx) * r; S.view.cy = py - (py - S.view.cy) * r; S.view.k = k; render(); }
+function zoom(f) { const [W, H] = cvSize(), px = W / 2, py = H / 2, k = Math.max(2, Math.min(4000, S.view.k * f)), r = k / S.view.k; S.view.cx = px - (px - S.view.cx) * r; S.view.cy = py - (py - S.view.cy) * r; S.view.k = k; render(); }
+// hover read-out along a member in the results views
+function probe(px, py, h) {
+  const tip = $('tip'); S.probe = '';
+  const rs = resultSet();
+  if (!h || h.type !== 'member' || S.show === 'model' || !rs || S.err) { tip.style.display = 'none'; return; }
+  const mm = mem(h.id), a = node(mm.i), b = node(mm.j), L = Math.hypot(b.x - a.x, b.y - a.y), x = h.t * L;
+  let html = `<b>${esc(mm.id)}</b> x = ${x.toFixed(2)} m<br>`;
+  if (rs.env) { const e = rs.env.members[mm.id]; if (e && e.st) { const p = interp(e.st, x, ['Mmax', 'Mmin', 'Vmax', 'Vmin', 'Nmax', 'Nmin']); html += `M ${f1(p.Mmin)} … ${f1(p.Mmax)} kNm<br>V ${f1(p.Vmin)} … ${f1(p.Vmax)} kN<br>N ${f1(p.Nmin)} … ${f1(p.Nmax)} kN`; } }
+  else { const r = rs.r.members[mm.id], p = interp(r.st, x, ['M', 'V', 'N', 'dx', 'dy', 'vr']); html += `M ${f1(p.M)} kNm<br>V ${f1(p.V)} kN<br>N ${f1(p.N)} kN${p.N > 0 ? ' (T)' : p.N < 0 ? ' (C)' : ''}<br>δ ${(Math.hypot(p.dx, p.dy) * 1000).toFixed(2)} mm (local ${(p.vr * 1000).toFixed(2)})`; }
+  tip.innerHTML = html; tip.style.display = 'block';
+  const [W] = cvSize(); tip.style.left = Math.min(px + 14, W - 190) + 'px'; tip.style.top = (py + 14) + 'px';
+  const [sx, sy] = W2S(a.x + (b.x - a.x) * h.t, a.y + (b.y - a.y) * h.t); S.probe = `<circle cx="${sx}" cy="${sy}" r="4" fill="none" stroke="${PAL.sel}" stroke-width="1.5"/>`;
+}
+function interp(st, x, keys) { let k = 1; while (k < st.length - 1 && st[k].x < x) k++; const p0 = st[k - 1], p1 = st[k], t = p1.x > p0.x ? (x - p0.x) / (p1.x - p0.x) : 0, o = {}; keys.forEach(q => { o[q] = p0[q] + (p1[q] - p0[q]) * Math.max(0, Math.min(1, t)); }); return o; }
+// ---------------- side panel ----------------
+function tabsState() { document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === S.tab)); }
+function toolbarState() {
+  document.querySelectorAll('#modes button').forEach(b => b.classList.toggle('on', b.dataset.m === S.mode));
+  document.querySelectorAll('#views button').forEach(b => b.classList.toggle('on', b.dataset.v === S.show));
+  $('bUndo').disabled = !S.hist.length; $('bRedo').disabled = !S.fut.length;
+  $('curCase').innerHTML = S.model.cases.map(c => `<option value="${esc(c.id)}"${c.id === S.curCase ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
+  $('cv').classList.toggle('sel', S.mode === 'select');
+}
+function fillResSel() {
+  const m = S.model, opts = [];
+  if (S.res) {
+    for (const c of m.combos) opts.push([`combo:${c.id}`, `${c.kind}: ${c.name}${S.res.combos[c.id] && S.res.combos[c.id].acr ? ` (α_cr ${acrTxt(S.res.combos[c.id].acr)})` : ''}`]);
+    if (S.res.envelope) opts.push(['env:uls', 'ULS envelope']);
+    for (const c of m.cases) opts.push([`case:${c.id}`, `Case: ${c.name}`]);
+  }
+  if (!opts.some(o => o[0] === S.resKey)) S.resKey = opts.length ? opts[0][0] : null;
+  $('resSel').innerHTML = opts.map(([k, l]) => `<option value="${esc(k)}"${k === S.resKey ? ' selected' : ''}>${esc(l)}</option>`).join('');
+}
+const DIRS = [['GY', 'Global Y'], ['GX', 'Global X'], ['GYP', 'Global Y, projected'], ['GXP', 'Global X, projected'], ['LY', 'Local y'], ['LX', 'Local x (axial)']];
+function secEditor(s, pre) {
+  const fam = s.fam || 'UKB', list = famList(fam);
+  return `<div class="grid2"><div class="form-group"><label>Family</label><select data-f="${pre}fam">${FAM.map(f => `<option${f === fam ? ' selected' : ''}>${f}</option>`).join('')}</select></div>
+    <div class="form-group"><label>Material</label><select data-f="${pre}mat">${Object.entries(MATS).map(([k, v]) => `<option value="${k}"${k === s.mat ? ' selected' : ''}>${v.name}</option>`).join('')}</select></div></div>` +
+    (fam === 'Custom' ? `<div class="grid3"><div class="form-group"><label>A (cm²)</label><input type="number" data-f="${pre}A" value="${s.A}"></div><div class="form-group"><label>I (cm⁴)</label><input type="number" data-f="${pre}I" value="${s.I}"></div><div class="form-group"><label>mass (kg/m)</label><input type="number" data-f="${pre}mass" value="${f3(s.mass)}"></div></div>`
+      : `<div class="grid2"><div class="form-group"><label>Section</label><select data-f="${pre}name">${list.map(n => `<option${n === s.name ? ' selected' : ''}>${n}</option>`).join('')}</select></div>
+        <div class="form-group"><label>Bending axis</label><select data-f="${pre}axis"><option value="y"${s.axis !== 'z' ? ' selected' : ''}>Major (y-y)</option><option value="z"${s.axis === 'z' ? ' selected' : ''}>Minor (z-z)</option></select></div></div>`) +
+    (s.mat === 'custom' ? `<div class="form-group"><label>E (GPa)</label><input type="number" data-f="${pre}E" value="${s.E}"></div>` : '') +
+    `<div class="kv"><span>A</span><span>${f3(s.A)} cm²</span><span>I</span><span>${f3(s.I)} cm⁴</span><span>E</span><span>${s.E} GPa</span><span>self weight</span><span>${(s.mass * 9.81e-3).toFixed(3)} kN/m</span></div>`;
+}
+function loadEditor(l, k) {
+  const head = `<div class="ld" data-li="${k}">`;
+  if (l.type === 'node') return head + `<div class="g4"><div><label>Fx (kN)</label><input type="number" data-l="Fx" value="${l.Fx ?? 0}"></div><div><label>Fy (kN)</label><input type="number" data-l="Fy" value="${l.Fy ?? 0}"></div><div><label>Mz (kNm)</label><input type="number" data-l="Mz" value="${l.Mz ?? 0}"></div><div style="display:flex;align-items:end"><button class="xb" data-ldel="${k}" title="Remove">×</button></div></div></div>`;
+  const dir = `<div><label>Direction</label><select data-l="dir">${DIRS.filter(d => l.type === 'udl' || !d[0].endsWith('P')).map(([v, n]) => `<option value="${v}"${(l.dir || 'GY') === v ? ' selected' : ''}>${n}</option>`).join('')}</select></div>`;
+  if (l.type === 'udl') return head + `<div class="g4"><div><label>Type</label><select data-l="type"><option value="udl" selected>UDL / VDL</option><option value="point">Point</option><option value="moment">Moment</option></select></div>${dir}<div><label>w₁ (kN/m)</label><input type="number" data-l="w1" value="${l.w1 ?? 0}"></div><div><label>w₂ (blank = w₁)</label><input type="number" data-l="w2" value="${l.w2 ?? ''}"></div></div>
+    <div class="g4" style="margin-top:6px"><div><label>from a (m)</label><input type="number" data-l="a" value="${l.a ?? 0}"></div><div><label>to b (blank = L)</label><input type="number" data-l="b" value="${l.b ?? ''}"></div><div></div><div style="display:flex;align-items:end;justify-content:end"><button class="xb" data-ldel="${k}" title="Remove">×</button></div></div></div>`;
+  if (l.type === 'point') return head + `<div class="g4"><div><label>Type</label><select data-l="type"><option value="udl">UDL / VDL</option><option value="point" selected>Point</option><option value="moment">Moment</option></select></div>${dir}<div><label>P (kN)</label><input type="number" data-l="P" value="${l.P ?? 0}"></div><div><label>at a (m)</label><input type="number" data-l="a" value="${l.a ?? ''}"></div></div><div style="text-align:right;margin-top:4px"><button class="xb" data-ldel="${k}">×</button></div></div>`;
+  return head + `<div class="g4"><div><label>Type</label><select data-l="type"><option value="udl">UDL / VDL</option><option value="point">Point</option><option value="moment" selected>Moment</option></select></div><div><label>M (kNm, ↺ +)</label><input type="number" data-l="M" value="${l.M ?? 0}"></div><div><label>at a (m)</label><input type="number" data-l="a" value="${l.a ?? ''}"></div><div style="display:flex;align-items:end"><button class="xb" data-ldel="${k}">×</button></div></div></div>`;
+}
+function supOf(sp) { const k = supKey(sp || {}), i = SUPS.findIndex(s => supKey(s) === k); return ['ux', 'uy', 'rz'].some(d => typeof (sp || {})[d] === 'number') ? 'springs' : ['free', 'pinned', 'fixed', 'rollerY', 'rollerX'][i] || 'custom'; }
+const SUPNAMES = { free: 'Free', pinned: 'Pinned', fixed: 'Fixed', rollerY: 'Roller (vertical reaction)', rollerX: 'Roller (horizontal reaction)', guided: 'Guided (no rotation, no y)', springs: 'Springs / custom' };
+function renderPane() {
+  tabsState(); const p = $('pane'), m = S.model, cs = m.cases.find(c => c.id === S.curCase);
+  if (S.tab === 'prop') {
+    if (S.sel && S.sel.type === 'node' && node(S.sel.id)) {
+      const n = node(S.sel.id), sp = n.sup || {}, kind = supOf(sp), loads = m.loads.map((l, k) => [l, k]).filter(([l]) => l.type === 'node' && l.node === n.id && l.case === S.curCase);
+      p.innerHTML = `<h3>Node ${esc(n.id)}</h3><div class="grid2"><div class="form-group"><label>x (m)</label><input type="number" step="0.1" data-n="x" value="${n.x}"></div><div class="form-group"><label>y (m)</label><input type="number" step="0.1" data-n="y" value="${n.y}"></div></div>
+        <div class="form-group"><label>Support</label><select data-n="sup">${Object.entries(SUPNAMES).map(([k, v]) => `<option value="${k}"${k === kind ? ' selected' : ''}>${v}</option>`).join('')}</select></div>
+        ${kind === 'springs' ? `<div class="grid3">${['ux', 'uy', 'rz'].map((d, j) => `<div class="form-group"><label>${['k_x (kN/m)', 'k_y (kN/m)', 'k_r (kNm/rad)'][j]}</label><input type="text" data-sp="${d}" value="${sp[d] === 'f' ? 'fixed' : sp[d] || ''}" placeholder="free"></div>`).join('')}</div><div class="muted">Enter a stiffness, “fixed”, or leave blank for free.</div>` : ''}
+        <h3>Loads in ${esc(cs ? cs.name : '–')}</h3>${loads.map(([l, k]) => loadEditor(l, k)).join('') || '<div class="muted">No nodal loads in this case.</div>'}
+        <button class="ab" data-add="node">+ Nodal load</button>
+        <h3>Results</h3>${nodeResults(n.id)}
+        <div style="margin-top:12px"><button class="ab" data-del="node">Delete node</button></div>`;
+    } else if (S.sel && S.sel.type === 'member' && mem(S.sel.id)) {
+      const mm = mem(S.sel.id), a = node(mm.i), b = node(mm.j), L = Math.hypot(b.x - a.x, b.y - a.y), ang = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+      const loads = m.loads.map((l, k) => [l, k]).filter(([l]) => l.type !== 'node' && l.member === mm.id && l.case === S.curCase);
+      p.innerHTML = `<h3>Member ${esc(mm.id)}</h3><div class="kv"><span>nodes</span><span>${esc(mm.i)} → ${esc(mm.j)}</span><span>length</span><span>${L.toFixed(3)} m</span><span>angle</span><span>${ang.toFixed(1)}°</span></div>
+        ${secEditor(mm.sec, 's.')}
+        <h3>End conditions</h3><label class="chk"><input type="checkbox" data-r="relI"${mm.relI ? ' checked' : ''}${mm.truss ? ' disabled' : ''}> Pinned at ${esc(mm.i)} (moment release)</label><label class="chk"><input type="checkbox" data-r="relJ"${mm.relJ ? ' checked' : ''}${mm.truss ? ' disabled' : ''}> Pinned at ${esc(mm.j)}</label><label class="chk"><input type="checkbox" data-r="truss"${mm.truss ? ' checked' : ''}> Truss bar (pinned both ends)</label>
+        <h3>Loads in ${esc(cs ? cs.name : '–')}</h3>${loads.map(([l, k]) => loadEditor(l, k)).join('') || '<div class="muted">No member loads in this case.</div>'}
+        <button class="ab" data-add="udl">+ UDL / VDL</button><button class="ab" data-add="point">+ Point load</button><button class="ab" data-add="moment">+ Moment</button>
+        <h3>Results</h3>${memberResults(mm.id)}
+        <div style="margin-top:12px"><button class="ab" data-del="member">Delete member</button><button class="ab" data-apply="sec">Apply section to all members</button></div>`;
+    } else {
+      p.innerHTML = `<h3>Model</h3><div class="muted">Select a node or member to edit it. Draw with the Node and Member tools, or start from the Wizard.</div>
+        <h3>Default section for new members</h3>${secEditor(m.defSec, 'd.')}<label class="chk"><input type="checkbox" data-o="defTruss"${m.defTruss ? ' checked' : ''}> New members are truss bars</label>
+        <h3>Analysis</h3><label class="chk"><input type="checkbox" data-o="second"${m.second ? ' checked' : ''}> Second-order (P-Δ) for ULS combinations</label><label class="chk"><input type="checkbox" data-o="acr"${m.acr ? ' checked' : ''}> Elastic critical load factor α<sub>cr</sub></label>
+        <div class="grid2" style="margin-top:8px"><div class="form-group"><label>Grid (m)</label><select data-o="grid">${[0.05, 0.1, 0.25, 0.5, 1].map(g => `<option${g === S.grid ? ' selected' : ''}>${g}</option>`).join('')}</select></div><div class="form-group"><label>Labels</label><select data-o="labels"><option value="1"${S.labels ? ' selected' : ''}>Shown</option><option value="0"${S.labels ? '' : ' selected'}>Hidden</option></select></div></div>
+        <h3>File</h3><button class="ab" id="bExport">Export JSON</button><button class="ab" id="bImport">Import JSON</button><button class="ab" id="bPrint">Print A4 report</button><button class="ab" id="bClear">New empty model</button><input type="file" id="fImport" accept=".json,application/json" style="display:none">`;
+    }
+  } else if (S.tab === 'tables') {
+    const t = S.tables;
+    let h = `<div class="tabs" style="margin:-6px 0 10px">${[['nodes', 'Nodes'], ['members', 'Members'], ['loads', 'Loads']].map(([k, v]) => `<button data-tt="${k}" class="${t === k ? 'on' : ''}">${v}</button>`).join('')}</div>`;
+    if (t === 'nodes') h += `<table class="e"><tr><th>id</th><th>x (m)</th><th>y (m)</th><th>support</th><th></th></tr>${m.nodes.map((n, k) => `<tr class="${S.sel && S.sel.id === n.id ? 'selr' : ''}"><td>${esc(n.id)}</td><td><input type="number" step="0.1" data-tn="${k}:x" value="${n.x}"></td><td><input type="number" step="0.1" data-tn="${k}:y" value="${n.y}"></td><td><select data-tn="${k}:sup">${Object.entries(SUPNAMES).filter(([kk]) => kk !== 'springs' || supOf(n.sup) === 'springs').map(([kk, v]) => `<option value="${kk}"${kk === supOf(n.sup) ? ' selected' : ''}>${v.split(' (')[0]}</option>`).join('')}</select></td><td><button class="xb" data-tdel="node:${k}">×</button></td></tr>`).join('')}</table><button class="ab" data-tadd="node">+ Node</button>`;
+    else if (t === 'members') h += `<table class="e"><tr><th>id</th><th>i</th><th>j</th><th>section</th><th>end</th><th></th></tr>${m.members.map((mm, k) => `<tr class="${S.sel && S.sel.id === mm.id ? 'selr' : ''}"><td>${esc(mm.id)}</td><td><select data-tm="${k}:i">${m.nodes.map(n => `<option${n.id === mm.i ? ' selected' : ''}>${esc(n.id)}</option>`).join('')}</select></td><td><select data-tm="${k}:j">${m.nodes.map(n => `<option${n.id === mm.j ? ' selected' : ''}>${esc(n.id)}</option>`).join('')}</select></td><td style="font-size:10.5px">${esc(secLabel(mm.sec))}</td><td><select data-tm="${k}:end"><option value="rigid"${!mm.truss && !mm.relI && !mm.relJ ? ' selected' : ''}>rigid</option><option value="i"${mm.relI && !mm.relJ && !mm.truss ? ' selected' : ''}>pin i</option><option value="j"${mm.relJ && !mm.relI && !mm.truss ? ' selected' : ''}>pin j</option><option value="truss"${mm.truss || (mm.relI && mm.relJ) ? ' selected' : ''}>truss</option></select></td><td><button class="xb" data-tdel="member:${k}">×</button></td></tr>`).join('')}</table>`;
+    else h += `<table class="e"><tr><th>case</th><th>on</th><th>type</th><th>values</th><th></th></tr>${m.loads.map((l, k) => `<tr><td><select data-tl="${k}:case">${m.cases.map(c => `<option value="${esc(c.id)}"${c.id === l.case ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></td><td>${esc(l.type === 'node' ? l.node : l.member)}</td><td>${l.type === 'node' ? 'nodal' : l.type === 'udl' ? (l.dir || 'GY') + ' udl' : l.type}</td><td style="font-size:10.5px">${l.type === 'node' ? `Fx ${f1(+l.Fx || 0)}, Fy ${f1(+l.Fy || 0)}, Mz ${f1(+l.Mz || 0)}` : l.type === 'udl' ? `${f1(+l.w1 || 0)}${l.w2 !== '' && l.w2 != null ? '→' + f1(+l.w2) : ''} kN/m${(+l.a || 0) || (l.b !== '' && l.b != null) ? ` [${+l.a || 0}, ${l.b === '' || l.b == null ? 'L' : l.b}]` : ''}` : l.type === 'point' ? `${f1(+l.P || 0)} kN at ${l.a === '' || l.a == null ? 'L/2' : l.a}` : `${f1(+l.M || 0)} kNm`}</td><td><button class="xb" data-ldel="${k}">×</button></td></tr>`).join('')}</table><div class="muted" style="margin-top:6px">Select a node or member to edit its loads in full.</div>`;
+    p.innerHTML = h;
+  } else if (S.tab === 'cases') {
+    p.innerHTML = `<h3>Load cases</h3><table class="e"><tr><th>name</th><th>type</th><th>self wt</th><th></th></tr>${m.cases.map((c, k) => `<tr><td><input type="text" data-c="${k}:name" value="${esc(c.name)}"></td><td><select data-c="${k}:type">${[['G', 'Permanent'], ['Q', 'Imposed'], ['S', 'Snow'], ['W', 'Wind'], ['A', 'Other (not combined)']].map(([v, n]) => `<option value="${v}"${v === c.type ? ' selected' : ''}>${n}</option>`).join('')}</select></td><td style="text-align:center"><input type="checkbox" data-c="${k}:selfWeight"${c.selfWeight ? ' checked' : ''}></td><td><button class="xb" data-cdel="${k}">×</button></td></tr>`).join('')}</table><button class="ab" data-cadd="1">+ Load case</button>
+      <h3>Combinations</h3><div class="grid2"><div class="form-group"><label>Generation</label><select data-o="autoCombos"><option value="1"${m.autoCombos !== false ? ' selected' : ''}>BS EN 1990 + UK NA (automatic)</option><option value="0"${m.autoCombos === false ? ' selected' : ''}>User defined</option></select></div><div class="form-group"><label>ULS expression</label><select data-o="rule"${m.autoCombos === false ? ' disabled' : ''}><option value="6.10"${(m.rule || '6.10') === '6.10' ? ' selected' : ''}>6.10</option><option value="6.10ab"${m.rule === '6.10ab' ? ' selected' : ''}>6.10a / 6.10b</option></select></div></div>
+      <table class="e"><tr><th>kind</th>${m.cases.map(c => `<th>${esc(c.name)}</th>`).join('')}<th></th></tr>${m.combos.map((c, k) => `<tr><td>${m.autoCombos === false ? `<select data-cb="${k}:kind"><option${c.kind === 'ULS' ? ' selected' : ''}>ULS</option><option${c.kind === 'SLS' ? ' selected' : ''}>SLS</option></select>` : c.kind}</td>${m.cases.map(cs => `<td>${m.autoCombos === false ? `<input type="number" step="0.05" data-cb="${k}:${esc(cs.id)}" value="${c.f[cs.id] ?? 0}">` : (c.f[cs.id] ? +c.f[cs.id].toFixed(3) : '–')}</td>`).join('')}<td>${m.autoCombos === false ? `<button class="xb" data-cbdel="${k}">×</button>` : ''}</td></tr>`).join('')}</table>${m.autoCombos === false ? '<button class="ab" data-cbadd="1">+ Combination</button>' : ''}
+      <div class="muted" style="margin-top:8px">Automatic: each variable action leading in turn with ψ₀ = 0.7 (imposed), 0.5 (snow, wind); 1.0G + 1.5W for uplift; characteristic SLS combinations. Wind cases are not combined with each other; type “Other” is excluded.</div>`;
+  } else {
+    const rs = resultSet();
+    p.innerHTML = rs ? `<h3>${esc(rs.label)}</h3>${resultsTables(rs)}` : `<div class="muted">${S.err ? esc(S.err) : 'No results yet.'}</div>`;
+  }
+}
+function renderPaneLight() { if (S.tab === 'prop' && S.sel && S.sel.type === 'node') { const n = node(S.sel.id), ins = $('pane').querySelectorAll('[data-n]'); ins.forEach(i => { if (i.dataset.n === 'x') i.value = n.x; if (i.dataset.n === 'y') i.value = n.y; }); } }
+function nodeResults(id) {
+  const rs = resultSet(); if (!rs || !rs.r) return '<div class="muted">Choose a load case or combination to see results.</div>';
+  const d = rs.r.nodes[id], R = rs.r.reactions[id];
+  return `<div class="kv"><span>u<sub>x</sub>, u<sub>y</sub></span><span>${(d.ux * 1000).toFixed(2)}, ${(d.uy * 1000).toFixed(2)} mm</span><span>rotation</span><span>${(d.rz * 1000).toFixed(3)} mrad</span>${R ? `<span>R<sub>x</sub>, R<sub>y</sub></span><span>${f1(R[0])}, ${f1(R[1])} kN</span><span>M<sub>R</sub></span><span>${f1(R[2])} kNm</span>` : ''}</div>`;
+}
+function memberResults(id) {
+  const rs = resultSet(); if (!rs) return '<div class="muted">No results.</div>';
+  if (rs.env) { const e = rs.env.members[id]; return `<div class="kv"><span>M max / min</span><span>${f1(e.Mmax)} / ${f1(e.Mmin)} kNm</span><span>|V| max</span><span>${f1(e.Vabs)} kN</span><span>N max / min</span><span>${f1(e.Nmax)} / ${f1(e.Nmin)} kN</span></div>`; }
+  const r = rs.r.members[id];
+  return `<div class="kv"><span>M max / min</span><span>${f1(r.Mmax.M)} at ${r.Mmax.x.toFixed(2)} / ${f1(r.Mmin.M)} at ${r.Mmin.x.toFixed(2)} m</span><span>|V| max</span><span>${f1(Math.abs(r.Vabs.V))} kN</span><span>N</span><span>${f1(r.Nmin.N)} … ${f1(r.Nmax.N)} kN</span><span>end i (N, V, M)</span><span>${f1(-r.end[0])}, ${f1(r.end[1])}, ${f1(-r.end[2])}</span><span>end j (N, V, M)</span><span>${f1(r.end[3])}, ${f1(-r.end[4])}, ${f1(r.end[5])}</span><span>deflection</span><span>${(Math.hypot(r.dmax.dx, r.dmax.dy) * 1000).toFixed(2)} mm (local ${(r.dloc.vr * 1000).toFixed(2)} = L/${r.dloc.vr ? Math.round(r.L / Math.abs(r.dloc.vr)) : '∞'})</span></div>`;
+}
+function resultsTables(rs) {
+  const m = S.model;
+  if (rs.env) return `<table class="e"><tr><th>node</th><th>R<sub>x</sub> min / max</th><th>R<sub>y</sub> min / max</th><th>M min / max</th></tr>${Object.entries(rs.env.reactions).map(([k, e]) => `<tr><td>${esc(k)}</td>${[0, 1, 2].map(j => `<td class="n">${f1(e.min[j])} / ${f1(e.max[j])}</td>`).join('')}</tr>`).join('')}</table>
+    <table class="e" style="margin-top:10px"><tr><th>member</th><th>M max</th><th>M min</th><th>|V|</th><th>N max</th><th>N min</th></tr>${m.members.map(mm => { const e = rs.env.members[mm.id]; return `<tr><td>${esc(mm.id)}</td><td class="n">${f1(e.Mmax)}</td><td class="n">${f1(e.Mmin)}</td><td class="n">${f1(e.Vabs)}</td><td class="n">${f1(e.Nmax)}</td><td class="n">${f1(e.Nmin)}</td></tr>`; }).join('')}</table>`;
+  const r = rs.r;
+  return `<table class="e"><tr><th>node</th><th>R<sub>x</sub> kN</th><th>R<sub>y</sub> kN</th><th>M kNm</th></tr>${Object.entries(r.reactions).map(([k, R]) => `<tr><td>${esc(k)}</td>${R.map(v => `<td class="n">${f1(v)}</td>`).join('')}</tr>`).join('')}
+    <tr><td style="color:var(--mut)">Σ</td>${[0, 1, 2].map(j => `<td class="n" style="color:var(--mut)">${j < 2 ? f1(Object.values(r.reactions).reduce((a, R) => a + R[j], 0)) : ''}</td>`).join('')}</tr></table>
+    <table class="e" style="margin-top:10px"><tr><th>member</th><th>M max</th><th>M min</th><th>|V|</th><th>N</th><th>δ mm</th></tr>${m.members.filter(mm => r.members[mm.id]).map(mm => { const q = r.members[mm.id]; return `<tr><td>${esc(mm.id)}</td><td class="n">${f1(q.Mmax.M)}</td><td class="n">${f1(q.Mmin.M)}</td><td class="n">${f1(Math.abs(q.Vabs.V))}</td><td class="n">${Math.abs(q.Nmax.N) > Math.abs(q.Nmin.N) ? f1(q.Nmax.N) : f1(q.Nmin.N)}</td><td class="n">${(Math.hypot(q.dmax.dx, q.dmax.dy) * 1000).toFixed(1)}</td></tr>`; }).join('')}</table>
+    <table class="e" style="margin-top:10px"><tr><th>node</th><th>u<sub>x</sub> mm</th><th>u<sub>y</sub> mm</th><th>θ mrad</th></tr>${m.nodes.map(n => { const d = r.nodes[n.id]; return `<tr><td>${esc(n.id)}</td><td class="n">${(d.ux * 1000).toFixed(2)}</td><td class="n">${(d.uy * 1000).toFixed(2)}</td><td class="n">${(d.rz * 1000).toFixed(3)}</td></tr>`; }).join('')}</table>`;
+}
+function renderSummary() {
+  const el = $('summary'), m = S.model;
+  if (S.err) { el.innerHTML = `<div class="section-title">Analysis</div><div class="err">${esc(S.err)}</div>`; return; }
+  if (!S.res) { el.innerHTML = ''; return; }
+  const uls = m.combos.filter(c => c.kind === 'ULS'), env = S.res.envelope;
+  const crit = uls.map(c => ({ c, r: S.res.combos[c.id] }));
+  const acrs = crit.map(x => x.r.acr).filter(v => Number.isFinite(v)), acrMin = acrs.length ? Math.min(...acrs) : null;
+  let h = `<div class="section-title">Summary <span class="aux">${S.res.ndof} dof · ${m.cases.length} cases · ${m.combos.length} combinations${S.res.cases && Object.values(S.res.cases)[0] && Object.values(S.res.cases)[0].autoHeld.length ? ' · pinned joints held against rotation' : ''}</span></div><div class="res-grid"><div>`;
+  if (env) h += `<table class="t"><tr><th class="l">member</th><th>section</th><th>M<sub>max</sub></th><th>M<sub>min</sub></th><th>|V|</th><th>N<sub>t</sub></th><th>N<sub>c</sub></th></tr>${m.members.map(mm => { const e = env.members[mm.id]; return `<tr><td class="l">${esc(mm.id)}</td><td class="l" style="font-size:10.5px">${esc(secLabel(mm.sec))}</td><td>${f1(e.Mmax)}</td><td>${f1(e.Mmin)}</td><td>${f1(e.Vabs)}</td><td>${f1(Math.max(0, e.Nmax))}</td><td>${f1(Math.min(0, e.Nmin))}</td></tr>`; }).join('')}</table><div class="note">ULS envelope (kN, kNm) over ${uls.length} combination${uls.length === 1 ? '' : 's'}${m.second ? ', second order (P-Δ)' : ', first order'}${acrMin ? `; α<sub>cr,min</sub> = ${f1(acrMin)}${acrMin < 10 ? ' &lt; 10: second-order effects should be included (BS EN 1993-1-1 5.2.1)' : ''}${m.members.some(x => x.truss || (x.relI && x.relJ)) ? '. Bars pinned at both ends are not checked for buckling between their nodes in α<sub>cr</sub>: design them as struts' : ''}` : ''}.</div>`;
+  h += `</div><div>`;
+  const sls = m.combos.filter(c => c.kind === 'SLS');
+  if (sls.length) { const worst = m.members.map(mm => { let b = { v: 0 }; for (const c of sls) { const q = S.res.combos[c.id].members[mm.id], v = Math.abs(q.dloc.vr); if (v > b.v) b = { v, c, L: q.L }; } return { mm, ...b }; });
+    h += `<table class="t"><tr><th class="l">member</th><th>local δ (SLS)</th><th>L/δ</th><th class="l">combination</th></tr>${worst.map(w => `<tr><td class="l">${esc(w.mm.id)}</td><td>${(w.v * 1000).toFixed(1)} mm</td><td>${w.v ? Math.round(w.L / w.v) : '∞'}</td><td class="l" style="font-size:10.5px">${w.c ? esc(w.c.name) : ''}</td></tr>`).join('')}</table><div class="note">Local deflection is measured from the chord between the member ends, under the characteristic combinations.</div>`; }
+  h += `</div></div><div class="note">Linear elastic stiffness analysis: Euler–Bernoulli members with axial and bending stiffness; a released end has its own rotation; members pinned at both ends act as bars (axial only, member loads carried as simply supported). Second-order analysis uses the consistent geometric stiffness iterated to convergence for each ULS combination; α<sub>cr</sub> is the lowest load factor at which the frame buckles elastically, from the exact (stability function) member stiffness with the first-order axial forces, found by the Wittrick–Williams eigenvalue count. Shear deformation is ignored. Combinations to BS EN 1990 with the UK National Annex (Table NA.A1.2(B)).</div>`;
+  el.innerHTML = h;
+}
+// ---------------- side panel events ----------------
+function onPaneInput(e) {
+  const t = e.target, m = S.model;
+  if (t.dataset.n !== undefined && S.sel) { const n = node(S.sel.id); if (!n) return;
+    if (t.dataset.n === 'sup') edit(() => { n.sup = { free: {}, pinned: { ux: 'f', uy: 'f' }, fixed: { ux: 'f', uy: 'f', rz: 'f' }, rollerY: { uy: 'f' }, rollerX: { ux: 'f' }, guided: { uy: 'f', rz: 'f' }, springs: { uy: 10000 } }[t.value] || {}; });
+    else { const v = parseFloat(t.value); if (Number.isFinite(v)) edit(() => { n[t.dataset.n] = v; }); } return; }
+  if (t.dataset.sp) { const n = node(S.sel.id), v = t.value.trim().toLowerCase(); edit(() => { n.sup = { ...(n.sup || {}) }; if (v === 'fixed' || v === 'f') n.sup[t.dataset.sp] = 'f'; else if (parseFloat(v) > 0) n.sup[t.dataset.sp] = parseFloat(v); else delete n.sup[t.dataset.sp]; }); return; }
+  if (t.dataset.f) { const [who, key] = t.dataset.f.split('.'), target = who === 's' ? mem(S.sel.id) : null;
+    edit(() => { const cur = who === 's' ? target.sec : m.defSec, o = { ...cur, [key]: key === 'A' || key === 'I' || key === 'mass' || key === 'E' ? parseFloat(t.value) : t.value };
+      if (key === 'fam' && t.value !== 'Custom') { o.name = famList(t.value)[Math.floor(famList(t.value).length / 3)]; }
+      if (key === 'fam' && t.value === 'Custom') { o.A = cur.A; o.I = cur.I; o.mass = cur.mass; o.name = 'Custom'; }
+      const s = makeSec(o); if (who === 's') target.sec = s; else m.defSec = s; }); renderPane(); return; }
+  if (t.dataset.r) { const mm = mem(S.sel.id); edit(() => { mm[t.dataset.r] = t.checked; if (t.dataset.r === 'truss' && t.checked) { mm.relI = mm.relJ = false; } }); renderPane(); return; }
+  const ld = t.closest('[data-li]');
+  if (ld && t.dataset.l) { const l = m.loads[+ld.dataset.li]; edit(() => {
+      const k = t.dataset.l;
+      if (k === 'type') { const keep = { case: l.case, member: l.member }; Object.keys(l).forEach(q => delete l[q]); Object.assign(l, keep, t.value === 'udl' ? { type: 'udl', w1: -5, w2: '', a: 0, b: '', dir: 'GY' } : t.value === 'point' ? { type: 'point', P: -10, a: '', dir: 'GY' } : { type: 'moment', M: 10, a: '' }); }
+      else if (k === 'dir') l.dir = t.value; else l[k] = t.value === '' ? '' : parseFloat(t.value);
+    }); if (t.dataset.l === 'type') renderPane(); return; }
+  if (t.dataset.o) { const k = t.dataset.o;
+    if (k === 'grid') { S.grid = parseFloat(t.value); render(); return; }
+    if (k === 'labels') { S.labels = t.value === '1'; render(); return; }
+    edit(() => { m[k] = t.type === 'checkbox' ? t.checked : k === 'autoCombos' ? t.value === '1' : t.value; if (k === 'autoCombos' && t.value === '0') m.combos = m.combos.map(c => ({ ...c, f: { ...c.f } })); }); renderPane(); return; }
+  if (t.dataset.tn) { const [k, f] = t.dataset.tn.split(':'), n = m.nodes[+k]; edit(() => { if (f === 'sup') n.sup = { free: {}, pinned: { ux: 'f', uy: 'f' }, fixed: { ux: 'f', uy: 'f', rz: 'f' }, rollerY: { uy: 'f' }, rollerX: { ux: 'f' }, guided: { uy: 'f', rz: 'f' }, springs: n.sup }[t.value] || {}; else { const v = parseFloat(t.value); if (Number.isFinite(v)) n[f] = v; } }); return; }
+  if (t.dataset.tm) { const [k, f] = t.dataset.tm.split(':'), mm = m.members[+k]; edit(() => { if (f === 'end') { mm.truss = t.value === 'truss'; mm.relI = t.value === 'i'; mm.relJ = t.value === 'j'; } else mm[f] = t.value; }); return; }
+  if (t.dataset.tl) { const [k] = t.dataset.tl.split(':'); edit(() => { m.loads[+k].case = t.value; }); return; }
+  if (t.dataset.c) { const [k, f] = t.dataset.c.split(':'), c = m.cases[+k]; edit(() => { c[f] = t.type === 'checkbox' ? t.checked : t.value; }); if (f !== 'name') renderPane(); return; }
+  if (t.dataset.cb) { const [k, f] = t.dataset.cb.split(':'), c = m.combos[+k]; edit(() => { if (f === 'kind') c.kind = t.value; else c.f[f] = parseFloat(t.value) || 0; c.name = Object.entries(c.f).filter(([, v]) => v).map(([id, v]) => `${v}${(m.cases.find(q => q.id === id) || {}).name || id}`).join(' + '); }); return; }
+}
+function onPaneClick(e) {
+  const t = e.target, m = S.model; if (!t.closest('button')) return; const b = t.closest('button');
+  if (b.dataset.tt) { S.tables = b.dataset.tt; renderPane(); return; }
+  if (b.dataset.add) { const sel = S.sel; if (!S.curCase) return; edit(() => { m.loads.push(b.dataset.add === 'node' ? { case: S.curCase, type: 'node', node: sel.id, Fx: 0, Fy: -10, Mz: 0 } : b.dataset.add === 'udl' ? { case: S.curCase, type: 'udl', member: sel.id, w1: -5, w2: '', a: 0, b: '', dir: 'GY' } : b.dataset.add === 'point' ? { case: S.curCase, type: 'point', member: sel.id, P: -10, a: '', dir: 'GY' } : { case: S.curCase, type: 'moment', member: sel.id, M: 10, a: '' }); }); renderPane(); return; }
+  if (b.dataset.ldel !== undefined) { edit(() => { m.loads.splice(+b.dataset.ldel, 1); }); renderPane(); return; }
+  if (b.dataset.del) { deleteSel(); return; }
+  if (b.dataset.apply) { const s = mem(S.sel.id).sec; edit(() => { m.members.forEach(mm => { mm.sec = { ...s }; }); }); return; }
+  if (b.dataset.tdel) { const [kind, k] = b.dataset.tdel.split(':'); S.sel = { type: kind, id: kind === 'node' ? m.nodes[+k].id : m.members[+k].id }; deleteSel(); return; }
+  if (b.dataset.tadd) { edit(() => { const id = newId(m.nodes, 'N'), last = m.nodes[m.nodes.length - 1]; m.nodes.push({ id, x: last ? last.x + 1 : 0, y: last ? last.y : 0, sup: {} }); }); renderPane(); return; }
+  if (b.dataset.cadd) { edit(() => { const id = newId(m.cases, 'C'); m.cases.push({ id, name: id, type: 'Q', selfWeight: false }); }); renderPane(); return; }
+  if (b.dataset.cdel !== undefined) { if (m.cases.length <= 1) return; edit(() => { const c = m.cases.splice(+b.dataset.cdel, 1)[0]; m.loads = m.loads.filter(l => l.case !== c.id); m.combos.forEach(cb => delete cb.f[c.id]); }); renderPane(); return; }
+  if (b.dataset.cbadd) { edit(() => { m.combos.push({ id: newId(m.combos, 'U'), name: '', kind: 'ULS', f: Object.fromEntries(m.cases.map(c => [c.id, c.type === 'G' ? 1.35 : 1.5])) }); m.combos[m.combos.length - 1].name = m.cases.map(c => `${c.type === 'G' ? 1.35 : 1.5}${c.name}`).join(' + '); }); renderPane(); return; }
+  if (b.dataset.cbdel !== undefined) { edit(() => { m.combos.splice(+b.dataset.cbdel, 1); }); renderPane(); return; }
+  if (b.id === 'bExport') { const blob = new Blob([JSON.stringify({ app: 'EngineeringTools 2D Frame Analysis', v: 1, model: m }, null, 1)], { type: 'application/json' }), a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'frame-model.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); return; }
+  if (b.id === 'bImport') { $('fImport').click(); return; }
+  if (b.id === 'bPrint') { printReport(); return; }
+  if (b.id === 'bClear') { const prev = snapshot(); S.model = blankModel(); S.sel = null; commit(prev); return; }
+}
+function deleteSel() {
+  if (!S.sel) return; const m = S.model, s = S.sel;
+  edit(() => {
+    if (s.type === 'node') { m.members = m.members.filter(mm => mm.i !== s.id && mm.j !== s.id); m.nodes = m.nodes.filter(n => n.id !== s.id); }
+    else m.members = m.members.filter(mm => mm.id !== s.id);
+    const ids = new Set(m.members.map(mm => mm.id)), nids = new Set(m.nodes.map(n => n.id));
+    m.loads = m.loads.filter(l => l.type === 'node' ? nids.has(l.node) : ids.has(l.member));
+  });
+  S.sel = null; renderPane();
+}
+const acrTxt = v => Number.isFinite(v) ? f1(v) : '∞';
+function blankModel() { return { nodes: [], members: [], cases: [{ id: 'G', name: 'G', type: 'G', selfWeight: true }, { id: 'Q', name: 'Q', type: 'Q', selfWeight: false }], loads: [], combos: [], autoCombos: true, rule: '6.10', second: false, acr: true, defSec: makeSec({ fam: 'UKB', name: '305×165×40 UKB', axis: 'y', mat: 'steel' }), defTruss: false }; }
+// ---------------- wizards ----------------
+const WZ = { type: 'truss', o: { kind: 'pratt', span: 12, panels: 6, depth: 1.5, rise: 0, chord: '120×120×8 SHS', web: '80×80×5 SHS', G: 6, Q: 9,
+  pspan: 18, eaves: 6, apex: 7.6, bases: 'fixed', bays: 1, col: '406×178×60 UKB', raf: '406×178×60 UKB', gk: 5, qk: 4.5, wk: 3,
+  spans: '6, 8, 6', beam: '457×191×67 UKB', bg: 20, bq: 15, cant: 0,
+  mbays: 3, mstor: 4, bayw: 7.5, sh: 3.8, mcol: '254×254×89 UKC', mbeam: '457×191×67 UKB', mg: 25, mq: 20, mw: 15, mbase: 'fixed', pinnedBeams: false } };
+function secByName(name) { const fam = name.endsWith('UKB') ? 'UKB' : name.endsWith('UKC') ? 'UKC' : name.endsWith('PFC') ? 'PFC' : name.endsWith('SHS') ? 'SHS' : name.endsWith('RHS') ? 'RHS' : 'CHS'; return makeSec({ fam, name, axis: 'y', mat: 'steel' }); }
+function wizardBuild(type, o) {
+  const m = blankModel(); m.defSec = secByName(type === 'truss' ? o.web : type === 'portal' ? o.raf : type === 'beam' ? o.beam : o.mbeam);
+  const N = (x, y, sup = {}) => { const id = 'N' + (m.nodes.length + 1); m.nodes.push({ id, x: +x.toFixed(4), y: +y.toFixed(4), sup }); return id; };
+  const M = (i, j, sec, extra = {}) => { const id = 'M' + (m.members.length + 1); m.members.push({ id, i, j, sec: secByName(sec), relI: false, relJ: false, truss: false, ...extra }); return id; };
+  const pin = { ux: 'f', uy: 'f' }, roll = { uy: 'f' }, fix = { ux: 'f', uy: 'f', rz: 'f' };
+  if (type === 'truss') {
+    const n = Math.max(2, Math.round(o.panels)), L = +o.span, d = +o.depth, rise = +o.rise || 0, p = L / n;
+    const ytop = x => d + rise * (1 - Math.abs(2 * x / L - 1));
+    const bot = [], top = [];
+    for (let k = 0; k <= n; k++) bot.push(N(k * p, 0, k === 0 ? pin : k === n ? roll : {}));
+    if (o.kind === 'warren') { for (let k = 0; k < n; k++) top.push(N((k + 0.5) * p, ytop((k + 0.5) * p))); }
+    else for (let k = 0; k <= n; k++) top.push(N(k * p, ytop(k * p)));
+    const T_ = { truss: true };
+    for (let k = 0; k < n; k++) M(bot[k], bot[k + 1], o.chord, T_);
+    if (o.kind === 'warren') { for (let k = 0; k < n - 1; k++) M(top[k], top[k + 1], o.chord, T_); for (let k = 0; k < n; k++) { M(bot[k], top[k], o.web, T_); M(top[k], bot[k + 1], o.web, T_); } }
+    else {
+      for (let k = 0; k < n; k++) M(top[k], top[k + 1], o.chord, T_);
+      for (let k = 0; k <= n; k++) M(bot[k], top[k], o.web, T_);
+      for (let k = 0; k < n; k++) { const left = k < n / 2; if (o.kind === 'pratt') left ? M(top[k], bot[k + 1], o.web, T_) : M(bot[k], top[k + 1], o.web, T_); else left ? M(bot[k], top[k + 1], o.web, T_) : M(top[k], bot[k + 1], o.web, T_); }
+    }
+    const pl = (+o.G || 0) * p, ql = (+o.Q || 0) * p;
+    top.forEach((id, k) => { const end = o.kind !== 'warren' && (k === 0 || k === top.length - 1); const f = end ? 0.5 : 1; if (pl) m.loads.push({ case: 'G', type: 'node', node: id, Fx: 0, Fy: -+(pl * f).toFixed(3), Mz: 0 }); if (ql) m.loads.push({ case: 'Q', type: 'node', node: id, Fx: 0, Fy: -+(ql * f).toFixed(3), Mz: 0 }); });
+    m.defTruss = true;
+  } else if (type === 'portal') {
+    const nb = Math.max(1, Math.round(o.bays)), L = +o.pspan, h = +o.eaves, ha = +o.apex, base = o.bases === 'fixed' ? fix : pin;
+    const cols = []; for (let b = 0; b <= nb; b++) { const a = N(b * L, 0, { ...base }), t = N(b * L, h); cols.push([a, t]); M(a, t, o.col); }
+    m.cases.push({ id: 'W', name: 'W', type: 'W', selfWeight: false });
+    for (let b = 0; b < nb; b++) { const ap = N(b * L + L / 2, ha), r1 = M(cols[b][1], ap, o.raf), r2 = M(ap, cols[b + 1][1], o.raf);
+      for (const r of [r1, r2]) { m.loads.push({ case: 'G', type: 'udl', member: r, w1: -+o.gk, w2: '', a: 0, b: '', dir: 'GY' }); m.loads.push({ case: 'Q', type: 'udl', member: r, w1: -+o.qk, w2: '', a: 0, b: '', dir: 'GYP' }); } }
+    m.loads.push({ case: 'W', type: 'udl', member: 'M1', w1: +o.wk, w2: '', a: 0, b: '', dir: 'GX' });
+  } else if (type === 'beam') {
+    const spans = String(o.spans).split(/[,;\s]+/).map(Number).filter(v => v > 0); if (!spans.length) spans.push(6);
+    let x = 0; const ids = [N(0, 0, pin)]; spans.forEach(s => { x += s; ids.push(N(x, 0, roll)); });
+    if (+o.cant > 0) ids.push(N(x + +o.cant, 0));
+    for (let k = 0; k < ids.length - 1; k++) { const mm = M(ids[k], ids[k + 1], o.beam); m.loads.push({ case: 'G', type: 'udl', member: mm, w1: -+o.bg, w2: '', a: 0, b: '', dir: 'GY' }); m.loads.push({ case: 'Q', type: 'udl', member: mm, w1: -+o.bq, w2: '', a: 0, b: '', dir: 'GY' }); }
+  } else {
+    const nb = Math.max(1, Math.round(o.mbays)), ns = Math.max(1, Math.round(o.mstor)), B = +o.bayw, Hs = +o.sh, base = o.mbase === 'fixed' ? fix : pin, grid = [];
+    for (let s = 0; s <= ns; s++) { grid.push([]); for (let b = 0; b <= nb; b++) grid[s].push(N(b * B, s * Hs, s === 0 ? { ...base } : {})); }
+    m.cases.push({ id: 'W', name: 'W', type: 'W', selfWeight: false });
+    for (let s = 0; s < ns; s++) for (let b = 0; b <= nb; b++) M(grid[s][b], grid[s + 1][b], o.mcol);
+    for (let s = 1; s <= ns; s++) { for (let b = 0; b < nb; b++) { const mm = M(grid[s][b], grid[s][b + 1], o.mbeam, o.pinnedBeams ? { relI: true, relJ: true } : {}); m.loads.push({ case: 'G', type: 'udl', member: mm, w1: -+o.mg, w2: '', a: 0, b: '', dir: 'GY' }); m.loads.push({ case: 'Q', type: 'udl', member: mm, w1: -+o.mq, w2: '', a: 0, b: '', dir: 'GY' }); }
+      m.loads.push({ case: 'W', type: 'node', node: grid[s][0], Fx: +(+o.mw * (s === ns ? 0.5 : 1)).toFixed(3), Fy: 0, Mz: 0 }); }
+    if (o.pinnedBeams) for (let b = 0; b < nb; b++) for (let s = 0; s < ns; s++) M(grid[s][b], grid[s + 1][b + 1], '100×100×6.3 SHS', { truss: true });
+  }
+  return m;
+}
+const WZF = {
+  truss: [['kind', 'Type', [['pratt', 'Pratt'], ['howe', 'Howe'], ['warren', 'Warren']]], ['span', 'Span (m)'], ['panels', 'Panels'], ['depth', 'Depth at the ends (m)'], ['rise', 'Extra rise at mid-span (m, pitched)'], ['chord', 'Chords', 'SHS'], ['web', 'Internals', 'SHS'], ['G', 'Permanent on the top chord (kN/m)'], ['Q', 'Imposed on the top chord (kN/m)']],
+  portal: [['pspan', 'Span (m)'], ['eaves', 'Eaves height (m)'], ['apex', 'Apex height (m)'], ['bays', 'Bays'], ['bases', 'Bases', [['fixed', 'Fixed'], ['pinned', 'Pinned']]], ['col', 'Columns', 'UKB'], ['raf', 'Rafters', 'UKB'], ['gk', 'Rafter G (kN/m)'], ['qk', 'Rafter Q (kN/m, projected)'], ['wk', 'Wind on the left column (kN/m)']],
+  beam: [['spans', 'Spans (m, comma separated)', 'text'], ['cant', 'Cantilever at the right (m)'], ['beam', 'Section', 'UKB'], ['bg', 'G (kN/m)'], ['bq', 'Q (kN/m)']],
+  multi: [['mbays', 'Bays'], ['mstor', 'Storeys'], ['bayw', 'Bay width (m)'], ['sh', 'Storey height (m)'], ['mbase', 'Bases', [['fixed', 'Fixed'], ['pinned', 'Pinned']]], ['pinnedBeams', 'Simple beams with bracing', [['false', 'No (rigid frame)'], ['true', 'Yes (braced, pinned beams)']]], ['mcol', 'Columns', 'UKC'], ['mbeam', 'Beams', 'UKB'], ['mg', 'Beam G (kN/m)'], ['mq', 'Beam Q (kN/m)'], ['mw', 'Wind per floor (kN)']],
+};
+function openWizard() {
+  const t = WZ.type, f = WZF[t];
+  $('wzbox').innerHTML = `<div class="section-title">Generate a model</div><div class="wz-types">${[['truss', 'Truss'], ['portal', 'Portal frame'], ['beam', 'Continuous beam'], ['multi', 'Multi-storey']].map(([k, v]) => `<button data-wt="${k}" class="${k === t ? 'on' : ''}">${v}</button>`).join('')}</div>
+    <div class="grid2">${f.map(([k, lab, typ]) => `<div class="form-group"><label>${lab}</label>${Array.isArray(typ) ? `<select data-w="${k}">${typ.map(([v, n]) => `<option value="${v}"${String(WZ.o[k]) === v ? ' selected' : ''}>${n}</option>`).join('')}</select>` : typ && typ !== 'text' ? `<select data-w="${k}">${famList(typ).map(n => `<option${n === WZ.o[k] ? ' selected' : ''}>${n}</option>`).join('')}</select>` : `<input type="${typ === 'text' ? 'text' : 'number'}" data-w="${k}" value="${esc(WZ.o[k])}">`}</div>`).join('')}</div>
+    <div class="muted" style="margin:6px 0 12px;font-size:12px">This replaces the current model (undo restores it). Load cases G and Q (and W where relevant) are created with the loads above.</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="ab" id="wzCancel">Cancel</button><button class="btn" id="wzGo" style="width:auto;padding:8px 18px">Generate</button></div>`;
+  $('wizard').classList.add('on');
+}
+$('wizard').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (e.target === $('wizard')) { $('wizard').classList.remove('on'); return; } if (!b) return;
+  if (b.dataset.wt) { WZ.type = b.dataset.wt; openWizard(); return; }
+  if (b.id === 'wzCancel') { $('wizard').classList.remove('on'); return; }
+  if (b.id === 'wzGo') { document.querySelectorAll('[data-w]').forEach(i => { WZ.o[i.dataset.w] = i.tagName === 'SELECT' && (i.value === 'true' || i.value === 'false') ? i.value === 'true' : i.type === 'number' ? parseFloat(i.value) : i.value; });
+    const prev = snapshot(); S.model = wizardBuild(WZ.type, WZ.o); S.sel = null; S.pending = null; $('wizard').classList.remove('on'); commit(prev); fit(); }
+});
+// ---------------- print report ----------------
+function printReport() {
+  const rs = resultSet(), m = S.model, view = { ...S.view }, W = 760, H = 420;
+  const xs = m.nodes.map(n => n.x), ys = m.nodes.map(n => n.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const k = Math.min((W - 280) / Math.max(x1 - x0, 1), (H - 230) / Math.max(y1 - y0, 1), 220); S.view = { k, cx: W / 2 - (x0 + x1) / 2 * k, cy: H / 2 + (y0 + y1) / 2 * k };
+  const keepShow = S.show, keepSel = S.sel, keepLab = S.labels; S.sel = null;
+  const pic = (show, title, extra = {}) => { S.show = show; const g = drawModel(PALP, { print: true, size: [W, H], ...extra }); return `<div style="break-inside:avoid;margin:3mm 0"><div style="font:bold 9.5pt Arial;margin-bottom:1mm">${esc(title)}</div><svg class="rsvg" viewBox="0 0 ${W} ${H}" style="width:100%;border:0.5pt solid #bbb">${g}</svg></div>`; };
+  let body = `<div style="font:bold 13pt Arial;margin-bottom:2mm">2D frame analysis</div><div style="font:9pt Arial;color:#444;margin-bottom:3mm">${m.nodes.length} nodes, ${m.members.length} members, ${m.cases.length} load cases, ${m.combos.length} combinations; ${m.second ? 'second-order (P-Δ) for ULS' : 'first-order'} analysis. Generated by EngineeringTools — 2D Frame Analysis. All calculations are the responsibility of the engineer.</div>`;
+  S.labels = true; body += pic('model', 'Model: nodes, members, supports and releases', { loads: false, show: 'model', caseId: '__none' });
+  for (const c of m.cases) if (m.loads.some(l => l.case === c.id)) body += pic('model', `Loads: case ${c.name}${c.selfWeight ? ' (+ self weight)' : ''}`, { loads: true, caseId: c.id });
+  S.labels = false;
+  if (rs) for (const [v, t] of [['M', 'Bending moment (kNm)'], ['V', 'Shear force (kN)'], ['N', 'Axial force (kN, tension +)'], ['defl', 'Deflected shape'], ['R', 'Reactions']]) if (!(rs.env && (v === 'defl' || v === 'R'))) body += pic(v, `${t} — ${rs.label}`);
+  body += `<div style="break-inside:avoid;font:8.5pt Arial"><b>Members</b><table style="border-collapse:collapse;width:100%;font:8pt Arial">${m.members.map(mm => `<tr><td style="border-bottom:0.3pt solid #ccc">${esc(mm.id)}</td><td style="border-bottom:0.3pt solid #ccc">${esc(mm.i)} – ${esc(mm.j)}</td><td style="border-bottom:0.3pt solid #ccc">${esc(secLabel(mm.sec))}</td><td style="border-bottom:0.3pt solid #ccc">${mm.truss || (mm.relI && mm.relJ) ? 'truss bar' : mm.relI ? 'pinned at i' : mm.relJ ? 'pinned at j' : 'rigid'}</td></tr>`).join('')}</table></div>`;
+  body += `<div style="margin-top:3mm;font:8.5pt Arial">${$('summary').innerHTML.replace(/class="t"/g, 'style="border-collapse:collapse;font:8pt Arial;width:100%"').replace(/class="note"/g, 'style="font:8pt Arial;color:#444;margin:2mm 0"')}</div>`;
+  S.view = view; S.show = keepShow; S.sel = keepSel; S.labels = keepLab;
+  $('report').innerHTML = `<div style="padding:0 2mm">${body}</div>`;
+  window.print();
+}
+// ---------------- wiring ----------------
+const cv = $('cv');
+cv.addEventListener('mousedown', onDown); window.addEventListener('mousemove', e => { if (S.pan || S.drag || e.target === cv || cv.contains(e.target)) onMove(e); }); window.addEventListener('mouseup', onUp);
+cv.addEventListener('mouseleave', () => { S.hover = null; S.mouseW = null; $('tip').style.display = 'none'; S.probe = ''; render(); });
+cv.addEventListener('wheel', onWheel, { passive: false }); cv.addEventListener('contextmenu', e => { e.preventDefault(); S.pending = null; render(); });
+cv.addEventListener('dblclick', e => { if (!hit(...evPt(e))) fit(); });
+$('zIn').onclick = () => zoom(1.25); $('zOut').onclick = () => zoom(0.8);
+document.querySelectorAll('#modes button').forEach(b => b.onclick = () => { S.mode = b.dataset.m; S.pending = null; toolbarState(); render(); });
+document.querySelectorAll('#views button').forEach(b => b.onclick = () => { S.show = b.dataset.v; toolbarState(); render(); });
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => { S.tab = b.dataset.t; renderPane(); });
+$('curCase').onchange = e => { S.curCase = e.target.value; render(); renderPane(); };
+$('resSel').onchange = e => { S.resKey = e.target.value; render(); renderSummary(); if (S.tab !== 'cases') renderPane(); };
+$('bWizard').onclick = openWizard; $('bUndo').onclick = undo; $('bRedo').onclick = redo; $('bFit').onclick = fit;
+$('bSm').onclick = () => { S.scaleMul /= 1.3; render(); }; $('bLg').onclick = () => { S.scaleMul *= 1.3; render(); };
+$('pane').addEventListener('change', onPaneInput); $('pane').addEventListener('click', onPaneClick);
+$('pane').addEventListener('change', e => { if (e.target.id === 'fImport') { const f = e.target.files[0]; if (!f) return; f.text().then(t => { try { const j = JSON.parse(t), mdl = j.model || j; if (!Array.isArray(mdl.nodes) || !Array.isArray(mdl.members)) throw new Error('not a frame model'); const prev = snapshot(); S.model = mdl; S.sel = null; commit(prev); fit(); } catch (err) { S.err = 'Import failed: ' + err.message; render(); } }); } });
+window.addEventListener('keydown', e => {
+  if (e.target && e.target.closest && e.target.closest('input,select,textarea')) return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
+  if (e.key === 'Escape') { S.pending = null; S.sel = null; render(); renderPane(); return; }
+  if (e.key === 'Delete' || e.key === 'Backspace') { deleteSel(); return; }
+  const km = { v: 'select', n: 'node', m: 'member', s: 'support', r: 'release', l: 'load' }[e.key.toLowerCase()];
+  if (km && !e.ctrlKey && !e.metaKey) { S.mode = km; S.pending = null; toolbarState(); render(); }
+  if (e.key.toLowerCase() === 'f' && !e.ctrlKey) fit();
+});
+window.addEventListener('resize', () => render());
+(function init() {
+  let st = null; try { st = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { st = null; }
+  S.model = st && st.v === 1 && st.model && Array.isArray(st.model.nodes) ? st.model : defaultModel();
+  if (!S.model.defSec) S.model.defSec = makeSec({ fam: 'UKB', name: '305×165×40 UKB', mat: 'steel' });
+  S.show = 'model'; changed(); requestAnimationFrame(fit);
+})();
+</script>
+</body>
+</html>
