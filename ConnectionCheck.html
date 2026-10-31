@@ -1300,23 +1300,36 @@ const JDraw = (() => {
     const n = nint(g.n), p1 = fv(g.p1), e1 = fv(g.e1), e2g = fv(g.e2g), e2b = fv(g.e2b), tg = fv(g.tg), hg = fv(g.hg), tb = fv(g.tb), wb = fv(g.wb), e = fv(g.e), aw = fv(g.aw), d = bd(g.boltSize);
     const tension = g.sign !== '-1', reach = (n - 1) / 2 * p1 + e1, th = Math.min(80, Math.max(45, Math.acos(Math.min(1, Math.max(0.17, (e - 15) / reach))) * 180 / Math.PI)) * Math.PI / 180;
     const ux = Math.cos(th), uy = -Math.sin(th), nx = Math.sin(th), ny = Math.cos(th);
-    const L = (n - 1) * p1, xc = e, yc = 0, bolts = range(n, i => { const s = (i - (n - 1) / 2) * p1; return [xc + s * ux, yc + s * uy]; });
+    const xc = e, yc = 0, bolts = range(n, i => { const s = (i - (n - 1) / 2) * p1; return [xc + s * ux, yc + s * uy]; });
     const f = bolts[0], l = bolts[n - 1], bEnd = [f[0] - e1 * ux, f[1] - e1 * uy], gExt = Math.max(e1, 40), hw = wb / 2 + e2g;
-    const G = [[0, yc + hg / 2], [l[0] + gExt * ux + hw * nx, l[1] + gExt * uy + hw * ny], [l[0] + gExt * ux - hw * nx, l[1] + gExt * uy - hw * ny], [0, yc - hg / 2]];
-    const far = [l[0] + (gExt + 260) * ux, l[1] + (gExt + 260) * uy];
-    const v = view(BOX.L, [-300, far[1] - 120, far[0] + 90, yc + hg / 2 + 160]);
-    let o = IEl(v, far[1] - 50, yc + hg / 2 + 140, -260, 0, { h: 260, b: 256, tf: 17, tw: 10, r: 13 }, 'y') + BKH(v, yc + hg / 2 + 140, -260, 0) + BKH(v, far[1] - 50, -260, 0);
-    o += P(v, G, 'plate') + WS(v, 0, yc - hg / 2, aw, yc + hg / 2);
-    const bp = (s, t) => [bEnd[0] + s * ux + t * nx, bEnd[1] + s * uy + t * ny], Lb = Math.hypot(far[0] - bEnd[0], far[1] - bEnd[1]);
+    const bp = (s, t) => [bEnd[0] + s * ux + t * nx, bEnd[1] + s * uy + t * ny];
+    // gusset: welded to the column flange over h_g, top edge horizontal under the beam, sides parallel to the brace
+    const yT = yc + hg / 2, yBt = yc - hg / 2, fU = [l[0] + gExt * ux + hw * nx, l[1] + gExt * uy + hw * ny], fL = [l[0] + gExt * ux - hw * nx, l[1] + gExt * uy - hw * ny];
+    const tU = (yT - fU[1]) / Math.sin(th), xk = Math.max(25, fU[0] - tU * Math.cos(th));
+    const G = fU[1] < yT ? [[0, yT], [xk, yT], fU, fL, [0, yBt]] : [[0, Math.max(yT, fU[1])], fU, fL, [0, yBt]];
+    const far = [l[0] + (gExt + 300) * ux, l[1] + (gExt + 300) * uy];
+    // beam framing into the column flange above the gusset (illustrative 356 x 171 UKB), clear of the gusset and the brace end
+    const bm = { h: 363.4, b: 173.2, tf: 11.5, tw: 7.4, r: 10.2 }, cs = { h: 260.3, b: 256.3, tf: 17.3, tw: 10.3, r: 12.7 };
+    const topSteel = Math.max(yT, bp(0, wb / 2)[1], bp(0, -wb / 2)[1], ...G.map(q => q[1]));
+    const yB = topSteel + 15, yBtop = yB + bm.h, xR = Math.max(far[0] + 40, G.reduce((a, q) => Math.max(a, q[0]), 0) + 260, 460), gap = 12;
+    const v = view(BOX.L, [-cs.h - 40, far[1] - 70, xR + 30, yBtop + 110]);
+    let o = IEl(v, far[1] - 40, yBtop + 95, -cs.h, 0, cs, 'y') + BKH(v, yBtop + 95, -cs.h, 0) + BKH(v, far[1] - 40, -cs.h, 0);
+    o += IEl(v, gap, xR, yB, yBtop, bm, 'x') + BK(v, xR, yB, yBtop);
+    // beam end connection: fin plate welded to the column flange, bolts through the beam web
+    const fpH = Math.min(0.6 * bm.h, 230), fpY0 = yB + (bm.h - fpH) / 2, nf = Math.max(2, Math.round((fpH - 80) / 70) + 1), pf = (fpH - 80) / (nf - 1);
+    o += R(v, 0, fpY0, 110, fpY0 + fpH, 'plate') + WS(v, 0, fpY0, 3, fpY0 + fpH) + range(nf, i => BE(v, 60, fpY0 + 40 + i * pf, 20)).join('');
+    o += P(v, G, 'plate') + WS(v, 0, yBt, aw, Math.max(yT, G[0][1]));
+    const Lb = Math.hypot(far[0] - bEnd[0], far[1] - bEnd[1]);
     o += P(v, [bp(0, wb / 2), bp(Lb, wb / 2), bp(Lb, -wb / 2), bp(0, -wb / 2)], 'steel');
     o += `<line x1="${v.X(bEnd[0] - 40 * ux)}" y1="${v.Y(bEnd[1] - 40 * uy)}" x2="${v.X(far[0])}" y2="${v.Y(far[1])}" stroke="${C.cl}" stroke-width="0.7" stroke-dasharray="14 3 2 3"/>`;
     o += bolts.map(([x, y]) => BE(v, x, y, d)).join('');
     const fx = v.X(far[0]), fy = v.Y(far[1]);
     o += tension ? LA(fx + 30 * Math.cos(th) * 1.4, fy + 30 * Math.sin(th) * 1.4, 42 * Math.cos(th), 42 * Math.sin(th), `N ${num(fv(g.N))} kN (tension)`, { ldx: 50, ldy: 4, anchor: 'start' }) : LA(fx + 2, fy + 2, -42 * Math.cos(th), -42 * Math.sin(th), `N ${num(fv(g.N))} kN (compression)`, { ldx: 8, ldy: 16, anchor: 'start' });
-    o += DH(v, [0, xc], yc + hg / 2, 30, [`e ${num(e)}`]) + DV(v, [yc + hg / 2, yc - hg / 2], -260, -18, [`h_g ${num(hg)}`]);
-    o += LD(v, G[1][0] - 20, G[1][1] - 10, 50, -30, [`Gusset t ${num(tg)} ${g.gussGrade || ''}`], { bold: true }) + LD(v, aw / 2, yc + hg * 0.3, -60, -60, [`Weld ${num(aw)} leg, both sides`]);
-    o += LD(v, l[0], l[1], 60, 10, [`${n} × ${g.boltSize || 'M20'} 8.8, p₁ ${num(p1)}`, `e₁ ${num(e1)}`]) + LD(v, (bEnd[0] + far[0]) / 2 + 60 * ux, (bEnd[1] + far[1]) / 2 + 60 * uy, 30, 30, [`Flat ${num(wb)} × ${num(tb)}`]);
-    o += title(v.X(far[0] / 2 - 120), 462, 'ELEVATION', 'gusset on the frame member');
+    o += DH(v, [0, xc], yBt, -26, [`e ${num(e)}`]) + DV(v, [yT, yBt], -cs.h, -18, [`h_g ${num(hg)}`]);
+    o += LD(v, (G[1][0] + G[2][0]) / 2, (G[1][1] + G[2][1]) / 2, 60, 18, [`Gusset t ${num(tg)} ${g.gussGrade || ''}`], { bold: true }) + LD(v, aw / 2, yBt + hg * 0.25, -70, 30, [`Weld ${num(aw)} leg, both sides`]);
+    o += LD(v, l[0], l[1], 60, 10, [`${n} × ${g.boltSize || 'M20'} 8.8, p₁ ${num(p1)}`, `e₁ ${num(e1)}`]) + LD(v, (bEnd[0] + far[0]) / 2 + 80 * ux, (bEnd[1] + far[1]) / 2 + 80 * uy, 30, 24, [`Flat ${num(wb)} × ${num(tb)}`]);
+    o += LD(v, xR - 120, yBtop, 20, -26, ['Beam', 'simple connection to the column'], { bold: true }) + Tx(v.X(-cs.h / 2), v.Y(yBtop + 30), 'Column', { size: 10.5, anchor: 'middle', weight: 600, color: C.mute });
+    o += title(v.X((xR - cs.h) / 2), 462, 'ELEVATION', 'gusset on the column below the beam');
     // section across the brace through a bolt
     const W2 = wb / 2 + e2g + 20, w = view(BOX.Rt, [-W2 - 30, -tg - 70, W2 + 40, tb + 70]);
     let q = R(w, -W2, -tg, W2, 0, 'plateCut') + R(w, -wb / 2, 0, wb / 2, tb, 'cut') + BS(w, tb, -tg, 0, d, 'y');
