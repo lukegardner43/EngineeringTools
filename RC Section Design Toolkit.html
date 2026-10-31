@@ -533,7 +533,9 @@ const EC2Section = (() => {
   /* inp: { kind 'beam'|'slab', shape 'rect'|'flanged', moment 'sagging'|'hogging', b (rect width, or effective flange width),
             bw, hf, h, fck, fyk, cover, phiLink, dg, bar { phi, n, layers | s }, comp { phi, n } | null,
             MEd, gk, qk, psi2, gG 1.35, gQ 1.5 (load ratios for SLS moments), delta, xdMax (null = 5.5(4) only),
-            wk 0.3, ae 15, defl { system, span, brittle } | null, shear { VEd, w, link { phi, legs, s } } | null } */
+            wk 0.3, ae 15, defl { system, span, brittle } | null, shear { VEd, w, link { phi, legs, s } } | null,
+            Mel (optional: elastic ULS moment for the SLS ratios, default M_Ed/delta), Mk + Mqp (optional: SLS moments from an analysis,
+            replacing the ratios), barWidth (optional: width the bars are spread over, default b_w), rhoArea 'web' (b_w d, default) | 'compression' } */
   function design(inp) {
     const c = EC2.concrete(inp.fck), st = EC2.steel(inp.fyk || 500), S = [], chk = [];
     const step = (ref, text, val) => S.push({ ref, text, val });
@@ -543,13 +545,14 @@ const EC2Section = (() => {
     // compression zone: flange width for sagging flanged sections, web otherwise
     const secC = flanged && sag ? { b: inp.b, bw, hf: inp.hf, h } : { b: bw, h };
     const tensionWidth = flanged && !sag ? inp.b : bw;
-    const arr = arrangement({ kind: inp.kind, h, cover: inp.cover, phiLink: slab ? 0 : inp.phiLink || 0, bar: inp.bar, width: bw, dg: inp.dg });
+    const arr = arrangement({ kind: inp.kind, h, cover: inp.cover, phiLink: slab ? 0 : inp.phiLink || 0, bar: inp.bar, width: inp.barWidth ?? bw, dg: inp.dg });
     const d = arr.d, comp = !slab && inp.comp && inp.comp.n > 0 ? inp.comp : null;
     const cC = inp.coverComp ?? inp.cover, d2 = comp ? cC + (inp.phiLink || 0) + comp.phi / 2 : cC + (inp.phiLink || 0) + 8;
     const As2p = comp ? comp.n * AREA(comp.phi) : 0;
     const n = (inp.gG ?? 1.35) * inp.gk + (inp.gQ ?? 1.5) * inp.qk;
     // SLS moments from the elastic (unredistributed) ULS moment M_Ed/delta scaled by the load ratios
-    const delta = inp.delta ?? 1, Mk = inp.MEd / delta * (inp.gk + inp.qk) / n, Mqp = inp.MEd / delta * (inp.gk + inp.psi2 * inp.qk) / n;
+    const delta = inp.delta ?? 1, Mel = inp.Mel ?? inp.MEd / delta, slsGiven = inp.Mk != null && inp.Mqp != null;
+    const Mk = slsGiven ? Math.max(inp.Mk, 1) : Mel * (inp.gk + inp.qk) / n, Mqp = slsGiven ? Math.max(inp.Mqp, 1) : Mel * (inp.gk + inp.psi2 * inp.qk) / n;
     step('Table 3.1', `f_ck = ${inp.fck} N/mm², f_cd = 0.85 f_ck/1.5 = ${r2(c.fcd)} N/mm², f_ctm = ${r3(c.fctm)} N/mm², E_cm = ${r1(c.Ecm / 1000)} GPa`, '');
     step('', `f_yd = f_yk/1.15 = ${r1(st.fyd)} N/mm²; d = ${r1(d)} mm${arr.n2 ? ` (two layers, centroid)` : ''}`, '');
     // ---------- bending ----------
@@ -574,7 +577,8 @@ const EC2Section = (() => {
     // ---------- SLS stresses (cracked transformed section) ----------
     const ae = inp.ae ?? 15, secS = flanged && sag ? { b: inp.b, bw, hf: inp.hf } : { b: bw };
     const crK = EC2.cracked({ sec: secS, As: arr.As, d, As2: As2p, d2, ae, M: Mk }), ssK = crK.ss, ssQP = ssK * Mqp / Mk;
-    step('7.2', `SLS: n = ${inp.gG ?? 1.35} g_k + ${inp.gQ ?? 1.5} q_k = ${r2(n)}; M_k = (M_Ed/δ)(g_k + q_k)/n = ${r1(kNm(Mk))} kNm; M_qp = (M_Ed/δ)(g_k + ψ₂ q_k)/n = ${r1(kNm(Mqp))} kNm (ψ₂ = ${inp.psi2})`, '');
+    step('7.2', slsGiven ? `SLS moments from the elastic analysis: characteristic M_k = ${r1(kNm(Mk))} kNm, quasi-permanent M_qp = ${r1(kNm(Mqp))} kNm (ψ₂ = ${inp.psi2})`
+      : `SLS: n = ${inp.gG ?? 1.35} g_k + ${inp.gQ ?? 1.5} q_k = ${r2(n)}; M_k = ${inp.Mel != null ? 'M_el' : '(M_Ed/δ)'}(g_k + q_k)/n = ${r1(kNm(Mk))} kNm; M_qp = ${inp.Mel != null ? 'M_el' : '(M_Ed/δ)'}(g_k + ψ₂ q_k)/n = ${r1(kNm(Mqp))} kNm (ψ₂ = ${inp.psi2})`, '');
     step('', `cracked section (α_e = ${ae}): x = ${r1(crK.x)} mm; σ_s = ${r1(ssK)} N/mm² (characteristic), ${r1(ssQP)} N/mm² (quasi-permanent)`, '');
     // ---------- crack control without direct calculation, 7.3.3 ----------
     const wk = inp.wk ?? 0.3, tab = EC2.crackTables({ ss: ssQP, wk, h, d, fctEff: c.fctm, kc: 0.4, hcr: h / 2 });
@@ -604,13 +608,15 @@ const EC2Section = (() => {
     // ---------- deflection: span / effective depth ----------
     let defl = null;
     if (inp.defl && inp.defl.span > 0) {
-      const D = inp.defl, actual = D.span / d, rho = bd.As / (bw * d), rho2 = (bd.As2 || 0) / (bw * d), K = EC2.KSYS[D.system];
+      // rho on b_w d, or (rhoArea 'compression', flanged sagging) on the concrete above the tension steel b_w d + (b_eff - b_w) h_f
+      const Arho = inp.rhoArea === 'compression' && flanged && sag ? bw * d + (inp.b - bw) * inp.hf : bw * d;
+      const D = inp.defl, actual = D.span / d, rho = bd.As / Arho, rho2 = (bd.As2 || 0) / Arho, K = EC2.KSYS[D.system];
       const base = baseRatio(inp.fck, rho, rho2, K);
-      const F1 = flanged ? Math.max(0.8, 1 - 0.1 * (inp.b / bw - 1)) : 1;
+      const F1 = flanged && sag ? Math.max(0.8, 1 - 0.1 * (inp.b / bw - 1)) : 1;
       const lim = D.system === 'flat' ? 8500 : 7000, F2 = D.brittle && D.span > lim && D.system !== 'cantilever' ? lim / D.span : 1;
       const F3 = f3(ssK), allowed = Math.min(40 * K, base * F1 * F2 * F3);
-      step('7.4.2', `l/d basic (7.16), K = ${K}: ρ = A_s,req/(b_w d) = ${(100 * rho).toFixed(3)}%, ρ′ = A_s2,req/(b_w d) = ${(100 * rho2).toFixed(3)}%, ρ₀ = ${(100 * 1e-3 * Math.sqrt(inp.fck)).toFixed(3)}% → ${r2(base)}`, '');
-      step('NA Table NA.5', `F1 = ${r3(F1)}${flanged ? ' (1 − 0.1(b_eff/b_w − 1) ≥ 0.8)' : ''}, F2 = ${r3(F2)}${F2 < 1 ? ` (${lim / 1000}/l)` : ''}, F3 = 310/σ_s = ${r3(F3)} (≤ 1.5); allowed l/d = min(40K, ${r2(base)} × F1 F2 F3) = ${r2(allowed)}; actual ${r2(actual)}`, '');
+      step('7.4.2', `l/d basic (7.16), K = ${K}: ρ = A_s,req/(${Arho !== bw * d ? 'b_w d + (b_eff − b_w) h_f' : 'b_w d'}) = ${(100 * rho).toFixed(3)}%, ρ′ = A_s2,req/(${Arho !== bw * d ? 'same' : 'b_w d'}) = ${(100 * rho2).toFixed(3)}%, ρ₀ = ${(100 * 1e-3 * Math.sqrt(inp.fck)).toFixed(3)}% → ${r2(base)}`, '');
+      step('NA Table NA.5', `F1 = ${r3(F1)}${flanged && sag ? ' (1 − 0.1(b_eff/b_w − 1) ≥ 0.8)' : ''}, F2 = ${r3(F2)}${F2 < 1 ? ` (${lim / 1000}/l)` : ''}, F3 = 310/σ_s = ${r3(F3)} (≤ 1.5); allowed l/d = min(40K, ${r2(base)} × F1 F2 F3) = ${r2(allowed)}; actual ${r2(actual)}`, '');
       // steel needed for deflection: provided area raises F3 (sigma_s falls) until allowed >= actual
       let AsDef = null;
       if (actual > allowed) {
