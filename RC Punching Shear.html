@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RC Punching Shear</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* Engineering Tools: shared light style (tasteskill app sheet "Achromatic ledger", seed 959138263).
+   Ink chrome on a blue-grey drawing-office ground; the one hue (#1d5fbf) goes on the main data element
+   (envelopes, utilisation bars); status colour only on the verdict and on a check that is over. */
+:root{
+  --bg:#f2f4f7; --surf:#ffffff; --surf2:#f7f8fa; --bdr:#e3e5e8; --bdr2:#d1d5db; --rule:#eceef1;
+  --txt:#111111; --lbl:#33363a; --mut:#5f6368; --faint:#6b6b6b;
+  --accent:#1d5fbf; --accent-dim:#e3ebf8;
+  --primary:#1d1f20;
+  --pass:#247b50; --warn:#b45309; --fail:#c4242a;
+  --pass-bg:#dcfae5; --pass-ink:#04250e; --fail-bg:#ffedea; --fail-ink:#831c1e;
+  --r:6px; --rc:8px;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:var(--sans);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5;min-height:100svh;padding:28px 32px 40px;
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;}
+.container{max-width:1376px;margin:0 auto;}
+/* title row: a photograph of the member's material (img/<material>.jpg beside the page, set by <body data-material>)
+   under a neutral scrim, with the breadcrumb, the tool's name and one line of scope. Without the photo it is a plain ink band. */
+.page-hdr{position:relative;isolation:isolate;overflow:hidden;border-radius:var(--rc);min-height:164px;padding:18px 24px 20px;margin-bottom:12px;
+  display:flex;flex-direction:column;justify-content:flex-end;color:#fff;background:#2c3036 var(--photo,none) center/cover no-repeat;}
+.page-hdr::before{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.55) 45%,rgba(0,0,0,.18) 100%);} /* taste-skill-ignore: neutral scrim under text on a photograph */
+.page-hdr::after{content:var(--credit,'');position:absolute;right:10px;bottom:8px;font-size:11px;color:rgba(255,255,255,.9);background:rgba(0,0,0,.4);padding:1px 6px;border-radius:4px;}
+.home-lnk{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:rgba(255,255,255,.88);text-decoration:none;font-weight:500;margin-bottom:auto;align-self:flex-start;padding-bottom:12px;}
+.home-lnk:hover{color:#fff;text-decoration:underline;}
+.home-lnk svg{width:14px;height:14px;}
+.page-hdr h1{font-size:26px;font-weight:600;line-height:1.25;letter-spacing:-0.01em;margin-bottom:4px;color:#fff;}
+.page-hdr p{font-size:14px;color:rgba(255,255,255,.92);max-width:900px;}
+body[data-material="steel"]{--photo:url(img/steel.jpg);--credit:'Photo: Chevsapher, CC0';}
+body[data-material="concrete"]{--photo:url(img/concrete.jpg);--credit:'Photo: MassDOT, public domain';}
+body[data-material="masonry"]{--photo:url(img/masonry.jpg);--credit:'Photo: Håkan Svensson, CC BY 2.5';}
+body[data-material="timber"]{--photo:url(img/timber.jpg);--credit:'Photo: Sebastian Wallroth, public domain';}
+body[data-material="frame"]{--photo:url(img/frame.jpg);--credit:'Photo: Wikideas1, CC0';}
+body[data-material="ground"]{--photo:url(img/ground.jpg);--credit:'Photo: Fons Heijnsbroek, CC0';}
+@media print{.page-hdr{display:none;}}
+/* inputs on the left, the answer on the right: (1376 - 12) x 6/13 = 630 | 734 */
+.main-grid{display:grid;grid-template-columns:minmax(380px,6fr) 7fr;gap:12px;align-items:start;}
+@media(max-width:1100px){.main-grid{grid-template-columns:1fr;}}
+.main-grid > div{min-width:0;}
+#results table.t{display:block;overflow-x:auto;white-space:nowrap;}
+.card{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rc);padding:20px 24px;margin-bottom:12px;}
+.section-title{font-size:16px;font-weight:600;color:var(--txt);margin:0 0 14px;display:flex;justify-content:space-between;align-items:baseline;gap:12px;line-height:1.3;}
+.section-title .aux{color:var(--mut);font-size:13px;font-weight:400;text-align:right;}
+.form-group{margin-bottom:14px;}
+.form-group label,.lbl{display:block;font-size:13px;margin-bottom:5px;color:var(--lbl);font-weight:500;line-height:1.35;}
+input[type="number"],input[type="text"],select{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);padding:0 10px;height:36px;border-radius:var(--r);font-family:var(--sans);font-size:14px;width:100%;font-variant-numeric:tabular-nums;transition:border-color .12s;}
+input::placeholder{color:var(--faint);}
+input:hover,select:hover{border-color:#b9bec6;}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);}
+input:disabled,select:disabled{background:var(--surf2);color:var(--mut);}
+select option{background:var(--surf);color:var(--txt);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.grid2 > .form-group,.grid3 > .form-group{display:flex;flex-direction:column;justify-content:flex-end;}
+.chk{display:block;position:relative;padding-left:26px;font-size:13px;color:var(--lbl);margin:8px 0;cursor:pointer;line-height:1.45;}
+.chk input{position:absolute;left:0;top:1px;width:16px;height:16px;accent-color:var(--primary);}
+.help{font-size:13px;color:var(--mut);margin-top:4px;line-height:1.45;}
+/* segmented control: grey track, white pill on the chosen option */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#e9ecf0;border-radius:var(--rc);margin-bottom:14px;}
+.seg button{background:transparent;color:var(--mut);border:1px solid transparent;border-radius:var(--r);height:32px;padding:0 10px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;}
+.seg button:hover{color:var(--txt);}
+.seg button.on{background:var(--surf);color:var(--txt);border-color:var(--bdr);}
+/* repeating rows: spans, supports, loads */
+.rows{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+.row{display:grid;gap:8px;align-items:end;background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--r);padding:10px;}
+.row label{font-size:12px;color:var(--mut);margin-bottom:3px;display:block;font-weight:500;line-height:1.3;}
+.row input,.row select{height:32px;font-size:13px;padding:0 8px;}
+.row.span{grid-template-columns:1fr 1.6fr 1fr 32px;}
+.row.load{grid-template-columns:52px 64px 1.1fr 1.1fr 32px;}
+.row.load .vals{grid-column:1 / span 3;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.xbtn{height:32px;width:32px;background:var(--surf);border:1px solid var(--bdr2);color:var(--mut);border-radius:var(--r);cursor:pointer;font-size:16px;line-height:1;}
+.xbtn:hover{color:var(--fail);border-color:var(--fail);}
+.addbtn{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);border-radius:var(--r);height:36px;padding:0 12px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;width:100%;}
+.addbtn:hover{border-color:#9aa0a8;background:var(--surf2);}
+/* the one primary action, near-black; secondary actions white and outlined */
+.btn{height:44px;padding:0 16px;border:none;border-radius:var(--r);font-weight:600;cursor:pointer;font-family:var(--sans);font-size:15px;width:100%;background:var(--primary);color:#fff;}
+.btn:hover{background:#000;}
+.btn:focus-visible,.btn2:focus-visible,.addbtn:focus-visible,.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.btn2{width:100%;height:38px;padding:0 12px;background:var(--surf);border:1px solid var(--bdr2);border-radius:var(--r);font-size:14px;font-weight:500;color:var(--txt);cursor:pointer;font-family:var(--sans);margin-top:8px;}
+.btn2:hover{border-color:#9aa0a8;background:var(--surf2);}
+.hidden{display:none!important;}
+/* results */
+.placeholder{display:flex;align-items:center;justify-content:center;min-height:160px;color:var(--mut);font-size:14px;text-align:center;padding:0 24px;}
+.verdict{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--bdr);border-radius:var(--rc);background:var(--surf2);margin-bottom:16px;}
+.verdict .big{font-size:24px;font-weight:600;line-height:1.2;color:var(--pass);letter-spacing:-0.01em;}
+.verdict.fail .big{color:var(--fail);}
+.verdict .sub{font-size:13px;color:var(--mut);margin-top:2px;}
+/* the utilisation ledger: check, clause, bar to scale (full track = 1.2, ink tick at the 1.0 limit), figure */
+.checks{display:flex;flex-direction:column;margin-bottom:8px;}
+.ck{display:grid;grid-template-columns:1.25fr 2fr 56px;gap:14px;align-items:center;font-size:13px;padding:7px 0;border-bottom:1px solid var(--rule);}
+.ck:last-child{border-bottom:none;}
+.ck .nm{color:var(--txt);line-height:1.35;} .ck .nm small{display:block;color:var(--mut);font-size:12px;}
+.bar{height:8px;background:#e8ebef;border-radius:4px;position:relative;}
+.bar::after{content:'';position:absolute;left:83.333%;top:-4px;bottom:-4px;width:1.5px;background:var(--txt);border-radius:1px;}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:4px;}
+.bar i.over{background:var(--fail);} /* 0.9-1.0 stays blue: a well-used member is not a warning; the tick shows how close it is */
+.ck .u{text-align:right;font-weight:600;font-size:14px;}
+.ck .u.over{color:var(--fail);}
+.diag{width:100%;height:auto;display:block;margin-bottom:6px;}
+/* screen drawings: the smallest labels lifted to the 11px floor (the print sheet keeps its own sizes) */
+.container svg text[font-size="8"],.container svg text[font-size="8.5"],.container svg text[font-size="9"],.container svg text[font-size="9.5"],
+.container svg text[font-size="10"],.container svg text[font-size="10.5"]{font-size:11px;}
+.dlabel{font-size:14px;font-weight:600;color:var(--txt);margin:20px 0 6px;line-height:1.3;}
+table.t{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px;font-variant-numeric:tabular-nums;}
+table.t th{color:var(--mut);font-weight:500;text-align:right;padding:6px 8px;border-bottom:1px solid var(--bdr);font-size:12px;}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--rule);text-align:right;}
+table.t th:first-child,table.t td:first-child{text-align:left;}
+.note{font-size:13px;color:var(--mut);background:var(--surf2);border:1px solid var(--rule);border-radius:var(--r);padding:10px 12px;margin-top:10px;line-height:1.5;}
+.err{color:var(--fail-ink);background:var(--fail-bg);font-size:13px;padding:10px 12px;border-radius:var(--r);margin-bottom:12px;}
+.busy{opacity:.55;pointer-events:none;}
+a{color:var(--txt);}
+sub,sup{font-size:max(11px,.75em);line-height:0;}
+@media(max-width:560px){body{padding:16px 16px 32px;} .card{padding:16px;} .ck{grid-template-columns:1fr 1fr 48px;gap:10px;} .grid3{grid-template-columns:1fr 1fr;}
+  .row.span{grid-template-columns:1fr 32px;} .row.span > div:nth-child(2),.row.span > div:nth-child(3){display:none;} .row.load .vals{grid-template-columns:1fr 1fr;}
+  .page-hdr{min-height:150px;padding:14px 16px 16px;} .page-hdr h1{font-size:22px;} .page-hdr::after{top:10px;bottom:auto;} .page-hdr::before{background:rgba(0,0,0,.6);} .verdict .big{font-size:22px;}}
+/* disclaimer: on screen at the foot of the page, and printed at the end of the calculation sheet */
+.disclaimer{max-width:1376px;margin:24px auto 0;padding-top:14px;border-top:1px solid var(--bdr,#e3e5e8);font-size:13px;line-height:1.55;color:var(--mut,#5f6368);}
+.disclaimer b{color:var(--txt,#111);font-weight:600;}
+@media print{.disclaimer{display:block!important;max-width:none;margin:4mm 0 0;padding-top:1.5mm;border-top:0.4pt solid #888;font-family:Arial,Helvetica,sans-serif;font-size:7.5pt;color:#000;break-inside:avoid;} .disclaimer b{color:#000;}}
+/* ---------- print: A4 calculation sheet ---------- */
+#report{display:none;}
+@media print{
+  @page{size:A4;margin:12mm 12mm 14mm;}
+  body{background:#fff;color:#000;padding:0;background-image:none;font-size:9.5pt;}
+  .container{display:none;}
+  #report{display:block;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  #report table.wrap{width:100%;border-collapse:collapse;}
+  #report thead td{padding:0 0 3mm;}
+  .rh{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;border:0.6pt solid #000;font-size:8pt;}
+  .rh div{padding:1.2mm 2mm;border-right:0.6pt solid #000;}
+  .rh div:last-child{border-right:none;}
+  .rh b{display:block;font-size:6.5pt;color:#444;font-weight:normal;text-transform:uppercase;letter-spacing:.3pt;}
+  .rh .ttl{grid-column:1 / -1;border-top:0.6pt solid #000;border-right:none;font-weight:bold;font-size:10pt;}
+  .rs{margin:0 0 3.5mm;}
+  .rs h2,.rs h3{break-after:avoid;}
+  .rl,.rt,.rsvg,.rp,.rt tr{break-inside:avoid;}
+  .rs h2{font-size:10pt;margin:3mm 0 1.5mm;padding-bottom:0.8mm;border-bottom:0.8pt solid #000;}
+  .rs h3{font-size:9pt;margin:2mm 0 1mm;}
+  .rl{display:grid;grid-template-columns:1fr 92px 132px;gap:2mm;padding:0.5mm 0;font-size:8.6pt;}
+  .rl .cl{text-align:right;color:#444;font-size:7.5pt;}
+  .rl .rv{text-align:right;font-weight:bold;}
+  .ok{color:#0a7a3e;} .ng{color:#c00;}
+  .rt{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;}
+  .rt th,.rt td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;}
+  .rt th{background:#eee;font-weight:bold;}
+  .rt td:first-child,.rt th:first-child,.rt.lft td,.rt.lft th{text-align:left;}
+  .rp{font-size:8.3pt;line-height:1.45;margin:1mm 0;}
+  .rsvg{width:100%;height:auto;}
+  .rsvg *{vector-effect:non-scaling-stroke;}
+}
+
+.row.fhole{grid-template-columns:repeat(4,minmax(0,1fr)) 32px;}
+svg.pplan{width:100%;height:auto;display:block;max-width:620px;margin:4px auto 10px;}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 20px;background:var(--surf2);border:1px solid var(--rule);border-radius:var(--rc);padding:12px 16px;margin-bottom:12px;}
+.kv div{min-width:0;} .kv b{display:block;font-size:12px;font-weight:400;color:var(--mut);} .kv span{font-size:15px;font-weight:600;}
+.from{font-size:13px;color:var(--lbl);background:var(--accent-dim);border-radius:var(--r);padding:8px 12px;margin-bottom:12px;}
+@media(max-width:560px){.row.fhole{grid-template-columns:repeat(2,minmax(0,1fr)) 32px;}}
+@media print{svg.pplan{max-width:120mm;} .rtab{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;} .rtab th,.rtab td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;} .rtab th:first-child,.rtab td:first-child{text-align:left;}}
+</style>
+</head>
+<body data-material="concrete">
+<div class="container">
+  <div class="page-hdr">
+    <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
+    <h1>RC Punching Shear</h1>
+    <p>Punching shear in slabs to BS EN 1992-1-1 6.4 + UK NA &nbsp;·&nbsp; internal, edge and corner columns, rectangular or circular &nbsp;·&nbsp; β by the UK NA values or calculated from the moments &nbsp;·&nbsp; openings near the column &nbsp;·&nbsp; shear link perimeters laid out to 9.4.3</p>
+  </div>
+  <div class="main-grid">
+    <div id="inputs">
+      <div class="card">
+        <div class="section-title">Project</div>
+        <div class="form-group"><label>Project</label><input type="text" id="pName" placeholder="Project name"></div>
+        <div class="grid3"><div class="form-group"><label>Job no.</label><input type="text" id="pJob"></div><div class="form-group"><label>By</label><input type="text" id="pBy"></div><div class="form-group"><label>Member ref.</label><input type="text" id="pRef" placeholder="e.g. Level 2, column B3"></div></div>
+      </div>
+      <div class="card">
+        <div class="section-title">Column</div>
+        <div class="grid3">
+          <div class="form-group"><label>Position</label><select id="ptype"><option value="internal">Internal</option><option value="edge">Edge</option><option value="corner">Corner</option></select></div>
+          <div class="form-group"><label>Shape</label><select id="pshape"><option value="rect">Rectangular</option><option value="circ">Circular</option></select></div>
+          <div class="form-group"><label id="pc1l">c₁ (mm)</label><input type="number" id="pc1" value="400"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group prect"><label>c₂ (mm)</label><input type="number" id="pc2" value="400"></div>
+          <div class="form-group pedge"><label>Face to slab edge, y (mm)</label><input type="number" id="pey" value="0"></div>
+          <div class="form-group pcorner"><label>Face to slab edge, x (mm)</label><input type="number" id="pex" value="0"></div>
+        </div>
+        <div class="help" id="pnote"></div>
+      </div>
+      <div class="card">
+        <div class="section-title">Slab and reinforcement</div>
+        <div class="grid3">
+          <div class="form-group"><label>Slab depth h (mm)</label><input type="number" id="ph" value="250" step="5"></div>
+          <div class="form-group"><label>Cover to the top bars (mm)</label><input type="number" id="pcov" value="30"></div>
+          <div class="form-group"><label>Outer layer</label><select id="pouter"><option value="x">Bars along x</option><option value="y">Bars along y</option></select></div>
+        </div>
+        <div class="grid2">
+          <div class="form-group"><label>Top bars along x: φ / spacing (mm)</label><div class="grid2"><select id="pfx"></select><select id="psx"></select></div></div>
+          <div class="form-group"><label>Top bars along y: φ / spacing (mm)</label><div class="grid2"><select id="pfy"></select><select id="psy"></select></div></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Concrete</label><select id="fck"><option value="25">C25/30</option><option value="28">C28/35</option><option value="30">C30/37</option><option value="32" selected>C32/40</option><option value="35">C35/45</option><option value="40">C40/50</option><option value="45">C45/55</option><option value="50">C50/60</option></select></div>
+          <div class="form-group"><label>Bars f<sub>yk</sub> (N/mm²)</label><input type="number" id="fyk" value="500" step="10"></div>
+          <div class="form-group"><label>Links f<sub>ywk</sub> (N/mm²)</label><input type="number" id="fywk" value="500" step="10"></div>
+        </div>
+        <div class="help">ρ<sub>l</sub> is from the tension bars within the column width plus 3d each side (6.4.4(1)); d is the mean of the two layers (6.32).</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Loads <span class="aux">ULS</span></div>
+        <div class="grid3">
+          <div class="form-group"><label>V<sub>Ed</sub> (kN)</label><input type="number" id="pV" value="700" step="5"></div>
+          <div class="form-group"><label>β</label><select id="pbeta"><option value="factors">UK NA value</option><option value="calc">Calculated (6.4.3)</option></select></div>
+          <div class="form-group"><label>Load to deduct q (kN/m²)</label><input type="number" id="pq" value="0" step="0.5"></div>
+        </div>
+        <div class="grid2 pcalc">
+          <div class="form-group"><label>M about x (kNm), e along y</label><input type="number" id="pMx" value="0" step="1"></div>
+          <div class="form-group"><label>M about y (kNm), e along x</label><input type="number" id="pMy" value="0" step="1"></div>
+        </div>
+        <div class="help">The UK NA values are 1.15 (internal), 1.4 (edge) and 1.5 (corner) for braced frames with spans that differ by no more than 25 %. q is a load inside the control perimeters that can be taken off V<sub>Ed</sub> (6.4.3(4)).</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Openings <span class="aux">centre from the column centre, mm</span></div>
+        <div class="rows" id="holeRows"></div>
+        <button class="addbtn" id="addHole">+ Add opening</button>
+        <div class="help">Openings within 6d of the column face take out the part of every control perimeter between the tangents from the column centre (6.4.2(3), Figure 6.14).</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Shear links</div>
+        <div class="grid3">
+          <div class="form-group"><label>Link φ (mm)</label><select id="plphi"><option value="auto">Auto</option><option>8</option><option>10</option><option>12</option><option>16</option></select></div>
+          <div class="form-group"><label>Radial spacing s<sub>r</sub> (mm)</label><input type="number" id="plsr" placeholder="auto ≤ 0.75d"></div>
+          <div class="form-group"><label>First perimeter (mm)</label><input type="number" id="pls0" placeholder="auto 0.3d–0.5d"></div>
+        </div>
+        <div class="help">Used only where v<sub>Ed</sub> at u₁ exceeds v<sub>Rd,c</sub>. Auto picks the smallest bar whose legs are at least min(100 mm, 0.5d) apart.</div>
+      </div>
+      <button class="btn" id="calc">Calculate</button>
+    </div>
+    <div><div class="card" id="results"><div class="placeholder">Set up the column and the slab, then Calculate.</div></div></div>
+  </div>
+</div>
+<div id="report"></div>
+<script id="engine">
+/* ===== PUNCHING SHEAR (EngineeringTools) =====
+   Punching of slabs at columns to BS EN 1992-1-1:2004+A1:2014, 6.4 and 9.4.3, with the UK National Annex:
+   - loaded areas: internal, edge and corner columns, rectangular or circular, with the column set back from the free
+     edge(s) if wanted; control perimeters at any distance r from the face as Figure 6.13 (internal) and Figure 6.15 (near an
+     edge, used where shorter than the full perimeter, 6.4.2(4));
+   - openings within 6d of the face (6.4.2(3), Figure 6.14): the part of each perimeter between the tangents drawn from the
+     centre of the column to the opening is ineffective; where the opening's radial depth l1 exceeds its width l2 across
+     the radius, the width is taken as sqrt(l1 l2);
+   - beta: the UK NA approximate values (Figure 6.21N: 1.15 internal, 1.4 edge, 1.5 corner) or calculated, 6.4.3(3)-(5)
+     (6.39 with W1 from 6.41, Table 6.1 k; 6.42 circular; 6.43 biaxial internal; 6.44 edge with u1* (Figure 6.20) and W1
+     from 6.45; 6.46 corner);
+   - at the column face: vEd,0 = beta VEd / (u0 d) <= vRd,max = 0.5 nu fcd (UK NA 6.4.5(3)), u0 per 6.4.5(3) (corner: each
+     face counted up to 1.5d, so u0 <= 3d and <= c1 + c2, consistent with the edge case c2 + 3d <= c2 + 2c1);
+   - at u1 (2d): vRd,c (6.47), CRd,c = 0.18/gamma_c, k = 1 + sqrt(200/d) <= 2, rho_l = sqrt(rho_ly rho_lz) <= 0.02, vmin;
+     vEd <= kmax vRd,c with kmax = 2.0 (UK NA 6.4.5(1), A1:2014);
+   - shear reinforcement 6.4.5: Asw/sr = (vEd - 0.75 vRd,c) u1 / (1.5 fywd,ef), fywd,ef = 250 + 0.25 d <= fywd (6.52);
+     uout,ef = beta VEd / (vRd,c d) (6.54); perimeters of links from 0.3d-0.5d to within 1.5d of uout at sr <= 0.75d,
+     at least two, tangential spacing <= 1.5d inside 2d and <= 2d outside, each leg not less than Asw,min (9.11).
+   Optionally a uniform load q (kN/m2) inside each perimeter is deducted from VEd. Units N and mm. */
+const Punching = (() => {
+  'use strict';
+  const AREA = phi => Math.PI * phi * phi / 4, GC = 1.5, GS = 1.15;
+  const kTable = r => r <= 0.5 ? 0.45 : r <= 1 ? 0.45 + 0.15 * (r - 0.5) / 0.5 : r <= 2 ? 0.6 + 0.1 * (r - 1) : r <= 3 ? 0.7 + 0.1 * (r - 2) : 0.8;   // Table 6.1
+  const FACTORS = { internal: 1.15, edge: 1.4, corner: 1.5 };   // UK NA Figure 6.21N
+
+  /* geometry, column centre at the origin. Rectangular columns: ax, ay = half-dimensions in x and y. Free edges: an edge
+     column has the slab edge along y = -(ay + ey) (the column's x side runs along the edge); a corner column also has an
+     edge along x = -(ax + ex). For circular columns ax = ay = D/2. Returns the perimeter at distance r as a polyline. */
+  function path(G, r, seg = 2) {
+    const { type, circ, ax, ay } = G, pts = [];
+    const arc = (cx, cy, R, a0, a1) => { const n = Math.max(2, Math.ceil(Math.abs(a1 - a0) * R / seg)); for (let k = 0; k <= n; k++) { const a = a0 + (a1 - a0) * k / n; pts.push([cx + R * Math.cos(a), cy + R * Math.sin(a)]); } };
+    const line = (x0, y0, x1, y1) => { const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / seg)); for (let k = 0; k <= n; k++) pts.push([x0 + (x1 - x0) * k / n, y0 + (y1 - y0) * k / n]); };
+    const PI = Math.PI;
+    if (type === 'internal') {
+      if (circ) arc(0, 0, ax + r, 0, 2 * PI);
+      else { line(ax + r, -ay, ax + r, ay); arc(ax, ay, r, 0, PI / 2); line(ax, ay + r, -ax, ay + r); arc(-ax, ay, r, PI / 2, PI); line(-ax - r, ay, -ax - r, -ay); arc(-ax, -ay, r, PI, 1.5 * PI); line(-ax, -ay - r, ax, -ay - r); arc(ax, -ay, r, 1.5 * PI, 2 * PI); }
+      return { pts, closed: true };
+    }
+    const yE = -(ay + G.ey);
+    if (type === 'edge') {
+      if (circ) { line(-ax - r, yE, -ax - r, 0); arc(0, 0, ax + r, PI, 0); line(ax + r, 0, ax + r, yE); }
+      else { line(-ax - r, yE, -ax - r, ay); arc(-ax, ay, r, PI, PI / 2); line(-ax, ay + r, ax, ay + r); arc(ax, ay, r, PI / 2, 0); line(ax + r, ay, ax + r, yE); }
+      return { pts, closed: false };
+    }
+    const xE = -(ax + G.ex);   // corner
+    if (circ) { line(xE, ax + r, 0, ax + r); arc(0, 0, ax + r, PI / 2, 0); line(ax + r, 0, ax + r, yE); }
+    else { line(xE, ay + r, ax, ay + r); arc(ax, ay, r, PI / 2, 0); line(ax + r, ay, ax + r, yE); }
+    return { pts, closed: false };
+  }
+  // closed-form lengths (the polyline is used for openings and the drawing)
+  function uGross(G, r) {
+    const { type, circ, ax, ay } = G, PI = Math.PI;
+    const full = circ ? 2 * PI * (ax + r) : 4 * (ax + ay) + 2 * PI * r;
+    if (type === 'internal') return full;
+    const near = type === 'edge' ? (circ ? PI * (ax + r) + 2 * (ax + G.ey) : 2 * ax + 2 * (2 * ay + G.ey) + PI * r)
+      : (circ ? PI * (ax + r) / 2 + 2 * ax + G.ex + G.ey : 2 * ax + G.ex + 2 * ay + G.ey + PI * r / 2);
+    return Math.min(full, near);   // 6.4.2(4): Figure 6.15 where it gives the smaller perimeter
+  }
+  const usesFull = (G, r) => G.type !== 'internal' && uGross({ ...G, type: 'internal' }, r) <= uGross(G, r) + 1e-9;
+  // openings: angular shadows seen from the column centre (Figure 6.14), only those within 6d of the face
+  function shadows(G, d) {
+    const out = [];
+    for (const h of G.holes || []) {
+      if (!(h.a > 0 && h.b > 0)) continue;
+      const dx = Math.max(0, Math.abs(h.x) - h.a / 2 - G.ax), dy = Math.max(0, Math.abs(h.y) - h.b / 2 - G.ay), gap = G.circ ? Math.max(0, Math.hypot(h.x, h.y) - G.ax - Math.hypot(h.a, h.b) / 2) : Math.hypot(dx, dy);
+      if (gap > 6 * d + 1e-9) { out.push({ h, gap, active: false }); continue; }
+      const phi = Math.atan2(h.y, h.x), c = Math.cos(phi), s = Math.sin(phi);
+      const lr = Math.abs(h.a * c) + Math.abs(h.b * s), lt = Math.abs(h.a * s) + Math.abs(h.b * c);   // extents along / across the radius
+      const corners = [[h.x - h.a / 2, h.y - h.b / 2], [h.x + h.a / 2, h.y - h.b / 2], [h.x + h.a / 2, h.y + h.b / 2], [h.x - h.a / 2, h.y + h.b / 2]];
+      const rel = ([x, y]) => { let a = Math.atan2(y, x) - phi; while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
+      let lo = Math.min(...corners.map(rel)), hi = Math.max(...corners.map(rel));
+      const dn = Math.hypot(h.x, h.y) - lr / 2;
+      if (lr > lt && dn > 0) { const half = Math.atan(Math.sqrt(lr * lt) / 2 / dn); lo = Math.min(lo, -half); hi = Math.max(hi, half); }
+      out.push({ h, gap, active: true, phi, lo, hi, lr, lt });
+    }
+    return out;
+  }
+  const inShadow = (S, x, y) => S.some(s => { if (!s.active) return false; let a = Math.atan2(y, x) - s.phi; while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a >= s.lo - 1e-12 && a <= s.hi + 1e-12; });
+  // perimeter at r: gross length, the length lost to openings, net
+  function perimeter(G, r, S) {
+    const gross = uGross(G, r);
+    if (!S.some(s => s.active)) return { gross, lost: 0, net: gross };
+    const g = usesFull(G, r) ? { ...G, type: 'internal' } : G, P = path(g, r, 1).pts;
+    let L = 0, lost = 0, prev = inShadow(S, P[0][0], P[0][1]);
+    for (let k = 1; k < P.length; k++) {
+      const a = P[k - 1], b = P[k], l = Math.hypot(b[0] - a[0], b[1] - a[1]), cur = inShadow(S, b[0], b[1]); L += l;
+      if (prev && cur) lost += l;
+      else if (prev !== cur) {   // the segment crosses a tangent: find the crossing
+        let lo = 0, hi = 1;
+        for (let m = 0; m < 30; m++) { const t = (lo + hi) / 2; if (inShadow(S, a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t) === prev) lo = t; else hi = t; }
+        lost += prev ? lo * l : (1 - lo) * l;
+      }
+      prev = cur;
+    }
+    lost *= gross / L;   // the polyline is a fine approximation of the exact length; scale to it
+    return { gross, lost, net: gross - lost };
+  }
+  // area inside the perimeter at r (for a deducted load q), on the slab
+  function areaIn(G, r) {
+    const { type, circ, ax, ay } = G, PI = Math.PI;
+    if (type === 'internal') return circ ? PI * (ax + r) ** 2 : 4 * ax * ay + 4 * r * (ax + ay) + PI * r * r;
+    if (type === 'edge') return circ ? PI * (ax + r) ** 2 / 2 + 2 * (ax + r) * (ax + G.ey) : (2 * ax + 2 * r) * (2 * ay + G.ey) + 2 * ax * r + PI * r * r / 2;
+    return circ ? PI * (ax + r) ** 2 / 4 + (ax + r) * (ax + G.ex) + (ax + r) * (ax + G.ey) + (ax + G.ex) * (ax + G.ey)
+      : (2 * ax + G.ex + r) * (2 * ay + G.ey + r) - r * r + PI * r * r / 4;
+  }
+  // u0, the column-face perimeter for vRd,max (6.4.5(3))
+  function u0of(G, d) {
+    const { type, circ, ax, ay } = G;
+    if (type === 'internal') return circ ? 2 * Math.PI * ax : 4 * (ax + ay);
+    const c1 = 2 * ay, c2 = 2 * ax;   // edge: c2 along the edge, c1 into the slab
+    if (type === 'edge') return circ ? Math.min(Math.PI * ax, 2 * ax + 3 * d) : Math.min(c2 + 3 * d, c2 + 2 * c1);
+    return circ ? Math.min(Math.PI * ax / 2, 3 * d) : Math.min(1.5 * d, c1) + Math.min(1.5 * d, c2);   // 3d <= c1 + c2, taken face by face (each face at most 1.5d), as the edge case
+  }
+  // beta, 6.4.3
+  function betaOf(G, d, VEd, beta, u1) {
+    if (beta.method !== 'calc') return { beta: FACTORS[G.type], how: 'UK NA approximate value (Figure 6.21N)' };
+    const Mx = Math.abs(beta.Mx || 0) * 1e6, My = Math.abs(beta.My || 0) * 1e6;   // Mx: moment about the x axis (eccentricity along y)
+    const { type, circ, ax, ay } = G, PI = Math.PI;
+    if (!(VEd > 0)) return { beta: 1, how: 'no load' };
+    if (type === 'internal') {
+      if (circ) { const e = Math.hypot(Mx, My) / VEd; return { beta: 1 + 0.6 * PI * e / (2 * ax + 4 * d), how: '(6.42), circular internal column', e }; }
+      const ey = Mx / VEd, ex = My / VEd;   // eccentricities along y and x
+      if (ex > 0 && ey > 0) { const by = 2 * ay + 4 * d, bx = 2 * ax + 4 * d; return { beta: 1 + 1.8 * Math.sqrt((ex / bx) ** 2 + (ey / by) ** 2), how: '(6.43), biaxial', ex, ey, bx, by }; }
+      const along = ex > 0 ? 'x' : 'y', e = Math.max(ex, ey), c1 = along === 'x' ? 2 * ax : 2 * ay, c2 = along === 'x' ? 2 * ay : 2 * ax;
+      const W1 = c1 * c1 / 2 + c1 * c2 + 4 * c2 * d + 16 * d * d + 2 * PI * d * c1, k = kTable(c1 / c2);
+      return { beta: 1 + k * e * u1 / W1, how: '(6.39) with W1 from (6.41)', k, W1, e };
+    }
+    // edge and corner: u1* (Figure 6.20), eccentricity towards the interior assumed for the moment across the edge
+    if (type === 'edge') {
+      const c1 = 2 * ay, c2 = 2 * ax, a = Math.min(0.5 * c1, 1.5 * d), u1s = circ ? PI * (ax + 2 * d) + 2 * Math.min(ax, 1.5 * d) : c2 + 2 * a + 2 * PI * d;
+      const epar = My / VEd, W1 = c2 * c2 / 4 + c1 * c2 + 4 * c1 * d + 8 * d * d + PI * d * c2, k = kTable(c1 / (2 * c2));
+      return { beta: u1 / u1s + k * u1 / W1 * epar, how: '(6.44) with u1* (Figure 6.20) and W1 from (6.45)', u1s, k, W1, e: epar };
+    }
+    const c1 = 2 * ay, c2 = 2 * ax, u1s = circ ? PI * (ax + 2 * d) / 2 + 2 * Math.min(ax, 1.5 * d) : Math.min(0.5 * c1, 1.5 * d) + Math.min(0.5 * c2, 1.5 * d) + PI * d;
+    return { beta: u1 / u1s, how: '(6.46) with u1* (Figure 6.20)', u1s };
+  }
+  // the distance from the face at which the net perimeter reaches a target length
+  function rFor(G, S, target, rmax) {
+    let lo = 0, hi = Math.max(rmax, 1);
+    while (perimeter(G, hi, S).net < target && hi < 1e6) hi *= 2;
+    for (let k = 0; k < 60; k++) { const m = (lo + hi) / 2; if (perimeter(G, m, S).net < target) lo = m; else hi = m; }
+    return (lo + hi) / 2;
+  }
+
+  /* inp: { type 'internal'|'edge'|'corner', shape 'rect'|'circ', c1, c2 (mm) or D, ex, ey (column face to free edge, mm),
+            h, cover (to the outer layer), phiX, sX (bars running in x), phiY, sY, outer 'x'|'y' (which layer is outside),
+            dX, dY (optional: effective depths given directly), fck, fyk, fywk, VEd (kN), q (kN/m2 deducted, optional),
+            beta: { method 'factors'|'calc', Mx, My (kNm) }, holes: [{ x, y, a, b }] (centre from the column centre, sizes, mm),
+            link: { phi (mm) | 'auto', sr (mm, optional), s0 (mm, optional) } }
+     For an edge column c1 is the column dimension perpendicular to the edge (y) and c2 along it (x). */
+  function design(inp) {
+    const circ = inp.shape === 'circ', type = inp.type || 'internal';
+    const ax = circ ? inp.D / 2 : inp.c2 / 2, ay = circ ? inp.D / 2 : inp.c1 / 2;
+    if (!(ax > 0 && ay > 0)) throw new Error('Give the column dimensions');
+    if (!(inp.h > 0)) throw new Error('Give the slab depth h');
+    const G = { type, circ, ax, ay, ex: Math.max(0, inp.ex || 0), ey: Math.max(0, inp.ey || 0), holes: inp.holes || [] };
+    G.holes.forEach((o, i) => { if (o.a > 0 && o.b > 0 && Math.abs(o.x) < ax + o.a / 2 - 1e-9 && Math.abs(o.y) < ay + o.b / 2 - 1e-9) throw new Error(`Opening ${i + 1} overlaps the column`); });
+    // effective depths: the outer layer and the inner layer (6.32: d = (dy + dz) / 2)
+    const outer = inp.outer === 'y' ? 'y' : 'x';
+    let dX = inp.dX, dY = inp.dY;
+    if (!(dX > 0 && dY > 0)) {
+      const dOut = inp.h - inp.cover - (outer === 'x' ? inp.phiX : inp.phiY) / 2, dIn = inp.h - inp.cover - (outer === 'x' ? inp.phiX : inp.phiY) - (outer === 'x' ? inp.phiY : inp.phiX) / 2;
+      dX = outer === 'x' ? dOut : dIn; dY = outer === 'x' ? dIn : dOut;
+    }
+    if (!(dX > 0 && dY > 0)) throw new Error('The effective depth is not positive: check h, the cover and the bars');
+    const d = inp.d > 0 ? inp.d : (dX + dY) / 2;   // inp.d: the mean effective depth given (e.g. rounded)
+    const fck = inp.fck, fv = Math.min(fck, 50), fyk = inp.fyk || 500, fywk = inp.fywk || fyk, fywd = fywk / GS;
+    const AsX = inp.AsX > 0 ? inp.AsX : AREA(inp.phiX) * 1000 / inp.sX, AsY = inp.AsY > 0 ? inp.AsY : AREA(inp.phiY) * 1000 / inp.sY;   // mm2/m
+    const rhoX = AsX / (1000 * dX), rhoY = AsY / (1000 * dY), rhoL = Math.min(0.02, Math.sqrt(rhoX * rhoY));
+    const k = Math.min(2, 1 + Math.sqrt(200 / d));
+    const vRdc = Math.max(0.18 / GC * k * (100 * rhoL * fv) ** (1 / 3), 0.035 * k ** 1.5 * Math.sqrt(fv));
+    const nu = 0.6 * (1 - fv / 250), fcd = fv / GC, vRdmax = 0.5 * nu * fcd;   // UK NA 6.4.5(3)
+    const S = shadows(G, d);
+    const VEd = inp.VEd * 1e3, q = (inp.q || 0) * 1e-3;   // N, N/mm2
+    const Vred = r => Math.max(0, VEd - q * areaIn(G, r));
+    // u1 at 2d
+    const p1 = perimeter(G, 2 * d, S), u1 = p1.net;
+    if (!(u1 > 0)) throw new Error('The openings remove the whole basic control perimeter');
+    const B = betaOf(G, d, VEd, inp.beta || { method: 'factors' }, u1), beta = B.beta;
+    // column face
+    const u0g = u0of(G, d), lost0 = S.some(s => s.active) ? perimeter(G, 1e-6, S).lost * (u0g / uGross(G, 1e-6)) : 0, u0 = Math.max(1e-9, u0g - lost0);
+    const vEd0 = beta * Vred(0) / (u0 * d);
+    const vEd1 = beta * Vred(2 * d) / (u1 * d);
+    const fywdef = Math.min(250 + 0.25 * d, fywd);
+    const out = { G, S, d, dX, dY, AsX, AsY, rhoX, rhoY, rhoL, k, vRdc, nu, fcd, vRdmax, beta, B, u0, u0g, lost0, vEd0, u1, u1g: p1.gross, lost1: p1.lost,
+      vEd1, VEd, Vred0: Vred(0), Vred1: Vred(2 * d), q, fywdef, kmax: 2, checks: [] };
+    out.checks.push({ id: 'max', name: 'Column face: vEd,0 ≤ vRd,max', ref: '6.4.5(3), UK NA', util: vEd0 / vRdmax, note: `${vEd0.toFixed(2)} / ${vRdmax.toFixed(2)} N/mm²` });
+    out.needLinks = vEd1 > vRdc;
+    out.checks.push({ id: 'c', name: out.needLinks ? 'Basic control perimeter: vEd ≤ kmax vRd,c (links)' : 'Basic control perimeter: vEd ≤ vRd,c', ref: out.needLinks ? '6.4.5(1), UK NA kmax = 2' : '6.4.4(1), (6.47)',
+      util: out.needLinks ? vEd1 / (2 * vRdc) : vEd1 / vRdc, note: `${vEd1.toFixed(3)} / ${(out.needLinks ? 2 * vRdc : vRdc).toFixed(3)} N/mm²` });
+    // outer perimeter where links are no longer needed (6.54)
+    const uout = beta * VEd / (vRdc * d);
+    out.uout = uout; out.rout = rFor(G, S, uout, 2 * d);   // distance from the face (net perimeter, VEd not reduced: conservative)
+    if (!out.needLinks) { out.links = null; out.util = Math.max(...out.checks.map(c => c.util)); return out; }
+    // ---------- shear reinforcement ----------
+    const AswSr = Math.max(0, (vEd1 - 0.75 * vRdc) * u1 / (1.5 * fywdef));   // mm2/mm per perimeter
+    const L = inp.link || {}, srMax = 0.75 * d;
+    const s0 = L.s0 > 0 ? L.s0 : Math.max(0.3 * d, Math.floor(0.5 * d / 5) * 5);   // first perimeter 0.3d-0.5d from the face
+    const sr = L.sr > 0 ? Math.min(L.sr, srMax) : Math.floor(srMax / 5) * 5;
+    const rLast = Math.max(s0 + sr, out.rout - 1.5 * d);   // outermost perimeter not more than 1.5d inside uout (9.4.3(4) / 6.4.5(4))
+    const nPer = Math.max(2, Math.ceil((rLast - s0) / sr - 1e-9) + 1);
+    const minPerLeg = 0.08 * Math.sqrt(fv) / fywk / 1.5;   // Asw,min per leg / (sr st), 9.11 with vertical legs
+    const pick = phi => {
+      const A = AREA(phi), Asw = AswSr * sr, per = [];
+      for (let i = 0; i < nPer; i++) {
+        const r = s0 + i * sr, P = perimeter(G, r, S), stMax = r <= 2 * d + 1e-9 ? 1.5 * d : 2 * d;
+        let n = Math.max(Math.ceil(Asw / A - 1e-9), Math.ceil(P.net / stMax - 1e-9), 2);
+        const st = P.net / n; if (A < minPerLeg * sr * st) n = Math.max(n, Math.ceil(P.net * minPerLeg * sr / A));
+        per.push({ i: i + 1, r, len: P.net, n, st: P.net / n, Asw: n * A, stMax });
+      }
+      return { phi, A, per, legs: per.reduce((s, p) => s + p.n, 0) };
+    };
+    // link size: as given, or the smallest bar whose legs are not closer than min(100 mm, 0.5d) along any perimeter
+    let lay = null;
+    if (L.phi > 0) lay = pick(L.phi);
+    else for (const phi of [8, 10, 12, 16]) { lay = pick(phi); if (lay.per.every(p => p.st >= Math.min(100, 0.5 * d) - 1e-9)) break; }
+    const AswProv = Math.min(...lay.per.map(p => p.Asw)), vRdcs = 0.75 * vRdc + 1.5 * (d / sr) * AswProv * fywdef / (u1 * d);
+    out.links = { AswSr, sr, s0, srMax, rLast, nPer, minPerLeg, ...lay, AswProv, vRdcs, mass: lay.legs * lay.A * (inp.h - 2 * inp.cover) * 7.85e-6 };
+    out.checks.push({ id: 'cs', name: 'Basic control perimeter with links: vEd ≤ vRd,cs', ref: '6.4.5(1), (6.52)', util: vEd1 / vRdcs, note: `${vEd1.toFixed(3)} / ${vRdcs.toFixed(3)} N/mm²` });
+    out.util = Math.max(...out.checks.map(c => c.util));
+    return out;
+  }
+  return { design, path, uGross, perimeter, shadows, areaIn, u0of, betaOf, kTable, FACTORS, rFor };
+})();
+if (typeof module !== 'undefined') module.exports = { Punching };
+
+</script>
+<script id="ui">
+'use strict';
+const $ = id => document.getElementById(id);
+const STORE = 'et-rc-punch-v1';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ufmt = u => !Number.isFinite(u) ? '&gt;99' : u.toFixed(3);
+const f1 = v => Number.isFinite(v) ? (Math.round(v * 10) / 10).toString() : '–', f0 = v => Number.isFinite(v) ? Math.round(v).toString() : '–', f2 = v => Number.isFinite(v) ? v.toFixed(2) : '–', f3 = v => Number.isFinite(v) ? v.toFixed(3) : '–';
+const opt = (vals, sel) => vals.map(v => `<option${String(v) === String(sel) ? ' selected' : ''}>${v}</option>`).join('');
+['pfx', 'pfy'].forEach(id => $(id).innerHTML = opt([10, 12, 16, 20, 25, 32], 16));
+['psx', 'psy'].forEach(id => $(id).innerHTML = opt([75, 100, 125, 150, 175, 200, 225, 250, 275, 300], 150));
+const setVal = (id, v) => { const el = $(id); if (!el || v == null) return; if (el.tagName === 'SELECT' && ![...el.options].some(o => o.value === String(v))) el.insertAdjacentHTML('beforeend', `<option>${esc(v)}</option>`); el.value = v; };
+const num = (v, nm) => { if (!Number.isFinite(v)) throw new Error(`${nm}: give a number`); return v; };
+let last = null;
+function refreshVis() {
+  const show = (sel, on) => document.querySelectorAll(sel).forEach(e => e.classList.toggle('hidden', !on));
+  const t = $('ptype').value, circ = $('pshape').value === 'circ';
+  show('.prect', !circ); show('.pedge', t !== 'internal'); show('.pcorner', t === 'corner'); show('.pcalc', $('pbeta').value === 'calc');
+  $('pc1l').innerHTML = circ ? 'Diameter D (mm)' : 'c₁ (mm)';
+  $('pnote').textContent = t === 'internal' ? 'Internal column: c₁ along y, c₂ along x.'
+    : t === 'edge' ? 'Edge column: the slab edge runs along x; c₁ is perpendicular to the edge, c₂ along it. β calculated: u₁/u₁* plus k u₁/W₁ e for the moment about y, parallel to the edge (6.44).'
+    : 'Corner column: slab edges along x and y; β calculated = u₁/u₁* (6.46).';
+}
+['ptype', 'pshape', 'pbeta'].forEach(id => $(id).addEventListener('change', refreshVis));
+function holeRow(h = {}) {
+  h = { x: 600, y: 0, a: 300, b: 300, ...h };
+  const d = document.createElement('div'); d.className = 'row fhole';
+  d.innerHTML = `<div><label>x (mm)</label><input class="x" type="number" value="${h.x}"></div><div><label>y (mm)</label><input class="y" type="number" value="${h.y}"></div><div><label>Size along x</label><input class="a" type="number" value="${h.a}"></div><div><label>Size along y</label><input class="b" type="number" value="${h.b}"></div><button class="xbtn" title="Remove opening">&times;</button>`;
+  d.querySelector('.xbtn').onclick = () => d.remove(); return d;
+}
+$('addHole').onclick = () => $('holeRows').appendChild(holeRow());
+// ---------- state ----------
+const FIELDS = ['pName', 'pJob', 'pBy', 'pRef', 'fck', 'fyk', 'fywk', 'ptype', 'pshape', 'pc1', 'pc2', 'pey', 'pex', 'ph', 'pcov', 'pouter', 'pfx', 'psx', 'pfy', 'psy', 'pV', 'pbeta', 'pq', 'pMx', 'pMy', 'plphi', 'plsr', 'pls0'];
+function collect() {
+  const s = { v: 1 }; FIELDS.forEach(id => s[id] = $(id).value);
+  s.holes = [...$('holeRows').children].map(r => ({ x: +r.querySelector('.x').value, y: +r.querySelector('.y').value, a: +r.querySelector('.a').value, b: +r.querySelector('.b').value }));
+  return s;
+}
+function restore(s) {
+  FIELDS.forEach(id => setVal(id, s[id]));
+  $('holeRows').innerHTML = ''; (s.holes || []).forEach(h => $('holeRows').appendChild(holeRow(h)));
+  refreshVis();
+}
+// ---------- input ----------
+function punchInput() {
+  const circ = $('pshape').value === 'circ', c1 = num(+$('pc1').value, circ ? 'D' : 'c₁');
+  return { type: $('ptype').value, shape: circ ? 'circ' : 'rect', D: c1, c1, c2: circ ? c1 : num(+$('pc2').value, 'c₂'), ey: +$('pey').value || 0, ex: +$('pex').value || 0,
+    h: num(+$('ph').value, 'h'), cover: num(+$('pcov').value, 'Cover'), outer: $('pouter').value, phiX: +$('pfx').value, sX: +$('psx').value, phiY: +$('pfy').value, sY: +$('psy').value,
+    fck: +$('fck').value, fyk: num(+$('fyk').value, 'f_yk'), fywk: num(+$('fywk').value, 'f_ywk'), VEd: num(+$('pV').value, 'V_Ed'), q: +$('pq').value || 0,
+    beta: { method: $('pbeta').value, Mx: +$('pMx').value || 0, My: +$('pMy').value || 0 },
+    holes: [...$('holeRows').children].map(r => ({ x: +r.querySelector('.x').value, y: +r.querySelector('.y').value, a: +r.querySelector('.a').value, b: +r.querySelector('.b').value })),
+    link: { phi: $('plphi').value === 'auto' ? undefined : +$('plphi').value, sr: +$('plsr').value || undefined, s0: +$('pls0').value || undefined } };
+}
+// Punching plan drawing, shared by RC Punching Shear and RC Flat Slab Design (inlined into each page's UI script; uses f0 and Punching).
+function svgPunch(P, light) {
+  const G = P.G, d = P.d, ink = light ? '#000' : 'var(--txt)', mut = light ? '#777' : 'var(--mut)', acc = light ? '#1b67b0' : 'var(--accent)', fill = light ? '#ddd' : '#d9dde3';
+  const rMax = Math.max(P.rout || 0, 2 * d) + 0.6 * d, ext = { x0: -(G.ax + rMax), x1: G.ax + rMax, y0: -(G.ay + rMax), y1: G.ay + rMax };
+  if (G.type !== 'internal') ext.y0 = -(G.ay + G.ey) - 0.15 * d; if (G.type === 'corner') ext.x0 = -(G.ax + G.ex) - 0.15 * d;
+  for (const h of G.holes || []) { ext.x0 = Math.min(ext.x0, h.x - h.a / 2 - 50); ext.x1 = Math.max(ext.x1, h.x + h.a / 2 + 50); ext.y0 = Math.min(ext.y0, h.y - h.b / 2 - 50); ext.y1 = Math.max(ext.y1, h.y + h.b / 2 + 50); }
+  const Wp = 560, sc = Math.min(Wp / (ext.x1 - ext.x0), 460 / (ext.y1 - ext.y0)), Hp = (ext.y1 - ext.y0) * sc + 30;
+  const X = x => (x - ext.x0) * sc + 10, Y = y => (ext.y1 - y) * sc + 10;
+  const perim = (r, seg) => Punching.path(G.type !== 'internal' && Punching.uGross({ ...G, type: 'internal' }, r) <= Punching.uGross(G, r) + 1e-9 ? { ...G, type: 'internal' } : G, r, seg);
+  const poly = r => { const pp = perim(r, 4); return pp.pts.map((p, k) => `${k ? 'L' : 'M'}${X(p[0]).toFixed(1)} ${Y(p[1]).toFixed(1)}`).join(' ') + (pp.closed ? ' Z' : ''); };
+  let g = '';
+  if (G.type !== 'internal') g += `<line x1="${X(ext.x0)}" y1="${Y(-(G.ay + G.ey))}" x2="${X(ext.x1)}" y2="${Y(-(G.ay + G.ey))}" stroke="${ink}" stroke-width="2"/><text x="${X(ext.x1) - 4}" y="${Y(-(G.ay + G.ey)) + 14}" font-size="11" text-anchor="end" fill="${mut}">slab edge</text>`;
+  if (G.type === 'corner') g += `<line x1="${X(-(G.ax + G.ex))}" y1="${Y(ext.y0)}" x2="${X(-(G.ax + G.ex))}" y2="${Y(ext.y1)}" stroke="${ink}" stroke-width="2"/>`;
+  // openings and their shadows
+  for (const s of P.S || []) {
+    const h = s.h; g += `<rect x="${X(h.x - h.a / 2)}" y="${Y(h.y + h.b / 2)}" width="${h.a * sc}" height="${h.b * sc}" fill="none" stroke="${ink}" stroke-width="1"/><path d="M${X(h.x - h.a / 2)} ${Y(h.y + h.b / 2)} L${X(h.x + h.a / 2)} ${Y(h.y - h.b / 2)} M${X(h.x - h.a / 2)} ${Y(h.y - h.b / 2)} L${X(h.x + h.a / 2)} ${Y(h.y + h.b / 2)}" stroke="${mut}" stroke-width="0.6"/>`;
+    if (s.active) for (const a of [s.lo, s.hi]) { const R0 = Math.hypot(ext.x1 - ext.x0, ext.y1 - ext.y0); g += `<line x1="${X(0)}" y1="${Y(0)}" x2="${X(R0 * Math.cos(s.phi + a))}" y2="${Y(R0 * Math.sin(s.phi + a))}" stroke="${mut}" stroke-width="0.7" stroke-dasharray="3 3"/>`; }
+  }
+  // perimeters: u1 at 2d dashed ink, uout blue
+  g += `<path d="${poly(2 * d)}" fill="none" stroke="${ink}" stroke-width="1" stroke-dasharray="6 4"/>`;
+  if (P.needLinks && P.rout > 0) g += `<path d="${poly(P.rout)}" fill="none" stroke="${acc}" stroke-width="1.6"/>`;
+  // links
+  if (P.links) {
+    const S = P.S || [], inCone = (x, y) => S.some(s => { if (!s.active) return false; let a = Math.atan2(y, x) - s.phi; while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a >= s.lo && a <= s.hi; });
+    for (const pr of P.links.per) {   // legs spread evenly over the part of the perimeter outside the openings' shadows
+      const pp = perim(pr.r, 2).pts, seg = []; let L = 0;
+      for (let k = 1; k < pp.length; k++) { const mx = (pp[k][0] + pp[k - 1][0]) / 2, my = (pp[k][1] + pp[k - 1][1]) / 2; if (inCone(mx, my)) continue; const l = Math.hypot(pp[k][0] - pp[k - 1][0], pp[k][1] - pp[k - 1][1]); seg.push([L, l, pp[k - 1], pp[k]]); L += l; }
+      let k = 0;
+      for (let m = 0; m < pr.n; m++) { const t = (m + 0.5) / pr.n * L; while (k < seg.length - 1 && seg[k][0] + seg[k][1] < t) k++; const [s0, l, a, b] = seg[k], f = l > 0 ? Math.min(1, Math.max(0, (t - s0) / l)) : 0; g += `<circle cx="${X(a[0] + (b[0] - a[0]) * f).toFixed(1)}" cy="${Y(a[1] + (b[1] - a[1]) * f).toFixed(1)}" r="2.6" fill="${acc}"/>`; }
+    }
+  }
+  // column
+  g += G.circ ? `<circle cx="${X(0)}" cy="${Y(0)}" r="${G.ax * sc}" fill="${fill}" stroke="${ink}" stroke-width="1.2"/>` : `<rect x="${X(-G.ax)}" y="${Y(G.ay)}" width="${2 * G.ax * sc}" height="${2 * G.ay * sc}" fill="${fill}" stroke="${ink}" stroke-width="1.2"/>`;
+  g += `<text x="10" y="${Hp - 6}" font-size="11" fill="${mut}">u₁ at 2d = ${f0(2 * d)} mm dashed${P.needLinks ? `; u_out at ${f0(P.rout)} mm in blue; links as dots` : ''}</text>`;
+  return `<svg class="${light ? 'rsvg' : 'pplan'}" viewBox="0 0 ${Wp + 20} ${Hp}">${g}</svg>`;
+}
+
+// ---------- results ----------
+const bar = c => `<div class="ck"><div class="nm">${esc(c.name)}<small>${esc(c.ref)} &nbsp;${esc(c.note || '')}</small></div><div class="bar"><i class="${c.util > 1 ? 'over' : ''}" style="width:${Math.min(100, c.util * 100 / 1.2)}%"></i></div><div class="u ${c.util > 1 ? 'over' : ''}">${ufmt(c.util)}</div></div>`;
+function verdict(util, sub) { return `<div class="verdict ${util > 1 ? 'fail' : ''}"><div><div class="big">${util > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(util)}</div><div class="sub">${sub}</div></div></div>`; }
+function punchDetails(P) {
+  const kv = (k, v) => `<div><b>${k}</b><span>${v}</span></div>`;
+  let s = `<div class="kv">${kv('d (mm)', f1(P.d))}${kv('ρ<sub>l</sub> (%)', f3(P.rhoL * 100))}${kv('k', f3(P.k))}${kv('β', f3(P.beta))}${kv('v<sub>Rd,c</sub> (N/mm²)', f3(P.vRdc))}${kv('v<sub>Rd,max</sub> (N/mm²)', f2(P.vRdmax))}${kv('u₀ (mm)', f0(P.u0))}${kv('u₁ (mm)', f0(P.u1))}${kv('v<sub>Ed</sub> at u₁ (N/mm²)', f3(P.vEd1))}${kv('u<sub>out,ef</sub> (mm)', f0(P.uout))}</div>`;
+  s += `<div class="help">β: ${esc(P.B.how)}. ${P.lost1 > 0 ? `Openings take ${f0(P.lost1)} mm off u₁ (gross ${f0(P.u1g)} mm). ` : ''}${P.q > 0 ? `V<sub>Ed</sub> reduced by the load inside each perimeter (${f0(P.Vred1 / 1e3)} kN at u₁). ` : ''}u<sub>out,ef</sub> is reached ${f0(P.rout)} mm from the face (${f2(P.rout / P.d)}d).</div>`;
+  if (P.links) {
+    const L = P.links;
+    s += `<table class="t rtab"><tr><th>Perimeter</th><th>From face (mm)</th><th>Length (mm)</th><th>Legs</th><th>Tangential spacing (mm)</th><th>A<sub>sw</sub> (mm²)</th></tr>` + L.per.map(p => `<tr><td>${p.i}</td><td>${f0(p.r)}</td><td>${f0(p.len)}</td><td>${p.n}</td><td>${f0(p.st)} ≤ ${f0(p.stMax)}</td><td>${f0(p.Asw)}</td></tr>`).join('') + `</table>`;
+    s += `<div class="help">A<sub>sw</sub>/s<sub>r</sub> = ${f2(L.AswSr)} mm²/mm (6.52), so ${f0(L.AswSr * L.sr)} mm² per perimeter at s<sub>r</sub> = ${f0(L.sr)} mm (≤ 0.75d = ${f0(L.srMax)}); H${L.phi} legs; first perimeter ${f0(L.s0)} mm from the face (0.3d to 0.5d); the last within 1.5d of u<sub>out,ef</sub> (9.4.3(4)); f<sub>ywd,ef</sub> = 250 + 0.25d = ${f1(P.fywdef)} N/mm²; v<sub>Rd,cs</sub> = ${f3(L.vRdcs)} N/mm²; ${L.legs} legs in all, about ${f1(L.mass)} kg.</div>`;
+  }
+  return s;
+}
+function runPunch() {
+  const inp = punchInput(), P = Punching.design(inp), Wc = [...P.checks].sort((a, b) => b.util - a.util); last = { P, inp };
+  const g = Wc[0], what = inp.shape === 'circ' ? `circular column D ${inp.D} mm` : `column ${inp.c1} × ${inp.c2} mm`;
+  $('results').innerHTML = (from ? `<div class="from">${esc(from)}</div>` : '')
+    + verdict(P.util, `Governs: ${esc(g.name.charAt(0).toLowerCase() + g.name.slice(1))} (${esc(g.ref)})<br>${inp.type} ${what}, h ${inp.h} mm, V<sub>Ed</sub> ${inp.VEd} kN, β ${f3(P.beta)}; ${P.needLinks ? (P.vEd1 > 2 * P.vRdc ? 'more than links can carry (k<sub>max</sub> = 2)' : 'shear links needed') : 'no shear links needed'}`)
+    + `<div class="dlabel">Plan</div>${svgPunch(P, false)}<div class="dlabel">Checks</div><div class="checks">${Wc.map(bar).join('')}</div><div class="dlabel">Values</div>${punchDetails(P)}`
+    + (P.vEd1 > 2 * P.vRdc ? `<div class="note">v<sub>Ed</sub> at u₁ is more than 2 v<sub>Rd,c</sub> (UK NA k<sub>max</sub>): links cannot make it work. Thicken the slab, add a drop panel or column head, enlarge the column or add top steel.</div>` : '')
+    + `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  $('printBtn').onclick = () => { $('report').innerHTML = report(); window.print(); };
+}
+function run() {
+  try { localStorage.setItem(STORE, JSON.stringify(collect())); } catch (e) { /* storage unavailable */ }
+  try { runPunch(); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+// ---------- A4 sheet ----------
+const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
+const okng = u => u <= 1 ? `<span class="ok">${ufmt(u)} OK</span>` : `<span class="ng">${ufmt(u)} FAIL</span>`;
+function report() {
+  const s = collect(), today = new Date().toLocaleDateString('en-GB'), { P, inp } = last;
+  const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.pRef) || '&nbsp;'}</div><div class="ttl">RC slab: punching shear to BS EN 1992-1-1 + UK NA</div></div>`;
+  let b = `<div class="rs"><h2>Basis</h2>${rl(`BS EN 1992-1-1:2004+A1:2014 6.4 and 9.4.3 with the UK NA (v<sub>Rd,max</sub> = 0.5νf<sub>cd</sub>, k<sub>max</sub> = 2)`, '6.4', '')}`
+    + rl(`${inp.type} ${inp.shape === 'circ' ? `circular column D = ${inp.D}` : `column c₁ × c₂ = ${inp.c1} × ${inp.c2}`} mm${inp.type !== 'internal' ? `, face to the slab edge ${inp.ey} mm${inp.type === 'corner' ? ` and ${inp.ex} mm` : ''}` : ''}; h = ${inp.h} mm, cover ${inp.cover} mm; H${inp.phiX} @ ${inp.sX} along x, H${inp.phiY} @ ${inp.sY} along y (outer: ${inp.outer})`, '', '')
+    + rl(`C${inp.fck}/${EC2c(inp.fck)}, f<sub>yk</sub> ${inp.fyk}, f<sub>ywk</sub> ${inp.fywk} N/mm²; V<sub>Ed</sub> = ${inp.VEd} kN${inp.beta.method === 'calc' ? `, M<sub>x</sub> = ${inp.beta.Mx}, M<sub>y</sub> = ${inp.beta.My} kNm` : ''}${inp.q > 0 ? `, q = ${inp.q} kN/m² deducted` : ''}${inp.holes.length ? `; ${inp.holes.length} opening${inp.holes.length > 1 ? 's' : ''}` : ''}`, '', '') + '</div>';
+  b += `<div class="rs"><h2>Plan</h2>${svgPunch(P, true)}</div><div class="rs"><h2>Values</h2>${punchDetails(P)}</div>`;
+  b += `<div class="rs"><h2>Checks</h2>` + P.checks.map(c => rl(esc(c.name) + ` <span style="color:#666">${esc(c.note || '')}</span>`, esc(c.ref), okng(c.util))).join('') + '</div>';
+  b += `<p class="rp" style="color:#555">Generated by EngineeringTools — RC Punching Shear.</p>`;
+  return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
+}
+const EC2c = f => ({ 25: 30, 28: 35, 30: 37, 32: 40, 35: 45, 40: 50, 45: 55, 50: 60 }[f] || '');
+$('calc').onclick = run;
+// a column handed over from RC Flat Slab Design: #in=<JSON of the fields>
+let from = null;
+(function init() {
+  let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
+  let handed = null; const m = /^#in=(.+)$/.exec(location.hash || '');
+  if (m) { try { handed = JSON.parse(decodeURIComponent(m[1])); } catch (e) { handed = null; } }
+  if (handed && handed.v === 1) { restore({ ...(s || {}), ...handed }); from = handed.from || null; try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* file: urls */ } run(); return; }
+  if (s && s.v === 1) restore(s); else refreshVis();
+})();
+</script>
+<footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent engineer to check and approve all calculations before they are used.</footer>
+</body>
+</html>
