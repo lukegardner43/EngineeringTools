@@ -209,14 +209,18 @@ RC Punching Shear covers / limits:
 
 ## Batch 3: Timber and masonry, EN 1995 and EN 1996
 
+The timber beam, member, stud wall and racking wall are checked against the worked examples in *Structural Timber Design to Eurocode 5* (Porteous & Kermani) and the IStructE/TRADA timber manual (outputs only; the books are not in this repo).
+
 | Tedds entry | Module | Status |
 |---|---|---|
-| Timber Member Design; Timber Member A&D; Timber Beam A&D; Timber joist; Timber rafter; Timber stud | Timber member | Planned |
+| Timber Beam A&D; Timber joist; Timber rafter | Timber beam | Next after the concrete list (plan #19) |
+| Timber Member Design; Timber Member A&D | Timber member | Next after the concrete list (plan #20) |
+| Timber stud | Timber stud wall | Next after the concrete list (plan #21) |
 | Flitch, Glulam, Composite LVL Beam / Member A&D (6 entries) | Timber member (product sets) | Planned |
 | Timber 2D analysis & design | 2D frame + EC5 | Planned |
 | Cross-laminated timber section properties / section design / floor panel / wall panel | CLT | Planned |
 | Timber Connection Design | EC5 connections | Partial (ec5-connection-designer, not yet in this repo) |
-| Timber Frame Racking Panel Design; Timber Frame Racking Loads | Racking | Planned |
+| Timber Frame Racking Panel Design; Timber Frame Racking Loads | Timber racking wall | Next after the concrete list (plan #22) |
 | Masonry Bearing Design; Masonry Column Design; Masonry Wall Panel Design | Masonry | Planned |
 
 ## Batch 4: Foundations, retaining, loading and analysis, EN 1991 and EN 1997
@@ -226,7 +230,7 @@ RC Punching Shear covers / limits:
 | Foundation Analysis & Design; Bearing Pressures for Rectangular Footings | Pad foundation | Planned |
 | RC raft foundation; RC pile cap design | Raft / pile cap | Planned |
 | Pile Analysis; Pile Group Analysis | Piles | Planned |
-| Retaining Wall Analysis & Design; Retaining basement wall analysis & design; Gabion Retaining Wall | Retaining walls | Planned |
+| Retaining Wall Analysis & Design; Retaining basement wall analysis & design; Gabion Retaining Wall | Retaining walls | Planned in the concrete list (plan #17, cantilever / propped / gravity, scope as Tedds; #18 basement) |
 | Wind Loading; Snow Loading | EC1 loading | Planned |
 | Dead Loading; Hipped End Loading | Load take-down | Planned |
 | Rigid Diaphragm Force Distribution | Diaphragm | Planned |
