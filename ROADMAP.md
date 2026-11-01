@@ -20,6 +20,10 @@ The UK list has 91 entries. Out of scope:
 
 That leaves **82 structural entries**. Many share one engine. For example, the four steel member entries are a single EC3 member check behind different front ends.
 
+## Interface
+
+All pages share one light style (`common/style.css` in the build sources): IBM Plex Sans, ink on a blue-grey ground with white cards, one blue (#1d5fbf) on the main data (envelopes, bars, utilisation), green or red only on the verdict and on a check that fails, and a near-black primary button. Each tool's title row is a photograph of its material (`img/`, from Wikimedia Commons, credits on the home page and in `img/CREDITS.md`); without the image folder the title row falls back to a plain dark band. The printed A4 calculation sheets are unchanged.
+
 Status key: **Done** means it's in this repo with tests. **Partial** means an existing tool covers part of it. **Planned** means it isn't started.
 
 ## Batch 1: Steel, EN 1993 (complete, October 2026)
