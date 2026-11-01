@@ -704,7 +704,7 @@ const RCBeam = (() => {
     if (!(n >= 1)) throw new Error('Give at least one span');
     if (su.length !== n + 1) throw new Error('There must be one more support than spans');
     su.forEach((s, j) => { if (s.kind === 'free' && j !== 0 && j !== n) throw new Error(`Support ${j + 1}: only an end support can be a free end`); });
-    if (su[0].kind === 'free' && su[n].kind === 'free') throw new Error('Both ends are free: the beam is a mechanism');
+    if (su[0].kind === 'free' && su[n].kind === 'free' && n < 3) throw new Error('Both ends are free with only one support between: the beam is a mechanism. Give at least one span between two supports');
     const spans = sp.map((s, i) => {
       if (!(s.L > 0 && s.h > 0 && s.bw > 0)) throw new Error(`Span ${i + 1}: give L, h and b_w`);
       if (s.shape !== 'R' && !(s.hf > 0 && s.hf < s.h)) throw new Error(`Span ${i + 1}: h_f must be between 0 and h for a flanged beam`);
@@ -848,12 +848,17 @@ const RCBeam = (() => {
     const red = inp.redist || 'limited';
     const side = (c, j, s) => s === 'L' ? (j > 0 ? c.hog[j - 1][1] : null) : (j < n ? c.hog[j][0] : null);   // L: end of span j-1; R: start of span j
     const Mmax = P.supports.map((su, j) => { let m = 0; for (const c of cases) if (c.uls) for (const s of ['L', 'R']) { const v = side(c, j, s); if (v != null) m = Math.max(m, v); } return m; });
-    const Mcap = P.supports.map((su, j) => su.delta * Mmax[j]);
-    const bplus = P.supports.map(su => red === 'none' ? 1 : 2 - su.delta);
+    // capM (opt-in, flat slabs I.1.2(5)): an absolute cap on the span-side hogging moment at a support, applied even at a
+    // cantilever root (the column takes the difference); its effective delta = cap / largest elastic span-side moment
+    const spanSide = j => P.supports[j].cantRoot ? (j > 0 && P.spans[j - 1].cant ? 'R' : 'L') : null;
+    const MmaxS = P.supports.map((su, j) => { if (su.capM == null || !su.cantRoot) return Mmax[j]; let m = 0; for (const c of cases) if (c.uls) { const v = side(c, j, spanSide(j)); if (v != null) m = Math.max(m, v); } return m; });
+    const Mcap = P.supports.map((su, j) => su.capM != null ? Math.min(su.delta * MmaxS[j], su.capM) : su.delta * Mmax[j]);
+    const deff = P.supports.map((su, j) => su.capM != null ? (MmaxS[j] > 0 ? Math.min(1, Mcap[j] / MmaxS[j]) : 1) : su.delta);
+    const bplus = P.supports.map((su, j) => red === 'none' || su.capM != null ? 1 : 2 - deff[j]);   // a capped support is only capped, never raised
     for (const c of cases) {
       // the cantilever and both sides of its root support stay elastic (statically determinate)
       // the 1.0 G_k case (minimum moments) is only capped, never raised
-      const adj = (v, j, s) => s.cant || P.supports[j].cantRoot || P.supports[j].kind === 'free' || !(v > 0) ? v : Math.min((c.uls ? bplus[j] : 1) * v, Mcap[j]);
+      const adj = (v, j, s) => s.cant || (P.supports[j].cantRoot && P.supports[j].capM == null) || P.supports[j].kind === 'free' || !(v > 0) ? v : Math.min((c.uls ? bplus[j] : 1) * v, Mcap[j]);
       c.hogR = c.hog.map((h, i) => [adj(h[0], i, P.spans[i]), adj(h[1], i + 1, P.spans[i])]);
       c.RR = reactions(P, c.loads, c.hogR);
     }
@@ -879,7 +884,7 @@ const RCBeam = (() => {
       });
       // design envelope: the redistributed moments, not less than delta_f x the elastic ones at any section, delta_f the smaller
       // delta of the span's two supports (the redistribution in every pattern stays within 5.5(4) at spans and faces too)
-      const df = Math.min(P.supports[i].delta, P.supports[i + 1].delta);
+      const df = Math.min(deff[i], deff[i + 1]);
       e.df = df; e.MmaxD = e.Mmax.map((m, k) => e.MmaxE[k] > 0 ? Math.max(m, df * e.MmaxE[k]) : m); e.MminD = e.Mmin.map((m, k) => e.MminE[k] < 0 ? Math.min(m, df * e.MminE[k]) : m);
       return e;
     });
@@ -905,7 +910,7 @@ const RCBeam = (() => {
     const spanM = P.spans.map((s, i) => { const el = Math.max(0, exactMax(i, allC, 'hog')), eq = Math.max(0, exactMax(i, allC, 'hogR')), df = env[i].df, rd = Math.max(eq, el > 0 ? df * el : 0);
       return { elastic: el, equilibrium: eq, redist: rd, delta: el > 0 ? rd / el : 1, df, Mk: Math.max(0, exactMax(i, sls.k, 'hog')), Mqp: Math.max(0, exactMax(i, sls.qp, 'hog')) }; });
     const Rmax = P.supports.map((_, j) => Math.max(...cases.filter(c => c.uls).map(c => c.RR[j]))), Rmin = P.supports.map((_, j) => Math.min(...cases.map(c => c.RR[j])));
-    return { P, cases, sls, env, supM, spanM, Rmax, Rmin, Mmax, Mcap, raw, sets, psi2 };
+    return { P, cases, sls, env, supM, spanM, Rmax, Rmin, Mmax, Mcap, deff, raw, sets, psi2 };
   }
   // the envelopes at any x, exactly (every case evaluated at x); side 'L' / 'R' picks the value just left / right of a point load
   function envAt(A, i, x, side = 'R') {

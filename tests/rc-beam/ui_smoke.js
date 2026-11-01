@@ -36,7 +36,7 @@ truth('6.10a/b with adjacent spans: 2 × 6 arrangements', /12 ULS arrangements/.
 // errors
 rows('supRows')[2].querySelector('.delta').value = '0.5'; $('calc').click(); truth('δ outside 0.7–1.0 reported', /δ must be between 0.7 and 1.0/.test(res()));
 rows('supRows')[2].querySelector('.delta').value = '0.85'; const s4 = rows('supRows')[4]; s4.querySelector('.kind').value = 'free'; change(s4.querySelector('.kind')); $('calc').click();
-truth('both ends free reported as a mechanism', /mechanism/.test(res()));
+truth('both ends free over three supports: two overhangs calculate', /PASS|FAIL/.test(res()) && !$('results').querySelector('.err'));
 s4.querySelector('.kind').value = 'knife'; change(s4.querySelector('.kind')); $('suggest').click();
 $('printBtn').click(); truth('print: A4 sheet with elevation, envelopes, zones and summary', w.printed && $('report').querySelectorAll('svg').length === 3 && /Summary/.test($('report').textContent) && /Basis/.test($('report').textContent));
 const w2 = page(w.localStorage.getItem('et-rc-beam-v1')), d2 = w2.document;
