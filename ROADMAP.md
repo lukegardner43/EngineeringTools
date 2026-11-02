@@ -26,7 +26,7 @@ All pages share one light style (`common/style.css` in the build sources): IBM P
 
 Every page carries the disclaimer at its foot, and every printed calculation sheet and PDF report ends with it: the tools are an aid to design without warranty, the author accepts no responsibility for errors in them or their results or for any use made of them, and a competent engineer must check and approve all calculations before use.
 
-Status key: **Done** means it's in this repo with tests. **Partial** means an existing tool covers part of it. **Planned** means it isn't started.
+Status key: **Done** means it's in this repo with tests. **Partial** means an existing tool covers part of it. **Planned** means it isn't started. The home page lists every Planned tool, in the build plan or not yet scheduled, with a Planned tag.
 
 ## Batch 1: Steel, EN 1993 (complete, October 2026)
 
