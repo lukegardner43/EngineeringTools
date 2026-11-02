@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RC Corbel and Nib Design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* Engineering Tools: shared light style (tasteskill app sheet "Achromatic ledger", seed 959138263).
+   Ink chrome on a blue-grey drawing-office ground; the one hue (#1d5fbf) goes on the main data element
+   (envelopes, utilisation bars); status colour only on the verdict and on a check that is over. */
+:root{
+  --bg:#f2f4f7; --surf:#ffffff; --surf2:#f7f8fa; --bdr:#e3e5e8; --bdr2:#d1d5db; --rule:#eceef1;
+  --txt:#111111; --lbl:#33363a; --mut:#5f6368; --faint:#6b6b6b;
+  --accent:#1d5fbf; --accent-dim:#e3ebf8;
+  --primary:#1d1f20;
+  --pass:#247b50; --warn:#b45309; --fail:#c4242a;
+  --pass-bg:#dcfae5; --pass-ink:#04250e; --fail-bg:#ffedea; --fail-ink:#831c1e;
+  --r:6px; --rc:8px;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:var(--sans);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5;min-height:100svh;padding:28px 32px 40px;
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;}
+.container{max-width:1376px;margin:0 auto;}
+/* title row: a photograph of the member's material (img/<material>.jpg beside the page, set by <body data-material>)
+   under a neutral scrim, with the breadcrumb, the tool's name and one line of scope. Without the photo it is a plain ink band. */
+.page-hdr{position:relative;isolation:isolate;overflow:hidden;border-radius:var(--rc);min-height:164px;padding:18px 24px 20px;margin-bottom:12px;
+  display:flex;flex-direction:column;justify-content:flex-end;color:#fff;background:#2c3036 var(--photo,none) center/cover no-repeat;}
+.page-hdr::before{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.55) 45%,rgba(0,0,0,.18) 100%);} /* taste-skill-ignore: neutral scrim under text on a photograph */
+.page-hdr::after{content:var(--credit,'');position:absolute;right:10px;bottom:8px;font-size:11px;color:rgba(255,255,255,.9);background:rgba(0,0,0,.4);padding:1px 6px;border-radius:4px;}
+.home-lnk{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:rgba(255,255,255,.88);text-decoration:none;font-weight:500;margin-bottom:auto;align-self:flex-start;padding-bottom:12px;}
+.home-lnk:hover{color:#fff;text-decoration:underline;}
+.home-lnk svg{width:14px;height:14px;}
+.page-hdr h1{font-size:26px;font-weight:600;line-height:1.25;letter-spacing:-0.01em;margin-bottom:4px;color:#fff;}
+.page-hdr p{font-size:14px;color:rgba(255,255,255,.92);max-width:900px;}
+body[data-material="steel"]{--photo:url(img/steel.jpg);--credit:'Photo: Chevsapher, CC0';}
+body[data-material="concrete"]{--photo:url(img/concrete.jpg);--credit:'Photo: MassDOT, public domain';}
+body[data-material="masonry"]{--photo:url(img/masonry.jpg);--credit:'Photo: Håkan Svensson, CC BY 2.5';}
+body[data-material="timber"]{--photo:url(img/timber.jpg);--credit:'Photo: Sebastian Wallroth, public domain';}
+body[data-material="frame"]{--photo:url(img/frame.jpg);--credit:'Photo: Wikideas1, CC0';}
+body[data-material="ground"]{--photo:url(img/ground.jpg);--credit:'Photo: Fons Heijnsbroek, CC0';}
+@media print{.page-hdr{display:none;}}
+/* inputs on the left, the answer on the right: (1376 - 12) x 6/13 = 630 | 734 */
+.main-grid{display:grid;grid-template-columns:minmax(380px,6fr) 7fr;gap:12px;align-items:start;}
+@media(max-width:1100px){.main-grid{grid-template-columns:1fr;}}
+.main-grid > div{min-width:0;}
+#results table.t{display:block;overflow-x:auto;white-space:nowrap;}
+.card{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rc);padding:20px 24px;margin-bottom:12px;}
+.section-title{font-size:16px;font-weight:600;color:var(--txt);margin:0 0 14px;display:flex;justify-content:space-between;align-items:baseline;gap:12px;line-height:1.3;}
+.section-title .aux{color:var(--mut);font-size:13px;font-weight:400;text-align:right;}
+.form-group{margin-bottom:14px;}
+.form-group label,.lbl{display:block;font-size:13px;margin-bottom:5px;color:var(--lbl);font-weight:500;line-height:1.35;}
+input[type="number"],input[type="text"],select{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);padding:0 10px;height:36px;border-radius:var(--r);font-family:var(--sans);font-size:14px;width:100%;font-variant-numeric:tabular-nums;transition:border-color .12s;}
+input::placeholder{color:var(--faint);}
+input:hover,select:hover{border-color:#b9bec6;}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);}
+input:disabled,select:disabled{background:var(--surf2);color:var(--mut);}
+select option{background:var(--surf);color:var(--txt);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.grid2 > .form-group,.grid3 > .form-group{display:flex;flex-direction:column;justify-content:flex-end;}
+.chk{display:block;position:relative;padding-left:26px;font-size:13px;color:var(--lbl);margin:8px 0;cursor:pointer;line-height:1.45;}
+.chk input{position:absolute;left:0;top:1px;width:16px;height:16px;accent-color:var(--primary);}
+.help{font-size:13px;color:var(--mut);margin-top:4px;line-height:1.45;}
+/* segmented control: grey track, white pill on the chosen option */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#e9ecf0;border-radius:var(--rc);margin-bottom:14px;}
+.seg button{background:transparent;color:var(--mut);border:1px solid transparent;border-radius:var(--r);height:32px;padding:0 10px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;}
+.seg button:hover{color:var(--txt);}
+.seg button.on{background:var(--surf);color:var(--txt);border-color:var(--bdr);}
+/* repeating rows: spans, supports, loads */
+.rows{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+.row{display:grid;gap:8px;align-items:end;background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--r);padding:10px;}
+.row label{font-size:12px;color:var(--mut);margin-bottom:3px;display:block;font-weight:500;line-height:1.3;}
+.row input,.row select{height:32px;font-size:13px;padding:0 8px;}
+.row.span{grid-template-columns:1fr 1.6fr 1fr 32px;}
+.row.load{grid-template-columns:52px 64px 1.1fr 1.1fr 32px;}
+.row.load .vals{grid-column:1 / span 3;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.xbtn{height:32px;width:32px;background:var(--surf);border:1px solid var(--bdr2);color:var(--mut);border-radius:var(--r);cursor:pointer;font-size:16px;line-height:1;}
+.xbtn:hover{color:var(--fail);border-color:var(--fail);}
+.addbtn{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);border-radius:var(--r);height:36px;padding:0 12px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;width:100%;}
+.addbtn:hover{border-color:#9aa0a8;background:var(--surf2);}
+/* the one primary action, near-black; secondary actions white and outlined */
+.btn{height:44px;padding:0 16px;border:none;border-radius:var(--r);font-weight:600;cursor:pointer;font-family:var(--sans);font-size:15px;width:100%;background:var(--primary);color:#fff;}
+.btn:hover{background:#000;}
+.btn:focus-visible,.btn2:focus-visible,.addbtn:focus-visible,.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.btn2{width:100%;height:38px;padding:0 12px;background:var(--surf);border:1px solid var(--bdr2);border-radius:var(--r);font-size:14px;font-weight:500;color:var(--txt);cursor:pointer;font-family:var(--sans);margin-top:8px;}
+.btn2:hover{border-color:#9aa0a8;background:var(--surf2);}
+.hidden{display:none!important;}
+/* results */
+.placeholder{display:flex;align-items:center;justify-content:center;min-height:160px;color:var(--mut);font-size:14px;text-align:center;padding:0 24px;}
+.verdict{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--bdr);border-radius:var(--rc);background:var(--surf2);margin-bottom:16px;}
+.verdict .big{font-size:24px;font-weight:600;line-height:1.2;color:var(--pass);letter-spacing:-0.01em;}
+.verdict.fail .big{color:var(--fail);}
+.verdict .sub{font-size:13px;color:var(--mut);margin-top:2px;}
+/* the utilisation ledger: check, clause, bar to scale (full track = 1.2, ink tick at the 1.0 limit), figure */
+.checks{display:flex;flex-direction:column;margin-bottom:8px;}
+.ck{display:grid;grid-template-columns:1.25fr 2fr 56px;gap:14px;align-items:center;font-size:13px;padding:7px 0;border-bottom:1px solid var(--rule);}
+.ck:last-child{border-bottom:none;}
+.ck .nm{color:var(--txt);line-height:1.35;} .ck .nm small{display:block;color:var(--mut);font-size:12px;}
+.bar{height:8px;background:#e8ebef;border-radius:4px;position:relative;}
+.bar::after{content:'';position:absolute;left:83.333%;top:-4px;bottom:-4px;width:1.5px;background:var(--txt);border-radius:1px;}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:4px;}
+.bar i.over{background:var(--fail);} /* 0.9-1.0 stays blue: a well-used member is not a warning; the tick shows how close it is */
+.ck .u{text-align:right;font-weight:600;font-size:14px;}
+.ck .u.over{color:var(--fail);}
+.diag{width:100%;height:auto;display:block;margin-bottom:6px;}
+/* screen drawings: the smallest labels lifted to the 11px floor (the print sheet keeps its own sizes) */
+.container svg text[font-size="8"],.container svg text[font-size="8.5"],.container svg text[font-size="9"],.container svg text[font-size="9.5"],
+.container svg text[font-size="10"],.container svg text[font-size="10.5"]{font-size:11px;}
+.dlabel{font-size:14px;font-weight:600;color:var(--txt);margin:20px 0 6px;line-height:1.3;}
+table.t{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px;font-variant-numeric:tabular-nums;}
+table.t th{color:var(--mut);font-weight:500;text-align:right;padding:6px 8px;border-bottom:1px solid var(--bdr);font-size:12px;}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--rule);text-align:right;}
+table.t th:first-child,table.t td:first-child{text-align:left;}
+.note{font-size:13px;color:var(--mut);background:var(--surf2);border:1px solid var(--rule);border-radius:var(--r);padding:10px 12px;margin-top:10px;line-height:1.5;}
+.err{color:var(--fail-ink);background:var(--fail-bg);font-size:13px;padding:10px 12px;border-radius:var(--r);margin-bottom:12px;}
+.busy{opacity:.55;pointer-events:none;}
+a{color:var(--txt);}
+sub,sup{font-size:max(11px,.75em);line-height:0;}
+@media(max-width:560px){body{padding:16px 16px 32px;} .card{padding:16px;} .ck{grid-template-columns:1fr 1fr 48px;gap:10px;} .grid3{grid-template-columns:1fr 1fr;}
+  .row.span{grid-template-columns:1fr 32px;} .row.span > div:nth-child(2),.row.span > div:nth-child(3){display:none;} .row.load .vals{grid-template-columns:1fr 1fr;}
+  .page-hdr{min-height:150px;padding:14px 16px 16px;} .page-hdr h1{font-size:22px;} .page-hdr::after{top:10px;bottom:auto;} .page-hdr::before{background:rgba(0,0,0,.6);} .verdict .big{font-size:22px;}}
+/* disclaimer: on screen at the foot of the page, and printed at the end of the calculation sheet */
+.disclaimer{max-width:1376px;margin:24px auto 0;padding-top:14px;border-top:1px solid var(--bdr,#e3e5e8);font-size:13px;line-height:1.55;color:var(--mut,#5f6368);}
+.disclaimer b{color:var(--txt,#111);font-weight:600;}
+@media print{.disclaimer{display:block!important;max-width:none;margin:4mm 0 0;padding-top:1.5mm;border-top:0.4pt solid #888;font-family:Arial,Helvetica,sans-serif;font-size:7.5pt;color:#000;break-inside:avoid;} .disclaimer b{color:#000;}}
+/* ---------- print: A4 calculation sheet ---------- */
+#report{display:none;}
+@media print{
+  @page{size:A4;margin:12mm 12mm 14mm;}
+  body{background:#fff;color:#000;padding:0;background-image:none;font-size:9.5pt;}
+  .container{display:none;}
+  #report{display:block;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  #report table.wrap{width:100%;border-collapse:collapse;}
+  #report thead td{padding:0 0 3mm;}
+  .rh{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;border:0.6pt solid #000;font-size:8pt;}
+  .rh div{padding:1.2mm 2mm;border-right:0.6pt solid #000;}
+  .rh div:last-child{border-right:none;}
+  .rh b{display:block;font-size:6.5pt;color:#444;font-weight:normal;text-transform:uppercase;letter-spacing:.3pt;}
+  .rh .ttl{grid-column:1 / -1;border-top:0.6pt solid #000;border-right:none;font-weight:bold;font-size:10pt;}
+  .rs{margin:0 0 3.5mm;}
+  .rs h2,.rs h3{break-after:avoid;}
+  .rl,.rt,.rsvg,.rp,.rt tr{break-inside:avoid;}
+  .rs h2{font-size:10pt;margin:3mm 0 1.5mm;padding-bottom:0.8mm;border-bottom:0.8pt solid #000;}
+  .rs h3{font-size:9pt;margin:2mm 0 1mm;}
+  .rl{display:grid;grid-template-columns:1fr 92px 132px;gap:2mm;padding:0.5mm 0;font-size:8.6pt;}
+  .rl .cl{text-align:right;color:#444;font-size:7.5pt;}
+  .rl .rv{text-align:right;font-weight:bold;}
+  .ok{color:#0a7a3e;} .ng{color:#c00;}
+  .rt{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;}
+  .rt th,.rt td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;}
+  .rt th{background:#eee;font-weight:bold;}
+  .rt td:first-child,.rt th:first-child,.rt.lft td,.rt.lft th{text-align:left;}
+  .rp{font-size:8.3pt;line-height:1.45;margin:1mm 0;}
+  .rsvg{width:100%;height:auto;}
+  .rsvg *{vector-effect:non-scaling-stroke;}
+}
+
+svg.elev{width:100%;height:auto;display:block;max-width:480px;margin:4px auto 10px;}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px 20px;background:var(--surf2);border:1px solid var(--rule);border-radius:var(--rc);padding:12px 16px;margin-bottom:12px;}
+.kv div{min-width:0;} .kv b{display:block;font-size:12px;font-weight:400;color:var(--mut);} .kv span{font-size:15px;font-weight:600;}
+@media print{svg.elev{max-width:110mm;}}
+</style>
+</head>
+<body data-material="concrete">
+<div class="container">
+  <div class="page-hdr">
+    <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
+    <h1>RC Corbel and Nib Design</h1>
+    <p>Corbels and continuous nibs to BS EN 1992-1-1 + UK NA &nbsp;·&nbsp; strut-and-tie (6.5) with PD 6687-1 Annex B.4 in place of Annex J &nbsp;·&nbsp; nodes, strut slope, tie, links, shear, bearing, hanger steel and the anchorage of the tie at both ends</p>
+  </div>
+  <div class="main-grid">
+    <div id="inputs">
+      <div class="seg" id="modes"><button data-m="corbel" class="on">Corbel</button><button data-m="nib">Continuous nib</button></div>
+      <div class="card">
+        <div class="section-title">Project</div>
+        <div class="form-group"><label>Project</label><input type="text" id="pName" placeholder="Project name"></div>
+        <div class="grid3"><div class="form-group"><label>Job no.</label><input type="text" id="pJob"></div><div class="form-group"><label>By</label><input type="text" id="pBy"></div><div class="form-group"><label>Member ref.</label><input type="text" id="pRef" placeholder="e.g. Corbel C1"></div></div>
+      </div>
+      <div class="card">
+        <div class="section-title">Load <span class="aux">ULS</span></div>
+        <div class="grid3">
+          <div class="form-group"><label>Vertical F<sub>Ed</sub> (<span class="uF">kN</span>)</label><input type="number" id="FEd" value="625" step="5"></div>
+          <div class="form-group"><label>Horizontal force</label><select id="hRule"><option value="0.2">0.2F<sub>Ed</sub></option><option value="value">As given</option></select></div>
+          <div class="form-group hval"><label>H<sub>Ed</sub> (<span class="uF">kN</span>)</label><input type="number" id="HEd" value="0" step="5"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>a<sub>H</sub>, H<sub>Ed</sub> above the tie (mm)</label><input type="number" id="aH" step="5" placeholder="top face"></div>
+        </div>
+        <div class="help">Unless the bearing lets the supported member move, allow a horizontal force of 0.2F<sub>Ed</sub> (CCIP-057). Left blank, a<sub>H</sub> puts H<sub>Ed</sub> on the top face.</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Geometry <span class="aux">mm</span></div>
+        <div class="grid3">
+          <div class="form-group"><label>a<sub>c</sub>, face to the load</label><input type="number" id="ac" value="200" step="5"></div>
+          <div class="form-group"><label>Projection from the face</label><input type="number" id="lc" value="400" step="5"></div>
+          <div class="form-group corbel"><label>Width b</label><input type="number" id="b" value="500" step="25"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Depth at the face h<sub>c</sub></label><input type="number" id="hc" value="500" step="5"></div>
+          <div class="form-group"><label>Depth at the front</label><input type="number" id="hf" value="300" step="5"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Bearing along the projection</label><input type="number" id="lp" value="150" step="5"></div>
+          <div class="form-group corbel"><label>Bearing across</label><input type="number" id="bp" value="400" step="5"></div>
+          <div class="form-group"><label>Bearing</label><select id="bearing"><option value="node">Node check only</option><option value="dry">Dry (precast, 0.4f<sub>cd</sub>)</option><option value="bedded">Bedded (mortar or pad)</option></select></div>
+        </div>
+        <div class="grid3 bed"><div class="form-group"><label>f<sub>bed</sub> (N/mm²)</label><input type="number" id="fbed" value="15" step="1"></div></div>
+        <div class="help">The bearing sits at a<sub>c</sub> from the support face. A precast bearing is also checked against 10.9.5.2(2): 0.4f<sub>cd</sub> dry, otherwise f<sub>bed</sub> up to 0.85f<sub>cd</sub>.</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Concrete and reinforcement</div>
+        <div class="grid3">
+          <div class="form-group"><label>Concrete</label><select id="fck"></select></div>
+          <div class="form-group"><label>f<sub>yk</sub> (N/mm²)</label><input type="number" id="fyk" value="500" step="10"></div>
+          <div class="form-group"><label>Cover (mm)</label><input type="number" id="cover" value="35" step="5"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Tie bar φ</label><select id="phi"></select></div>
+          <div class="form-group corbel"><label>Number of tie bars</label><input type="number" id="n" value="4" step="1"></div>
+          <div class="form-group nib"><label>Tie spacing (mm)</label><input type="number" id="s" value="150" step="25"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Link φ</label><select id="phiL"></select></div>
+          <div class="form-group corbel"><label>Links in the corbel</label><input type="number" id="nLink" value="4" step="1"></div>
+          <div class="form-group nib"><label>Nib link spacing (mm)</label><input type="number" id="sNl" value="200" step="25"></div>
+        </div>
+        <div class="help">Closed two-leg links: horizontal where a<sub>c</sub> ≤ 0.5h<sub>c</sub> (at least 0.5A<sub>s,main</sub>), vertical where a<sub>c</sub> > 0.5h<sub>c</sub> and F<sub>Ed</sub> > V<sub>Rd,c</sub> (at least 0.5F<sub>Ed</sub>/f<sub>yd</sub>), PD 6687-1 B.4.2–B.4.3.</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Anchorage of the tie</div>
+        <div class="grid3">
+          <div class="form-group"><label>At the front</label><select id="frontAnch"><option value="bend">Bend down</option><option value="welded">Welded cross bar and bend</option></select></div>
+          <div class="form-group weld"><label>Welded bar φ<sub>t</sub></label><select id="phiT"></select></div>
+          <div class="form-group"><label>Mandrel φ<sub>m</sub>, front (mm)</label><input type="number" id="phimF" step="10" placeholder="standard"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Mandrel φ<sub>m</sub>, support (mm)</label><input type="number" id="phimS" step="10" placeholder="standard"></div>
+        </div>
+        <div class="help">B.4.4: in the corbel the anchorage runs from the inner face of the loading plate (poor bond); in the support from the bars at the near face to the far face (good bond). Where the straight length falls short the bend must carry the rest, (8.1); the standard mandrel is 4φ up to 16 mm and 7φ above (Table NA.6a). A welded cross bar takes up to 0.5A<sub>s</sub>f<sub>yd</sub> per bar (8.6).</div>
+      </div>
+      <div class="card">
+        <div class="section-title"><span class="corbel">Column</span><span class="nib">Supporting beam or wall</span></div>
+        <div class="grid3">
+          <div class="form-group"><label>Depth in the direction of the <span class="corbel">corbel</span><span class="nib">nib</span> (mm)</label><input type="number" id="hcol" value="500" step="25"></div>
+          <div class="form-group"><label>Cover (mm)</label><input type="number" id="coverCol" value="35" step="5"></div>
+          <div class="form-group"><label>Link and bar φ (mm)</label><div style="display:flex;gap:8px"><input type="number" id="linkCol" value="10" step="2" aria-label="Link diameter"><input type="number" id="phiCol" value="32" step="2" aria-label="Bar diameter"></div></div>
+        </div>
+        <label class="chk nib"><input type="checkbox" id="hanging"> The nib hangs from the bottom of the beam: hanger links to the top (6.2.1(9))</label>
+        <div class="grid3 hng">
+          <div class="form-group"><label>Hanger link φ</label><select id="phiH"></select></div>
+          <div class="form-group"><label>Hanger spacing (mm)</label><input type="number" id="sH" value="150" step="25"></div>
+        </div>
+      </div>
+      <button class="btn" id="calc">Calculate</button>
+    </div>
+    <div><div class="card" id="results"><div class="placeholder">Set out the corbel or nib and its load, then Calculate.</div></div></div>
+  </div>
+</div>
+<div id="report"></div>
+<script id="engine">
+/* ===== EC2 DESIGN CORE (EngineeringTools) =====
+   Clean-room implementation from BS EN 1992-1-1:2004 + A1:2014 and the UK National Annex (NA to BS EN 1992-1-1:2004+A1:2014),
+   cross-read with The Concrete Centre "How to design concrete structures using Eurocode 2". Units: N, mm (stresses N/mm2).
+   - materials (Table 3.1, 3.1.7(3), UK NA alpha_cc = 0.85 flexure / 1.0 shear and torsion, gamma_c 1.5, gamma_s 1.15);
+   - bending of rectangular and flanged sections by the rectangular stress block: required steel (singly or doubly
+     reinforced, x/d limit from ductility or redistribution, 5.5(4) with the UK NA) and the resistance of a given
+     arrangement by strain compatibility;
+   - shear 6.2.2 / 6.2.3 (vertical links, variable strut, fck limited to 50 N/mm2 in shear as the UK NA);
+   - torsion 6.3 (thin-walled closed section, interaction 6.29 / 6.31);
+   - SLS: cracked elastic section, crack control by Tables 7.2N / 7.3N or the calculated crack width 7.3.4, minimum
+     steel 7.3.2, span / effective depth 7.4.2 with the UK NA modifiers;
+   - detailing: 9.2.1.1 min / max steel, bar spacing 8.2, anchorage 8.4 and laps 8.7 (simplified alpha = 1), flange
+     width 5.3.2.1. */
+const EC2 = (() => {
+  'use strict';
+  const GC = 1.5, GS = 1.15, ES = 200000, ACC = 0.85, ACC_V = 1.0;
+  const CUBE = { 12: 15, 16: 20, 20: 25, 25: 30, 28: 35, 30: 37, 32: 40, 35: 45, 40: 50, 45: 55, 50: 60, 55: 67, 60: 75, 70: 85, 80: 95, 90: 105 };
+  const area = (n, phi) => n * Math.PI * phi * phi / 4;
+  // ---------- materials ----------
+  function concrete(fck) {
+    if (!(fck >= 12 && fck <= 90)) throw new Error('f_ck must be between 12 and 90 N/mm²');
+    const fcm = fck + 8, hi = fck > 50;
+    const fctm = hi ? 2.12 * Math.log(1 + fcm / 10) : 0.30 * fck ** (2 / 3);
+    const ec2 = hi ? (2.0 + 0.085 * (fck - 50) ** 0.53) * 1e-3 : 2.0e-3, ecu2 = hi ? (2.6 + 35 * ((90 - fck) / 100) ** 4) * 1e-3 : 3.5e-3;
+    const ec3 = hi ? (1.75 + 0.55 * (fck - 50) / 40) * 1e-3 : 1.75e-3, n = hi ? 1.4 + 23.4 * ((90 - fck) / 100) ** 4 : 2;
+    const lambda = hi ? 0.8 - (fck - 50) / 400 : 0.8, eta = hi ? 1 - (fck - 50) / 200 : 1;
+    const fv = Math.min(fck, 50);                                  // UK NA: shear and torsion with f_ck not above C50/60
+    return { fck, fckCube: CUBE[fck] ?? null, fcm, fctm, fctk05: 0.7 * fctm, fctk95: 1.3 * fctm, Ecm: 22000 * (fcm / 10) ** 0.3,
+      ec2, ecu2, ec3, ecu3: ecu2, n, lambda, eta, fcd: ACC * fck / GC, fcdV: ACC_V * fv / GC, fv, fctd: 1.0 * 0.7 * fctm / GC,
+      nu: 0.6 * (1 - fv / 250) };
+  }
+  const steel = (fyk = 500) => ({ fyk, fyd: fyk / GS, Es: ES, eyd: fyk / GS / ES });
+  // ---------- flexure: rectangular stress block (3.1.7(3)) ----------
+  // section: { b (width of the compression flange or rectangle), bw (web), hf (flange depth; 0 = rectangular), h }
+  // compression-zone force and its depth to the centroid for a block depth s = lambda x
+  function block(sec, s) {
+    const bw = sec.bw ?? sec.b, hf = sec.hf > 0 ? sec.hf : Infinity;
+    if (s <= hf || sec.b === bw) return { A: sec.b * s, y: s / 2 };
+    const Af = (sec.b - bw) * hf, Aw = bw * s;
+    return { A: Af + Aw, y: (Af * hf / 2 + Aw * s / 2) / (Af + Aw) };
+  }
+  // x/d limit: 5.5(4) with the UK NA (k1 = 0.4, k2 = 0.6 + 0.0014/eps_cu2; fck > 50: k3 = 0.4, k4 = 0.6 + 0.0014/eps_cu2)
+  // and an optional practical ductility limit (0.45 for fck <= 50 is the usual UK choice)
+  function xdLimit(c, delta = 1, practical = 0.45) {
+    const k2 = 0.6 + 0.0014 / c.ecu2, red = c.fck <= 50 ? (delta - 0.4) / k2 : (delta - 0.4) / k2;
+    return Math.min(red, practical ?? Infinity);
+  }
+  // required reinforcement for M (>= 0) on effective depth d; d2 to the compression steel
+  function bendingDesign({ sec, d, d2 = 50, M, c, s: st, delta = 1, xdMax = 0.45, zMax = 0.95 }) {
+    const a = c.eta * c.fcd, L = c.lambda, xlim = xdLimit(c, delta, xdMax) * d;
+    const Mx = x => { const bl = block(sec, L * x); return a * bl.A * (d - bl.y); };
+    const out = { M, d, xlim, K: M / (sec.b * d * d * c.fck) };
+    if (!(M > 0)) return { ...out, As: 0, As2: 0, x: 0, z: zMax * d, Kp: null };
+    const Mlim = Mx(xlim);
+    out.Kp = Mlim / (sec.b * d * d * c.fck); out.Mlim = Mlim;
+    if (M <= Mlim) {
+      let lo = 0, hi = xlim; for (let i = 0; i < 100; i++) { const m = (lo + hi) / 2; if (Mx(m) < M) lo = m; else hi = m; }
+      const x = (lo + hi) / 2, bl = block(sec, L * x), z = Math.min(d - bl.y, zMax * d);
+      return { ...out, x, z, zCap: d - bl.y > zMax * d, As: M / (st.fyd * z), As2: 0, inFlange: !(sec.hf > 0) || L * x <= sec.hf };
+    }
+    // compression steel at the x/d limit
+    const bl = block(sec, L * xlim), z = Math.min(d - bl.y, zMax * d), esc = c.ecu2 * (xlim - d2) / xlim;
+    // compression steel stress from the strain diagram, net of the concrete it displaces (inside the stress block)
+    const fscG = Math.min(st.fyd, st.Es * esc), fsc = fscG - (d2 < L * xlim ? a : 0);
+    if (!(fsc > 0)) throw new Error('Compression steel would be in tension at the limiting neutral axis (d2 too large)');
+    const As2 = (M - Mlim) / (fsc * (d - d2));
+    return { ...out, x: xlim, z, As2, fsc, fscGross: fscG, As: Mlim / (st.fyd * z) + As2 * fsc / st.fyd, doubly: true, inFlange: !(sec.hf > 0) || L * xlim <= sec.hf };
+  }
+  // resistance of a given arrangement by strain compatibility (eps_cu2 at the top, rectangular block; bilinear steel
+  // with a horizontal top branch). layers: [{ As, d }] measured from the compression face (any layer may be in compression)
+  function bendingResistance({ sec, layers, c, s: st, N = 0 }) {
+    const a = c.eta * c.fcd, L = c.lambda, h = sec.h, ecu = c.ecu2;
+    const sig = (x, di) => { const e = ecu * (x - di) / x; return Math.max(-st.fyd, Math.min(st.fyd, st.Es * e)); };   // compression +
+    const F = x => { const bl = block(sec, Math.min(L * x, h)); return a * bl.A + layers.reduce((t, l) => t + l.As * (sig(x, l.d) - (L * x > l.d ? a : 0)), 0) - N; };
+    let lo = 1e-6, hi = 2 * h;
+    if (F(lo) > 0) lo = 1e-9;
+    for (let i = 0; i < 200; i++) { const m = (lo + hi) / 2; if (F(m) > 0) hi = m; else lo = m; }
+    const x = (lo + hi) / 2, bl = block(sec, Math.min(L * x, h));
+    // moment about the compression face, then shifted to the section's mid-depth reference (N acts at h/2)
+    let Mtop = 0; Mtop += -a * bl.A * bl.y;
+    for (const l of layers) Mtop += -l.As * (sig(x, l.d) - (L * x > l.d ? a : 0)) * l.d;
+    // M about mid-depth (where N acts) = moment of the internal forces about the top + N h/2; N = 0 gives pure bending
+    const MRd = Mtop + N * h / 2;
+    const dt = Math.max(...layers.map(l => l.d));
+    return { x, xd: x / dt, MRd, eps: layers.map(l => ecu * (x - l.d) / x), sig: layers.map(l => sig(x, l.d)),
+      yielded: layers.map(l => ecu * (l.d - x) / x >= st.eyd) };
+  }
+  // ---------- shear, 6.2.2 / 6.2.3 (vertical links) ----------
+  function shearConcrete({ bw, d, Asl, c, NEd = 0, Ac = null }) {
+    const k = Math.min(2, 1 + Math.sqrt(200 / d)), rho = Math.min(0.02, Asl / (bw * d));
+    const scp = Ac ? Math.min(Math.max(NEd, 0) / Ac, 0.2 * c.fcd) : 0;
+    const vmin = 0.035 * k ** 1.5 * Math.sqrt(c.fv);
+    const v = 0.18 / GC * k * (100 * rho * c.fv) ** (1 / 3);
+    const VRdc = Math.max(v + 0.15 * scp, vmin + 0.15 * scp) * bw * d;
+    return { k, rho, scp, vmin, v, VRdc, governs: v >= vmin ? 'formula' : 'vmin' };
+  }
+  const acw = (scp, fcd) => scp <= 0 ? 1 : scp <= 0.25 * fcd ? 1 + scp / fcd : scp <= 0.5 * fcd ? 1.25 : 2.5 * (1 - scp / fcd);
+  function vrdMax(bw, z, c, cot, scp = 0) { const t = 1 / cot; return acw(scp, c.fcdV) * bw * z * c.nu * c.fcdV / (cot + t); }
+  // design of vertical links for V_Ed: strut angle (cot theta 1..2.5), Asw/s, minimum, maximum spacing
+  // VEdStrut (default VEd): the shear that sets the strut angle, normally V_Ed at the support face, so that one truss
+  // angle serves both the V_Rd,max check at the face and the links designed for V_Ed at d from the face
+  function shearDesign({ bw, d, VEd, VEdStrut = null, c, fywk = 500, z = null, scp = 0 }) {
+    z = z ?? 0.9 * d; const fywd = fywk / GS, Vs = Math.max(VEd, VEdStrut ?? 0);
+    const Vmax25 = vrdMax(bw, z, c, 2.5, scp), Vmax45 = vrdMax(bw, z, c, 1, scp);
+    let cot = 2.5, ok = true;
+    if (Vs > Vmax25) {
+      const s2 = 2 * Vs / (acw(scp, c.fcdV) * bw * z * c.nu * c.fcdV);
+      if (s2 > 1) { ok = false; cot = 1; } else { const th = 0.5 * Math.asin(s2); cot = 1 / Math.tan(th); }
+    }
+    const AswS = VEd / (z * fywd * cot), AswSmin = 0.08 * Math.sqrt(c.fck) / fywk * bw;
+    return { z, fywd, cot, theta: Math.atan(1 / cot) * 180 / Math.PI, VRdmax: vrdMax(bw, z, c, cot, scp), Vmax25, Vmax45, ok, AswS, AswSmin, AswSreq: Math.max(AswS, AswSmin),
+      slMax: 0.75 * d, stMax: Math.min(0.75 * d, 600), dFtd: 0.5 * VEd * cot };
+  }
+  // resistance of provided links: the best strut angle in 1 <= cot <= 2.5 (V_Rd,s = V_Rd,max where possible)
+  function shearResistance({ bw, d, AswS, c, fywk = 500, z = null, scp = 0 }) {
+    z = z ?? 0.9 * d; const fywd = fywk / GS, Vs = cot => AswS * z * fywd * cot;
+    let cot;
+    if (Vs(2.5) <= vrdMax(bw, z, c, 2.5, scp)) cot = 2.5;
+    else if (Vs(1) >= vrdMax(bw, z, c, 1, scp)) cot = 1;
+    else { let lo = 1, hi = 2.5; for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; if (Vs(m) > vrdMax(bw, z, c, m, scp)) hi = m; else lo = m; } cot = (lo + hi) / 2; }
+    const VRds = Vs(cot), VRdmax = vrdMax(bw, z, c, cot, scp);
+    return { cot, VRds, VRdmax, VRd: Math.min(VRds, VRdmax), z, fywd };
+  }
+  // ---------- torsion, 6.3 (rectangular solid section treated as thin-walled closed) ----------
+  function torsion({ b, h, cEdge, c, TEd, VEd = 0, bw = b, d, cot = null, VRdc = null, VRdmax = null, fywk = 500, fyk = 500 }) {
+    const A = b * h, u = 2 * (b + h), tef = Math.max(A / u, 2 * cEdge);
+    if (!(tef < Math.min(b, h) / 2)) throw new Error('Torsion: the effective wall thickness exceeds half the section');
+    const Ak = (b - tef) * (h - tef), uk = 2 * ((b - tef) + (h - tef));
+    const TRdc = 2 * Ak * tef * c.fctd;
+    cot = cot ?? 2.5; const sn = 1 / Math.sqrt(1 + cot * cot), cs = cot * sn;
+    const TRdmax = 2 * c.nu * 1.0 * c.fcdV * Ak * tef * sn * cs;
+    const AswS1 = TEd / (2 * Ak * (fywk / GS) * cot), Asl = TEd * uk * cot / (2 * Ak * (fyk / GS));
+    const crackFree = VRdc ? TEd / TRdc + VEd / VRdc <= 1 : null;
+    const inter = VRdmax ? TEd / TRdmax + VEd / VRdmax : TEd / TRdmax;
+    return { A, u, tef, Ak, uk, TRdc, TRdmax, cot, AswS1, Asl, crackFree, inter, sMax: Math.min(uk / 8, b, h) };
+  }
+  // ---------- SLS sections ----------
+  // cracked elastic section (no concrete in tension): neutral axis and stresses for moment M, modular ratio ae
+  function cracked({ sec, As, d, As2 = 0, d2 = 50, ae, M = 0 }) {
+    const bw = sec.bw ?? sec.b, hf = sec.hf > 0 ? sec.hf : Infinity;
+    const Q = x => {   // first moment of the transformed area about the neutral axis (compression +)
+      const xc = Math.min(x, hf), q1 = sec.b * xc * (x - xc / 2), q2 = x > hf ? bw * (x - hf) * (x - hf) / 2 : 0;
+      return q1 + q2 + (ae - 1) * As2 * (x - d2) - ae * As * (d - x);
+    };
+    let lo = 0, hi = d; for (let i = 0; i < 100; i++) { const m = (lo + hi) / 2; if (Q(m) > 0) hi = m; else lo = m; }
+    const x = (lo + hi) / 2, xc = Math.min(x, hf);
+    // second moment about the neutral axis: flange part [0, xc], web part [hf, x], transformed steel
+    const Icr = sec.b * (x ** 3 - (x - xc) ** 3) / 3 + (x > hf ? bw * (x - hf) ** 3 / 3 : 0) + (ae - 1) * As2 * (x - d2) ** 2 + ae * As * (d - x) ** 2;
+    return { x, Icr, sc: M * x / Icr, ss: ae * M * (d - x) / Icr, ss2: ae * M * (x - d2) / Icr };
+  }
+  function uncracked({ sec, h, As = 0, d = 0, As2 = 0, d2 = 0, ae = 0 }) {
+    const bw = sec.bw ?? sec.b, hf = sec.hf > 0 ? Math.min(sec.hf, h) : 0;
+    const parts = [[bw * h, h / 2, bw * h ** 3 / 12], [(sec.b - bw) * hf, hf / 2, (sec.b - bw) * hf ** 3 / 12], [(ae - 1) * As, d, 0], [(ae - 1) * As2, d2, 0]];
+    const A = parts.reduce((t, p) => t + p[0], 0), y = parts.reduce((t, p) => t + p[0] * p[1], 0) / A;
+    const I = parts.reduce((t, p) => t + p[2] + p[0] * (p[1] - y) ** 2, 0);
+    return { A, y, I };
+  }
+  // ---------- crack control, 7.3 ----------
+  const T72 = { s: [160, 200, 240, 280, 320, 360, 400, 450], 0.4: [40, 32, 20, 16, 12, 10, 8, 6], 0.3: [32, 25, 16, 12, 10, 8, 6, 5], 0.2: [25, 16, 12, 8, 6, 5, 4, null] };
+  const T73 = { s: [160, 200, 240, 280, 320, 360], 0.4: [300, 300, 250, 200, 150, 100], 0.3: [300, 250, 200, 150, 100, 50], 0.2: [200, 150, 100, 50, null, null] };
+  function tableLookup(T, wk, ss) {
+    const col = T[wk]; if (!col) throw new Error('w_k must be 0.2, 0.3 or 0.4 mm for Tables 7.2N / 7.3N');
+    const s = T.s;
+    if (ss <= s[0]) return col[0];
+    for (let i = 1; i < s.length; i++) if (ss <= s[i]) { const a = col[i - 1], b = col[i]; if (a == null || b == null) return null; return a + (b - a) * (ss - s[i - 1]) / (s[i] - s[i - 1]); }
+    return null;   // stress beyond the table
+  }
+  // quasi-permanent steel stress by the ratio method (How to guide): fyd x (M_qp/M_Ed) x (As,req/As,prov) / delta
+  const sigmaQP = ({ fyd, Mqp, MEd, AsReq, AsProv, delta = 1 }) => fyd * (Mqp / MEd) * (AsReq / AsProv) / delta;
+  function crackTables({ ss, wk = 0.3, h, d, fctEff, kc = 0.4, hcr = null, tension = false }) {
+    const phiStar = tableLookup(T72, wk, ss), sMax = tableLookup(T73, wk, ss);
+    hcr = hcr ?? h / 2;
+    const mod = tension ? (fctEff / 2.9) * hcr / (8 * (h - d)) : (fctEff / 2.9) * kc * hcr / (2 * (h - d));
+    return { phiStar, phiMax: phiStar == null ? null : phiStar * mod, mod, sMax };
+  }
+  function crackWidth({ sec, h, As, d, phi, cover, spacing, ss, x, c, fctEff = null, kt = 0.4, k2 = 0.5 }) {
+    fctEff = fctEff ?? c.fctm; const ae = ES / c.Ecm, bw = sec.bw ?? sec.b;
+    const hcef = Math.min(2.5 * (h - d), (h - x) / 3, h / 2), Aceff = bw * hcef, rho = As / Aceff;
+    const de = Math.max((ss - kt * fctEff / rho * (1 + ae * rho)) / ES, 0.6 * ss / ES);
+    const close = spacing <= 5 * (cover + phi / 2);
+    const sr = close ? 3.4 * cover + 0.8 * k2 * 0.425 * phi / rho : 1.3 * (h - x);
+    return { hcef, Aceff, rho, ae, de, sr, close, wk: sr * de };
+  }
+  function asMinCrack({ kc = 0.4, k = 1.0, fctEff, Act, ss }) { return kc * k * fctEff * Act / ss; }
+  // k for 7.3.2: 1.0 for h <= 300, 0.65 for h >= 800, linear between
+  const kSize = h => h <= 300 ? 1.0 : h >= 800 ? 0.65 : 1.0 - 0.35 * (h - 300) / 500;
+  // ---------- deflection: span / effective depth, 7.4.2 with the UK NA ----------
+  const KSYS = { ss: 1.0, end: 1.3, interior: 1.5, flat: 1.2, cantilever: 0.4 };
+  function spanDepth({ fck, rho, rho2 = 0, system = 'ss', fyk = 500, AsReq, AsProv, flangeRatio = 1, span, brittle = true, flat = false }) {
+    const K = KSYS[system], r0 = 1e-3 * Math.sqrt(fck), sf = Math.sqrt(fck);
+    const base = rho <= r0 ? K * (11 + 1.5 * sf * r0 / rho + 3.2 * sf * (r0 / rho - 1) ** 1.5)
+      : K * (11 + 1.5 * sf * r0 / (rho - rho2) + sf / 12 * Math.sqrt(rho2 / r0));
+    const fs = Math.min(1.5, (500 / fyk) * (AsProv / AsReq));                         // 310/sigma_s ~ 500/(fyk As,req/As,prov), UK NA limit 1.5
+    const ff = flangeRatio > 3 ? 0.8 : 1;
+    const lim = flat ? 8500 : 7000, fl = brittle && span > lim && system !== 'cantilever' ? lim / span : 1;
+    return { K, rho0: r0, rho, base, fs, ff, fl, allowed: base * fs * ff * fl };
+  }
+  // ---------- detailing ----------
+  function asMin({ fctm, fyk = 500, bt, d }) { return Math.max(0.26 * fctm / fyk * bt * d, 0.0013 * bt * d); }
+  const clearMin = (phi, dg = 20) => Math.max(phi, dg + 5, 20);
+  // anchorage and laps, 8.4 / 8.7: straight or bent bars in tension, compression bars; alpha1 (shape), alpha2 (cover cd),
+  // alpha3 = alpha4 = alpha5 = 1 (conservative), alpha2 alpha3 alpha5 >= 0.7; alpha6 from the proportion lapped (Table 8.3)
+  function anchorage({ phi, c, ss = null, good = true, fyk = 500, tension = true, bent = false, cd = null, lappedPct = 100 }) {
+    const fbd = 2.25 * (good ? 1 : 0.7) * (phi <= 32 ? 1 : (132 - phi) / 100) * c.fctd;
+    const sd = ss ?? fyk / GS, lbrqd = phi / 4 * sd / fbd;
+    let a1 = 1, a2 = 1;
+    if (tension) {
+      cd = cd ?? 3 * phi;
+      if (bent) { a1 = cd > 3 * phi ? 0.7 : 1; a2 = Math.min(1, Math.max(0.7, 1 - 0.15 * (cd - 3 * phi) / phi)); }
+      else a2 = Math.min(1, Math.max(0.7, 1 - 0.15 * (cd - phi) / phi));
+    }
+    const a235 = Math.max(0.7, a2), lbmin = tension ? Math.max(0.3 * lbrqd, 10 * phi, 100) : Math.max(0.6 * lbrqd, 10 * phi, 100);
+    const lbd = Math.max(a1 * a235 * lbrqd, lbmin);
+    const a6 = tension ? Math.min(1.5, Math.max(1, Math.sqrt(lappedPct / 25))) : 1;
+    const l0min = Math.max(0.3 * a6 * lbrqd, 15 * phi, 200), l0 = Math.max(a1 * a235 * a6 * lbrqd, l0min);
+    return { fbd, sd, lbrqd, a1, a2, a6, lbmin, lbd, l0min, l0 };
+  }
+  // effective flange width, 5.3.2.1: bi = half clear distance to the next web (each side), l0 distance between zero moments
+  function flangeWidth({ bw, b1, b2, l0, bMax = Infinity }) {
+    const bi = b => Math.max(0, Math.min(0.2 * b + 0.1 * l0, 0.2 * l0, b));
+    return Math.min(bw + bi(b1) + bi(b2), bMax, bw + b1 + b2);
+  }
+  // l0 for 5.3.2.1 Figure 5.2: 0.85 L end span, 0.7 L interior span, 0.15 (L1 + L2) over an internal support, 0.15 L2 + L3 at a cantilever root
+  return { GC, GS, ES, CUBE, area, concrete, steel, block, xdLimit, bendingDesign, bendingResistance, shearConcrete, shearDesign, shearResistance, vrdMax, acw,
+    torsion, cracked, uncracked, T72, T73, tableLookup, sigmaQP, crackTables, crackWidth, asMinCrack, kSize, KSYS, spanDepth, asMin, clearMin, anchorage, flangeWidth };
+})();
+if (typeof module !== 'undefined') module.exports = { EC2 };
+
+// RC Corbel & Nib Design engine: BS EN 1992-1-1 + UK NA, with PD 6687-1 Annex B.4 in place of Annex J (NA.3).
+// Strut-and-tie model of 6.5 laid out as in the Concrete Centre's CCIP-057: the compression node at the support face is
+// sized from the vertical load at k1ν'fcd and kept hydrostatic, so its height follows from the strut slope; the tie runs
+// at the effective depth to the node under the bearing. Corbels are designed for one load; continuous nibs per metre run,
+// with hanger steel where the nib hangs from the bottom of a beam (6.2.1(9)). Units: mm, N/mm², kN (kN/m for nibs).
+const Corbel = (() => {
+  const fin = (v, nm) => { if (!Number.isFinite(v)) throw new Error(`${nm}: give a number`); return v; };
+  const pos = (v, nm) => { fin(v, nm); if (!(v > 0)) throw new Error(`${nm} must be greater than 0`); return v; };
+  const AREA = p => Math.PI * p * p / 4;
+  const mandrelStd = phi => (phi <= 16 ? 4 : 7) * phi;   // UK NA Table NA.6a
+  const K1 = 1.0, K2 = 0.85;                              // 6.5.4(4), UK NA: the recommended values
+  // compression node at the support face and the lever arm: z0² − d z0 + ax2 a / 2 = 0 with a = ac + ax2/2, ay2 = ax2 a / z0
+  function geometry(d, ac, ax2) {
+    const a = ac + ax2 / 2, disc = d * d - 2 * ax2 * a, fit = 2 * ax2 * a / (d * d);
+    const z0 = disc >= 0 ? (d + Math.sqrt(disc)) / 2 : d / 2, ay2 = disc >= 0 ? 2 * (d - z0) : d;
+    return { a, z0, ay2, fit, tan: z0 / a };
+  }
+  // anchorage of the tie at one end (B.4.4): straight length lst before a bend of mandrel phim; force left at the bend
+  // and the mandrel it needs (8.4.4 / (8.1))
+  function bendEnd({ lst, lbd, phi, Abar, fyd, ratio, ab, fcd, phim, Fbtd = 0 }) {
+    const Fbt0 = lst >= lbd ? 0 : (lbd - Math.max(0, lst)) / lbd * Abar * fyd * ratio / 1000;   // kN per bar
+    const Fbt = Math.max(0, Fbt0 - Fbtd), phimReq = Fbt > 0 ? Fbt * 1000 * (1 / ab + 1 / (2 * phi)) / fcd : 0;
+    return { lst, lbd, Fbt0, Fbtd, Fbt, phimReq, phim, ok: phimReq <= phim + 1e-9, straight: lst >= lbd };
+  }
+  // anchorage capacity of one welded transverse bar, 8.6(2): F_btd = l_td φt σ_td ≤ F_wd = 0.5 A_s f_yd (σ_cm taken as 0)
+  function weldedBar({ phiT, phi, lt, cover, c, fyd }) {
+    const x = 2 * cover / phiT + 1, y = 0.015 + 0.14 * Math.exp(-0.18 * x), std = Math.min(c.fctd / y, 3 * c.fcd);
+    const ltd = Math.min(1.16 * phiT * Math.sqrt(fyd / std), lt), Fwd = 0.5 * AREA(phi) * fyd / 1000;
+    return { x, y, std, ltd, Fwd, Fbtd: Math.min(ltd * phiT * std / 1000, Fwd) };
+  }
+
+  function design(inp) {
+    const nib = inp.mode === 'nib', unitF = nib ? 'kN/m' : 'kN';
+    const c = EC2.concrete(fin(inp.fck, 'f_ck')), fyk = fin(inp.fyk ?? 500, 'f_yk'), fyd = fyk / 1.15;
+    const nuP = 1 - c.fck / 250, s1 = K1 * nuP * c.fcd, s2 = K2 * nuP * c.fcd;   // 6.5.2(2), 6.5.4(4) a) CCC and b) CCT
+    const FEd = pos(inp.FEd, 'F_Ed'), ac = pos(inp.ac, 'a_c'), hc = pos(inp.hc, 'Depth h_c'), lc = pos(inp.lc, 'Projection'), hf = pos(inp.hf ?? hc, 'Depth at the front');
+    const lp = pos(inp.lp, 'Bearing length'), cover = pos(inp.cover, 'Cover'), phiL = fin(inp.phiLink ?? 10, 'Link φ'), phi = pos(inp.phi, 'Tie bar φ');
+    const b = nib ? 1000 : pos(inp.b, 'Width b'), bp = nib ? 1000 : pos(inp.bp, 'Bearing width');
+    if (bp > b + 1e-9) throw new Error('The bearing is wider than the corbel');
+    if (ac + lp / 2 > lc - cover + 1e-9) throw new Error('The bearing runs past the front of the corbel');
+    if (ac - lp / 2 < 0) throw new Error('The bearing runs into the support face: a_c must be at least half the bearing length');
+    if (hf > hc + 1e-9) throw new Error('The depth at the front cannot exceed the depth at the support face');
+    const d = hc - cover - phiL - phi / 2;
+    if (!(d > 0)) throw new Error('No effective depth: check h_c, cover and bars');
+    // tie bars: corbels n × φ; nibs φ at spacing s
+    let nBar, s, As;
+    if (nib) { s = pos(inp.s, 'Bar spacing'); nBar = 1000 / s; As = AREA(phi) * nBar; }
+    else { nBar = Math.round(pos(inp.n, 'Number of tie bars')); if (nBar < 2) throw new Error('Use at least two tie bars'); s = (b - 2 * (cover + phiL) - phi) / (nBar - 1); As = AREA(phi) * nBar;
+      if (s - phi < EC2.clearMin(phi)) throw new Error(`The ${nBar} bars do not fit across the corbel at the 8.2 clear spacing`); }
+    const HEd = inp.hRule === '0.2' ? 0.2 * FEd : fin(inp.HEd ?? 0, 'H_Ed'), aH = inp.aH === null || inp.aH === undefined || inp.aH === '' ? hc - d : fin(+inp.aH, 'a_H');
+    if (HEd < 0) throw new Error('H_Ed acts outward; give it as a positive value or zero');
+    // ---------- strut-and-tie ----------
+    const ax2 = FEd * 1000 / (b * s1), G = geometry(d, ac, ax2), tUse = Math.min(G.tan, 2.5), theta = Math.atan(tUse) * 180 / Math.PI;
+    const Ftd = FEd / tUse + HEd * (1 + aH / G.z0), C = Ftd - HEd, F12 = Math.hypot(FEd, C), AsReq = Ftd * 1000 / fyd;
+    const z0face = G.z0 * ac / G.a;
+    // node 1 (CCT) under the bearing: the bearing face and the strut face of width lp sinθ + u cosθ, u = 2(hc − d)
+    const sinT = Math.sin(Math.atan(tUse)), cosT = Math.cos(Math.atan(tUse)), u = 2 * (hc - d), w1 = lp * sinT + u * cosT;
+    const sBear = FEd * 1000 / (lp * bp), sStrut1 = F12 * 1000 / (bp * w1);
+    // precast bearing, 10.9.5.2(2): dry 0.4 fcd; bedded f_bed ≤ 0.85 fcd
+    let fRd = null; if (inp.bearing === 'dry') fRd = 0.4 * c.fcd; else if (inp.bearing === 'bedded') fRd = Math.min(fin(inp.fbed, 'f_bed'), 0.85 * c.fcd);
+    // shear: 6.2.2(6) upper limit and V_Rd,c of the root section (for B.4.3)
+    const VRdc = EC2.shearConcrete({ bw: b, d, Asl: As, c }).VRdc / 1000, VMax = 0.5 * b * d * c.nu * c.fcdV / 1000;
+    // links, PD 6687-1 B.4.2 / B.4.3
+    const shortC = ac <= 0.5 * hc;
+    let linkReq = 0, linkKind = 'none', AsLnk = 0;
+    if (nib) {
+      const pl = fin(inp.phiNl ?? 0, 'Nib link φ'), sl = inp.sNl > 0 ? inp.sNl : 0;
+      AsLnk = pl > 0 && sl > 0 ? 2 * AREA(pl) * 1000 / sl : 0;
+    } else {
+      const nl = Math.round(fin(inp.nLink ?? 0, 'Number of links')), pl = fin(inp.phiCl ?? 10, 'Link φ'); AsLnk = nl * 2 * AREA(pl);
+    }
+    if (shortC) { linkKind = 'horizontal'; linkReq = 0.5 * As; }
+    else if (FEd > VRdc) { linkKind = 'vertical'; linkReq = 0.5 * FEd * 1000 / fyd; }
+    // hanger steel for a nib hanging from the bottom of a beam, 6.2.1(9)
+    const hang = nib && !!inp.hanging, AsHangReq = hang ? FEd * 1000 / fyd : 0;
+    const AsHang = hang ? 2 * AREA(fin(inp.phiH ?? 0, 'Hanger φ')) * 1000 / pos(inp.sH, 'Hanger spacing') : 0;
+    // ---------- anchorage of the tie, B.4.4 ----------
+    const ratio = Math.min(1, AsReq / As), Abar = AREA(phi), cBar = cover + phiL;
+    const ab = Math.min(s / 2, cBar + phi / 2);
+    const lbdPoor = EC2.anchorage({ phi, c, good: false, fyk }).lbrqd, lbdGood = EC2.anchorage({ phi, c, good: true, fyk }).lbrqd;
+    const phimF = inp.phimF > 0 ? inp.phimF : mandrelStd(phi), phimS = inp.phimS > 0 ? inp.phimS : mandrelStd(phi);
+    const hcol = pos(inp.hcol, 'Support depth'), ccol = fin(inp.coverCol ?? cover, 'Support cover'), lcol = fin(inp.linkCol ?? phiL, 'Support link φ'), pcol = fin(inp.phiCol ?? 16, 'Support bar φ');
+    const lstFront = (lc - (ac - lp / 2)) - cover - phiL - phi - phimF / 2;   // from the inner face of the loading plate
+    const lstSupp = hcol - 2 * (ccol + lcol + pcol / 2) - phi - phimS / 2;     // beyond the near-face bars, to the far face
+    const welded = inp.frontAnch === 'welded' ? weldedBar({ phiT: pos(inp.phiT, 'Welded bar φ'), phi, lt: s, cover, c, fyd }) : null;
+    if (welded && (inp.phiT < 14 || inp.phiT > 32)) throw new Error('8.6 covers welded transverse bars of 14 to 32 mm');
+    const front = bendEnd({ lst: lstFront, lbd: lbdPoor, phi, Abar, fyd, ratio, ab, fcd: c.fcd, phim: phimF, Fbtd: welded ? welded.Fbtd : 0 });
+    const supp = bendEnd({ lst: lstSupp, lbd: lbdGood, phi, Abar, fyd, ratio, ab, fcd: c.fcd, phim: phimS });
+    // ---------- checks ----------
+    const checks = [];
+    const add = (name, ref, util, note = '', key = '') => checks.push({ name, ref, util, note, key });
+    add('Strut slope, tan θ not below 1.0 (a_c < z₀)', 'PD 6687-1 B.4.1', 1 / G.tan, G.tan > 2.5 ? `tan θ = ${G.tan.toFixed(2)}: the tie is taken at 2.5` : `tan θ = ${G.tan.toFixed(2)}`, 'slope');
+    add('Compression node at the support face fits (CCC)', '6.5.4(4) a)', G.fit, `a_x2 = ${ax2.toFixed(0)}, a_y2 = ${G.ay2.toFixed(0)} mm`, 'node2');
+    add('Bearing on node 1 (CCT)', '6.5.4(4) b)', sBear / s2, `${sBear.toFixed(1)} / ${s2.toFixed(1)} N/mm²`, 'bear');
+    add('Strut at node 1 (CCT)', '6.5.4(4) b)', sStrut1 / s2, `${sStrut1.toFixed(1)} / ${s2.toFixed(1)} N/mm²`, 'strut1');
+    if (fRd !== null) add(`Bearing stress, ${inp.bearing === 'dry' ? 'dry' : 'bedded'} connection`, '10.9.5.2(2)', sBear / fRd, `${sBear.toFixed(1)} / ${fRd.toFixed(1)} N/mm²`, 'precast');
+    add('Shear at the support face', '6.2.2(6)', FEd / VMax, `F_Ed ≤ 0.5 b d ν f_cd = ${VMax.toFixed(0)} ${unitF}`, 'vmax');
+    add('Main tie', '6.5.3, B.4.1', AsReq / As, `${AsReq.toFixed(0)} / ${As.toFixed(0)} mm²${nib ? '/m' : ''}`, 'tie');
+    if (linkKind !== 'none') add(linkKind === 'horizontal' ? 'Closed horizontal links, a_c ≤ 0.5h_c' : 'Closed vertical links, a_c > 0.5h_c and F_Ed > V_Rd,c', linkKind === 'horizontal' ? 'PD 6687-1 B.4.2' : 'PD 6687-1 B.4.3',
+      AsLnk > 0 ? linkReq / AsLnk : Infinity, `${linkReq.toFixed(0)} / ${AsLnk.toFixed(0)} mm²${nib ? '/m' : ''}`, 'links');
+    if (hang) add('Hanger steel to the top of the beam', '6.2.1(9)', AsHang > 0 ? AsHangReq / AsHang : Infinity, `${AsHangReq.toFixed(0)} / ${AsHang.toFixed(0)} mm²/m`, 'hang');
+    add(welded ? 'Tie anchored at the front: welded bar and bend' : 'Tie anchored at the front: bend', welded ? 'B.4.4, 8.6, 8.4.4 (8.1)' : 'B.4.4, 8.4.4 (8.1)', front.phimReq / front.phim,
+      front.straight ? 'straight length enough' : `F_bt ${front.Fbt.toFixed(1)} kN per bar${welded ? ` after ${welded.Fbtd.toFixed(1)} kN to the welded bar` : ''} needs φ_m ${front.phimReq.toFixed(0)} mm`, 'front');
+    add('Tie anchored in the support: bend', 'B.4.4, 8.4.4 (8.1)', supp.phimReq / supp.phim, supp.straight ? 'straight length enough' : `F_bt ${supp.Fbt.toFixed(1)} kN per bar needs φ_m ${supp.phimReq.toFixed(0)} mm`, 'supp');
+    const util = Math.max(...checks.map(q => q.util));
+    const notes = [];
+    if (z0face < 0.75 * d) notes.push(`The lever arm at the support face, ${z0face.toFixed(0)} mm, is under 0.75d = ${(0.75 * d).toFixed(0)} mm: CCIP-057 recommends at least 0.75d to avoid a brittle failure.`);
+    if (hf < hc / 2) notes.push('The depth at the front is under half the depth at the support face; keep the outer depth at least h_c/2 so the strut and the front anchorage fit.');
+    if (!welded && (front.phimReq > front.phim || lstFront < 0)) notes.push('At the front, a loop or a bar welded across the tie bars (8.6) is the usual way to anchor the tie when a bend will not fit (B.4.4).');
+    if (linkKind === 'none') notes.push(`a_c > 0.5h_c and F_Ed ≤ V_Rd,c (${VRdc.toFixed(0)} ${unitF}): PD 6687-1 B.4 asks for no links, though nominal links are good practice.`);
+    if (inp.hRule !== '0.2' && HEd === 0) notes.push('No horizontal force: unless the bearing releases movement, CCIP-057 suggests allowing 0.2F_Ed.');
+    return { inp, nib, unitF, c, fyk, fyd, nuP, s1, s2, FEd, HEd, aH, ac, hc, hf, lc, lp, bp, b, d, cover, phiL, phi, nBar, s, As, ax2, ...G, tUse, theta, Ftd, C, F12, AsReq, z0face,
+      u, w1, sBear, sStrut1, fRd, VRdc, VMax, shortC, linkKind, linkReq, AsLnk, hang, AsHangReq, AsHang, ab, lbdPoor, lbdGood, front, supp, welded, hcol, checks, util, notes };
+  }
+  return { geometry, bendEnd, weldedBar, mandrelStd, design, K1, K2 };
+})();
+
+</script>
+<script id="ui">
+'use strict';
+const $ = id => document.getElementById(id);
+const STORE = 'et-rc-corbel-v1';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const f0 = v => Number.isFinite(v) ? Math.round(v).toString() : '–', f1 = v => Number.isFinite(v) ? (Math.round(v * 10) / 10).toString() : '–', f2 = v => Number.isFinite(v) ? v.toFixed(2) : '–', f3 = v => Number.isFinite(v) ? v.toFixed(3) : '–';
+const ufmt = u => !Number.isFinite(u) ? '&gt;99' : u.toFixed(3);
+const sub = s => esc(s).replace(/_([A-Za-z0-9,]+)/g, '<sub>$1</sub>');
+const FCK = [[25, 'C25/30'], [28, 'C28/35'], [30, 'C30/37'], [32, 'C32/40'], [35, 'C35/45'], [40, 'C40/50'], [45, 'C45/55'], [50, 'C50/60'], [55, 'C55/67'], [60, 'C60/75']];
+$('fck').innerHTML = FCK.map(([v, t]) => `<option value="${v}"${v === 40 ? ' selected' : ''}>${t}</option>`).join('');
+const opts = (id, list, def) => $(id).innerHTML = list.map(p => `<option value="${p}"${p === def ? ' selected' : ''}>H${p}</option>`).join('');
+opts('phi', [10, 12, 16, 20, 25, 32], 20); opts('phiL', [8, 10, 12, 16], 10); opts('phiT', [16, 20, 25, 32], 32); opts('phiH', [8, 10, 12, 16], 10);
+const setVal = (id, v) => { const el = $(id); if (!el || v == null) return; if (el.type === 'checkbox') { el.checked = !!v; return; } if (el.tagName === 'SELECT' && ![...el.options].some(o => o.value === String(v))) return; el.value = v; };
+let mode = 'corbel', last = null;
+function setMode(m) { mode = m; document.querySelectorAll('#modes button').forEach(b => b.classList.toggle('on', b.dataset.m === m)); refreshVis(); }
+// typical starting values for each mode; switching mode swaps them in while the inputs are still the other mode's defaults
+const DEF = { corbel: { FEd: 625, ac: 200, lc: 400, hc: 500, hf: 300, lp: 150, hcol: 500, phi: 20, phiCol: 32 }, nib: { FEd: 120, ac: 100, lc: 200, hc: 300, hf: 250, lp: 100, hcol: 300, phi: 12, phiCol: 16 } };
+function swapDefaults(to) { const from = to === 'nib' ? 'corbel' : 'nib'; if (Object.keys(DEF[from]).every(k => +$(k).value === DEF[from][k])) Object.entries(DEF[to]).forEach(([k, v]) => setVal(k, v)); }
+document.querySelectorAll('#modes button').forEach(b => b.onclick = () => { if (b.dataset.m !== mode) swapDefaults(b.dataset.m); setMode(b.dataset.m); });
+function refreshVis() {
+  const nib = mode === 'nib', show = (sel, on) => document.querySelectorAll(sel).forEach(e => e.classList.toggle('hidden', !on));
+  show('.corbel', !nib); show('.nib', nib); show('.hval', $('hRule').value === 'value'); show('.bed', $('bearing').value === 'bedded'); show('.weld', $('frontAnch').value === 'welded');
+  show('.hng', nib && $('hanging').checked); document.querySelectorAll('.uF').forEach(e => e.textContent = nib ? 'kN/m' : 'kN');
+}
+['hRule', 'bearing', 'frontAnch', 'hanging'].forEach(id => $(id).addEventListener('change', refreshVis));
+const FIELDS = ['pName', 'pJob', 'pBy', 'pRef', 'FEd', 'hRule', 'HEd', 'aH', 'ac', 'lc', 'b', 'hc', 'hf', 'lp', 'bp', 'bearing', 'fbed', 'fck', 'fyk', 'cover', 'phi', 'n', 's', 'phiL', 'nLink', 'sNl', 'frontAnch', 'phiT', 'phimF', 'phimS', 'hcol', 'coverCol', 'linkCol', 'phiCol', 'hanging', 'phiH', 'sH'];
+const collect = () => { const s = { v: 1, mode }; FIELDS.forEach(id => s[id] = $(id).type === 'checkbox' ? $(id).checked : $(id).value); return s; };
+const num = id => $(id).value === '' ? null : +$(id).value;
+function input() {
+  return { mode, FEd: num('FEd'), hRule: $('hRule').value, HEd: num('HEd') || 0, aH: num('aH'), ac: num('ac'), lc: num('lc'), b: num('b'), hc: num('hc'), hf: num('hf'), lp: num('lp'), bp: num('bp'),
+    bearing: $('bearing').value, fbed: num('fbed'), fck: +$('fck').value, fyk: num('fyk'), cover: num('cover'), phi: +$('phi').value, n: num('n'), s: num('s'), phiLink: +$('phiL').value,
+    nLink: num('nLink') || 0, phiCl: +$('phiL').value, phiNl: +$('phiL').value, sNl: num('sNl'), frontAnch: $('frontAnch').value, phiT: +$('phiT').value, phimF: num('phimF'), phimS: num('phimS'),
+    hcol: num('hcol'), coverCol: num('coverCol'), linkCol: num('linkCol'), phiCol: num('phiCol'), hanging: $('hanging').checked, phiH: +$('phiH').value, sH: num('sH') };
+}
+// RC Corbel & Nib drawings (inlined into the UI script; uses f0). Elevation with the strut-and-tie model over the outline:
+// the support on the left, the corbel or nib to the right, the tie in the data colour, the strut dashed, node 2 boxed.
+const INK = l => l ? '#000' : 'var(--txt)', MUT = l => l ? '#666' : 'var(--mut)', ACC = l => l ? '#1b67b0' : 'var(--accent)', FILL = l => l ? '#ececec' : '#e6e9ee';
+function svgCorbel(R, light) {
+  const W0 = 440, ext = R.nib && R.hang ? 0.15 * R.hc : 0.55 * R.hc, above = R.nib && R.hang ? R.hc * 1.4 : ext;   // support drawn above and below
+  const xMin = -R.hcol, xMax = R.lc, yMin = -above, yMax = R.hc + ext;
+  const sc = Math.min((W0 - 140) / (xMax - xMin), 330 / (yMax - yMin)), ox = 30 + (W0 - 140 - (xMax - xMin) * sc) / 2;
+  const X = x => ox + (x - xMin) * sc, Y = y => 30 + (y - yMin) * sc, H0 = Y(yMax) + 34;
+  let g = '';
+  // support and corbel outline
+  g += `<rect x="${X(xMin)}" y="${Y(yMin)}" width="${R.hcol * sc}" height="${(yMax - yMin) * sc}" fill="${FILL(light)}" stroke="${INK(light)}" stroke-width="1.3"/>`;
+  g += `<path d="M${X(0)} ${Y(0)} L${X(R.lc)} ${Y(0)} L${X(R.lc)} ${Y(R.hf)} L${X(0)} ${Y(R.hc)}" fill="${FILL(light)}" stroke="${INK(light)}" stroke-width="1.3"/>`;
+  g += `<line x1="${X(0)}" y1="${Y(0) + 0.6}" x2="${X(0)}" y2="${Y(R.hc) - 0.6}" stroke="${FILL(light)}" stroke-width="2"/>`;
+  // bearing and loads
+  const xb0 = R.ac - R.lp / 2, xb1 = R.ac + R.lp / 2;
+  g += `<rect x="${X(xb0)}" y="${Y(0) - 7}" width="${R.lp * sc}" height="7" fill="${INK(light)}"/>`;
+  g += `<path d="M${X(R.ac)} ${Y(0) - 40} V${Y(0) - 10} m-5 -8 l5 8 l5 -8" fill="none" stroke="${INK(light)}" stroke-width="1.6"/><text x="${X(R.ac) + 8}" y="${Y(0) - 30}" font-size="12" fill="${INK(light)}">F<tspan font-size="8.5" dy="2">Ed</tspan><tspan dy="-2"> ${f0(R.FEd)} ${R.unitF}</tspan></text>`;
+  if (R.HEd > 0) g += `<path d="M${X(xb1)} ${Y(0) - 14} h26 m-7 -5 l7 5 l-7 5" fill="none" stroke="${INK(light)}" stroke-width="1.4"/><text x="${X(xb1) + 30}" y="${Y(0) - 10}" font-size="11.5" fill="${INK(light)}">H ${f0(R.HEd)}</text>`;
+  // the tie bars with their bends
+  const yt = R.hc - R.d, xF = R.lc - R.cover - R.phiL - R.phi / 2, xS = -R.hcol + (R.inp.coverCol ?? R.cover) + (R.inp.linkCol ?? R.phiL) + R.phi / 2;
+  const rF = R.front.phim / 2 * sc, rS = R.supp.phim / 2 * sc;
+  g += `<path d="M${X(xS)} ${Y(yt) + rS + 26} V${Y(yt) + rS} Q${X(xS)} ${Y(yt)} ${X(xS) + rS} ${Y(yt)} H${X(xF) - rF} Q${X(xF)} ${Y(yt)} ${X(xF)} ${Y(yt) + rF} V${Y(Math.min(R.hf * 0.85, yt + 2.2 * R.front.phim))}" fill="none" stroke="${ACC(light)}" stroke-width="2.4"/>`;
+  if (R.welded) g += `<circle cx="${X(xF) - rF - 6}" cy="${Y(yt) - 4}" r="4" fill="${ACC(light)}"/>`;
+  // links
+  if (R.linkKind === 'horizontal' || (!R.nib && R.inp.nLink > 0 && R.shortC)) {
+    const n = Math.max(1, Math.round(R.inp.nLink || 2)); for (let i = 1; i <= n; i++) { const y = yt + (2 / 3) * R.d * i / (n + 0.5); g += `<line x1="${X(-10)}" y1="${Y(y)}" x2="${X(R.lc - R.cover)}" y2="${Y(y)}" stroke="${MUT(light)}" stroke-width="1.2"/>`; }
+  } else if (R.linkKind === 'vertical') {
+    const n = Math.max(1, Math.round(R.inp.nLink || 2)); for (let i = 1; i <= n; i++) { const x = R.lc * i / (n + 1); g += `<line x1="${X(x)}" y1="${Y(R.cover)}" x2="${X(x)}" y2="${Y(R.hc - (R.hc - R.hf) * x / R.lc - R.cover)}" stroke="${MUT(light)}" stroke-width="1.2"/>`; }
+  }
+  if (R.hang) g += `<path d="M${X(-R.hcol * 0.3)} ${Y(R.hc - R.cover)} V${Y(yMin + R.cover)}" stroke="${MUT(light)}" stroke-width="1.6" stroke-dasharray="6 3"/><text x="${X(-R.hcol * 0.3) - 4}" y="${Y(yMin) + 16}" font-size="11.5" text-anchor="end" fill="${MUT(light)}">hangers</text>`;
+  // strut-and-tie: node 1, node 2, strut
+  const n2x = -R.ax2 / 2, n2y = yt + R.z0;
+  g += `<rect x="${X(-R.ax2)}" y="${Y(R.hc - R.ay2)}" width="${Math.max(2, R.ax2 * sc)}" height="${Math.max(2, R.ay2 * sc)}" fill="none" stroke="${INK(light)}" stroke-width="1.2"/>`;
+  g += `<line x1="${X(R.ac)}" y1="${Y(yt)}" x2="${X(n2x)}" y2="${Y(n2y)}" stroke="${INK(light)}" stroke-width="2" stroke-dasharray="7 4"/>`;
+  g += `<circle cx="${X(R.ac)}" cy="${Y(yt)}" r="4" fill="${INK(light)}"/><circle cx="${X(n2x)}" cy="${Y(n2y)}" r="4" fill="${INK(light)}"/>`;
+  g += `<text x="${X(R.ac) + 7}" y="${Y(yt) + 15}" font-size="11.5" fill="${INK(light)}">1</text><text x="${X(n2x) - 8}" y="${Y(n2y) - 8}" font-size="11.5" text-anchor="end" fill="${INK(light)}">2</text>`;
+  // dimensions
+  const dimH = (x0, x1, y, t) => `<line x1="${X(x0)}" y1="${y}" x2="${X(x1)}" y2="${y}" stroke="${MUT(light)}"/><line x1="${X(x0)}" y1="${y - 4}" x2="${X(x0)}" y2="${y + 4}" stroke="${MUT(light)}"/><line x1="${X(x1)}" y1="${y - 4}" x2="${X(x1)}" y2="${y + 4}" stroke="${MUT(light)}"/><text x="${(X(x0) + X(x1)) / 2}" y="${y - 4}" font-size="11.5" text-anchor="middle" fill="${MUT(light)}">${t}</text>`;
+  const dimV = (y0, y1, x, t, left) => `<line x1="${x}" y1="${Y(y0)}" x2="${x}" y2="${Y(y1)}" stroke="${MUT(light)}"/><line x1="${x - 4}" y1="${Y(y0)}" x2="${x + 4}" y2="${Y(y0)}" stroke="${MUT(light)}"/><line x1="${x - 4}" y1="${Y(y1)}" x2="${x + 4}" y2="${Y(y1)}" stroke="${MUT(light)}"/><text x="${left ? x - 6 : x + 6}" y="${(Y(y0) + Y(y1)) / 2 + 4}" font-size="11.5" text-anchor="${left ? 'end' : 'start'}" fill="${MUT(light)}">${t}</text>`;
+  g += dimH(0, R.ac, Y(yMax) + 18, `a<tspan font-size="8.5" dy="2">c</tspan><tspan dy="-2"> ${f0(R.ac)}</tspan>`);
+  g += dimV(yt, n2y, X(R.lc) + 12, `z<tspan font-size="8.5" dy="2">0</tspan><tspan dy="-2"> ${f0(R.z0)}</tspan>`);
+  g += dimV(0, R.hc, X(R.lc) + 64, `h<tspan font-size="8.5" dy="2">c</tspan><tspan dy="-2"> ${f0(R.hc)}</tspan>`);
+  return `<svg class="elev" viewBox="0 0 ${W0} ${H0.toFixed(0)}" role="img" aria-label="Elevation of the ${R.nib ? 'nib' : 'corbel'} with its strut-and-tie model">${g}</svg>`;
+}
+
+const bar = c => `<div class="ck"><div class="nm">${sub(c.name)}<small>${esc(c.ref)} &nbsp;${sub(c.note || '')}</small></div><div class="bar"><i class="${c.util > 1 ? 'over' : ''}" style="width:${Math.min(100, c.util * 100 / 1.2)}%"></i></div><div class="u ${c.util > 1 ? 'over' : ''}">${ufmt(c.util)}</div></div>`;
+const kv = (k, v) => `<div><b>${k}</b><span>${v}</span></div>`;
+function values(R) {
+  const u = R.nib ? '/m' : '';
+  return kv('d (mm)', f0(R.d)) + kv('ν′ = 1 − f<sub>ck</sub>/250', f3(R.nuP)) + kv('k₁ν′f<sub>cd</sub> (CCC)', f2(R.s1)) + kv('k₂ν′f<sub>cd</sub> (CCT)', f2(R.s2))
+    + kv('a<sub>x2</sub>, a<sub>y2</sub> (mm)', `${f0(R.ax2)}, ${f0(R.ay2)}`) + kv('Lever arm a (mm)', f0(R.a)) + kv('z₀ (mm)', f0(R.z0)) + kv('tan θ', f2(R.tan)) + kv('z₀ at the face (mm)', f0(R.z0face))
+    + kv(`H<sub>Ed</sub> (${R.unitF})`, f1(R.HEd)) + kv(`F<sub>td</sub> (${R.unitF})`, f1(R.Ftd)) + kv(`Strut F₁₂ (${R.unitF})`, f1(R.F12))
+    + kv(`A<sub>s,req</sub> (mm²${u})`, f0(R.AsReq)) + kv(`A<sub>s,prov</sub> (mm²${u})`, f0(R.As)) + kv(`V<sub>Rd,c</sub> (${R.unitF})`, f0(R.VRdc))
+    + kv('l<sub>bd</sub> poor / good (mm)', `${f0(R.lbdPoor)} / ${f0(R.lbdGood)}`) + kv('Straight, front / support (mm)', `${f0(R.front.lst)} / ${f0(R.supp.lst)}`) + kv('a<sub>b</sub> (mm)', f0(R.ab));
+}
+function render() {
+  const { R, inp } = last, W = [...R.checks].sort((a, b) => b.util - a.util);
+  const what = `${R.nib ? 'Nib per metre' : `Corbel ${f0(R.b)} wide`}, h<sub>c</sub> ${f0(R.hc)} mm, a<sub>c</sub> ${f0(R.ac)} mm; F<sub>Ed</sub> ${f0(R.FEd)} ${R.unitF}, tie ${R.nib ? `H${R.phi} @ ${f0(R.s)}` : `${R.nBar}H${R.phi}`}`;
+  let h = `<div class="verdict ${R.util > 1 ? 'fail' : ''}"><div><div class="big">${R.util > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(R.util)}</div><div class="sub">Governs: ${sub(W[0].name.charAt(0).toLowerCase() + W[0].name.slice(1))} (${esc(W[0].ref)})<br>${what}</div></div></div>`;
+  h += `<div class="dlabel">Elevation and strut-and-tie model</div>${svgCorbel(R, false)}`;
+  h += `<div class="dlabel">Checks</div><div class="checks">${W.map(bar).join('')}</div>`;
+  if (R.notes.length) h += R.notes.map(n => `<div class="note">${sub(n)}</div>`).join('');
+  h += `<div class="dlabel">Values</div><div class="kv">${values(R)}</div>`;
+  h += `<div class="help">Strut-and-tie by 6.5 as laid out in CCIP-057: node 2 at the support face takes F<sub>Ed</sub> at k₁ν′f<sub>cd</sub> (a<sub>x2</sub>) and is hydrostatic, so a<sub>y2</sub> = a<sub>x2</sub>·a/z₀ with a = a<sub>c</sub> + a<sub>x2</sub>/2 and z₀ = d − a<sub>y2</sub>/2. F<sub>td</sub> = F<sub>Ed</sub>/tan θ + H<sub>Ed</sub>(1 + a<sub>H</sub>/z₀), with tan θ not taken above 2.5. f<sub>cd</sub> uses α<sub>cc</sub> = 0.85.</div>`;
+  h += `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  $('results').innerHTML = h;
+  $('printBtn').onclick = () => { $('report').innerHTML = report(); window.print(); };
+}
+function run() {
+  try { localStorage.setItem(STORE, JSON.stringify(collect())); } catch (e) { /* storage unavailable */ }
+  try { const inp = input(), R = Corbel.design(inp); last = { R, inp }; render(); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+// ---------- A4 sheet ----------
+const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
+function report() {
+  const s = collect(), today = new Date().toLocaleDateString('en-GB'), { R } = last, u = R.unitF, cls = (FCK.find(q => q[0] === R.c.fck) || [0, 'C' + R.c.fck])[1];
+  const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.pRef) || '&nbsp;'}</div><div class="ttl">RC ${R.nib ? 'nib' : 'corbel'} to BS EN 1992-1-1 + UK NA and PD 6687-1 B.4</div></div>`;
+  let b = `<div class="rs"><h2>${R.nib ? 'Continuous nib, per metre' : 'Corbel'}</h2>${svgCorbel(R, true)}`
+    + rl(`${cls}, f<sub>cd</sub> = ${f2(R.c.fcd)}, f<sub>yd</sub> = ${f1(R.fyd)} N/mm²; ${R.nib ? 'per metre' : `b = ${f0(R.b)} mm`}, h<sub>c</sub> = ${f0(R.hc)}, d = ${f0(R.d)}, a<sub>c</sub> = ${f0(R.ac)}, projection ${f0(R.lc)} mm; bearing ${f0(R.lp)} × ${f0(R.bp)} mm`, '', '')
+    + rl(`F<sub>Ed</sub> = ${f1(R.FEd)} ${u}, H<sub>Ed</sub> = ${f1(R.HEd)} ${u} at a<sub>H</sub> = ${f0(R.aH)} mm above the tie`, '', '') + '</div>';
+  b += `<div class="rs"><h2>Strut-and-tie</h2>${rl(`ν′ = 1 − ${R.c.fck}/250 = ${f3(R.nuP)}; σ<sub>Rd,max</sub> = ${f2(R.s1)} (CCC), ${f2(R.s2)} N/mm² (CCT)`, '6.5.2(2), 6.5.4(4)', '')}`
+    + rl(`a<sub>x2</sub> = F<sub>Ed</sub>/(b σ<sub>Rd,max</sub>) = ${f1(R.ax2)} mm; a = a<sub>c</sub> + a<sub>x2</sub>/2 = ${f1(R.a)} mm; z₀ = ${f1(R.z0)} mm, a<sub>y2</sub> = ${f1(R.ay2)} mm`, 'CCIP-057', `tan θ = ${f2(R.tan)}`)
+    + rl(`F<sub>td</sub> = F<sub>Ed</sub>/tan θ${R.tan > 2.5 ? ' (2.5)' : ''} + H<sub>Ed</sub>(1 + a<sub>H</sub>/z₀); strut F₁₂ = ${f1(R.F12)} ${u}`, 'B.4.1', `F<sub>td</sub> = ${f1(R.Ftd)} ${u}`)
+    + rl(`A<sub>s,req</sub> = F<sub>td</sub>/f<sub>yd</sub> = ${f0(R.AsReq)} mm²; provided ${R.nib ? `H${R.phi} @ ${f0(R.s)}` : `${R.nBar}H${R.phi}`} = ${f0(R.As)} mm²${R.nib ? '/m' : ''}`, '', '') + '</div>';
+  b += `<div class="rs"><h2>Checks</h2>${R.checks.map(q => rl(`${sub(q.name)}: ${sub(q.note)}`, q.ref, `${q.util > 1 ? 'FAIL' : 'OK'} ${ufmt(q.util)}`)).join('')}${R.notes.map(n => `<p class="rp">${sub(n)}</p>`).join('')}</div>`;
+  b += `<p class="rp" style="color:#555">Generated by EngineeringTools — RC Corbel and Nib Design.</p>`;
+  return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
+}
+$('calc').onclick = run;
+(function init() {
+  let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
+  if (s && s.v === 1) { FIELDS.forEach(id => setVal(id, s[id])); setMode(s.mode === 'nib' ? 'nib' : 'corbel'); } else refreshVis();
+})();
+</script>
+<footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent engineer to check and approve all calculations before they are used.</footer>
+</body>
+</html>
