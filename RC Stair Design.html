@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RC Stair Design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* Engineering Tools: shared light style (tasteskill app sheet "Achromatic ledger", seed 959138263).
+   Ink chrome on a blue-grey drawing-office ground; the one hue (#1d5fbf) goes on the main data element
+   (envelopes, utilisation bars); status colour only on the verdict and on a check that is over. */
+:root{
+  --bg:#f2f4f7; --surf:#ffffff; --surf2:#f7f8fa; --bdr:#e3e5e8; --bdr2:#d1d5db; --rule:#eceef1;
+  --txt:#111111; --lbl:#33363a; --mut:#5f6368; --faint:#6b6b6b;
+  --accent:#1d5fbf; --accent-dim:#e3ebf8;
+  --primary:#1d1f20;
+  --pass:#247b50; --warn:#b45309; --fail:#c4242a;
+  --pass-bg:#dcfae5; --pass-ink:#04250e; --fail-bg:#ffedea; --fail-ink:#831c1e;
+  --r:6px; --rc:8px;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:var(--sans);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5;min-height:100svh;padding:28px 32px 40px;
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;}
+.container{max-width:1376px;margin:0 auto;}
+/* title row: a photograph of the member's material (img/<material>.jpg beside the page, set by <body data-material>)
+   under a neutral scrim, with the breadcrumb, the tool's name and one line of scope. Without the photo it is a plain ink band. */
+.page-hdr{position:relative;isolation:isolate;overflow:hidden;border-radius:var(--rc);min-height:164px;padding:18px 24px 20px;margin-bottom:12px;
+  display:flex;flex-direction:column;justify-content:flex-end;color:#fff;background:#2c3036 var(--photo,none) center/cover no-repeat;}
+.page-hdr::before{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.55) 45%,rgba(0,0,0,.18) 100%);} /* taste-skill-ignore: neutral scrim under text on a photograph */
+.page-hdr::after{content:var(--credit,'');position:absolute;right:10px;bottom:8px;font-size:11px;color:rgba(255,255,255,.9);background:rgba(0,0,0,.4);padding:1px 6px;border-radius:4px;}
+.home-lnk{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:rgba(255,255,255,.88);text-decoration:none;font-weight:500;margin-bottom:auto;align-self:flex-start;padding-bottom:12px;}
+.home-lnk:hover{color:#fff;text-decoration:underline;}
+.home-lnk svg{width:14px;height:14px;}
+.page-hdr h1{font-size:26px;font-weight:600;line-height:1.25;letter-spacing:-0.01em;margin-bottom:4px;color:#fff;}
+.page-hdr p{font-size:14px;color:rgba(255,255,255,.92);max-width:900px;}
+body[data-material="steel"]{--photo:url(img/steel.jpg);--credit:'Photo: Chevsapher, CC0';}
+body[data-material="concrete"]{--photo:url(img/concrete.jpg);--credit:'Photo: MassDOT, public domain';}
+body[data-material="masonry"]{--photo:url(img/masonry.jpg);--credit:'Photo: Håkan Svensson, CC BY 2.5';}
+body[data-material="timber"]{--photo:url(img/timber.jpg);--credit:'Photo: Sebastian Wallroth, public domain';}
+body[data-material="frame"]{--photo:url(img/frame.jpg);--credit:'Photo: Wikideas1, CC0';}
+body[data-material="ground"]{--photo:url(img/ground.jpg);--credit:'Photo: Fons Heijnsbroek, CC0';}
+@media print{.page-hdr{display:none;}}
+/* inputs on the left, the answer on the right: (1376 - 12) x 6/13 = 630 | 734 */
+.main-grid{display:grid;grid-template-columns:minmax(380px,6fr) 7fr;gap:12px;align-items:start;}
+@media(max-width:1100px){.main-grid{grid-template-columns:1fr;}}
+.main-grid > div{min-width:0;}
+#results table.t{display:block;overflow-x:auto;white-space:nowrap;}
+.card{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rc);padding:20px 24px;margin-bottom:12px;}
+.section-title{font-size:16px;font-weight:600;color:var(--txt);margin:0 0 14px;display:flex;justify-content:space-between;align-items:baseline;gap:12px;line-height:1.3;}
+.section-title .aux{color:var(--mut);font-size:13px;font-weight:400;text-align:right;}
+.form-group{margin-bottom:14px;}
+.form-group label,.lbl{display:block;font-size:13px;margin-bottom:5px;color:var(--lbl);font-weight:500;line-height:1.35;}
+input[type="number"],input[type="text"],select{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);padding:0 10px;height:36px;border-radius:var(--r);font-family:var(--sans);font-size:14px;width:100%;font-variant-numeric:tabular-nums;transition:border-color .12s;}
+input::placeholder{color:var(--faint);}
+input:hover,select:hover{border-color:#b9bec6;}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);}
+input:disabled,select:disabled{background:var(--surf2);color:var(--mut);}
+select option{background:var(--surf);color:var(--txt);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.grid2 > .form-group,.grid3 > .form-group{display:flex;flex-direction:column;justify-content:flex-end;}
+.chk{display:block;position:relative;padding-left:26px;font-size:13px;color:var(--lbl);margin:8px 0;cursor:pointer;line-height:1.45;}
+.chk input{position:absolute;left:0;top:1px;width:16px;height:16px;accent-color:var(--primary);}
+.help{font-size:13px;color:var(--mut);margin-top:4px;line-height:1.45;}
+/* segmented control: grey track, white pill on the chosen option */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#e9ecf0;border-radius:var(--rc);margin-bottom:14px;}
+.seg button{background:transparent;color:var(--mut);border:1px solid transparent;border-radius:var(--r);height:32px;padding:0 10px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;}
+.seg button:hover{color:var(--txt);}
+.seg button.on{background:var(--surf);color:var(--txt);border-color:var(--bdr);}
+/* repeating rows: spans, supports, loads */
+.rows{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+.row{display:grid;gap:8px;align-items:end;background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--r);padding:10px;}
+.row label{font-size:12px;color:var(--mut);margin-bottom:3px;display:block;font-weight:500;line-height:1.3;}
+.row input,.row select{height:32px;font-size:13px;padding:0 8px;}
+.row.span{grid-template-columns:1fr 1.6fr 1fr 32px;}
+.row.load{grid-template-columns:52px 64px 1.1fr 1.1fr 32px;}
+.row.load .vals{grid-column:1 / span 3;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.xbtn{height:32px;width:32px;background:var(--surf);border:1px solid var(--bdr2);color:var(--mut);border-radius:var(--r);cursor:pointer;font-size:16px;line-height:1;}
+.xbtn:hover{color:var(--fail);border-color:var(--fail);}
+.addbtn{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);border-radius:var(--r);height:36px;padding:0 12px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;width:100%;}
+.addbtn:hover{border-color:#9aa0a8;background:var(--surf2);}
+/* the one primary action, near-black; secondary actions white and outlined */
+.btn{height:44px;padding:0 16px;border:none;border-radius:var(--r);font-weight:600;cursor:pointer;font-family:var(--sans);font-size:15px;width:100%;background:var(--primary);color:#fff;}
+.btn:hover{background:#000;}
+.btn:focus-visible,.btn2:focus-visible,.addbtn:focus-visible,.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.btn2{width:100%;height:38px;padding:0 12px;background:var(--surf);border:1px solid var(--bdr2);border-radius:var(--r);font-size:14px;font-weight:500;color:var(--txt);cursor:pointer;font-family:var(--sans);margin-top:8px;}
+.btn2:hover{border-color:#9aa0a8;background:var(--surf2);}
+.hidden{display:none!important;}
+/* results */
+.placeholder{display:flex;align-items:center;justify-content:center;min-height:160px;color:var(--mut);font-size:14px;text-align:center;padding:0 24px;}
+.verdict{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--bdr);border-radius:var(--rc);background:var(--surf2);margin-bottom:16px;}
+.verdict .big{font-size:24px;font-weight:600;line-height:1.2;color:var(--pass);letter-spacing:-0.01em;}
+.verdict.fail .big{color:var(--fail);}
+.verdict .sub{font-size:13px;color:var(--mut);margin-top:2px;}
+/* the utilisation ledger: check, clause, bar to scale (full track = 1.2, ink tick at the 1.0 limit), figure */
+.checks{display:flex;flex-direction:column;margin-bottom:8px;}
+.ck{display:grid;grid-template-columns:1.25fr 2fr 56px;gap:14px;align-items:center;font-size:13px;padding:7px 0;border-bottom:1px solid var(--rule);}
+.ck:last-child{border-bottom:none;}
+.ck .nm{color:var(--txt);line-height:1.35;} .ck .nm small{display:block;color:var(--mut);font-size:12px;}
+.bar{height:8px;background:#e8ebef;border-radius:4px;position:relative;}
+.bar::after{content:'';position:absolute;left:83.333%;top:-4px;bottom:-4px;width:1.5px;background:var(--txt);border-radius:1px;}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:4px;}
+.bar i.over{background:var(--fail);} /* 0.9-1.0 stays blue: a well-used member is not a warning; the tick shows how close it is */
+.ck .u{text-align:right;font-weight:600;font-size:14px;}
+.ck .u.over{color:var(--fail);}
+.diag{width:100%;height:auto;display:block;margin-bottom:6px;}
+/* screen drawings: the smallest labels lifted to the 11px floor (the print sheet keeps its own sizes) */
+.container svg text[font-size="8"],.container svg text[font-size="8.5"],.container svg text[font-size="9"],.container svg text[font-size="9.5"],
+.container svg text[font-size="10"],.container svg text[font-size="10.5"]{font-size:11px;}
+.dlabel{font-size:14px;font-weight:600;color:var(--txt);margin:20px 0 6px;line-height:1.3;}
+table.t{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px;font-variant-numeric:tabular-nums;}
+table.t th{color:var(--mut);font-weight:500;text-align:right;padding:6px 8px;border-bottom:1px solid var(--bdr);font-size:12px;}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--rule);text-align:right;}
+table.t th:first-child,table.t td:first-child{text-align:left;}
+.note{font-size:13px;color:var(--mut);background:var(--surf2);border:1px solid var(--rule);border-radius:var(--r);padding:10px 12px;margin-top:10px;line-height:1.5;}
+.err{color:var(--fail-ink);background:var(--fail-bg);font-size:13px;padding:10px 12px;border-radius:var(--r);margin-bottom:12px;}
+.busy{opacity:.55;pointer-events:none;}
+a{color:var(--txt);}
+sub,sup{font-size:max(11px,.75em);line-height:0;}
+@media(max-width:560px){body{padding:16px 16px 32px;} .card{padding:16px;} .ck{grid-template-columns:1fr 1fr 48px;gap:10px;} .grid3{grid-template-columns:1fr 1fr;}
+  .row.span{grid-template-columns:1fr 32px;} .row.span > div:nth-child(2),.row.span > div:nth-child(3){display:none;} .row.load .vals{grid-template-columns:1fr 1fr;}
+  .page-hdr{min-height:150px;padding:14px 16px 16px;} .page-hdr h1{font-size:22px;} .page-hdr::after{top:10px;bottom:auto;} .page-hdr::before{background:rgba(0,0,0,.6);} .verdict .big{font-size:22px;}}
+/* disclaimer: on screen at the foot of the page, and printed at the end of the calculation sheet */
+.disclaimer{max-width:1376px;margin:24px auto 0;padding-top:14px;border-top:1px solid var(--bdr,#e3e5e8);font-size:13px;line-height:1.55;color:var(--mut,#5f6368);}
+.disclaimer b{color:var(--txt,#111);font-weight:600;}
+@media print{.disclaimer{display:block!important;max-width:none;margin:4mm 0 0;padding-top:1.5mm;border-top:0.4pt solid #888;font-family:Arial,Helvetica,sans-serif;font-size:7.5pt;color:#000;break-inside:avoid;} .disclaimer b{color:#000;}}
+/* ---------- print: A4 calculation sheet ---------- */
+#report{display:none;}
+@media print{
+  @page{size:A4;margin:12mm 12mm 14mm;}
+  body{background:#fff;color:#000;padding:0;background-image:none;font-size:9.5pt;}
+  .container{display:none;}
+  #report{display:block;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  #report table.wrap{width:100%;border-collapse:collapse;}
+  #report thead td{padding:0 0 3mm;}
+  .rh{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;border:0.6pt solid #000;font-size:8pt;}
+  .rh div{padding:1.2mm 2mm;border-right:0.6pt solid #000;}
+  .rh div:last-child{border-right:none;}
+  .rh b{display:block;font-size:6.5pt;color:#444;font-weight:normal;text-transform:uppercase;letter-spacing:.3pt;}
+  .rh .ttl{grid-column:1 / -1;border-top:0.6pt solid #000;border-right:none;font-weight:bold;font-size:10pt;}
+  .rs{margin:0 0 3.5mm;}
+  .rs h2,.rs h3{break-after:avoid;}
+  .rl,.rt,.rsvg,.rp,.rt tr{break-inside:avoid;}
+  .rs h2{font-size:10pt;margin:3mm 0 1.5mm;padding-bottom:0.8mm;border-bottom:0.8pt solid #000;}
+  .rs h3{font-size:9pt;margin:2mm 0 1mm;}
+  .rl{display:grid;grid-template-columns:1fr 92px 132px;gap:2mm;padding:0.5mm 0;font-size:8.6pt;}
+  .rl .cl{text-align:right;color:#444;font-size:7.5pt;}
+  .rl .rv{text-align:right;font-weight:bold;}
+  .ok{color:#0a7a3e;} .ng{color:#c00;}
+  .rt{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;}
+  .rt th,.rt td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;}
+  .rt th{background:#eee;font-weight:bold;}
+  .rt td:first-child,.rt th:first-child,.rt.lft td,.rt.lft th{text-align:left;}
+  .rp{font-size:8.3pt;line-height:1.45;margin:1mm 0;}
+  .rsvg{width:100%;height:auto;}
+  .rsvg *{vector-effect:non-scaling-stroke;}
+}
+
+svg.stair{width:100%;height:auto;display:block;max-width:500px;margin:4px auto 10px;}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px 20px;background:var(--surf2);border:1px solid var(--rule);border-radius:var(--rc);padding:12px 16px;margin-bottom:12px;}
+.kv div{min-width:0;} .kv b{display:block;font-size:12px;font-weight:400;color:var(--mut);} .kv span{font-size:15px;font-weight:600;}
+.where{font-size:13px;font-weight:600;margin:12px 0 2px;}
+button.lnk{background:none;border:0;padding:0;color:var(--accent);font:inherit;font-size:13px;cursor:pointer;text-decoration:underline;}
+@media print{svg.stair{max-width:120mm;}}
+</style>
+</head>
+<body data-material="concrete">
+<div class="container">
+  <div class="page-hdr">
+    <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
+    <h1>RC Stair Design</h1>
+    <p>Stairs to BS EN 1992-1-1 + UK NA, per metre width &nbsp;·&nbsp; a flight with landings spanning between supports, the landings free to project beyond them &nbsp;·&nbsp; half landings carrying the flights &nbsp;·&nbsp; bending, shear, minimum steel, spacing and span/depth</p>
+  </div>
+  <div class="main-grid">
+    <div id="inputs">
+      <div class="seg" id="modes"><button data-m="flight" class="on">Flight</button><button data-m="landing">Half landing</button></div>
+      <div class="card">
+        <div class="section-title">Project</div>
+        <div class="form-group"><label>Project</label><input type="text" id="pName" placeholder="Project name"></div>
+        <div class="grid3"><div class="form-group"><label>Job no.</label><input type="text" id="pJob"></div><div class="form-group"><label>By</label><input type="text" id="pBy"></div><div class="form-group"><label>Member ref.</label><input type="text" id="pRef" placeholder="e.g. Stair S1"></div></div>
+      </div>
+      <div id="pane-flight">
+        <div class="card">
+          <div class="section-title">Flight <span class="aux">mm</span></div>
+          <div class="grid3">
+            <div class="form-group"><label>Treads</label><input type="number" id="n" value="10" step="1"></div>
+            <div class="form-group"><label>Going</label><input type="number" id="going" value="250" step="5"></div>
+            <div class="form-group"><label>Riser</label><input type="number" id="rise" value="175" step="1"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Waist t</label><input type="number" id="t" value="175" step="5"></div>
+          </div>
+          <div class="help">The flight has one more riser than treads; the waist is measured square to the soffit.</div>
+        </div>
+        <div class="card">
+          <div class="section-title">Landings and supports <span class="aux">mm</span></div>
+          <div class="grid3">
+            <div class="form-group"><label>Landing A: support to first riser</label><input type="number" id="a" value="600" step="50"></div>
+            <div class="form-group"><label>Projection beyond support A</label><input type="number" id="pA" value="0" step="50"></div>
+            <div class="form-group"><label>Landing A thickness</label><input type="number" id="hA" value="200" step="5"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Landing C: last riser to support</label><input type="number" id="c" value="1200" step="50"></div>
+            <div class="form-group"><label>Projection beyond support C</label><input type="number" id="pC" value="0" step="50"></div>
+            <div class="form-group"><label>Landing C thickness</label><input type="number" id="hC" value="200" step="5"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Supports</label><select id="supports"><option value="simple">Simple bearings</option><option value="monolithic">Built into beams or walls</option></select></div>
+          </div>
+          <div class="help">The span runs from support A to support C. A projection is landing carried beyond a support (a cantilever). Built-in ends take top steel for at least 25 % of the span moment (9.3.1.2(2)).</div>
+        </div>
+      </div>
+      <div id="pane-landing" class="hidden">
+        <div class="card">
+          <div class="section-title">Half landing <span class="aux">mm, spanning across the stair</span></div>
+          <div class="grid3">
+            <div class="form-group"><label>Flight A width a</label><input type="number" id="la" value="1200" step="50"></div>
+            <div class="form-group"><label>Flight B width b</label><input type="number" id="lb" value="1200" step="50"></div>
+            <div class="form-group"><label>Gap between flights c</label><input type="number" id="lc" value="250" step="25"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Each end d</label><input type="number" id="ld" value="175" step="25"></div>
+            <div class="form-group"><label>Thickness h</label><input type="number" id="lh" value="175" step="5"></div>
+            <div class="form-group"><label>Landing width w</label><input type="number" id="lw" value="1200" step="50"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Supports</label><select id="lsupports"><option value="simple">Simple bearings</option><option value="monolithic">Built into walls</option></select></div>
+          </div>
+          <div class="help">The span is a + b + c + 2d. Each flight's reaction (per metre width of flight) is spread over the landing width w, but not more than 1.8 m (TCC71).</div>
+        </div>
+        <div class="card">
+          <div class="section-title">Flight reactions <span class="aux">characteristic, kN per metre width of flight</span></div>
+          <div class="grid3">
+            <div class="form-group"><label>Flight A: G<sub>k</sub></label><input type="number" id="GA" value="17" step="0.5"></div>
+            <div class="form-group"><label>Flight A: Q<sub>k</sub></label><input type="number" id="QA" value="9" step="0.5"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Flight B: G<sub>k</sub></label><input type="number" id="GB" value="17" step="0.5"></div>
+            <div class="form-group"><label>Flight B: Q<sub>k</sub></label><input type="number" id="QB" value="9" step="0.5"></div>
+          </div>
+          <div class="help" id="fromFlight">Calculate a flight first to bring its reactions here.</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="section-title">Loads</div>
+        <div class="grid3">
+          <div class="form-group"><label>Imposed q<sub>k</sub> (kN/m²)</label><input type="number" id="qk" value="4" step="0.5"></div>
+          <div class="form-group fl"><label>Finishes, flight (kN/m²)</label><input type="number" id="fF" value="1.6" step="0.1"></div>
+          <div class="form-group"><label>Finishes, landings (kN/m²)</label><input type="number" id="fL" value="1.3" step="0.1"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Use</label><select id="use"><option value="0.3">Dwellings, offices (ψ₂ 0.3)</option><option value="0.6">Crowds, shops (ψ₂ 0.6)</option></select></div>
+          <div class="form-group"><label>ULS combination</label><select id="comb"><option value="6.10">6.10: 1.35G + 1.5Q</option><option value="6.10ab">6.10a and 6.10b</option></select></div>
+        </div>
+        <div class="help">Loads on plan. Stairs: 1.5 kN/m² within a dwelling (A1), 3.0 to 4.0 kN/m² for communal and public stairs (UK NA Table NA.3, C32 and C35). Self weight at 25 kN/m³: the waist on the slope and half a riser of steps.</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Concrete and reinforcement</div>
+        <div class="grid3">
+          <div class="form-group"><label>Concrete</label><select id="fck"></select></div>
+          <div class="form-group"><label>Cover, bottom (mm)</label><input type="number" id="cover" value="25" step="5"></div>
+          <div class="form-group"><label>Cover, top (mm)</label><input type="number" id="coverTop" value="25" step="5"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Bottom bars φ</label><select id="bphi"></select></div>
+          <div class="form-group"><label>Spacing (mm)</label><input type="number" id="bs" value="150" step="25"></div>
+          <div class="form-group"><label>&nbsp;</label><button class="btn2" id="sugB" type="button">Suggest</button></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Top bars φ</label><select id="tphi"></select></div>
+          <div class="form-group"><label>Spacing (mm)</label><input type="number" id="ts" value="200" step="25"></div>
+          <div class="form-group"><label>&nbsp;</label><button class="btn2" id="sugT" type="button">Suggest</button></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Crack width w<sub>max</sub> (mm)</label><input type="number" id="wk" value="0.3" step="0.05"></div>
+          <div class="form-group"><label>α<sub>e</sub> for σ<sub>s</sub></label><input type="number" id="ae" value="15" step="1"></div>
+        </div>
+        <div class="help">Top bars carry hogging at a support with a projection or a built-in end. Slabs not over 200 mm thick need no crack control beyond the minimum steel and the spacing rules (7.3.3(1)).</div>
+      </div>
+      <button class="btn" id="calc">Calculate</button>
+    </div>
+    <div><div class="card" id="results"><div class="placeholder">Set out the flight or landing, then Calculate.</div></div></div>
+  </div>
+</div>
+<div id="report"></div>
+<script id="engine">
+/* ===== EC2 DESIGN CORE (EngineeringTools) =====
+   Clean-room implementation from BS EN 1992-1-1:2004 + A1:2014 and the UK National Annex (NA to BS EN 1992-1-1:2004+A1:2014),
+   cross-read with The Concrete Centre "How to design concrete structures using Eurocode 2". Units: N, mm (stresses N/mm2).
+   - materials (Table 3.1, 3.1.7(3), UK NA alpha_cc = 0.85 flexure / 1.0 shear and torsion, gamma_c 1.5, gamma_s 1.15);
+   - bending of rectangular and flanged sections by the rectangular stress block: required steel (singly or doubly
+     reinforced, x/d limit from ductility or redistribution, 5.5(4) with the UK NA) and the resistance of a given
+     arrangement by strain compatibility;
+   - shear 6.2.2 / 6.2.3 (vertical links, variable strut, fck limited to 50 N/mm2 in shear as the UK NA);
+   - torsion 6.3 (thin-walled closed section, interaction 6.29 / 6.31);
+   - SLS: cracked elastic section, crack control by Tables 7.2N / 7.3N or the calculated crack width 7.3.4, minimum
+     steel 7.3.2, span / effective depth 7.4.2 with the UK NA modifiers;
+   - detailing: 9.2.1.1 min / max steel, bar spacing 8.2, anchorage 8.4 and laps 8.7 (simplified alpha = 1), flange
+     width 5.3.2.1. */
+const EC2 = (() => {
+  'use strict';
+  const GC = 1.5, GS = 1.15, ES = 200000, ACC = 0.85, ACC_V = 1.0;
+  const CUBE = { 12: 15, 16: 20, 20: 25, 25: 30, 28: 35, 30: 37, 32: 40, 35: 45, 40: 50, 45: 55, 50: 60, 55: 67, 60: 75, 70: 85, 80: 95, 90: 105 };
+  const area = (n, phi) => n * Math.PI * phi * phi / 4;
+  // ---------- materials ----------
+  function concrete(fck) {
+    if (!(fck >= 12 && fck <= 90)) throw new Error('f_ck must be between 12 and 90 N/mm²');
+    const fcm = fck + 8, hi = fck > 50;
+    const fctm = hi ? 2.12 * Math.log(1 + fcm / 10) : 0.30 * fck ** (2 / 3);
+    const ec2 = hi ? (2.0 + 0.085 * (fck - 50) ** 0.53) * 1e-3 : 2.0e-3, ecu2 = hi ? (2.6 + 35 * ((90 - fck) / 100) ** 4) * 1e-3 : 3.5e-3;
+    const ec3 = hi ? (1.75 + 0.55 * (fck - 50) / 40) * 1e-3 : 1.75e-3, n = hi ? 1.4 + 23.4 * ((90 - fck) / 100) ** 4 : 2;
+    const lambda = hi ? 0.8 - (fck - 50) / 400 : 0.8, eta = hi ? 1 - (fck - 50) / 200 : 1;
+    const fv = Math.min(fck, 50);                                  // UK NA: shear and torsion with f_ck not above C50/60
+    return { fck, fckCube: CUBE[fck] ?? null, fcm, fctm, fctk05: 0.7 * fctm, fctk95: 1.3 * fctm, Ecm: 22000 * (fcm / 10) ** 0.3,
+      ec2, ecu2, ec3, ecu3: ecu2, n, lambda, eta, fcd: ACC * fck / GC, fcdV: ACC_V * fv / GC, fv, fctd: 1.0 * 0.7 * fctm / GC,
+      nu: 0.6 * (1 - fv / 250) };
+  }
+  const steel = (fyk = 500) => ({ fyk, fyd: fyk / GS, Es: ES, eyd: fyk / GS / ES });
+  // ---------- flexure: rectangular stress block (3.1.7(3)) ----------
+  // section: { b (width of the compression flange or rectangle), bw (web), hf (flange depth; 0 = rectangular), h }
+  // compression-zone force and its depth to the centroid for a block depth s = lambda x
+  function block(sec, s) {
+    const bw = sec.bw ?? sec.b, hf = sec.hf > 0 ? sec.hf : Infinity;
+    if (s <= hf || sec.b === bw) return { A: sec.b * s, y: s / 2 };
+    const Af = (sec.b - bw) * hf, Aw = bw * s;
+    return { A: Af + Aw, y: (Af * hf / 2 + Aw * s / 2) / (Af + Aw) };
+  }
+  // x/d limit: 5.5(4) with the UK NA (k1 = 0.4, k2 = 0.6 + 0.0014/eps_cu2; fck > 50: k3 = 0.4, k4 = 0.6 + 0.0014/eps_cu2)
+  // and an optional practical ductility limit (0.45 for fck <= 50 is the usual UK choice)
+  function xdLimit(c, delta = 1, practical = 0.45) {
+    const k2 = 0.6 + 0.0014 / c.ecu2, red = c.fck <= 50 ? (delta - 0.4) / k2 : (delta - 0.4) / k2;
+    return Math.min(red, practical ?? Infinity);
+  }
+  // required reinforcement for M (>= 0) on effective depth d; d2 to the compression steel
+  function bendingDesign({ sec, d, d2 = 50, M, c, s: st, delta = 1, xdMax = 0.45, zMax = 0.95 }) {
+    const a = c.eta * c.fcd, L = c.lambda, xlim = xdLimit(c, delta, xdMax) * d;
+    const Mx = x => { const bl = block(sec, L * x); return a * bl.A * (d - bl.y); };
+    const out = { M, d, xlim, K: M / (sec.b * d * d * c.fck) };
+    if (!(M > 0)) return { ...out, As: 0, As2: 0, x: 0, z: zMax * d, Kp: null };
+    const Mlim = Mx(xlim);
+    out.Kp = Mlim / (sec.b * d * d * c.fck); out.Mlim = Mlim;
+    if (M <= Mlim) {
+      let lo = 0, hi = xlim; for (let i = 0; i < 100; i++) { const m = (lo + hi) / 2; if (Mx(m) < M) lo = m; else hi = m; }
+      const x = (lo + hi) / 2, bl = block(sec, L * x), z = Math.min(d - bl.y, zMax * d);
+      return { ...out, x, z, zCap: d - bl.y > zMax * d, As: M / (st.fyd * z), As2: 0, inFlange: !(sec.hf > 0) || L * x <= sec.hf };
+    }
+    // compression steel at the x/d limit
+    const bl = block(sec, L * xlim), z = Math.min(d - bl.y, zMax * d), esc = c.ecu2 * (xlim - d2) / xlim;
+    // compression steel stress from the strain diagram, net of the concrete it displaces (inside the stress block)
+    const fscG = Math.min(st.fyd, st.Es * esc), fsc = fscG - (d2 < L * xlim ? a : 0);
+    if (!(fsc > 0)) throw new Error('Compression steel would be in tension at the limiting neutral axis (d2 too large)');
+    const As2 = (M - Mlim) / (fsc * (d - d2));
+    return { ...out, x: xlim, z, As2, fsc, fscGross: fscG, As: Mlim / (st.fyd * z) + As2 * fsc / st.fyd, doubly: true, inFlange: !(sec.hf > 0) || L * xlim <= sec.hf };
+  }
+  // resistance of a given arrangement by strain compatibility (eps_cu2 at the top, rectangular block; bilinear steel
+  // with a horizontal top branch). layers: [{ As, d }] measured from the compression face (any layer may be in compression)
+  function bendingResistance({ sec, layers, c, s: st, N = 0 }) {
+    const a = c.eta * c.fcd, L = c.lambda, h = sec.h, ecu = c.ecu2;
+    const sig = (x, di) => { const e = ecu * (x - di) / x; return Math.max(-st.fyd, Math.min(st.fyd, st.Es * e)); };   // compression +
+    const F = x => { const bl = block(sec, Math.min(L * x, h)); return a * bl.A + layers.reduce((t, l) => t + l.As * (sig(x, l.d) - (L * x > l.d ? a : 0)), 0) - N; };
+    let lo = 1e-6, hi = 2 * h;
+    if (F(lo) > 0) lo = 1e-9;
+    for (let i = 0; i < 200; i++) { const m = (lo + hi) / 2; if (F(m) > 0) hi = m; else lo = m; }
+    const x = (lo + hi) / 2, bl = block(sec, Math.min(L * x, h));
+    // moment about the compression face, then shifted to the section's mid-depth reference (N acts at h/2)
+    let Mtop = 0; Mtop += -a * bl.A * bl.y;
+    for (const l of layers) Mtop += -l.As * (sig(x, l.d) - (L * x > l.d ? a : 0)) * l.d;
+    // M about mid-depth (where N acts) = moment of the internal forces about the top + N h/2; N = 0 gives pure bending
+    const MRd = Mtop + N * h / 2;
+    const dt = Math.max(...layers.map(l => l.d));
+    return { x, xd: x / dt, MRd, eps: layers.map(l => ecu * (x - l.d) / x), sig: layers.map(l => sig(x, l.d)),
+      yielded: layers.map(l => ecu * (l.d - x) / x >= st.eyd) };
+  }
+  // ---------- shear, 6.2.2 / 6.2.3 (vertical links) ----------
+  function shearConcrete({ bw, d, Asl, c, NEd = 0, Ac = null }) {
+    const k = Math.min(2, 1 + Math.sqrt(200 / d)), rho = Math.min(0.02, Asl / (bw * d));
+    const scp = Ac ? Math.min(Math.max(NEd, 0) / Ac, 0.2 * c.fcd) : 0;
+    const vmin = 0.035 * k ** 1.5 * Math.sqrt(c.fv);
+    const v = 0.18 / GC * k * (100 * rho * c.fv) ** (1 / 3);
+    const VRdc = Math.max(v + 0.15 * scp, vmin + 0.15 * scp) * bw * d;
+    return { k, rho, scp, vmin, v, VRdc, governs: v >= vmin ? 'formula' : 'vmin' };
+  }
+  const acw = (scp, fcd) => scp <= 0 ? 1 : scp <= 0.25 * fcd ? 1 + scp / fcd : scp <= 0.5 * fcd ? 1.25 : 2.5 * (1 - scp / fcd);
+  function vrdMax(bw, z, c, cot, scp = 0) { const t = 1 / cot; return acw(scp, c.fcdV) * bw * z * c.nu * c.fcdV / (cot + t); }
+  // design of vertical links for V_Ed: strut angle (cot theta 1..2.5), Asw/s, minimum, maximum spacing
+  // VEdStrut (default VEd): the shear that sets the strut angle, normally V_Ed at the support face, so that one truss
+  // angle serves both the V_Rd,max check at the face and the links designed for V_Ed at d from the face
+  function shearDesign({ bw, d, VEd, VEdStrut = null, c, fywk = 500, z = null, scp = 0 }) {
+    z = z ?? 0.9 * d; const fywd = fywk / GS, Vs = Math.max(VEd, VEdStrut ?? 0);
+    const Vmax25 = vrdMax(bw, z, c, 2.5, scp), Vmax45 = vrdMax(bw, z, c, 1, scp);
+    let cot = 2.5, ok = true;
+    if (Vs > Vmax25) {
+      const s2 = 2 * Vs / (acw(scp, c.fcdV) * bw * z * c.nu * c.fcdV);
+      if (s2 > 1) { ok = false; cot = 1; } else { const th = 0.5 * Math.asin(s2); cot = 1 / Math.tan(th); }
+    }
+    const AswS = VEd / (z * fywd * cot), AswSmin = 0.08 * Math.sqrt(c.fck) / fywk * bw;
+    return { z, fywd, cot, theta: Math.atan(1 / cot) * 180 / Math.PI, VRdmax: vrdMax(bw, z, c, cot, scp), Vmax25, Vmax45, ok, AswS, AswSmin, AswSreq: Math.max(AswS, AswSmin),
+      slMax: 0.75 * d, stMax: Math.min(0.75 * d, 600), dFtd: 0.5 * VEd * cot };
+  }
+  // resistance of provided links: the best strut angle in 1 <= cot <= 2.5 (V_Rd,s = V_Rd,max where possible)
+  function shearResistance({ bw, d, AswS, c, fywk = 500, z = null, scp = 0 }) {
+    z = z ?? 0.9 * d; const fywd = fywk / GS, Vs = cot => AswS * z * fywd * cot;
+    let cot;
+    if (Vs(2.5) <= vrdMax(bw, z, c, 2.5, scp)) cot = 2.5;
+    else if (Vs(1) >= vrdMax(bw, z, c, 1, scp)) cot = 1;
+    else { let lo = 1, hi = 2.5; for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; if (Vs(m) > vrdMax(bw, z, c, m, scp)) hi = m; else lo = m; } cot = (lo + hi) / 2; }
+    const VRds = Vs(cot), VRdmax = vrdMax(bw, z, c, cot, scp);
+    return { cot, VRds, VRdmax, VRd: Math.min(VRds, VRdmax), z, fywd };
+  }
+  // ---------- torsion, 6.3 (rectangular solid section treated as thin-walled closed) ----------
+  function torsion({ b, h, cEdge, c, TEd, VEd = 0, bw = b, d, cot = null, VRdc = null, VRdmax = null, fywk = 500, fyk = 500 }) {
+    const A = b * h, u = 2 * (b + h), tef = Math.max(A / u, 2 * cEdge);
+    if (!(tef < Math.min(b, h) / 2)) throw new Error('Torsion: the effective wall thickness exceeds half the section');
+    const Ak = (b - tef) * (h - tef), uk = 2 * ((b - tef) + (h - tef));
+    const TRdc = 2 * Ak * tef * c.fctd;
+    cot = cot ?? 2.5; const sn = 1 / Math.sqrt(1 + cot * cot), cs = cot * sn;
+    const TRdmax = 2 * c.nu * 1.0 * c.fcdV * Ak * tef * sn * cs;
+    const AswS1 = TEd / (2 * Ak * (fywk / GS) * cot), Asl = TEd * uk * cot / (2 * Ak * (fyk / GS));
+    const crackFree = VRdc ? TEd / TRdc + VEd / VRdc <= 1 : null;
+    const inter = VRdmax ? TEd / TRdmax + VEd / VRdmax : TEd / TRdmax;
+    return { A, u, tef, Ak, uk, TRdc, TRdmax, cot, AswS1, Asl, crackFree, inter, sMax: Math.min(uk / 8, b, h) };
+  }
+  // ---------- SLS sections ----------
+  // cracked elastic section (no concrete in tension): neutral axis and stresses for moment M, modular ratio ae
+  function cracked({ sec, As, d, As2 = 0, d2 = 50, ae, M = 0 }) {
+    const bw = sec.bw ?? sec.b, hf = sec.hf > 0 ? sec.hf : Infinity;
+    const Q = x => {   // first moment of the transformed area about the neutral axis (compression +)
+      const xc = Math.min(x, hf), q1 = sec.b * xc * (x - xc / 2), q2 = x > hf ? bw * (x - hf) * (x - hf) / 2 : 0;
+      return q1 + q2 + (ae - 1) * As2 * (x - d2) - ae * As * (d - x);
+    };
+    let lo = 0, hi = d; for (let i = 0; i < 100; i++) { const m = (lo + hi) / 2; if (Q(m) > 0) hi = m; else lo = m; }
+    const x = (lo + hi) / 2, xc = Math.min(x, hf);
+    // second moment about the neutral axis: flange part [0, xc], web part [hf, x], transformed steel
+    const Icr = sec.b * (x ** 3 - (x - xc) ** 3) / 3 + (x > hf ? bw * (x - hf) ** 3 / 3 : 0) + (ae - 1) * As2 * (x - d2) ** 2 + ae * As * (d - x) ** 2;
+    return { x, Icr, sc: M * x / Icr, ss: ae * M * (d - x) / Icr, ss2: ae * M * (x - d2) / Icr };
+  }
+  function uncracked({ sec, h, As = 0, d = 0, As2 = 0, d2 = 0, ae = 0 }) {
+    const bw = sec.bw ?? sec.b, hf = sec.hf > 0 ? Math.min(sec.hf, h) : 0;
+    const parts = [[bw * h, h / 2, bw * h ** 3 / 12], [(sec.b - bw) * hf, hf / 2, (sec.b - bw) * hf ** 3 / 12], [(ae - 1) * As, d, 0], [(ae - 1) * As2, d2, 0]];
+    const A = parts.reduce((t, p) => t + p[0], 0), y = parts.reduce((t, p) => t + p[0] * p[1], 0) / A;
+    const I = parts.reduce((t, p) => t + p[2] + p[0] * (p[1] - y) ** 2, 0);
+    return { A, y, I };
+  }
+  // ---------- crack control, 7.3 ----------
+  const T72 = { s: [160, 200, 240, 280, 320, 360, 400, 450], 0.4: [40, 32, 20, 16, 12, 10, 8, 6], 0.3: [32, 25, 16, 12, 10, 8, 6, 5], 0.2: [25, 16, 12, 8, 6, 5, 4, null] };
+  const T73 = { s: [160, 200, 240, 280, 320, 360], 0.4: [300, 300, 250, 200, 150, 100], 0.3: [300, 250, 200, 150, 100, 50], 0.2: [200, 150, 100, 50, null, null] };
+  function tableLookup(T, wk, ss) {
+    const col = T[wk]; if (!col) throw new Error('w_k must be 0.2, 0.3 or 0.4 mm for Tables 7.2N / 7.3N');
+    const s = T.s;
+    if (ss <= s[0]) return col[0];
+    for (let i = 1; i < s.length; i++) if (ss <= s[i]) { const a = col[i - 1], b = col[i]; if (a == null || b == null) return null; return a + (b - a) * (ss - s[i - 1]) / (s[i] - s[i - 1]); }
+    return null;   // stress beyond the table
+  }
+  // quasi-permanent steel stress by the ratio method (How to guide): fyd x (M_qp/M_Ed) x (As,req/As,prov) / delta
+  const sigmaQP = ({ fyd, Mqp, MEd, AsReq, AsProv, delta = 1 }) => fyd * (Mqp / MEd) * (AsReq / AsProv) / delta;
+  function crackTables({ ss, wk = 0.3, h, d, fctEff, kc = 0.4, hcr = null, tension = false }) {
+    const phiStar = tableLookup(T72, wk, ss), sMax = tableLookup(T73, wk, ss);
+    hcr = hcr ?? h / 2;
+    const mod = tension ? (fctEff / 2.9) * hcr / (8 * (h - d)) : (fctEff / 2.9) * kc * hcr / (2 * (h - d));
+    return { phiStar, phiMax: phiStar == null ? null : phiStar * mod, mod, sMax };
+  }
+  function crackWidth({ sec, h, As, d, phi, cover, spacing, ss, x, c, fctEff = null, kt = 0.4, k2 = 0.5 }) {
+    fctEff = fctEff ?? c.fctm; const ae = ES / c.Ecm, bw = sec.bw ?? sec.b;
+    const hcef = Math.min(2.5 * (h - d), (h - x) / 3, h / 2), Aceff = bw * hcef, rho = As / Aceff;
+    const de = Math.max((ss - kt * fctEff / rho * (1 + ae * rho)) / ES, 0.6 * ss / ES);
+    const close = spacing <= 5 * (cover + phi / 2);
+    const sr = close ? 3.4 * cover + 0.8 * k2 * 0.425 * phi / rho : 1.3 * (h - x);
+    return { hcef, Aceff, rho, ae, de, sr, close, wk: sr * de };
+  }
+  function asMinCrack({ kc = 0.4, k = 1.0, fctEff, Act, ss }) { return kc * k * fctEff * Act / ss; }
+  // k for 7.3.2: 1.0 for h <= 300, 0.65 for h >= 800, linear between
+  const kSize = h => h <= 300 ? 1.0 : h >= 800 ? 0.65 : 1.0 - 0.35 * (h - 300) / 500;
+  // ---------- deflection: span / effective depth, 7.4.2 with the UK NA ----------
+  const KSYS = { ss: 1.0, end: 1.3, interior: 1.5, flat: 1.2, cantilever: 0.4 };
+  function spanDepth({ fck, rho, rho2 = 0, system = 'ss', fyk = 500, AsReq, AsProv, flangeRatio = 1, span, brittle = true, flat = false }) {
+    const K = KSYS[system], r0 = 1e-3 * Math.sqrt(fck), sf = Math.sqrt(fck);
+    const base = rho <= r0 ? K * (11 + 1.5 * sf * r0 / rho + 3.2 * sf * (r0 / rho - 1) ** 1.5)
+      : K * (11 + 1.5 * sf * r0 / (rho - rho2) + sf / 12 * Math.sqrt(rho2 / r0));
+    const fs = Math.min(1.5, (500 / fyk) * (AsProv / AsReq));                         // 310/sigma_s ~ 500/(fyk As,req/As,prov), UK NA limit 1.5
+    const ff = flangeRatio > 3 ? 0.8 : 1;
+    const lim = flat ? 8500 : 7000, fl = brittle && span > lim && system !== 'cantilever' ? lim / span : 1;
+    return { K, rho0: r0, rho, base, fs, ff, fl, allowed: base * fs * ff * fl };
+  }
+  // ---------- detailing ----------
+  function asMin({ fctm, fyk = 500, bt, d }) { return Math.max(0.26 * fctm / fyk * bt * d, 0.0013 * bt * d); }
+  const clearMin = (phi, dg = 20) => Math.max(phi, dg + 5, 20);
+  // anchorage and laps, 8.4 / 8.7: straight or bent bars in tension, compression bars; alpha1 (shape), alpha2 (cover cd),
+  // alpha3 = alpha4 = alpha5 = 1 (conservative), alpha2 alpha3 alpha5 >= 0.7; alpha6 from the proportion lapped (Table 8.3)
+  function anchorage({ phi, c, ss = null, good = true, fyk = 500, tension = true, bent = false, cd = null, lappedPct = 100 }) {
+    const fbd = 2.25 * (good ? 1 : 0.7) * (phi <= 32 ? 1 : (132 - phi) / 100) * c.fctd;
+    const sd = ss ?? fyk / GS, lbrqd = phi / 4 * sd / fbd;
+    let a1 = 1, a2 = 1;
+    if (tension) {
+      cd = cd ?? 3 * phi;
+      if (bent) { a1 = cd > 3 * phi ? 0.7 : 1; a2 = Math.min(1, Math.max(0.7, 1 - 0.15 * (cd - 3 * phi) / phi)); }
+      else a2 = Math.min(1, Math.max(0.7, 1 - 0.15 * (cd - phi) / phi));
+    }
+    const a235 = Math.max(0.7, a2), lbmin = tension ? Math.max(0.3 * lbrqd, 10 * phi, 100) : Math.max(0.6 * lbrqd, 10 * phi, 100);
+    const lbd = Math.max(a1 * a235 * lbrqd, lbmin);
+    const a6 = tension ? Math.min(1.5, Math.max(1, Math.sqrt(lappedPct / 25))) : 1;
+    const l0min = Math.max(0.3 * a6 * lbrqd, 15 * phi, 200), l0 = Math.max(a1 * a235 * a6 * lbrqd, l0min);
+    return { fbd, sd, lbrqd, a1, a2, a6, lbmin, lbd, l0min, l0 };
+  }
+  // effective flange width, 5.3.2.1: bi = half clear distance to the next web (each side), l0 distance between zero moments
+  function flangeWidth({ bw, b1, b2, l0, bMax = Infinity }) {
+    const bi = b => Math.max(0, Math.min(0.2 * b + 0.1 * l0, 0.2 * l0, b));
+    return Math.min(bw + bi(b1) + bi(b2), bMax, bw + b1 + b2);
+  }
+  // l0 for 5.3.2.1 Figure 5.2: 0.85 L end span, 0.7 L interior span, 0.15 (L1 + L2) over an internal support, 0.15 L2 + L3 at a cantilever root
+  return { GC, GS, ES, CUBE, area, concrete, steel, block, xdLimit, bendingDesign, bendingResistance, shearConcrete, shearDesign, shearResistance, vrdMax, acw,
+    torsion, cracked, uncracked, T72, T73, tableLookup, sigmaQP, crackTables, crackWidth, asMinCrack, kSize, KSYS, spanDepth, asMin, clearMin, anchorage, flangeWidth };
+})();
+if (typeof module !== 'undefined') module.exports = { EC2 };
+
+/* ===== EC2 SECTION DESIGN (EngineeringTools) =====
+   Design and check of one reinforced concrete section (beam or slab strip) to BS EN 1992-1-1 + UK NA, built on the EC2
+   core: bending (singly or doubly reinforced, rectangular or flanged), provided-bar resistance, minimum and maximum steel,
+   bar spacing, crack control without direct calculation (Tables 7.2N / 7.3N), span / effective depth with the UK NA
+   (Table NA.5 notes: F3 = 310/sigma_s <= 1.5 with sigma_s at the characteristic SLS load, l/d <= 40K), the steel needed
+   to satisfy deflection, and shear with or without links. Each step is recorded as { ref, text, val } for the calc sheet.
+   UK practice choices (stated in the report): sigma_s by the cracked transformed section with alpha_e (15 by default);
+   flange factor F1 = 1 - 0.1(b_eff/b_w - 1) >= 0.8 (Concrete Centre "How to" guide); rho = A_s,req/(b_w d) and
+   rho' = A_s2,prov/(b_w d) in Expression 7.16. Units N, mm. */
+const EC2Section = (() => {
+  'use strict';
+  const r1 = v => (Math.round(v * 10) / 10).toString(), r0 = v => Math.round(v).toString(), r3 = v => v.toFixed(3), r2 = v => v.toFixed(2);
+  const kNm = v => v / 1e6, kN = v => v / 1e3;
+  const AREA = phi => Math.PI * phi * phi / 4;
+  const USAGE = { A: ['Domestic', 0.3], B: ['Office', 0.3], C: ['Congregation', 0.6], D: ['Shopping', 0.6], E: ['Storage', 0.8], F: ['Traffic ≤ 30 kN', 0.6], G: ['Traffic 30–160 kN', 0.3], H: ['Roof', 0] };
+  // bar arrangement: beams n bars of phi in one or two layers (second layer directly above, clear gap max(phi, 20, dg + 5));
+  // slabs phi at spacing s per metre width
+  function arrangement({ kind, h, cover, phiLink = 0, bar, width, dg = 20 }) {
+    if (kind === 'slab') {
+      const As = AREA(bar.phi) * 1000 / bar.s, d = h - cover - bar.phi / 2;
+      return { As, d, dc: d, layers: [{ As, d }], spacing: bar.s, clear: bar.s - bar.phi, n: 1000 / bar.s };
+    }
+    const n = Math.max(1, Math.round(bar.n)), two = bar.layers === 2 && n >= 2, n1 = two ? Math.ceil(n / 2) : n, n2 = n - n1;
+    const gap = Math.max(bar.phi, 20, dg + 5), d1 = h - cover - phiLink - bar.phi / 2, d2 = d1 - bar.phi - gap;
+    const As1 = n1 * AREA(bar.phi), As2 = n2 * AREA(bar.phi), As = As1 + As2, dc = (As1 * d1 + As2 * d2) / As;
+    const inner = width - 2 * (cover + phiLink), clear = n1 > 1 ? (inner - n1 * bar.phi) / (n1 - 1) : inner - bar.phi;
+    return { As, d: dc, d1, dc, layers: two ? [{ As: As1, d: d1 }, { As: As2, d: d2 }] : [{ As, d: d1 }], spacing: clear + bar.phi, clear, n, n1, n2, gap };
+  }
+  /* inp: { kind 'beam'|'slab', shape 'rect'|'flanged', moment 'sagging'|'hogging', b (rect width, or effective flange width),
+            bw, hf, h, fck, fyk, cover, phiLink, dg, bar { phi, n, layers | s }, comp { phi, n } | null,
+            MEd, gk, qk, psi2, gG 1.35, gQ 1.5 (load ratios for SLS moments), delta, xdMax (null = 5.5(4) only),
+            wk 0.3, ae 15, defl { system, span, brittle } | null, shear { VEd, w, link { phi, legs, s } } | null,
+            Mel (optional: elastic ULS moment for the SLS ratios, default M_Ed/delta), Mk + Mqp (optional: SLS moments from an analysis,
+            replacing the ratios), barWidth (optional: width the bars are spread over, default b_w), rhoArea 'web' (b_w d, default) | 'compression' } */
+  function design(inp) {
+    const c = EC2.concrete(inp.fck), st = EC2.steel(inp.fyk || 500), S = [], chk = [];
+    const step = (ref, text, val) => S.push({ ref, text, val });
+    const slab = inp.kind === 'slab', flanged = !slab && inp.shape === 'flanged';
+    const bw = slab ? 1000 : flanged ? inp.bw : inp.b, h = inp.h;
+    const sag = !flanged || inp.moment !== 'hogging';
+    // compression zone: flange width for sagging flanged sections, web otherwise
+    const secC = flanged && sag ? { b: inp.b, bw, hf: inp.hf, h } : { b: bw, h };
+    const tensionWidth = flanged && !sag ? inp.b : bw;
+    const arr = arrangement({ kind: inp.kind, h, cover: inp.cover, phiLink: slab ? 0 : inp.phiLink || 0, bar: inp.bar, width: inp.barWidth ?? bw, dg: inp.dg });
+    const d = arr.d, comp = !slab && inp.comp && inp.comp.n > 0 ? inp.comp : null;
+    const cC = inp.coverComp ?? inp.cover, d2 = comp ? cC + (inp.phiLink || 0) + comp.phi / 2 : cC + (inp.phiLink || 0) + 8;
+    const As2p = comp ? comp.n * AREA(comp.phi) : 0;
+    const n = (inp.gG ?? 1.35) * inp.gk + (inp.gQ ?? 1.5) * inp.qk;
+    // SLS moments from the elastic (unredistributed) ULS moment M_Ed/delta scaled by the load ratios
+    const delta = inp.delta ?? 1, Mel = inp.Mel ?? inp.MEd / delta, slsGiven = inp.Mk != null && inp.Mqp != null;
+    const Mk = slsGiven ? Math.max(inp.Mk, 1) : Mel * (inp.gk + inp.qk) / n, Mqp = slsGiven ? Math.max(inp.Mqp, 1) : Mel * (inp.gk + inp.psi2 * inp.qk) / n;
+    step('Table 3.1', `f_ck = ${inp.fck} N/mm², f_cd = 0.85 f_ck/1.5 = ${r2(c.fcd)} N/mm², f_ctm = ${r3(c.fctm)} N/mm², E_cm = ${r1(c.Ecm / 1000)} GPa`, '');
+    step('', `f_yd = f_yk/1.15 = ${r1(st.fyd)} N/mm²; d = ${r1(d)} mm${arr.n2 ? ` (two layers, centroid)` : ''}`, '');
+    // ---------- bending ----------
+    const bd = EC2.bendingDesign({ sec: secC, d, d2, M: inp.MEd, c, s: st, delta: inp.delta ?? 1, xdMax: inp.xdMax ?? null, zMax: 0.95 });
+    step('3.1.7(3)', `K = M_Ed/(b d² f_ck) = ${r1(kNm(inp.MEd))}E6/(${r0(secC.b)} × ${r1(d)}² × ${inp.fck}) = ${r3(bd.K)}; K′ = ${bd.Kp != null ? r3(bd.Kp) : '–'} (x/d ≤ ${r3(bd.xlim / d)}, 5.5(4) with δ = ${inp.delta ?? 1})`, '');
+    if (inp.MEd > 0) step('', bd.doubly ? `K > K′: compression steel A_s2 = ${r0(bd.As2)} mm² (f_sc net ${r1(bd.fsc)} N/mm²), z = ${r1(bd.z)} mm` : `x = ${r1(bd.x)} mm, z = ${r1(bd.z)} mm${bd.zCap ? ' (0.95d)' : ''}${flanged && sag ? (bd.inFlange ? ', stress block within the flange' : ', stress block extends into the web') : ''}`, '');
+    step('', `A_s,req = ${r0(bd.As)} mm²${slab ? '/m' : ''}; A_s,prov = ${r0(arr.As)} mm²${slab ? `/m (H${inp.bar.phi} @ ${inp.bar.s})` : ` (${arr.n}H${inp.bar.phi}${arr.n2 ? `, ${arr.n1} + ${arr.n2} in two layers` : ''})`}`, '');
+    if (bd.doubly && !(As2p >= bd.As2)) chk.push({ id: 'comp', name: 'Compression steel', ref: '3.1.7(3)', util: As2p > 0 ? bd.As2 / As2p : Infinity, note: `A_s2,req ${r0(bd.As2)} mm², provided ${r0(As2p)} mm²` });
+    // resistance of the provided arrangement by strain compatibility
+    const layers = [...arr.layers, ...(As2p ? [{ As: As2p, d: d2 }] : [])];
+    const res = EC2.bendingResistance({ sec: secC, layers, c, s: st });
+    step('6.1', `M_Rd (provided bars, strain compatibility, ε_cu2 = ${(c.ecu2 * 1000).toFixed(1)}‰) = ${r1(kNm(res.MRd))} kNm${slab ? '/m' : ''}; x = ${r1(res.x)} mm, x/d = ${r3(res.x / d)}`, '');
+    chk.push({ id: 'bend', name: 'Bending', ref: '6.1', util: inp.MEd / res.MRd, note: `M_Ed ${r1(kNm(inp.MEd))} / M_Rd ${r1(kNm(res.MRd))} kNm${slab ? '/m' : ''}` });
+    // ---------- detailing ----------
+    const bt = flanged && !sag ? inp.b : bw, AsMin = EC2.asMin({ fctm: c.fctm, fyk: st.fyk, bt, d }), Ac = flanged ? bw * h + (inp.b - bw) * inp.hf : bw * h, AsMax = 0.04 * Ac;
+    step('9.2.1.1', `A_s,min = max(0.26 f_ctm/f_yk, 0.0013) b_t d = ${r0(AsMin)} mm² (b_t = ${r0(bt)} mm); A_s,max = 0.04 A_c = ${r0(AsMax)} mm²`, '');
+    chk.push({ id: 'asmin', name: 'Minimum tension steel', ref: '9.2.1.1(1)', util: AsMin / arr.As, note: `${r0(AsMin)} / ${r0(arr.As)} mm²` });
+    chk.push({ id: 'asmax', name: 'Maximum steel', ref: '9.2.1.1(3)', util: (arr.As + As2p) / AsMax, note: `${r0(arr.As + As2p)} / ${r0(AsMax)} mm²` });
+    const sMinClear = EC2.clearMin(inp.bar.phi, inp.dg || 20);
+    chk.push({ id: 'smin', name: 'Clear bar spacing', ref: '8.2(2)', util: sMinClear / Math.max(arr.clear, 1e-9), note: `${r0(arr.clear)} mm ≥ max(φ, d_g + 5, 20) = ${r0(sMinClear)} mm` });
+    if (slab) { const sMax = Math.min(3 * h, 400); chk.push({ id: 'smaxSlab', name: 'Slab bar spacing', ref: '9.3.1.1(3)', util: inp.bar.s / sMax, note: `${inp.bar.s} ≤ min(3h, 400) = ${r0(sMax)} mm` }); }
+    // ---------- SLS stresses (cracked transformed section) ----------
+    const ae = inp.ae ?? 15, secS = flanged && sag ? { b: inp.b, bw, hf: inp.hf } : { b: bw };
+    const crK = EC2.cracked({ sec: secS, As: arr.As, d, As2: As2p, d2, ae, M: Mk }), ssK = crK.ss, ssQP = ssK * Mqp / Mk;
+    step('7.2', slsGiven ? `SLS moments from the elastic analysis: characteristic M_k = ${r1(kNm(Mk))} kNm, quasi-permanent M_qp = ${r1(kNm(Mqp))} kNm (ψ₂ = ${inp.psi2})`
+      : `SLS: n = ${inp.gG ?? 1.35} g_k + ${inp.gQ ?? 1.5} q_k = ${r2(n)}; M_k = ${inp.Mel != null ? 'M_el' : '(M_Ed/δ)'}(g_k + q_k)/n = ${r1(kNm(Mk))} kNm; M_qp = ${inp.Mel != null ? 'M_el' : '(M_Ed/δ)'}(g_k + ψ₂ q_k)/n = ${r1(kNm(Mqp))} kNm (ψ₂ = ${inp.psi2})`, '');
+    step('', `cracked section (α_e = ${ae}): x = ${r1(crK.x)} mm; σ_s = ${r1(ssK)} N/mm² (characteristic), ${r1(ssQP)} N/mm² (quasi-permanent)`, '');
+    // ---------- crack control without direct calculation, 7.3.3 ----------
+    const wk = inp.wk ?? 0.3, tab = EC2.crackTables({ ss: ssQP, wk, h, d, fctEff: c.fctm, kc: 0.4, hcr: h / 2 });
+    const sMaxT = tab.sMax == null ? null : Math.min(tab.sMax, tableEdge(EC2.T73, wk)), phiMaxT = tab.phiMax;
+    const uPhi = phiMaxT ? inp.bar.phi / phiMaxT : Infinity, uS = sMaxT ? arr.spacing / sMaxT : Infinity;
+    step('7.3.3', `w_k = ${wk} mm: Table 7.2N φ*_s = ${tab.phiStar == null ? 'beyond table' : r1(tab.phiStar)} mm → φ_s,max = ${phiMaxT == null ? '–' : r1(phiMaxT)} mm (7.6N); Table 7.3N s_max = ${sMaxT == null ? 'beyond table' : r0(sMaxT)} mm`, '');
+    chk.push({ id: 'crack', name: 'Crack control (bar size or spacing)', ref: '7.3.3', util: Math.min(uPhi, uS), note: `φ ${inp.bar.phi} vs ${phiMaxT == null ? '–' : r1(phiMaxT)} mm; s ${r0(arr.spacing)} vs ${sMaxT == null ? '–' : r0(sMaxT)} mm` });
+    // minimum steel for crack control, 7.3.2: uncracked section (alpha_e = E_s/E_cm) just before cracking, split into the
+    // web (k_c = 0.4, pure bending, k from the web depth) and a flange in tension (k_c = 0.9 F_cr/(A_ct f_ct,eff) by
+    // Expression 7.3 = 0.9(1 - t/(2 y_t)) >= 0.5, k from the flange width)
+    const aeS = EC2.ES / c.Ecm, Aw = bw * h, hfl = flanged ? inp.hf : 0, Afl = flanged ? (inp.b - bw) * hfl : 0;
+    const dT = sag ? d : h - d, dC = sag ? d2 : h - d2;      // physical depths from the top face
+    const Atr = Aw + Afl + (aeS - 1) * (arr.As + As2p);
+    const yTop = (Aw * h / 2 + Afl * hfl / 2 + (aeS - 1) * (arr.As * dT + As2p * dC)) / Atr;
+    const fct = c.fctm, parts = [];
+    if (sag) parts.push({ what: 'web', kc: 0.4, k: EC2.kSize(h), Act: bw * (h - yTop) });
+    else if (!flanged) parts.push({ what: 'section', kc: 0.4, k: EC2.kSize(h), Act: bw * yTop });
+    else {
+      const tf = Math.min(inp.hf, yTop);
+      parts.push({ what: 'flange', kc: Math.max(0.5, 0.9 * (1 - tf / (2 * yTop))), k: EC2.kSize(inp.b), Act: inp.b * tf });
+      if (yTop > inp.hf) parts.push({ what: 'web', kc: 0.4, k: EC2.kSize(h), Act: bw * (yTop - inp.hf) });
+    }
+    const AsCrack = parts.reduce((t, q) => t + q.kc * q.k * fct * q.Act / st.fyk, 0);
+    const kElem = parts[0].k, Act = parts.reduce((t, q) => t + q.Act, 0), kc = parts[0].kc;
+    step('7.3.2', `A_s,min for crack control = Σ k_c k f_ct,eff A_ct/f_yk: ${parts.map(q => `${q.what} ${r2(q.kc)} × ${r3(q.k)} × ${r3(fct)} × ${r0(q.Act)}`).join(' + ')} /${st.fyk} = ${r0(AsCrack)} mm²`, '');
+    chk.push({ id: 'ascrack', name: 'Minimum steel for crack control', ref: '7.3.2(2)', util: AsCrack / arr.As, note: `${r0(AsCrack)} / ${r0(arr.As)} mm²` });
+    // ---------- deflection: span / effective depth ----------
+    let defl = null;
+    if (inp.defl && inp.defl.span > 0) {
+      // rho on b_w d, or (rhoArea 'compression', flanged sagging) on the concrete above the tension steel b_w d + (b_eff - b_w) h_f
+      const Arho = inp.rhoArea === 'compression' && flanged && sag ? bw * d + (inp.b - bw) * inp.hf : bw * d;
+      const D = inp.defl, actual = D.span / d, rho = bd.As / Arho, rho2 = (bd.As2 || 0) / Arho, K = EC2.KSYS[D.system];
+      const base = baseRatio(inp.fck, rho, rho2, K);
+      const F1 = flanged && sag ? Math.max(0.8, 1 - 0.1 * (inp.b / bw - 1)) : 1;
+      const lim = D.system === 'flat' ? 8500 : 7000, F2 = D.brittle && D.span > lim && D.system !== 'cantilever' ? lim / D.span : 1;
+      const F3 = f3(ssK), allowed = Math.min(40 * K, base * F1 * F2 * F3);
+      step('7.4.2', `l/d basic (7.16), K = ${K}: ρ = A_s,req/(${Arho !== bw * d ? 'b_w d + (b_eff − b_w) h_f' : 'b_w d'}) = ${(100 * rho).toFixed(3)}%, ρ′ = A_s2,req/(${Arho !== bw * d ? 'same' : 'b_w d'}) = ${(100 * rho2).toFixed(3)}%, ρ₀ = ${(100 * 1e-3 * Math.sqrt(inp.fck)).toFixed(3)}% → ${r2(base)}`, '');
+      step('NA Table NA.5', `F1 = ${r3(F1)}${flanged && sag ? ' (1 − 0.1(b_eff/b_w − 1) ≥ 0.8)' : ''}, F2 = ${r3(F2)}${F2 < 1 ? ` (${lim / 1000}/l)` : ''}, F3 = 310/σ_s = ${r3(F3)} (≤ 1.5); allowed l/d = min(40K, ${r2(base)} × F1 F2 F3) = ${r2(allowed)}; actual ${r2(actual)}`, '');
+      // steel needed for deflection: provided area raises F3 (sigma_s falls) until allowed >= actual
+      let AsDef = null;
+      if (actual > allowed) {
+        const allowedAt = As => Math.min(40 * K, base * F1 * F2 * f3(EC2.cracked({ sec: secS, As, d, As2: As2p, d2, ae, M: Mk }).ss));
+        let lo = arr.As, hi = arr.As * 4;
+        if (allowedAt(hi) >= actual) { for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; if (allowedAt(m) >= actual) hi = m; else lo = m; } AsDef = hi; }
+        else AsDef = Infinity;
+        step('', AsDef === Infinity ? 'Deflection cannot be satisfied by adding steel (F3 limited to 1.5): increase the depth' : `A_s needed for deflection ≈ ${r0(AsDef)} mm²${slab ? '/m' : ''}`, '');
+      }
+      defl = { actual, rho, rho2, K, base, F1, F2, F3, allowed, AsDef };
+      chk.push({ id: 'defl', name: 'Deflection (span/depth)', ref: '7.4.2', util: actual / allowed, note: `l/d ${r2(actual)} / ${r2(allowed)}` });
+    }
+    // ---------- shear ----------
+    let shear = null;
+    if (inp.shear && inp.shear.VEd > 0) {
+      const V = inp.shear, VEd_d = Math.max(0, V.VEd - (V.w || 0) * d);   // V_Ed at d from the face for a UDL w (N/mm)
+      const vc = EC2.shearConcrete({ bw, d, Asl: arr.As, c });
+      step('6.2.2', `V_Rd,c: k = ${r3(vc.k)}, ρ_l = ${(100 * vc.rho).toFixed(3)}%, v = ${r3(vc.v)} N/mm², v_min = ${r3(vc.vmin)} N/mm² → V_Rd,c = ${r1(kN(vc.VRdc))} kN${slab ? '/m' : ''}`, '');
+      step('6.2.1(8)', `V_Ed at the face ${r1(kN(V.VEd))} kN; at d from the face ${r1(kN(VEd_d))} kN${V.w ? ` (w = ${r1(V.w)} kN/m)` : ''}`, '');
+      if (slab || !V.link) {
+        chk.push({ id: 'shear', name: 'Shear without links', ref: '6.2.2', util: VEd_d / vc.VRdc, note: `V_Ed ${r1(kN(VEd_d))} / V_Rd,c ${r1(kN(vc.VRdc))} kN` });
+        shear = { vc, VEd_d };
+      } else {
+        const L = V.link, AswS = L.legs * AREA(L.phi) / L.s, des = EC2.shearDesign({ bw, d, VEd: VEd_d, VEdStrut: V.VEd, c, fywk: st.fyk });
+        const face = EC2.shearDesign({ bw, d, VEd: V.VEd, c, fywk: st.fyk }), resV = EC2.shearResistance({ bw, d, AswS, c, fywk: st.fyk });
+        step('6.2.3', `z = 0.9d = ${r1(des.z)} mm, ν₁ = ${r3(c.nu)}, f_cd = ${r2(c.fcdV)} N/mm²: cot θ = ${r3(des.cot)}, V_Rd,max = ${r1(kN(des.VRdmax))} kN; A_sw/s,req = ${r3(des.AswS)} mm (min ${r3(des.AswSmin)})`, '');
+        step('', `provided ${L.legs} legs H${L.phi} @ ${L.s}: A_sw/s = ${r3(AswS)} mm, V_Rd,s = ${r1(kN(resV.VRds))} kN (cot θ ${r3(resV.cot)}); s_l,max = 0.75d = ${r0(des.slMax)} mm`, '');
+        chk.push({ id: 'vmax', name: 'Shear: concrete strut V_Rd,max (at the face)', ref: '6.2.3(3)', util: V.VEd / face.Vmax45, note: `${r1(kN(V.VEd))} / ${r1(kN(face.Vmax45))} kN (θ = 45°)` });
+        chk.push({ id: 'links', name: 'Shear links', ref: '6.2.3', util: VEd_d / resV.VRd, note: `V_Ed ${r1(kN(VEd_d))} / V_Rd ${r1(kN(resV.VRd))} kN` });
+        chk.push({ id: 'linkmin', name: 'Minimum links', ref: '9.2.2(5)', util: des.AswSmin / AswS, note: `${r3(des.AswSmin)} / ${r3(AswS)} mm` });
+        chk.push({ id: 'linksp', name: 'Link spacing', ref: '9.2.2(6)', util: L.s / des.slMax, note: `${L.s} ≤ 0.75d = ${r0(des.slMax)} mm` });
+        const stLeg = L.legs > 1 ? (bw - 2 * inp.cover - L.phi) / (L.legs - 1) : bw;
+        chk.push({ id: 'linkst', name: 'Link legs across the width', ref: '9.2.2(8)', util: stLeg / des.stMax, note: `${r0(stLeg)} ≤ min(0.75d, 600) = ${r0(des.stMax)} mm` });
+        shear = { vc, des, resV, AswS, VEd_d };
+      }
+    }
+    const utilMax = Math.max(...chk.map(k => k.util));
+    return { c, st, steps: S, checks: chk, utilMax, d, d2, arr, As2p, bd, res, Mk, Mqp, n, crK, ssK, ssQP, tab: { ...tab, sMax: sMaxT }, AsMin, AsMax, AsCrack, crackParts: parts, kElem, kc, Act, yTop, defl, shear, secC, bw };
+  }
+  const tableEdge = (T, wk) => T[wk][0];
+  const f3 = ss => Math.min(1.5, 310 / ss);
+  function baseRatio(fck, rho, rho2, K) {
+    const r0 = 1e-3 * Math.sqrt(fck), sf = Math.sqrt(fck);
+    return rho <= r0 ? K * (11 + 1.5 * sf * r0 / rho + 3.2 * sf * (r0 / rho - 1) ** 1.5) : K * (11 + 1.5 * sf * r0 / (rho - rho2) + sf / 12 * Math.sqrt(rho2 / r0));
+  }
+  return { design, arrangement, baseRatio, USAGE, AREA };
+})();
+if (typeof module !== 'undefined') module.exports = { EC2Section };
+
+// RC Stair Design engine: BS EN 1992-1-1 + UK NA, per metre width.
+// flight(inp): a flight with a landing at each end spanning between two supports, the landings free to project beyond
+//   them; self weight of the waist on the slope and of the steps, finishes and imposed load on plan; the imposed load on
+//   the span alone or also on the projections; each part (landing, flight, landing) designed for its own sagging moment
+//   with its own depth, the supports for any hogging (projections, or 25 % of the span moment where built in), shear at
+//   the supports, deflection on the full span.
+// landing(inp): a half landing spanning across the stair, carrying the reactions of the flights on either side over an
+//   effective width of not more than 1.8 m (TCC71 practice).
+// Section design, crack control and span/depth are those of the RC Section Design Toolkit (EC2Section). Units: mm, kN, kNm.
+const Stair = (() => {
+  const fin = (v, nm) => { if (!Number.isFinite(v)) throw new Error(`${nm}: give a number`); return v; };
+  const pos = (v, nm) => { fin(v, nm); if (!(v > 0)) throw new Error(`${nm} must be greater than 0`); return v; };
+  const nonneg = (v, nm) => { fin(v, nm); if (v < 0) throw new Error(`${nm} cannot be negative`); return v; };
+  // a beam on supports at x = 0 and x = L (m), loads as zones { x0, x1, w } (kN/m); reactions, M(x) and V(x) just right of x
+  function beam(L, zones) {
+    let W = 0, Mo = 0; for (const z of zones) { const F = z.w * (z.x1 - z.x0); W += F; Mo += F * (z.x0 + z.x1) / 2; }
+    const R2 = Mo / L, R1 = W - R2;
+    const left = x => { let F = 0, M = 0; for (const z of zones) { const b = Math.min(z.x1, x); if (b > z.x0) { const f = z.w * (b - z.x0); F += f; M += f * (x - (z.x0 + b) / 2); } } return { F, M }; };
+    const M = x => { const l = left(x); return (x > 0 ? R1 * x : 0) + (x > L ? R2 * (x - L) : 0) - l.M; };
+    const V = x => { const l = left(x); return (x >= 0 ? R1 : 0) + (x >= L ? R2 : 0) - l.F; };
+    return { R1, R2, W, M, V };
+  }
+  const COMB = { '6.10': [{ gG: 1.35, gQ: 1.5, name: '6.10' }], '6.10ab': [{ gG: 1.35, gQ: 1.5, psi0: true, name: '6.10a' }, { gG: 0.925 * 1.35, gQ: 1.5, name: '6.10b' }] };
+  function combos(inp) { if (inp.comb === 'custom') return [{ gG: fin(inp.gG, 'γ_G'), gQ: fin(inp.gQ, 'γ_Q'), name: 'custom' }]; const set = COMB[inp.comb || '6.10']; if (!set) throw new Error('Choose 6.10 or 6.10a and b'); const p0 = fin(inp.psi0 ?? 0.7, 'ψ₀'); return set.map(c => ({ ...c, gQ: c.psi0 ? 1.5 * p0 : c.gQ })); }
+  // zones of G and Q (kN/m² on plan) → ULS, characteristic and quasi-permanent zone sets for a Q pattern
+  function loadSets(parts, cb, psi2, qOn) {
+    const z = f => parts.map(p => ({ x0: p.x0, x1: p.x1, w: f(p, qOn(p)) }));
+    return { uls: z((p, q) => cb.gG * p.gk + (q ? cb.gQ * p.qk : 0)), k: z((p, q) => p.gk + (q ? p.qk : 0)), qp: z((p, q) => p.gk + (q ? psi2 * p.qk : 0)) };
+  }
+  // envelope over combinations and patterns: max sagging in [a, b], hogging at a support, reactions
+  function envelope(L, parts, cbs, psi2, patterns) {
+    const runs = [];
+    for (const cb of cbs) for (const pt of patterns) {
+      const S = loadSets(parts, cb, psi2, pt.on), B = beam(L, S.uls), K = beam(L, S.k), Q = beam(L, S.qp);
+      runs.push({ cb, pt, B, K, Q });
+    }
+    const N = 600, xs = []; for (let i = 0; i <= N; i++) xs.push(L * i / N);
+    function sag(a, b) {
+      let best = { M: 0, x: (a + b) / 2, run: runs[0] };
+      for (const r of runs) for (const x of xs) if (x >= a - 1e-9 && x <= b + 1e-9) { const m = r.B.M(x); if (m > best.M) best = { M: m, x, run: r }; }
+      // refine on the zero of shear near the best point
+      let lo = Math.max(a, best.x - L / N), hi = Math.min(b, best.x + L / N);
+      for (let i = 0; i < 60; i++) { const m1 = best.run.B.M(lo + (hi - lo) / 3), m2 = best.run.B.M(hi - (hi - lo) / 3); if (m1 < m2) lo = lo + (hi - lo) / 3; else hi = hi - (hi - lo) / 3; }
+      const x = (lo + hi) / 2, M = Math.max(best.M, best.run.B.M(x));
+      return { M, x, Mk: best.run.K.M(x), Mqp: best.run.Q.M(x), run: best.run };
+    }
+    const hog = x => { let best = { M: 0, run: runs[0] }; for (const r of runs) { const m = -r.B.M(x); if (m > best.M) best = { M: m, run: r }; } return { M: best.M, Mk: Math.max(0, -best.run.K.M(x)), Mqp: Math.max(0, -best.run.Q.M(x)), run: best.run }; };
+    const R1 = Math.max(...runs.map(r => r.B.R1)), R2 = Math.max(...runs.map(r => r.B.R2));
+    return { runs, sag, hog, R1, R2 };
+  }
+  // one section through EC2Section; slabs not over 200 mm need no crack checks beyond the minimum steel (7.3.3(1))
+  function section(o) {
+    const R = EC2Section.design({ kind: 'slab', b: 1000, h: o.h, fck: o.fck, fyk: o.fyk, cover: o.cover, coverComp: o.coverComp, dg: o.dg, bar: o.bar, moment: o.moment,
+      MEd: Math.max(o.M * 1e6, 1), Mk: o.Mk * 1e6, Mqp: o.Mqp * 1e6, gk: 1, qk: 0, psi2: o.psi2, wk: o.wk, ae: o.ae, defl: o.defl || null, shear: o.shear || null, xdMax: o.xdMax ?? 0.45 });
+    let checks = R.checks;
+    if (o.h <= 200) checks = checks.filter(k => k.id !== 'crack' && k.id !== 'ascrack');
+    if (o.M <= 1e-6) checks = checks.filter(k => k.id === 'shear' || k.id === 'vmax' || k.id === 'smin' || k.id === 'smaxSlab' || k.id === 'asmin');
+    return { ...R, checks, util: Math.max(0, ...checks.map(k => k.util)) };
+  }
+
+  // ---------- flight ----------
+  function flight(inp) {
+    const fck = fin(inp.fck, 'f_ck'), fyk = inp.fyk ?? 500, gc = inp.gc ?? 25, psi2 = fin(inp.psi2 ?? 0.3, 'ψ₂');
+    const a = nonneg(inp.a, 'Landing A length a'), c = nonneg(inp.c, 'Landing C length c'), pA = nonneg(inp.pA ?? 0, 'Projection at A'), pC = nonneg(inp.pC ?? 0, 'Projection at C');
+    const n = Math.round(pos(inp.n, 'Number of treads')), g = pos(inp.going, 'Going'), r = inp.rise > 0 ? inp.rise : pos(inp.H, 'Total rise') / (n + 1);
+    const t = pos(inp.t, 'Waist'), hA = a + pA > 0 ? pos(inp.hA, 'Landing A thickness') : 0, hC = c + pC > 0 ? pos(inp.hC, 'Landing C thickness') : 0;
+    const qk = nonneg(inp.qk, 'Imposed load'), fF = nonneg(inp.fF ?? 0, 'Flight finishes'), fL = nonneg(inp.fL ?? 0, 'Landing finishes');
+    const b = n * g, L = (a + b + c) / 1000, alpha = Math.atan(r / g), cosA = Math.cos(alpha);
+    if (alpha * 180 / Math.PI > 45) throw new Error('A pitch over 45° is a ladder, not a stair');
+    const gkF = gc * t / 1000 / cosA + gc * r / 2000 + fF, gkA = gc * hA / 1000 + fL, gkC = gc * hC / 1000 + fL;
+    const parts = [];
+    if (a + pA > 0) parts.push({ id: 'A', x0: -pA / 1000, x1: a / 1000, gk: gkA, qk, h: hA, span: true });
+    parts.push({ id: 'F', x0: a / 1000, x1: (a + b) / 1000, gk: gkF, qk, h: t });
+    if (c + pC > 0) parts.push({ id: 'C', x0: (a + b) / 1000, x1: L + pC / 1000, gk: gkC, qk, h: hC });
+    // split projections into their own zones so the imposed load can be patterned
+    const zs = []; for (const p of parts) { if (p.x0 < 0) { zs.push({ ...p, x1: Math.min(0, p.x1), over: true }); if (p.x1 > 0) zs.push({ ...p, x0: 0, over: false }); } else if (p.x1 > L) { if (p.x0 < L) zs.push({ ...p, x1: L, over: false }); zs.push({ ...p, x0: Math.max(L, p.x0), over: true }); } else zs.push({ ...p, over: false }); }
+    const cbs = combos(inp), patterns = [{ name: 'imposed everywhere', on: () => true }, ...(pA + pC > 0 ? [{ name: 'imposed on the span only', on: z => !z.over }, { name: 'imposed on the projections only', on: z => z.over }] : [])];
+    const E = envelope(L, zs, cbs, psi2, patterns), Eall = envelope(L, zs, [cbs[0]], psi2, [patterns[0]]);
+    const common = { fck, fyk, cover: pos(inp.cover, 'Cover'), coverComp: inp.coverTop ?? inp.cover, dg: inp.dg ?? 20, psi2, wk: inp.wk ?? 0.3, ae: inp.ae ?? 15 };
+    const bot = inp.bottom || { phi: 12, s: 150 }, top = inp.top || { phi: 10, s: 200 };
+    // sagging in each part on the span
+    const regions = [];
+    if (a > 0) regions.push({ id: 'A', name: 'Landing A', a: 0, b: a / 1000, h: hA });
+    regions.push({ id: 'F', name: 'Flight', a: a / 1000, b: (a + b) / 1000, h: t });
+    if (c > 0) regions.push({ id: 'C', name: 'Landing C', a: (a + b) / 1000, b: L, h: hC });
+    regions.forEach(R => Object.assign(R, E.sag(R.a, R.b)));
+    const gov = regions.reduce((m, R) => R.M > m.M ? R : m, regions[0]);
+    // shear at the supports (V at the support line; reduced to d with the local load)
+    const Vat = (x, side) => { let best = 0; for (const rr of E.runs) { const v = side === 'L' ? rr.B.V(x) : -rr.B.V(x - 1e-9); best = Math.max(best, Math.abs(v)); } return best; };
+    const wU = gk => cbs[0].gG * gk + cbs[0].gQ * qk;
+    const supV = [{ x: 0, side: 'L', V: Vat(0, 'L'), h: a > 0 ? hA : t, w: wU(a > 0 ? gkA : gkF) }, { x: L, side: 'R', V: Vat(L, 'R'), h: c > 0 ? hC : t, w: wU(c > 0 ? gkC : gkF) }];
+    regions.forEach(R => {
+      const sh = R.id === 'A' ? supV[0] : R.id === 'C' ? supV[1] : (a === 0 && c === 0 ? (supV[0].V > supV[1].V ? supV[0] : supV[1]) : a === 0 ? supV[0] : c === 0 ? supV[1] : null);
+      R.sec = section({ ...common, h: R.h, M: R.M, Mk: Math.max(R.Mk, 0), Mqp: Math.max(R.Mqp, 0), bar: bot, moment: 'sagging',
+        defl: R === gov ? { system: 'ss', span: L * 1000, brittle: inp.brittle !== false } : null, shear: sh ? { VEd: sh.V * 1000, w: sh.w } : null });
+    });
+    // supports: hogging from a projection, or 25 % of the span moment where built in (9.3.1.2(2))
+    const mono = inp.supports === 'monolithic', sups = [];
+    for (const [k, p, x, h] of [['A', pA, 0, hA || t], ['C', pC, L, hC || t]]) {
+      const H = E.hog(x), M25 = mono ? 0.25 * gov.M : 0, M = Math.max(H.M, M25);
+      if (!(M > 0)) { sups.push({ id: k, M: 0, sec: null }); continue; }
+      const Mk = H.M >= M25 ? H.Mk : 0.25 * gov.Mk, Mqp = H.M >= M25 ? H.Mqp : 0.25 * gov.Mqp;
+      sups.push({ id: k, M, rule: H.M >= M25 ? (p > 0 ? 'projection' : 'hogging') : '25 % of the span moment (9.3.1.2(2))', sec: section({ ...common, cover: inp.coverTop ?? inp.cover, coverComp: inp.cover, h, M, Mk, Mqp, bar: top, moment: 'hogging',
+        defl: p > 0 ? { system: 'cantilever', span: p, brittle: true } : null }) });
+    }
+    const checks = [];
+    regions.forEach(R => R.sec.checks.forEach(k => checks.push({ ...k, where: R.name })));
+    sups.forEach(S => S.sec && S.sec.checks.forEach(k => checks.push({ ...k, where: `Support ${S.id === 'A' ? 'at landing A' : 'at landing C'} (top)` })));
+    const util = Math.max(...checks.map(k => k.util));
+    // characteristic reactions per metre width, G and Q apart (for a landing that carries the flight)
+    const RG = beam(L, zs.map(z => ({ x0: z.x0, x1: z.x1, w: z.gk }))), RQ = beam(L, zs.map(z => ({ x0: z.x0, x1: z.x1, w: z.qk })));
+    return { kind: 'flight', inp, L, a, b, c, pA, pC, n, g, r, t, hA, hC, alpha: alpha * 180 / Math.PI, gkF, gkA, gkC, qk, parts, regions, gov, sups, supV, E, Eall, cbs, checks, util,
+      reactions: { G1: RG.R1, G2: RG.R2, Q1: RQ.R1, Q2: RQ.R2, U1: E.R1, U2: E.R2 } };
+  }
+
+  // ---------- half landing ----------
+  function landing(inp) {
+    const fck = fin(inp.fck, 'f_ck'), fyk = inp.fyk ?? 500, gc = inp.gc ?? 25, psi2 = fin(inp.psi2 ?? 0.3, 'ψ₂');
+    const a = pos(inp.a, 'Flight A width'), b = pos(inp.b, 'Flight B width'), c = nonneg(inp.c ?? 0, 'Gap c'), d = nonneg(inp.d ?? 0, 'End d');
+    const h = pos(inp.h, 'Landing thickness'), w = pos(inp.w, 'Landing width'), qk = nonneg(inp.qk, 'Imposed load'), fL = nonneg(inp.fL ?? 0, 'Finishes');
+    const L = (a + b + c + 2 * d) / 1000, weff = Math.min(w, 1800) / 1000;
+    const GA = nonneg(inp.GA ?? 0, 'Flight A G'), QA = nonneg(inp.QA ?? 0, 'Flight A Q'), GB = nonneg(inp.GB ?? 0, 'Flight B G'), QB = nonneg(inp.QB ?? 0, 'Flight B Q');
+    const gk = gc * h / 1000 + fL;
+    const zs = [{ id: 'L', x0: 0, x1: L, gk, qk }, { id: 'A', x0: d / 1000, x1: (d + a) / 1000, gk: GA / weff, qk: QA / weff }, { id: 'B', x0: L - (d + b) / 1000, x1: L - d / 1000, gk: GB / weff, qk: QB / weff }];
+    const cbs = combos(inp), E = envelope(L, zs.map(z => ({ ...z, over: false })), cbs, psi2, [{ name: 'all', on: () => true }]);
+    const R = E.sag(0, L);
+    const common = { fck, fyk, cover: pos(inp.cover, 'Cover'), coverComp: inp.coverTop ?? inp.cover, dg: inp.dg ?? 20, psi2, wk: inp.wk ?? 0.3, ae: inp.ae ?? 15 };
+    const bot = inp.bottom || { phi: 12, s: 150 }, top = inp.top || { phi: 10, s: 200 };
+    const V = Math.max(E.R1, E.R2), wS = cbs[0].gG * gk + cbs[0].gQ * qk + (cbs[0].gG * GA + cbs[0].gQ * QA) / weff;
+    const sec = section({ ...common, h, M: R.M, Mk: R.Mk, Mqp: R.Mqp, bar: bot, moment: 'sagging', defl: { system: 'ss', span: L * 1000, brittle: inp.brittle !== false }, shear: { VEd: V * 1000, w: d > 0 ? cbs[0].gG * gk + cbs[0].gQ * qk : wS } });
+    const sups = [];
+    if (inp.supports === 'monolithic') { const M = 0.25 * R.M; sups.push({ id: 'ends', M, rule: '25 % of the span moment (9.3.1.2(2))', sec: section({ ...common, cover: inp.coverTop ?? inp.cover, coverComp: inp.cover, h, M, Mk: 0.25 * R.Mk, Mqp: 0.25 * R.Mqp, bar: top, moment: 'hogging' }) }); }
+    const checks = [...sec.checks.map(k => ({ ...k, where: 'Landing' })), ...sups.flatMap(S => S.sec.checks.map(k => ({ ...k, where: 'Supports (top)' })))];
+    return { kind: 'landing', inp, L, a, b, c, d, h, w, weff, gk, qk, zs, E, R, sec, sups, cbs, checks, util: Math.max(...checks.map(k => k.util)), reactions: { U1: E.R1, U2: E.R2 } };
+  }
+  // smallest bars (area per metre) that pass every check of the chosen face: bottom (sagging, shear, deflection) or top
+  const PHIS = [10, 12, 16, 20, 25], SPACINGS = [300, 275, 250, 225, 200, 175, 150, 125, 100];
+  function suggest(inp, face) {
+    let best = null;
+    const fn = inp.kind === 'landing' ? landing : flight;
+    for (const phi of PHIS) for (const s of SPACINGS) {
+      const bar = { phi, s }, trial = { ...inp, [face]: bar };
+      let R; try { R = fn(trial); } catch (e) { continue; }
+      const ks = R.checks.filter(k => face === 'top' ? /top/.test(k.where) : !/top/.test(k.where));
+      if (!ks.length || ks.some(k => !(k.util <= 1))) continue;
+      const A = Math.PI * phi * phi / 4 * 1000 / s;
+      if (!best || A < best.A - 1e-9 || (Math.abs(A - best.A) <= 1e-9 && s > best.bar.s)) best = { bar, A };
+      break;
+    }
+    return best ? best.bar : null;
+  }
+  return { beam, envelope, combos, flight, landing, suggest };
+})();
+
+</script>
+<script id="ui">
+'use strict';
+const $ = id => document.getElementById(id);
+const STORE = 'et-rc-stair-v1';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const f0 = v => Number.isFinite(v) ? Math.round(v).toString() : '–', f1 = v => Number.isFinite(v) ? (Math.round(v * 10) / 10).toString() : '–', f2 = v => Number.isFinite(v) ? v.toFixed(2) : '–', f3 = v => Number.isFinite(v) ? v.toFixed(3) : '–';
+const ufmt = u => !Number.isFinite(u) ? '&gt;99' : u.toFixed(3);
+const sub = s => esc(s).replace(/_([A-Za-z0-9,]+)/g, '<sub>$1</sub>');
+const FCK = [[25, 'C25/30'], [28, 'C28/35'], [30, 'C30/37'], [32, 'C32/40'], [35, 'C35/45'], [40, 'C40/50'], [45, 'C45/55'], [50, 'C50/60']];
+$('fck').innerHTML = FCK.map(([v, t]) => `<option value="${v}"${v === 32 ? ' selected' : ''}>${t}</option>`).join('');
+const PH = [8, 10, 12, 16, 20, 25];
+$('bphi').innerHTML = PH.map(p => `<option value="${p}"${p === 12 ? ' selected' : ''}>H${p}</option>`).join(''); $('tphi').innerHTML = PH.map(p => `<option value="${p}"${p === 10 ? ' selected' : ''}>H${p}</option>`).join('');
+const setVal = (id, v) => { const el = $(id); if (!el || v == null) return; if (el.type === 'checkbox') { el.checked = !!v; return; } if (el.tagName === 'SELECT' && ![...el.options].some(o => o.value === String(v))) return; el.value = v; };
+let mode = 'flight', last = null, lastFlight = null;
+function setMode(m) { mode = m; document.querySelectorAll('#modes button').forEach(b => b.classList.toggle('on', b.dataset.m === m)); $('pane-flight').classList.toggle('hidden', m !== 'flight'); $('pane-landing').classList.toggle('hidden', m !== 'landing'); document.querySelectorAll('.fl').forEach(e => e.classList.toggle('hidden', m !== 'flight')); }
+document.querySelectorAll('#modes button').forEach(b => b.onclick = () => setMode(b.dataset.m));
+const FIELDS = ['pName', 'pJob', 'pBy', 'pRef', 'n', 'going', 'rise', 't', 'a', 'pA', 'hA', 'c', 'pC', 'hC', 'supports', 'la', 'lb', 'lc', 'ld', 'lh', 'lw', 'lsupports', 'GA', 'QA', 'GB', 'QB', 'qk', 'fF', 'fL', 'use', 'comb', 'fck', 'cover', 'coverTop', 'bphi', 'bs', 'tphi', 'ts', 'wk', 'ae'];
+const collect = () => { const s = { v: 1, mode }; FIELDS.forEach(id => s[id] = $(id).value); return s; };
+const num = id => $(id).value === '' ? NaN : +$(id).value;
+function input() {
+  const common = { fck: +$('fck').value, fyk: 500, cover: num('cover'), coverTop: num('coverTop'), qk: num('qk'), fL: num('fL'), psi2: +$('use').value, psi0: 0.7, comb: $('comb').value, wk: num('wk'), ae: num('ae'),
+    bottom: { phi: +$('bphi').value, s: num('bs') }, top: { phi: +$('tphi').value, s: num('ts') } };
+  if (mode === 'flight') return { ...common, kind: 'flight', n: num('n'), going: num('going'), rise: num('rise'), t: num('t'), a: num('a'), pA: num('pA') || 0, hA: num('hA'), c: num('c'), pC: num('pC') || 0, hC: num('hC'), fF: num('fF'), supports: $('supports').value };
+  return { ...common, kind: 'landing', a: num('la'), b: num('lb'), c: num('lc') || 0, d: num('ld') || 0, h: num('lh'), w: num('lw'), GA: num('GA'), QA: num('QA'), GB: num('GB'), QB: num('QB'), supports: $('lsupports').value };
+}
+// RC Stair drawings (inlined into the UI script; uses f0, f1). Flight: sectional elevation with steps, landings,
+// supports and projections, the bending moment diagram (governing pattern) beneath. Landing: the strip across the stair
+// with the flight loads, and its bending moment diagram.
+const INK = l => l ? '#000' : 'var(--txt)', MUT = l => l ? '#666' : 'var(--mut)', ACC = l => l ? '#1b67b0' : 'var(--accent)', FILL = l => l ? '#ececec' : '#e6e9ee';
+function bmd(run, x0, x1, X, yBase, hMax, light, Mlab) {
+  const N = 160, pts = []; let mMax = 1e-9;
+  for (let i = 0; i <= N; i++) { const x = x0 + (x1 - x0) * i / N; const m = run.B.M(x); pts.push([x, m]); mMax = Math.max(mMax, Math.abs(m)); }
+  const Y = m => yBase + m / mMax * hMax;   // sagging drawn below the axis
+  let g = `<line x1="${X(x0)}" y1="${yBase}" x2="${X(x1)}" y2="${yBase}" stroke="${MUT(light)}" stroke-width="0.8"/>`;
+  g += `<path d="M${X(x0)} ${yBase} ${pts.map(p => `L${X(p[0]).toFixed(1)} ${Y(p[1]).toFixed(1)}`).join(' ')} L${X(x1)} ${yBase} Z" fill="${ACC(light)}" fill-opacity="0.14" stroke="${ACC(light)}" stroke-width="1.4"/>`;
+  for (const [x, m, t] of Mlab) g += `<text x="${X(x)}" y="${Y(m) + (m >= 0 ? 15 : -6)}" font-size="12" text-anchor="middle" fill="${INK(light)}">${t}</text>`;
+  return g;
+}
+function svgFlight(R, light) {
+  const W0 = 440, x0 = -R.pA / 1000, x1 = R.L + R.pC / 1000, H = (R.n + 1) * R.r / 1000, a = R.a / 1000, b = R.b / 1000, g = R.g / 1000, r = R.r / 1000;
+  const yTop = H + 0.05, yBot = -Math.max(R.hA, R.t / Math.cos(R.alpha * Math.PI / 180), 150) / 1000 - 0.35;
+  const sc = Math.min((W0 - 60) / (x1 - x0), 170 / (yTop - yBot)), X = x => 30 + (W0 - 60 - (x1 - x0) * sc) / 2 + (x - x0) * sc, Y = y => 20 + (yTop - y) * sc;
+  const tv = R.t / 1000 / Math.cos(R.alpha * Math.PI / 180), hA = R.hA / 1000, hC = R.hC / 1000;
+  // top profile: landing A, steps, landing C
+  const top = [[x0, 0], [a, 0]]; for (let i = 0; i < R.n; i++) { top.push([a + i * g, (i + 1) * r]); top.push([a + (i + 1) * g, (i + 1) * r]); }
+  top.push([a + b, H]); top.push([x1, H]);
+  // soffit: landing C bottom, the flight soffit parallel to the pitch line through the inner corners, landing A bottom
+  const soff = y0 => x => (x - a) * r / g - tv;   // soffit line
+  const s = soff(0), xs1 = a + (H - hC + tv) * g / r, xs0 = a + (-hA + tv) * g / r;
+  const bot = [];
+  if (R.c + R.pC > 0) { bot.push([x1, H - hC]); bot.push([Math.min(xs1, x1), H - hC]); } else bot.push([x1, s(x1)]);
+  if (R.a + R.pA > 0) { bot.push([Math.max(xs0, x0), -hA]); bot.push([x0, -hA]); } else bot.push([x0, s(x0)]);
+  const poly = [...top, ...bot];
+  let gr = `<path d="M${poly.map(p => `${X(p[0]).toFixed(1)} ${Y(p[1]).toFixed(1)}`).join(' L')} Z" fill="${FILL(light)}" stroke="${INK(light)}" stroke-width="1.3" stroke-linejoin="round"/>`;
+  // supports (triangles under the soffit at x = 0 and L)
+  const ySup = x => x <= a ? -hA : x >= a + b ? H - hC : s(x);
+  for (const xs of [0, R.L]) { const yy = Y(ySup(xs)); gr += `<path d="M${X(xs)} ${yy} l-8 13 h16 Z" fill="none" stroke="${INK(light)}" stroke-width="1.3"/>`; }
+  gr += `<text x="${X(0)}" y="${Y(ySup(0)) + 26}" font-size="11.5" text-anchor="middle" fill="${MUT(light)}">A</text><text x="${X(R.L)}" y="${Y(ySup(R.L)) + 26}" font-size="11.5" text-anchor="middle" fill="${MUT(light)}">C</text>`;
+  const yLab = Y(yBot) + 2;
+  gr += `<text x="${(X(0) + X(R.L)) / 2}" y="${yLab}" font-size="11.5" text-anchor="middle" fill="${MUT(light)}">span ${f0(R.L * 1000)} mm; ${R.n} treads × ${f0(R.g)}, risers ${f1(R.r)} mm, pitch ${f1(R.alpha)}°</text>`;
+  // bending moment diagram (governing pattern of the flight's design)
+  const run = R.gov.run.run || R.gov.run, yB = yLab + 36, labs = [[R.gov.x, R.gov.M, `${f1(R.gov.M)} kNm/m`]];
+  R.sups.forEach(S => { if (S.M > 0 && (S.id === 'A' ? R.pA : R.pC) > 0) labs.push([S.id === 'A' ? 0 : R.L, -S.M, `−${f1(S.M)}`]); });
+  gr += bmd(run, x0, x1, X, yB, 56, light, labs);
+  return `<svg class="stair" viewBox="0 0 ${W0} ${(yB + 84).toFixed(0)}" role="img" aria-label="Sectional elevation of the flight with its bending moment diagram">${gr}</svg>`;
+}
+function svgLanding(R, light) {
+  const W0 = 440, L = R.L, sc = (W0 - 60) / L, X = x => 30 + x * sc;
+  let g = `<rect x="${X(0)}" y="40" width="${L * sc}" height="${Math.max(10, R.h / 1000 * sc)}" fill="${FILL(light)}" stroke="${INK(light)}" stroke-width="1.3"/>`;
+  const yS = 40 + Math.max(10, R.h / 1000 * sc);
+  for (const xs of [0, L]) g += `<path d="M${X(xs)} ${yS} l-8 13 h16 Z" fill="none" stroke="${INK(light)}" stroke-width="1.3"/>`;
+  for (const z of R.zs.filter(q => q.id !== 'L')) g += `<rect x="${X(z.x0)}" y="18" width="${(z.x1 - z.x0) * sc}" height="18" fill="${ACC(light)}" fill-opacity="0.16" stroke="${ACC(light)}"/><text x="${X((z.x0 + z.x1) / 2)}" y="31" font-size="11.5" text-anchor="middle" fill="${INK(light)}">flight ${z.id}</text>`;
+  g += `<text x="${X(L / 2)}" y="${yS + 30}" font-size="11.5" text-anchor="middle" fill="${MUT(light)}">span ${f0(L * 1000)} mm; flight loads over an effective width of ${f0(R.weff * 1000)} mm</text>`;
+  g += bmd(R.R.run, 0, L, X, yS + 52, 56, light, [[R.R.x, R.R.M, `${f1(R.R.M)} kNm/m`]]);
+  return `<svg class="stair" viewBox="0 0 ${W0} ${(yS + 130).toFixed(0)}" role="img" aria-label="The landing strip with the flight loads and its bending moment diagram">${g}</svg>`;
+}
+
+const bar = c => `<div class="ck"><div class="nm">${sub(c.name)}<small>${esc(c.ref)} &nbsp;${sub(c.note || '')}</small></div><div class="bar"><i class="${c.util > 1 ? 'over' : ''}" style="width:${Math.min(100, c.util * 100 / 1.2)}%"></i></div><div class="u ${c.util > 1 ? 'over' : ''}">${ufmt(c.util)}</div></div>`;
+const kv = (k, v) => `<div><b>${k}</b><span>${v}</span></div>`;
+function grouped(R) {
+  const order = [...new Set(R.checks.map(k => k.where))];
+  return order.map(w => `<div class="where">${esc(w)}</div><div class="checks">${R.checks.filter(k => k.where === w).sort((a, b) => b.util - a.util).map(bar).join('')}</div>`).join('');
+}
+function values(R) {
+  if (R.kind === 'flight') {
+    const rv = R.reactions;
+    return kv('Span (m)', f2(R.L)) + kv('Pitch', f1(R.alpha) + '°') + kv('g<sub>k</sub> flight (kN/m²)', f2(R.gkF)) + (R.a + R.pA > 0 ? kv('g<sub>k</sub> landing A', f2(R.gkA)) : '') + (R.c + R.pC > 0 ? kv('g<sub>k</sub> landing C', f2(R.gkC)) : '')
+      + R.regions.map(q => kv(`${q.name}: M<sub>Ed</sub> (kNm/m)`, `${f1(q.M)} (d ${f0(q.sec.d)})`)).join('') + R.sups.filter(S => S.M > 0).map(S => kv(`Support ${S.id}: hogging`, f1(S.M))).join('')
+      + kv('ULS reactions (kN/m)', `${f1(rv.U1)}, ${f1(rv.U2)}`) + kv('G<sub>k</sub> reactions', `${f1(rv.G1)}, ${f1(rv.G2)}`) + kv('Q<sub>k</sub> reactions', `${f1(rv.Q1)}, ${f1(rv.Q2)}`)
+      + (R.gov.sec.defl ? kv('l/d allowed / actual', `${f1(R.gov.sec.defl.allowed)} / ${f1(R.gov.sec.defl.actual)}`) : '');
+  }
+  return kv('Span (m)', f2(R.L)) + kv('Effective width (m)', f2(R.weff)) + kv('g<sub>k</sub> landing (kN/m²)', f2(R.gk)) + kv('M<sub>Ed</sub> (kNm/m)', f1(R.R.M)) + kv('d (mm)', f0(R.sec.d))
+    + kv('ULS reactions (kN/m)', `${f1(R.reactions.U1)}, ${f1(R.reactions.U2)}`) + (R.sec.defl ? kv('l/d allowed / actual', `${f1(R.sec.defl.allowed)} / ${f1(R.sec.defl.actual)}`) : '');
+}
+function render() {
+  const { R, inp } = last, W = [...R.checks].sort((a, b) => b.util - a.util)[0];
+  const what = R.kind === 'flight' ? `Flight of ${R.n} treads, span ${f2(R.L)} m, waist ${f0(R.t)} mm; bottom H${inp.bottom.phi} @ ${inp.bottom.s}${R.sups.some(S => S.M > 0) ? `, top H${inp.top.phi} @ ${inp.top.s}` : ''}`
+    : `Half landing, span ${f2(R.L)} m, h ${f0(R.h)} mm; bottom H${inp.bottom.phi} @ ${inp.bottom.s}`;
+  let h = `<div class="verdict ${R.util > 1 ? 'fail' : ''}"><div><div class="big">${R.util > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(R.util)}</div><div class="sub">Governs: ${esc(W.where)}, ${sub(W.name.charAt(0).toLowerCase() + W.name.slice(1))} (${esc(W.ref)})<br>${what}</div></div></div>`;
+  h += `<div class="dlabel">${R.kind === 'flight' ? 'Sectional elevation and bending moments' : 'Landing strip and bending moments'}</div>${R.kind === 'flight' ? svgFlight(R, false) : svgLanding(R, false)}`;
+  h += `<div class="dlabel">Checks</div>${grouped(R)}`;
+  h += `<div class="dlabel">Values</div><div class="kv">${values(R)}</div>`;
+  if (R.kind === 'flight') h += `<div class="help">Each part is designed with its own depth for the largest sagging moment within it, the imposed load on the span ${R.pA + R.pC > 0 ? 'and on or off the projections' : ''}${R.cbs.length > 1 ? ', under 6.10a and 6.10b' : ''}. <button class="lnk" id="toLanding">Use these reactions for the half landing</button></div>`;
+  h += `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  $('results').innerHTML = h;
+  $('printBtn').onclick = () => { $('report').innerHTML = report(); window.print(); };
+  if ($('toLanding')) $('toLanding').onclick = () => { const r = R.reactions; setVal('GA', f2(r.G2)); setVal('QA', f2(r.Q2)); setVal('GB', f2(r.G2)); setVal('QB', f2(r.Q2)); $('fromFlight').textContent = `From the flight: the reaction at support C (G ${f2(r.G2)}, Q ${f2(r.Q2)} kN/m) for both flights; edit if the flights differ.`; setMode('landing'); run(); };
+}
+function run() {
+  try { localStorage.setItem(STORE, JSON.stringify(collect())); } catch (e) { /* storage unavailable */ }
+  try { const inp = input(), R = inp.kind === 'flight' ? Stair.flight(inp) : Stair.landing(inp); last = { R, inp }; if (R.kind === 'flight') lastFlight = R; render(); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+function suggest(face) {
+  try { const b = Stair.suggest(input(), face); if (!b) { $('results').innerHTML = `<div class="err">No bar size and spacing up to H25 @ 100 passes: make the slab deeper.</div>`; return; }
+    setVal(face === 'top' ? 'tphi' : 'bphi', b.phi); setVal(face === 'top' ? 'ts' : 'bs', b.s); run(); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+$('sugB').onclick = () => suggest('bottom'); $('sugT').onclick = () => suggest('top');
+// ---------- A4 sheet ----------
+const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
+function report() {
+  const s = collect(), today = new Date().toLocaleDateString('en-GB'), { R, inp } = last;
+  const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.pRef) || '&nbsp;'}</div><div class="ttl">RC stair ${R.kind === 'flight' ? 'flight' : 'half landing'} to BS EN 1992-1-1 + UK NA</div></div>`;
+  let b = `<div class="rs"><h2>${R.kind === 'flight' ? 'Flight' : 'Half landing'}</h2>${R.kind === 'flight' ? svgFlight(R, true) : svgLanding(R, true)}`;
+  b += rl(`C${inp.fck}, covers ${inp.cover} / ${inp.coverTop} mm; q<sub>k</sub> = ${inp.qk} kN/m², finishes ${R.kind === 'flight' ? `${inp.fF} (flight), ` : ''}${inp.fL} kN/m² (landings); ${R.cbs.map(c => c.name).join(' and ')}; ψ₂ = ${inp.psi2}`, '', '')
+    + rl(`<span>${values(R).replace(/<div><b>/g, '').replace(/<\/b><span>/g, ' = ').replace(/<\/span><\/div>/g, '; ')}</span>`, '', '') + '</div>';
+  const secs = R.kind === 'flight' ? [...R.regions.map(q => [q.name, q.sec]), ...R.sups.filter(S => S.sec).map(S => [`Support ${S.id} (top, ${S.rule})`, S.sec])] : [['Landing', R.sec], ...R.sups.map(S => [`Supports (top, ${S.rule})`, S.sec])];
+  for (const [name, sec] of secs) b += `<div class="rs"><h2>${esc(name)}</h2>${sec.steps.map(st => rl(sub(st.text), st.ref, st.val)).join('')}${sec.checks.map(k => rl(sub(`${k.name}: ${k.note}`), k.ref, `${k.util > 1 ? 'FAIL' : 'OK'} ${ufmt(k.util)}`)).join('')}</div>`;
+  b += `<p class="rp" style="color:#555">Generated by EngineeringTools — RC Stair Design.</p>`;
+  return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
+}
+$('calc').onclick = run;
+(function init() {
+  let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
+  if (s && s.v === 1) { FIELDS.forEach(id => setVal(id, s[id])); setMode(s.mode === 'landing' ? 'landing' : 'flight'); }
+})();
+</script>
+<footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent engineer to check and approve all calculations before they are used.</footer>
+</body>
+</html>
