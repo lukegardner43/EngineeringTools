@@ -1,0 +1,44 @@
+// Drives "RC 2D Frame Analysis and Design.html" in jsdom (NODE_PATH=<dir with node_modules> node ui_smoke.js).
+const { JSDOM } = require('jsdom');
+const fs = require('fs'), path = require('path');
+const html = fs.readFileSync(path.join(__dirname, '..', '..', 'RC 2D Frame Analysis and Design.html'), 'utf8');
+let n = 0, fails = 0;
+const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`); if (!c) fails++; };
+function page(store) {
+  const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.org/', beforeParse(w) { w.print = () => { w.printed = true; }; w.scrollTo = () => {}; if (store) w.localStorage.setItem('et-rc-frame-v1', store); } });
+  const w = dom.window; w.errs = []; w.addEventListener('error', e => w.errs.push(e.message)); return w;
+}
+const w = page(), d = w.document, $ = id => d.getElementById(id), res = () => $('results').textContent, shown = el => !el.classList.contains('hidden');
+truth('page loads without script errors', w.errs.length === 0);
+truth('multi-storey mode first, four storeys and two load rows by default', shown(d.querySelector('.card.fr')) && d.querySelectorAll('#stRows .row').length === 4 && d.querySelectorAll('#loadRows .row').length === 2);
+truth('bar inputs for four floors and the columns', d.querySelectorAll('#barBox details.floor').length === 5 && d.querySelectorAll('#barBox .row.cbar').length === 8);
+$('calc').click();
+truth('calculate: verdict, frame and moment drawings', /PASS|FAIL/.test(res()) && d.querySelectorAll('#results svg.frame').length === 2);
+truth('floor selector, beam line views and tables', d.querySelectorAll('#floorSeg button').length === 4 && !!$('floorBox').querySelector('svg.elev') && $('floorBox').querySelectorAll('svg.env').length === 2 && /Curtailment/.test(res()));
+truth('columns table and base reactions', /Line 1, storey 1/.test(res()) && /Base reactions/.test(res()) && /λ/.test(res()));
+d.querySelectorAll('#floorSeg button')[2].click();
+truth('another floor shown', /Floor 3: elevation/.test($('floorBox').textContent) && d.querySelectorAll('#floorSeg button')[2].classList.contains('on'));
+$('suggest').click();
+truth('suggest: every check passes', /PASS/.test(res()) && !$('results').querySelector('.err'));
+truth('suggested bars written into the inputs', [...d.querySelectorAll('#barBox .row.bbar .n')].some(e => +e.value !== 3));
+$('braced').value = '0'; $('braced').dispatchEvent(new w.Event('change'));
+truth('unbraced: wind column and imperfection option shown, δ off', shown(d.querySelector('#stRows .wind')) && shown(d.querySelector('label.unb')) && $('delta').disabled);
+$('calc').click();
+truth('unbraced: wind and imperfection in the analysis, sway effective lengths', /Unbraced: wind both ways/.test(res()) && /θi = 0\.00/.test(res().replace(/\s/g, '').replace('θi=', 'θi = ')) || /imperfection θ/.test(res()));
+$('cantR').value = '1.5'; $('cantR').dispatchEvent(new w.Event('change')); $('braced').value = '1'; $('braced').dispatchEvent(new w.Event('change')); $('calc').click();
+truth('cantilever: span 4 in the loads and bars, design runs', [...d.querySelectorAll('#loadRows .span')][0].innerHTML.includes('4 (cant.)') && /Span 4 \(cant\.\) bottom/.test($('barBox').textContent) && /PASS|FAIL/.test(res()));
+$('addLoad').click(); const r = [...d.querySelectorAll('#loadRows .row')].pop(); r.querySelector('.span').value = '1'; r.querySelector('.span').dispatchEvent(new w.Event('change')); r.querySelector('.a').value = '3'; $('calc').click();
+truth('a point load on span 2 is drawn and designed', /PASS|FAIL/.test(res()) && !$('results').querySelector('.err'));
+d.querySelector('#modes button[data-m="sub"]').click();
+truth('sub-frame mode: its card, one floor of bars', shown(d.querySelector('.card.sb')) && !shown(d.querySelector('.card.fr')) && d.querySelectorAll('#barBox details.floor').length === 2);
+$('calc').click();
+truth('sub-frame: verdict, no floor selector, columns below and above', /PASS|FAIL/.test(res()) && !$('floorSeg') && /Line 1, below/.test(res()) && /Line 1, above/.test(res()));
+$('saH').value = '0'; $('saH').dispatchEvent(new w.Event('change')); $('calc').click();
+truth('sub-frame without columns above (a roof)', /PASS|FAIL/.test(res()) && !/Line 1, above/.test(res()));
+$('bays').value = '6, x'; $('calc').click(); truth('bad bays reported', !!$('results').querySelector('.err')); $('bays').value = '6, 7.5, 6'; $('calc').click();
+$('printBtn').click();
+truth('print: A4 sheet with the basis, frame, beams and columns', w.printed && /RC sub-frame/.test($('report').textContent) && /Floor 1 beams/.test($('report').textContent) && /Column line 1/.test($('report').textContent) && $('report').querySelectorAll('svg').length >= 4);
+const w2 = page(w.localStorage.getItem('et-rc-frame-v1')), $2 = id => w2.document.getElementById(id);
+truth('inputs restored, sub-frame mode included', $2('saH').value === '0' && $2('cantR').value === '1.5' && !w2.document.querySelector('.card.sb').classList.contains('hidden'));
+truth('no script errors', w.errs.length === 0 && w2.errs.length === 0);
+console.log(`\n${n - fails}/${n} passed`); if (fails) process.exit(1);

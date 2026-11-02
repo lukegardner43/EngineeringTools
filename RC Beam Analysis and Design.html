@@ -813,15 +813,19 @@ const RCBeam = (() => {
     }
     const scale = (arr, f) => arr.map(l => ({ ...l, w: (l.w || 0) * f, P: (l.P || 0) * f }));
     const loadsFor = (gG, qOn, gQ) => raw.map((r, i) => [...scale(r.G, gG), ...(qOn[i] ? scale(r.Q, gQ) : [])]);
-    const sets = inp.sets || combinationSets(inp.rule || '6.10', inp.psi0 ?? 0.7), pats = inp.patterns || patternList(n, !!inp.adjacent);
+    // A frame tool may supply its own cases (caseList: [{ name, set, q, key }], slsList: [{ q, key }]) and the end moments of
+    // each from its own analysis (solveCase(case) -> { hog, colM }); the loads on this beam line stay as given here.
+    const sets = inp.caseList ? [...new Set(inp.caseList.map(c => c.set))] : inp.sets || combinationSets(inp.rule || '6.10', inp.psi0 ?? 0.7), pats = inp.patterns || patternList(n, !!inp.adjacent);
+    const solveC = inp.solveCase || (c => solve(P, c.loads));
     const cases = [];
-    for (const st of sets) for (const pt of pats) cases.push({ name: `${st.label}: ${pt.name}`, set: st, q: pt.q, loads: loadsFor(st.gG, pt.q, st.gQ), uls: true });
-    cases.push({ name: '1.0 G_k only (minimum)', set: { gG: 1, gQ: 0 }, q: Array(n).fill(false), loads: loadsFor(1, Array(n).fill(false), 0), uls: false });
-    cases.forEach(c => { const r = solve(P, c.loads); c.hog = r.hog; c.colM = r.colM; c.R = reactions(P, c.loads, r.hog); });
+    if (inp.caseList) for (const cl of inp.caseList) cases.push({ name: cl.name, set: cl.set, q: cl.q, key: cl.key, loads: loadsFor(cl.set.gG, cl.q, cl.set.gQ), uls: true });
+    else for (const st of sets) for (const pt of pats) cases.push({ name: `${st.label}: ${pt.name}`, set: st, q: pt.q, loads: loadsFor(st.gG, pt.q, st.gQ), uls: true });
+    cases.push({ name: '1.0 G_k only (minimum)', set: { gG: 1, gQ: 0 }, q: Array(n).fill(false), key: 'min', loads: loadsFor(1, Array(n).fill(false), 0), uls: false });
+    cases.forEach(c => { const r = solveC(c); c.hog = r.hog; c.colM = r.colM; c.R = reactions(P, c.loads, r.hog); });
     // SLS (elastic, no redistribution): characteristic 1.0 G + 1.0 Q and quasi-permanent 1.0 G + psi2 Q, same patterns
     const psi2 = inp.psi2 ?? 0.3, sls = { k: [], qp: [] };
-    for (const pt of pats) { sls.k.push({ q: pt.q, loads: loadsFor(1, pt.q, 1) }); sls.qp.push({ q: pt.q, loads: loadsFor(1, pt.q, psi2) }); }
-    for (const arr of [sls.k, sls.qp]) arr.forEach(c => { c.hog = solve(P, c.loads).hog; });
+    for (const pt of inp.slsList || pats) { sls.k.push({ q: pt.q, key: pt.key, sls: 'k', loads: loadsFor(1, pt.q, 1) }); sls.qp.push({ q: pt.q, key: pt.key, sls: 'qp', loads: loadsFor(1, pt.q, psi2) }); }
+    for (const arr of [sls.k, sls.qp]) arr.forEach(c => { c.hog = solveC(c).hog; });
     // ---------- redistribution ----------
     const red = inp.redist || 'limited';
     const side = (c, j, s) => s === 'L' ? (j > 0 ? c.hog[j - 1][1] : null) : (j < n ? c.hog[j][0] : null);   // L: end of span j-1; R: start of span j
