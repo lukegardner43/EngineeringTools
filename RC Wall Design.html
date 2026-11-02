@@ -730,7 +730,7 @@ function runCore() {
   const iC = R.locs.reduce((a, L, j) => L.sMax > (R.locs[a]?.sMax ?? -Infinity) ? j : a, 0), iT = R.locs.reduce((a, L, j) => L.sT > (R.locs[a]?.sT ?? -Infinity) ? j : a, 0), iS = R.locs.reduce((a, L, j) => L.need > (R.locs[a]?.need ?? -Infinity) ? j : a, 0);
   const sub = R.locs.length ? `Core ${R.k + 1}: compression up to ${f2(R.locs[iC].sMax)} N/mm² (location ${iC + 1}), tension up to ${f2(R.locs[iT].sT)} N/mm² (location ${iT + 1}); most steel at location ${iS + 1}: ${f0(R.locs[iS].need)} mm²/m, ${barTxt(R.locs[iS].bv)} each face`
     : `Core ${R.k + 1}: add check locations to find the steel`;
-  let h = verdict(R.util, sub) + `<div class="dlabel">Building plan</div>${svgBuilding(D, R.k, false)}`;
+  let h = (from ? `<div class="from">${esc(from)}</div>` : '') + verdict(R.util, sub) + `<div class="dlabel">Building plan</div>${svgBuilding(D, R.k, false)}`;
   h += `<table class="t"><tr><th>Core</th><th>A (m²)</th><th>x̄, ȳ (mm)</th><th>I<sub>x</sub> (m⁴)</th><th>I<sub>y</sub> (m⁴)</th><th>NS share</th><th>EW share</th></tr>`
     + D.C.map((q, k) => `<tr${k === R.k ? ' style="font-weight:600"' : ''}><td>${k + 1}</td><td>${f3(q.A / 1e6)}</td><td>${f0(q.xc)}, ${f0(q.yc)}</td><td>${f3(q.Ixm)}</td><td>${f3(q.Iym)}</td><td>${f3(q.stiffNS)} → ${f3(q.shareNS)}</td><td>${f3(q.stiffEW)} → ${f3(q.shareEW)}</td></tr>`).join('') + `</table>`;
   h += `<div class="help">Shares: by stiffness → with torsion (the larger with the extra eccentricity either way). Stiffness centre (${f2(D.xs / 1000)}, ${f2(D.ys / 1000)}) m; the wind resultant is ${f2(D.ex0 / 1000)} m from it along x and ${f2(D.ey0 / 1000)} m along y.</div>`;
@@ -798,6 +798,15 @@ function report() {
 $('calc').onclick = run;
 (function init() {
   let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
+  // wind moments handed over from Wind Loading: #in=<JSON of the fields>
+  let handed = null; const m = /^#in=(.+)$/.exec(location.hash || '');
+  if (m) { try { handed = JSON.parse(decodeURIComponent(m[1])); } catch (e) { handed = null; } }
+  if (handed && handed.v === 1) {
+    const keep = {}; FIELDS.forEach(id => { if (handed[id] !== undefined) keep[id] = handed[id]; });
+    restore({ ...(s && s.v === 1 ? s : { cores: JSON.parse(JSON.stringify(DEF_CORES)) }), ...keep, mode: handed.mode === 'core' ? 'core' : 'panel' });
+    from = handed.from || null; try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* file: urls */ }
+    run(); return;
+  }
   if (s && s.v === 1) restore(s); else { cores = JSON.parse(JSON.stringify(DEF_CORES)); renderCores(0); refreshVis(); }
 })();
 </script>

@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wind Loading</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* Engineering Tools: shared light style (tasteskill app sheet "Achromatic ledger", seed 959138263).
+   Ink chrome on a blue-grey drawing-office ground; the one hue (#1d5fbf) goes on the main data element
+   (envelopes, utilisation bars); status colour only on the verdict and on a check that is over. */
+:root{
+  --bg:#f2f4f7; --surf:#ffffff; --surf2:#f7f8fa; --bdr:#e3e5e8; --bdr2:#d1d5db; --rule:#eceef1;
+  --txt:#111111; --lbl:#33363a; --mut:#5f6368; --faint:#6b6b6b;
+  --accent:#1d5fbf; --accent-dim:#e3ebf8;
+  --primary:#1d1f20;
+  --pass:#247b50; --warn:#b45309; --fail:#c4242a;
+  --pass-bg:#dcfae5; --pass-ink:#04250e; --fail-bg:#ffedea; --fail-ink:#831c1e;
+  --r:6px; --rc:8px;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:var(--sans);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5;min-height:100svh;padding:28px 32px 40px;
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;}
+.container{max-width:1376px;margin:0 auto;}
+/* title row: a photograph of the member's material (img/<material>.jpg beside the page, set by <body data-material>)
+   under a neutral scrim, with the breadcrumb, the tool's name and one line of scope. Without the photo it is a plain ink band. */
+.page-hdr{position:relative;isolation:isolate;overflow:hidden;border-radius:var(--rc);min-height:164px;padding:18px 24px 20px;margin-bottom:12px;
+  display:flex;flex-direction:column;justify-content:flex-end;color:#fff;background:#2c3036 var(--photo,none) center/cover no-repeat;}
+.page-hdr::before{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.55) 45%,rgba(0,0,0,.18) 100%);} /* taste-skill-ignore: neutral scrim under text on a photograph */
+.page-hdr::after{content:var(--credit,'');position:absolute;right:10px;bottom:8px;font-size:11px;color:rgba(255,255,255,.9);background:rgba(0,0,0,.4);padding:1px 6px;border-radius:4px;}
+.home-lnk{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:rgba(255,255,255,.88);text-decoration:none;font-weight:500;margin-bottom:auto;align-self:flex-start;padding-bottom:12px;}
+.home-lnk:hover{color:#fff;text-decoration:underline;}
+.home-lnk svg{width:14px;height:14px;}
+.page-hdr h1{font-size:26px;font-weight:600;line-height:1.25;letter-spacing:-0.01em;margin-bottom:4px;color:#fff;}
+.page-hdr p{font-size:14px;color:rgba(255,255,255,.92);max-width:900px;}
+body[data-material="steel"]{--photo:url(img/steel.jpg);--credit:'Photo: Chevsapher, CC0';}
+body[data-material="concrete"]{--photo:url(img/concrete.jpg);--credit:'Photo: MassDOT, public domain';}
+body[data-material="masonry"]{--photo:url(img/masonry.jpg);--credit:'Photo: Håkan Svensson, CC BY 2.5';}
+body[data-material="timber"]{--photo:url(img/timber.jpg);--credit:'Photo: Sebastian Wallroth, public domain';}
+body[data-material="frame"]{--photo:url(img/frame.jpg);--credit:'Photo: Wikideas1, CC0';}
+body[data-material="ground"]{--photo:url(img/ground.jpg);--credit:'Photo: Fons Heijnsbroek, CC0';}
+@media print{.page-hdr{display:none;}}
+/* inputs on the left, the answer on the right: (1376 - 12) x 6/13 = 630 | 734 */
+.main-grid{display:grid;grid-template-columns:minmax(380px,6fr) 7fr;gap:12px;align-items:start;}
+@media(max-width:1100px){.main-grid{grid-template-columns:1fr;}}
+.main-grid > div{min-width:0;}
+#results table.t{display:block;overflow-x:auto;white-space:nowrap;}
+.card{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rc);padding:20px 24px;margin-bottom:12px;}
+.section-title{font-size:16px;font-weight:600;color:var(--txt);margin:0 0 14px;display:flex;justify-content:space-between;align-items:baseline;gap:12px;line-height:1.3;}
+.section-title .aux{color:var(--mut);font-size:13px;font-weight:400;text-align:right;}
+.form-group{margin-bottom:14px;}
+.form-group label,.lbl{display:block;font-size:13px;margin-bottom:5px;color:var(--lbl);font-weight:500;line-height:1.35;}
+input[type="number"],input[type="text"],select{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);padding:0 10px;height:36px;border-radius:var(--r);font-family:var(--sans);font-size:14px;width:100%;font-variant-numeric:tabular-nums;transition:border-color .12s;}
+input::placeholder{color:var(--faint);}
+input:hover,select:hover{border-color:#b9bec6;}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);}
+input:disabled,select:disabled{background:var(--surf2);color:var(--mut);}
+select option{background:var(--surf);color:var(--txt);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.grid2 > .form-group,.grid3 > .form-group{display:flex;flex-direction:column;justify-content:flex-end;}
+.chk{display:block;position:relative;padding-left:26px;font-size:13px;color:var(--lbl);margin:8px 0;cursor:pointer;line-height:1.45;}
+.chk input{position:absolute;left:0;top:1px;width:16px;height:16px;accent-color:var(--primary);}
+.help{font-size:13px;color:var(--mut);margin-top:4px;line-height:1.45;}
+/* segmented control: grey track, white pill on the chosen option */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#e9ecf0;border-radius:var(--rc);margin-bottom:14px;}
+.seg button{background:transparent;color:var(--mut);border:1px solid transparent;border-radius:var(--r);height:32px;padding:0 10px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;}
+.seg button:hover{color:var(--txt);}
+.seg button.on{background:var(--surf);color:var(--txt);border-color:var(--bdr);}
+/* repeating rows: spans, supports, loads */
+.rows{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+.row{display:grid;gap:8px;align-items:end;background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--r);padding:10px;}
+.row label{font-size:12px;color:var(--mut);margin-bottom:3px;display:block;font-weight:500;line-height:1.3;}
+.row input,.row select{height:32px;font-size:13px;padding:0 8px;}
+.row.span{grid-template-columns:1fr 1.6fr 1fr 32px;}
+.row.load{grid-template-columns:52px 64px 1.1fr 1.1fr 32px;}
+.row.load .vals{grid-column:1 / span 3;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.xbtn{height:32px;width:32px;background:var(--surf);border:1px solid var(--bdr2);color:var(--mut);border-radius:var(--r);cursor:pointer;font-size:16px;line-height:1;}
+.xbtn:hover{color:var(--fail);border-color:var(--fail);}
+.addbtn{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);border-radius:var(--r);height:36px;padding:0 12px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;width:100%;}
+.addbtn:hover{border-color:#9aa0a8;background:var(--surf2);}
+/* the one primary action, near-black; secondary actions white and outlined */
+.btn{height:44px;padding:0 16px;border:none;border-radius:var(--r);font-weight:600;cursor:pointer;font-family:var(--sans);font-size:15px;width:100%;background:var(--primary);color:#fff;}
+.btn:hover{background:#000;}
+.btn:focus-visible,.btn2:focus-visible,.addbtn:focus-visible,.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.btn2{width:100%;height:38px;padding:0 12px;background:var(--surf);border:1px solid var(--bdr2);border-radius:var(--r);font-size:14px;font-weight:500;color:var(--txt);cursor:pointer;font-family:var(--sans);margin-top:8px;}
+.btn2:hover{border-color:#9aa0a8;background:var(--surf2);}
+.hidden{display:none!important;}
+/* results */
+.placeholder{display:flex;align-items:center;justify-content:center;min-height:160px;color:var(--mut);font-size:14px;text-align:center;padding:0 24px;}
+.verdict{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--bdr);border-radius:var(--rc);background:var(--surf2);margin-bottom:16px;}
+.verdict .big{font-size:24px;font-weight:600;line-height:1.2;color:var(--pass);letter-spacing:-0.01em;}
+.verdict.fail .big{color:var(--fail);}
+.verdict .sub{font-size:13px;color:var(--mut);margin-top:2px;}
+/* the utilisation ledger: check, clause, bar to scale (full track = 1.2, ink tick at the 1.0 limit), figure */
+.checks{display:flex;flex-direction:column;margin-bottom:8px;}
+.ck{display:grid;grid-template-columns:1.25fr 2fr 56px;gap:14px;align-items:center;font-size:13px;padding:7px 0;border-bottom:1px solid var(--rule);}
+.ck:last-child{border-bottom:none;}
+.ck .nm{color:var(--txt);line-height:1.35;} .ck .nm small{display:block;color:var(--mut);font-size:12px;}
+.bar{height:8px;background:#e8ebef;border-radius:4px;position:relative;}
+.bar::after{content:'';position:absolute;left:83.333%;top:-4px;bottom:-4px;width:1.5px;background:var(--txt);border-radius:1px;}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:4px;}
+.bar i.over{background:var(--fail);} /* 0.9-1.0 stays blue: a well-used member is not a warning; the tick shows how close it is */
+.ck .u{text-align:right;font-weight:600;font-size:14px;}
+.ck .u.over{color:var(--fail);}
+.diag{width:100%;height:auto;display:block;margin-bottom:6px;}
+/* screen drawings: the smallest labels lifted to the 11px floor (the print sheet keeps its own sizes) */
+.container svg text[font-size="8"],.container svg text[font-size="8.5"],.container svg text[font-size="9"],.container svg text[font-size="9.5"],
+.container svg text[font-size="10"],.container svg text[font-size="10.5"]{font-size:11px;}
+.dlabel{font-size:14px;font-weight:600;color:var(--txt);margin:20px 0 6px;line-height:1.3;}
+table.t{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px;font-variant-numeric:tabular-nums;}
+table.t th{color:var(--mut);font-weight:500;text-align:right;padding:6px 8px;border-bottom:1px solid var(--bdr);font-size:12px;}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--rule);text-align:right;}
+table.t th:first-child,table.t td:first-child{text-align:left;}
+.note{font-size:13px;color:var(--mut);background:var(--surf2);border:1px solid var(--rule);border-radius:var(--r);padding:10px 12px;margin-top:10px;line-height:1.5;}
+.err{color:var(--fail-ink);background:var(--fail-bg);font-size:13px;padding:10px 12px;border-radius:var(--r);margin-bottom:12px;}
+.busy{opacity:.55;pointer-events:none;}
+a{color:var(--txt);}
+sub,sup{font-size:max(11px,.75em);line-height:0;}
+@media(max-width:560px){body{padding:16px 16px 32px;} .card{padding:16px;} .ck{grid-template-columns:1fr 1fr 48px;gap:10px;} .grid3{grid-template-columns:1fr 1fr;}
+  .row.span{grid-template-columns:1fr 32px;} .row.span > div:nth-child(2),.row.span > div:nth-child(3){display:none;} .row.load .vals{grid-template-columns:1fr 1fr;}
+  .page-hdr{min-height:150px;padding:14px 16px 16px;} .page-hdr h1{font-size:22px;} .page-hdr::after{top:10px;bottom:auto;} .page-hdr::before{background:rgba(0,0,0,.6);} .verdict .big{font-size:22px;}}
+/* disclaimer: on screen at the foot of the page, and printed at the end of the calculation sheet */
+.disclaimer{max-width:1376px;margin:24px auto 0;padding-top:14px;border-top:1px solid var(--bdr,#e3e5e8);font-size:13px;line-height:1.55;color:var(--mut,#5f6368);}
+.disclaimer b{color:var(--txt,#111);font-weight:600;}
+@media print{.disclaimer{display:block!important;max-width:none;margin:4mm 0 0;padding-top:1.5mm;border-top:0.4pt solid #888;font-family:Arial,Helvetica,sans-serif;font-size:7.5pt;color:#000;break-inside:avoid;} .disclaimer b{color:#000;}}
+/* ---------- print: A4 calculation sheet ---------- */
+#report{display:none;}
+@media print{
+  @page{size:A4;margin:12mm 12mm 14mm;}
+  body{background:#fff;color:#000;padding:0;background-image:none;font-size:9.5pt;}
+  .container{display:none;}
+  #report{display:block;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  #report table.wrap{width:100%;border-collapse:collapse;}
+  #report thead td{padding:0 0 3mm;}
+  .rh{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;border:0.6pt solid #000;font-size:8pt;}
+  .rh div{padding:1.2mm 2mm;border-right:0.6pt solid #000;}
+  .rh div:last-child{border-right:none;}
+  .rh b{display:block;font-size:6.5pt;color:#444;font-weight:normal;text-transform:uppercase;letter-spacing:.3pt;}
+  .rh .ttl{grid-column:1 / -1;border-top:0.6pt solid #000;border-right:none;font-weight:bold;font-size:10pt;}
+  .rs{margin:0 0 3.5mm;}
+  .rs h2,.rs h3{break-after:avoid;}
+  .rl,.rt,.rsvg,.rp,.rt tr{break-inside:avoid;}
+  .rs h2{font-size:10pt;margin:3mm 0 1.5mm;padding-bottom:0.8mm;border-bottom:0.8pt solid #000;}
+  .rs h3{font-size:9pt;margin:2mm 0 1mm;}
+  .rl{display:grid;grid-template-columns:1fr 92px 132px;gap:2mm;padding:0.5mm 0;font-size:8.6pt;}
+  .rl .cl{text-align:right;color:#444;font-size:7.5pt;}
+  .rl .rv{text-align:right;font-weight:bold;}
+  .ok{color:#0a7a3e;} .ng{color:#c00;}
+  .rt{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;}
+  .rt th,.rt td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;}
+  .rt th{background:#eee;font-weight:bold;}
+  .rt td:first-child,.rt th:first-child,.rt.lft td,.rt.lft th{text-align:left;}
+  .rp{font-size:8.3pt;line-height:1.45;margin:1mm 0;}
+  .rsvg{width:100%;height:auto;}
+  .rsvg *{vector-effect:non-scaling-stroke;}
+}
+
+svg.plan,svg.elev{width:100%;height:auto;display:block;max-width:480px;margin:4px auto 10px;}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px 20px;background:var(--surf2);border:1px solid var(--rule);border-radius:var(--rc);padding:12px 16px;margin-bottom:12px;}
+.kv div{min-width:0;} .kv b{display:block;font-size:12px;font-weight:400;color:var(--mut);} .kv span{font-size:15px;font-weight:600;}
+.sum{background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--rc);padding:14px 16px;margin-bottom:16px;}
+.sum .big{font-size:22px;font-weight:600;line-height:1.25;} .sum .sub{font-size:13px;color:var(--mut);margin-top:4px;line-height:1.5;}
+.seg.four{grid-template-columns:repeat(4,1fr);}
+a.lnk{color:var(--accent);font-size:13px;}
+@media print{svg.plan,svg.elev{max-width:110mm;} .rtab{width:100%;border-collapse:collapse;font-size:7.5pt;margin:1mm 0 2mm;} .rtab th,.rtab td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;} .rtab th:first-child,.rtab td:first-child{text-align:left;}}
+</style>
+</head>
+<body data-material="frame">
+<div class="container">
+  <div class="page-hdr">
+    <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
+    <h1>Wind Loading</h1>
+    <p>Wind on rectangular-plan buildings to BS EN 1991-1-4 + UK NA &nbsp;·&nbsp; peak velocity pressure with the NA figures, altitude, direction, town terrain, displacement and orography &nbsp;·&nbsp; wall and roof pressures (flat, monopitch, duopitch), overall forces and overturning moments in four directions</p>
+  </div>
+  <div class="main-grid">
+    <div id="inputs">
+      <div class="card">
+        <div class="section-title">Project</div>
+        <div class="form-group"><label>Project</label><input type="text" id="pName" placeholder="Project name"></div>
+        <div class="grid3"><div class="form-group"><label>Job no.</label><input type="text" id="pJob"></div><div class="form-group"><label>By</label><input type="text" id="pBy"></div><div class="form-group"><label>Member ref.</label><input type="text" id="pRef" placeholder="e.g. Main building"></div></div>
+      </div>
+      <div class="card">
+        <div class="section-title">Site and wind speed</div>
+        <div class="grid3">
+          <div class="form-group"><label>v<sub>b,map</sub> (m/s)</label><input type="number" id="vbmap" value="22" step="0.1"></div>
+          <div class="form-group"><label>Site altitude A (m)</label><input type="number" id="alt" value="50" step="5"></div>
+          <div class="form-group"><label>Return period (years)</label><input type="number" id="Tr" value="50" step="1"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Direction factor c<sub>dir</sub></label><select id="cdirm"><option value="table">Table NA.1, each face</option><option value="one">1.0 for every direction</option></select></div>
+          <div class="form-group dirb"><label>Side 1 faces (° from north)</label><input type="number" id="bearing" value="0" step="5"></div>
+          <div class="form-group"><label>Season factor c<sub>season</sub></label><input type="number" id="cseason" value="1" step="0.01"></div>
+        </div>
+        <div class="help">v<sub>b,map</sub> from the map, Figure NA.1. For each wind direction c<sub>dir</sub> is the largest value of Table NA.1 within 45° either side of the normal to the face hit (NA.2.6). c<sub>season</sub> = 1.0 for permanent buildings (Table NA.2 for shorter periods); c<sub>prob</sub> from (4.2) with K = 0.2, n = 0.5 for a return period other than 50 years.</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Terrain</div>
+        <div class="grid3">
+          <div class="form-group"><label>Terrain</label><select id="terrain"><option value="country">Country</option><option value="town">Town</option></select></div>
+          <div class="form-group"><label>Distance upwind to the shoreline (km)</label><input type="number" id="xSea" value="30" step="1"></div>
+          <div class="form-group town"><label>Distance inside town (km)</label><input type="number" id="xTown" value="2" step="0.1"></div>
+        </div>
+        <div class="grid3 town">
+          <div class="form-group"><label>Average height of buildings upwind (m)</label><input type="number" id="have" value="0" step="0.5"></div>
+          <div class="form-group"><label>Open distance upwind x (m)</label><input type="number" id="xOpen" value="0" step="5"></div>
+        </div>
+        <div class="help">Use the shortest distances in the 30° sector either side of each wind direction; a site by the sea is 0.1 km from it, and lakes over 1 km long within 1 km upwind count as sea. Sites less than 0.1 km into town are country (NA.2.11). The displacement height h<sub>dis</sub> = 0.8 h<sub>ave</sub> (at most 0.6h) reduces with open ground in front of the building and is zero beyond 6h<sub>ave</sub> (A.5).</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Orography</div>
+        <div class="grid3">
+          <div class="form-group"><label>Feature</label><select id="orog"><option value="none">None</option><option value="hill">Hill or ridge</option><option value="cliff">Cliff or escarpment</option></select></div>
+          <div class="form-group oro"><label>Height H (m)</label><input type="number" id="oH" value="40" step="1"></div>
+          <div class="form-group oro"><label>Upwind slope length L<sub>u</sub> (m)</label><input type="number" id="oLu" value="400" step="10"></div>
+        </div>
+        <div class="grid3 oro">
+          <div class="form-group"><label>Site from the crest X (m)</label><input type="number" id="oX" value="0" step="10"></div>
+          <div class="form-group ohill"><label>Downwind slope length L<sub>d</sub> (m)</label><input type="number" id="oLd" value="400" step="10"></div>
+          <div class="form-group"><label>Altitude of the base (m)</label><input type="number" id="oAb" value="10" step="5"></div>
+        </div>
+        <div class="help oro">X is negative upwind of the crest. c<sub>o</sub> by A.3 (s from the A.3 expressions); q<sub>p</sub> = q<sub>p,flat</sub>[(c<sub>o</sub> + 0.6)/1.6]² up to 50 m (NA.4a), (NA.4b) above, with v<sub>b</sub> at the altitude of the base; the larger of that and the flat value at the site altitude is used.</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Building</div>
+        <div class="grid3">
+          <div class="form-group"><label>Length of sides 1 and 3, L (m)</label><input type="number" id="L" value="30" step="0.5"></div>
+          <div class="form-group"><label>Length of sides 2 and 4, W (m)</label><input type="number" id="W" value="12" step="0.5"></div>
+          <div class="form-group"><label>Eaves height h (m)</label><input type="number" id="h" value="6" step="0.25"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Roof</label><select id="rtype"><option value="flat">Flat</option><option value="mono">Monopitch, low eave on side 1</option><option value="duo">Duopitch, ridge along L</option></select></div>
+          <div class="form-group pitched"><label>Pitch α (°)</label><input type="number" id="pitch" value="22.5" step="0.5"></div>
+          <div class="form-group flatonly"><label>Eaves</label><select id="eaves"><option value="sharp">Sharp</option><option value="parapet">Parapet</option><option value="curved">Curved</option><option value="mansard">Mansard</option></select></div>
+        </div>
+        <div class="grid3 flatonly">
+          <div class="form-group ev-parapet"><label>Parapet height h<sub>p</sub> (m)</label><input type="number" id="hp" value="1" step="0.1"></div>
+          <div class="form-group ev-curved"><label>Eaves radius r (m)</label><input type="number" id="rr" value="1" step="0.1"></div>
+          <div class="form-group ev-mansard"><label>Mansard angle (°)</label><input type="number" id="ma" value="45" step="5"></div>
+        </div>
+        <div class="help">Sides are numbered clockwise in plan, side 1 facing the bearing given above. The duopitch ridge runs along L, so sides 2 and 4 are the gables; a monopitch falls towards side 1. Roofs under 5° are flat (Table NA.5).</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Internal pressure and structural factor</div>
+        <div class="grid3">
+          <div class="form-group"><label>c<sub>pi</sub>, positive</label><input type="number" id="cpi1" value="0.2" step="0.05"></div>
+          <div class="form-group"><label>c<sub>pi</sub>, negative</label><input type="number" id="cpi2" value="-0.3" step="0.05"></div>
+          <div class="form-group"><label>Overall force on the walls</label><select id="fmeth"><option value="DE">Zones D and E</option><option value="net">Net coefficient (Table NA.4 note f)</option></select></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Size factor c<sub>s</sub></label><select id="cszone"><option value="">1.0</option><option value="A">Table NA.3, zone A</option><option value="B">Table NA.3, zone B</option><option value="C">Table NA.3, zone C</option></select></div>
+          <div class="form-group"><label>Dynamic factor c<sub>d</sub></label><input type="number" id="cd" value="1" step="0.01"></div>
+        </div>
+        <div class="help">+0.2 and −0.3 without a dominant opening (7.2.9(6)); with one, c<sub>pi</sub> = 0.75 or 0.9 of c<sub>pe</sub> at it (7.2.9(5)). The zone for c<sub>s</sub> is read from Figure NA.7 or NA.8 (A or B in country, C deep in town); c<sub>d</sub> = 1.0 for buildings up to 20 m framed with walls round the lifts and stairs, masonry buildings and timber-frame housing (NA.2.20 Note 4), otherwise Figure NA.9. The overall force on the walls is the windward (D) and leeward (E) pressures added, or the net coefficient of the figure in Table NA.4 note f) (1.1 at h/d = 1, read between 0.8 at h/d ≤ 0.25 and 1.3 at 5). It uses q<sub>p</sub> c<sub>s</sub>c<sub>d</sub>, with the 7.2.2(3) lack-of-correlation factor applied to walls and roof (NA.2.19); pressures for cladding use q<sub>p</sub> alone.</div>
+      </div>
+      <button class="btn" id="calc">Calculate</button>
+    </div>
+    <div><div class="card" id="results"><div class="placeholder">Set up the site, the terrain and the building, then Calculate.</div></div></div>
+  </div>
+</div>
+<div id="report"></div>
+<script id="engine">
+// UK NA to BS EN 1991-1-4 Figures NA.3 to NA.8, read at the points below (heights z − h_dis in m across, distance in km down:
+// upwind to the shoreline for NA.3, NA.5 and NA.7, inside town for NA.4, NA.6 and NA.8). Values between the points by
+// shape-preserving cubic interpolation in log z and log distance. NA.8 reads 1.001 where the figure says "use 1,0".
+const UKNA_CHARTS = {
+  ce: { fig: 'NA.7', z: [2,2.518,3.027,3.811,5.024,7.604,10.991,14.489,17.419,22.963,27.608,34.756,52.605,76.038,104.961,200], x: [0.1,0.123,0.162,0.229,0.398,0.603,0.912,1.288,1.585,2.399,3.388,6.31,9.55,25.119,46.774,100],
+    v: [[1.9124,2.0683,2.1635,2.2849,2.4341,2.6637,2.8718,3.0285,3.1324,3.2862,3.3862,3.5074,3.7109,3.8732,4.0024,4.2607],
+       [1.8824,2.0406,2.1635,2.2849,2.4341,2.6637,2.8718,3.0285,3.1324,3.2862,3.3862,3.5074,3.7109,3.8732,4.0024,4.2607],
+       [1.845,2.0001,2.1285,2.2849,2.4341,2.6637,2.8718,3.0285,3.1324,3.2862,3.3862,3.5074,3.7109,3.8732,4.0024,4.2607],
+       [1.802,1.9535,2.0789,2.2411,2.4341,2.6637,2.8718,3.0285,3.1324,3.2862,3.3862,3.5074,3.7109,3.8732,4.0024,4.2607],
+       [1.7408,1.887,2.0082,2.1649,2.3602,2.6637,2.8718,3.0285,3.1324,3.2862,3.3862,3.5074,3.7109,3.8732,4.0024,4.2607],
+       [1.7,1.8429,1.9613,2.1142,2.305,2.6051,2.8718,3.0285,3.1324,3.2862,3.3862,3.5074,3.7109,3.8732,4.0024,4.2607],
+       [1.6631,1.8029,1.9187,2.0683,2.255,2.5486,2.8221,3.0285,3.1324,3.2862,3.3862,3.5074,3.7109,3.8732,4.0024,4.2607],
+       [1.635,1.7724,1.8862,2.0333,2.2168,2.5054,2.7743,2.9823,3.1233,3.2862,3.3862,3.5074,3.7109,3.8732,4.0024,4.2607],
+       [1.6191,1.7552,1.8679,2.0136,2.1952,2.4811,2.7473,2.9533,3.0929,3.2862,3.3862,3.5074,3.7109,3.8732,4.0024,4.2607],
+       [1.5894,1.723,1.8336,1.9766,2.155,2.4356,2.6969,2.8991,3.0362,3.244,3.3832,3.5074,3.7109,3.8732,4.0024,4.2607],
+       [1.5666,1.6982,1.8073,1.9482,2.124,2.4006,2.6582,2.8575,2.9926,3.1974,3.3345,3.5054,3.7109,3.8732,4.0024,4.2607],
+       [1.5293,1.6578,1.7643,1.9019,2.0735,2.3434,2.5949,2.7895,2.9213,3.1213,3.2552,3.422,3.7109,3.8732,4.0024,4.2607],
+       [1.5068,1.6334,1.7384,1.8739,2.043,2.309,2.5568,2.7485,2.8785,3.0755,3.2074,3.3718,3.6617,3.8732,4.0024,4.2607],
+       [1.4607,1.5834,1.6851,1.8166,1.9805,2.2383,2.4785,2.6644,2.7903,2.9813,3.1092,3.2685,3.5496,3.7875,3.9836,4.2607],
+       [1.4349,1.5555,1.6554,1.7845,1.9455,2.1988,2.4348,2.6173,2.7411,2.9287,3.0543,3.2109,3.4869,3.7207,3.9133,4.2607],
+       [1.4068,1.525,1.623,1.7496,1.9074,2.1558,2.3871,2.5661,2.6874,2.8714,2.9945,3.148,3.4187,3.6478,3.8367,4.1947]] },
+  ceT: { fig: 'NA.8', z: [2,2.761,3.319,3.811,4.179,4.582,4.798,5.508,6.623,6.935,7.604,10.496,12.051,14.489,16.635,17.419,20,20.943,27.608,36.394,41.786,52.605,60.399,63.246,76.038,104.961,120.512,200], x: [0.1,0.115,0.141,0.151,0.186,0.229,0.282,0.427,0.457,0.646,0.794,1.047,1.288,1.82,2.399,3.388,5.495,6.761,9.55,13.49,19.055],
+    v: [[0.8822,0.9451,0.9792,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001],
+       [0.867,0.9289,0.9623,0.9866,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001],
+       [0.8455,0.9058,0.9385,0.9621,0.9775,0.9926,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001],
+       [0.8386,0.8985,0.9309,0.9543,0.9696,0.9846,0.992,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001],
+       [0.8191,0.8775,0.9091,0.932,0.947,0.9616,0.9688,0.9901,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001],
+       [0.8008,0.8579,0.8888,0.9112,0.9258,0.9401,0.9472,0.968,0.995,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001],
+       [0.7837,0.8396,0.8699,0.8918,0.9061,0.9201,0.927,0.9474,0.9737,0.9802,0.993,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001],
+       [0.7527,0.8064,0.8354,0.8565,0.8702,0.8837,0.8903,0.9099,0.9352,0.9414,0.9537,0.9954,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001],
+       [0.7479,0.8013,0.8301,0.851,0.8647,0.878,0.8846,0.9041,0.9293,0.9354,0.9476,0.989,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001],
+       [0.7254,0.7771,0.8051,0.8254,0.8386,0.8516,0.858,0.8769,0.9013,0.9073,0.9191,0.9592,0.9759,0.9977,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001],
+       [0.7129,0.7638,0.7913,0.8113,0.8242,0.837,0.8433,0.8618,0.8858,0.8917,0.9033,0.9428,0.9592,0.9806,0.9964,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001],
+       [0.6974,0.7472,0.7742,0.7937,0.8064,0.8188,0.825,0.8431,0.8666,0.8724,0.8837,0.9223,0.9384,0.9593,0.9748,0.9799,0.9952,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001],
+       [0.6866,0.7356,0.7621,0.7813,0.7938,0.8061,0.8122,0.83,0.8531,0.8588,0.87,0.908,0.9238,0.9444,0.9597,0.9647,0.9797,0.9847,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001],
+       [0.6699,0.7177,0.7435,0.7623,0.7745,0.7864,0.7924,0.8098,0.8323,0.8379,0.8488,0.8859,0.9012,0.9214,0.9363,0.9412,0.9558,0.9607,0.9896,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001],
+       [0.6575,0.7045,0.7299,0.7482,0.7602,0.772,0.7778,0.7949,0.817,0.8224,0.8332,0.8696,0.8847,0.9044,0.919,0.9239,0.9382,0.943,0.9714,0.9995,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001],
+       [0.6433,0.6893,0.7141,0.7321,0.7438,0.7553,0.761,0.7777,0.7994,0.8047,0.8152,0.8508,0.8655,0.8849,0.8992,0.9039,0.918,0.9226,0.9504,0.9779,0.9917,1.001,1.001,1.001,1.001,1.001,1.001,1.001],
+       [0.6254,0.67,0.6942,0.7117,0.723,0.7342,0.7397,0.756,0.7771,0.7822,0.7924,0.827,0.8414,0.8602,0.8741,0.8787,0.8924,0.8969,0.9239,0.9506,0.964,0.9863,0.9996,1.001,1.001,1.001,1.001,1.001],
+       [0.6183,0.6625,0.6863,0.7036,0.7149,0.7259,0.7314,0.7475,0.7683,0.7734,0.7835,0.8177,0.8319,0.8505,0.8642,0.8687,0.8823,0.8868,0.9134,0.9399,0.9531,0.9751,0.9883,0.9927,1.001,1.001,1.001,1.001],
+       [0.6073,0.6506,0.6741,0.6911,0.7021,0.713,0.7183,0.7341,0.7546,0.7596,0.7695,0.8031,0.817,0.8353,0.8488,0.8532,0.8665,0.8709,0.8971,0.9231,0.9361,0.9577,0.9707,0.975,0.9922,1.001,1.001,1.001],
+       [0.5971,0.6397,0.6627,0.6794,0.6903,0.701,0.7063,0.7218,0.7419,0.7468,0.7566,0.7896,0.8033,0.8213,0.8345,0.8389,0.852,0.8563,0.8821,0.9076,0.9204,0.9416,0.9544,0.9586,0.9755,1.001,1.001,1.001],
+       [0.5876,0.6296,0.6523,0.6687,0.6794,0.6899,0.6951,0.7104,0.7302,0.735,0.7446,0.7771,0.7906,0.8083,0.8213,0.8256,0.8385,0.8427,0.8681,0.8933,0.9058,0.9267,0.9393,0.9434,0.9601,0.9885,1.001,1.001]] },
+  cr: { fig: 'NA.3', z: [2,3.811,7.604,14.489,27.608,38.109,52.605,76.038,104.961,200], x: [0.1,0.141,0.186,0.282,0.398,0.851,1.585,6.31,25.119,100],
+    v: [[0.8438,0.974,1.1144,1.2469,1.3733,1.4254,1.4791,1.5431,1.6021,1.7335],
+       [0.8329,0.9615,1.1,1.2308,1.3644,1.4254,1.4791,1.5431,1.6021,1.7335],
+       [0.8248,0.9521,1.0893,1.2188,1.3511,1.419,1.4791,1.5431,1.6021,1.7335],
+       [0.8136,0.9392,1.0745,1.2023,1.3327,1.3997,1.4683,1.5431,1.6021,1.7335],
+       [0.805,0.9293,1.0632,1.1896,1.3187,1.3849,1.4528,1.5333,1.6021,1.7335],
+       [0.7883,0.9099,1.0411,1.1649,1.2913,1.3561,1.4226,1.5014,1.5738,1.7332],
+       [0.7764,0.8962,1.0254,1.1473,1.2718,1.3357,1.4012,1.4788,1.5501,1.7071],
+       [0.7546,0.871,0.9965,1.115,1.236,1.2981,1.3617,1.4372,1.5065,1.659],
+       [0.7374,0.8513,0.9739,1.0897,1.208,1.2686,1.3308,1.4046,1.4723,1.6214],
+       [0.7237,0.8354,0.9558,1.0694,1.1855,1.245,1.3061,1.3784,1.4449,1.5912]] },
+  crT: { fig: 'NA.4', z: [2,3.811,7.604,14.489,27.608,31.698,36.394,43.755,52.605,66.226,76.038,95.726,104.961,144.887,166.353,200], x: [0.1,0.123,0.151,0.186,0.263,0.302,0.372,0.525,0.603,0.741,0.851,2.399,6.761,19.055],
+    v: [[0.6741,0.7831,0.8719,0.9371,0.9904,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001],
+       [0.6655,0.7731,0.8607,0.9251,0.9777,0.9877,0.9974,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001],
+       [0.6573,0.7636,0.8501,0.9137,0.9657,0.9756,0.9852,0.9974,1.001,1.001,1.001,1.001,1.001,1.001,1.001,1.001],
+       [0.6496,0.7546,0.8402,0.903,0.9543,0.9642,0.9736,0.9857,0.9973,1.001,1.001,1.001,1.001,1.001,1.001,1.001],
+       [0.6376,0.7407,0.8247,0.8864,0.9368,0.9464,0.9557,0.9676,0.979,0.9925,1.001,1.001,1.001,1.001,1.001,1.001],
+       [0.6332,0.7355,0.819,0.8802,0.9302,0.9398,0.949,0.9608,0.9721,0.9855,0.9932,1.001,1.001,1.001,1.001,1.001],
+       [0.6268,0.7281,0.8107,0.8713,0.9208,0.9303,0.9394,0.9511,0.9623,0.9756,0.9832,0.9954,1.001,1.001,1.001,1.001],
+       [0.6168,0.7166,0.7978,0.8575,0.9062,0.9156,0.9246,0.936,0.947,0.9601,0.9676,0.9797,0.9843,1.001,1.001,1.001],
+       [0.6131,0.7122,0.793,0.8523,0.9008,0.91,0.919,0.9304,0.9413,0.9543,0.9618,0.9737,0.9784,0.994,1.001,1.001],
+       [0.6077,0.706,0.7861,0.8449,0.8929,0.9021,0.9109,0.9223,0.9331,0.946,0.9534,0.9652,0.9698,0.9853,0.9917,1.001],
+       [0.6043,0.702,0.7816,0.8401,0.8879,0.897,0.9058,0.9171,0.9278,0.9406,0.948,0.9598,0.9644,0.9798,0.9861,0.994],
+       [0.582,0.6761,0.7528,0.8091,0.8551,0.8639,0.8724,0.8832,0.8936,0.9059,0.913,0.9244,0.9288,0.9436,0.9497,0.958],
+       [0.5644,0.6556,0.73,0.7846,0.8292,0.8377,0.8459,0.8565,0.8665,0.8785,0.8853,0.8964,0.9006,0.915,0.9209,0.929],
+       [0.5502,0.6392,0.7116,0.7649,0.8083,0.8167,0.8247,0.8349,0.8447,0.8564,0.8631,0.8738,0.878,0.892,0.8978,0.905]] },
+  Iv: { fig: 'NA.5', z: [2,2.637,3.811,4.798,5.768,7.604,10.991,14.489,20.943,27.608,38.109,43.755,52.605,79.621,104.961,151.716,174.193,200], x: [0.1,0.115,0.141,0.186,0.214,0.229,0.324,0.398,0.646,0.692,0.851,1.047,1.585,2.57,3.89,6.31,11.749,13.49,25.119,33.113,53.703,100],
+    v: [[0.213,0.2026,0.184,0.1735,0.1658,0.1549,0.1414,0.1319,0.1196,0.1133,0.1075,0.1048,0.1008,0.0906,0.0829,0.072,0.0678,0.0636],
+       [0.213,0.2044,0.1867,0.1762,0.1684,0.1575,0.1439,0.1344,0.122,0.1133,0.1075,0.1048,0.1008,0.0906,0.0829,0.072,0.0678,0.0636],
+       [0.213,0.2044,0.1907,0.1802,0.1723,0.1612,0.1476,0.138,0.1255,0.1162,0.1075,0.1048,0.1008,0.0906,0.0829,0.072,0.0678,0.0636],
+       [0.213,0.2044,0.1944,0.1852,0.1772,0.1661,0.1523,0.1426,0.13,0.1207,0.1096,0.1048,0.1008,0.0906,0.0829,0.072,0.0678,0.0636],
+       [0.213,0.2044,0.1944,0.1876,0.1796,0.1684,0.1546,0.1448,0.1322,0.1228,0.1116,0.1067,0.1008,0.0906,0.0829,0.072,0.0678,0.0636],
+       [0.213,0.2044,0.1944,0.1888,0.1808,0.1696,0.1557,0.1459,0.1333,0.1238,0.1127,0.1078,0.1011,0.0906,0.0829,0.072,0.0678,0.0636],
+       [0.213,0.2044,0.1944,0.1888,0.1846,0.1752,0.1612,0.1512,0.1384,0.1289,0.1176,0.1126,0.1059,0.0906,0.0829,0.072,0.0678,0.0636],
+       [0.213,0.2044,0.1944,0.1888,0.1846,0.1784,0.1643,0.1543,0.1414,0.1318,0.1204,0.1154,0.1086,0.0927,0.0829,0.072,0.0678,0.0636],
+       [0.213,0.2044,0.1944,0.1888,0.1846,0.1787,0.1711,0.161,0.148,0.1382,0.1267,0.1216,0.1148,0.0986,0.0873,0.072,0.0678,0.0636],
+       [0.213,0.2044,0.1944,0.1888,0.1846,0.1787,0.1713,0.1619,0.1489,0.1391,0.1276,0.1225,0.1156,0.0994,0.0881,0.0728,0.0678,0.0636],
+       [0.213,0.2044,0.1944,0.1888,0.1846,0.1787,0.1713,0.1647,0.1515,0.1417,0.1301,0.125,0.118,0.1017,0.0904,0.075,0.0693,0.0637],
+       [0.213,0.2044,0.1944,0.1888,0.1846,0.1787,0.1713,0.166,0.154,0.1442,0.1325,0.1274,0.1204,0.104,0.0926,0.0772,0.0714,0.0657],
+       [0.213,0.2044,0.1944,0.1888,0.1846,0.1787,0.1713,0.166,0.1588,0.149,0.1372,0.132,0.125,0.1084,0.0969,0.0813,0.0755,0.0697],
+       [0.213,0.2044,0.1944,0.1888,0.1846,0.1787,0.1713,0.166,0.1588,0.1532,0.1423,0.137,0.1299,0.1132,0.1015,0.0857,0.0799,0.0741],
+       [0.213,0.2044,0.1944,0.1888,0.1846,0.1787,0.1713,0.166,0.1588,0.1532,0.1463,0.1411,0.1339,0.117,0.1053,0.0893,0.0834,0.0776],
+       [0.213,0.2044,0.1944,0.1888,0.1846,0.1787,0.1713,0.166,0.1588,0.1532,0.1463,0.1431,0.1382,0.1212,0.1093,0.0933,0.0873,0.0814],
+       [0.213,0.2044,0.1944,0.1888,0.1846,0.1787,0.1713,0.166,0.1588,0.1532,0.1463,0.1431,0.1386,0.1262,0.1142,0.098,0.0919,0.0859],
+       [0.213,0.2044,0.1944,0.1888,0.1846,0.1787,0.1713,0.166,0.1588,0.1532,0.1463,0.1431,0.1386,0.1272,0.1152,0.0989,0.0929,0.0869],
+       [0.213,0.2044,0.1944,0.1888,0.1846,0.1787,0.1713,0.166,0.1588,0.1532,0.1463,0.1431,0.1386,0.1272,0.1185,0.1032,0.0971,0.091],
+       [0.213,0.2044,0.1944,0.1888,0.1846,0.1787,0.1713,0.166,0.1588,0.1532,0.1463,0.1431,0.1386,0.1272,0.1185,0.1049,0.0988,0.0927],
+       [0.213,0.2044,0.1944,0.1888,0.1846,0.1787,0.1713,0.166,0.1588,0.1532,0.1463,0.1431,0.1386,0.1272,0.1185,0.1059,0.1008,0.0956],
+       [0.213,0.2044,0.1944,0.1888,0.1846,0.1787,0.1713,0.166,0.1588,0.1532,0.1463,0.1431,0.1386,0.1272,0.1185,0.1059,0.1008,0.0957]] },
+  kIT: { fig: 'NA.6', z: [2,2.637,3.811,4.582,5.261,6.623,7.604,10.496,14.489,18.24,22.963,27.608,33.192,39.905,45.817,52.605,60.399,63.246,76.038,91.418,104.961,126.191,138.366,144.887,174.193,200], x: [0.1,0.123,0.151,0.186,0.214,0.282,0.347,0.398,0.525,0.646,0.794,1.122,1.585,2.399,3.631,6.761,12.589,19.055],
+    v: [[2.0088,1.8822,1.7517,1.6498,1.5807,1.4771,1.4208,1.3035,1.2018,1.1365,1.0762,1.0308,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+       [2.0088,1.8822,1.7584,1.6941,1.6245,1.5202,1.4636,1.3457,1.2436,1.1782,1.1178,1.0725,1.0293,1,1,1,1,1,1,1,1,1,1,1,1,1],
+       [2.0088,1.8822,1.7584,1.71,1.6669,1.5619,1.505,1.3865,1.284,1.2185,1.1581,1.1129,1.0699,1.0286,1,1,1,1,1,1,1,1,1,1,1,1],
+       [2.0088,1.8822,1.7584,1.71,1.6782,1.6023,1.5451,1.426,1.3231,1.2575,1.1971,1.152,1.1091,1.0681,1.0384,1.0093,1,1,1,1,1,1,1,1,1,1],
+       [2.0088,1.8822,1.7584,1.71,1.6782,1.6285,1.571,1.4515,1.3485,1.2828,1.2224,1.1773,1.1345,1.0938,1.0642,1.0353,1.0068,1,1,1,1,1,1,1,1,1],
+       [2.0088,1.8822,1.7584,1.71,1.6782,1.6326,1.609,1.501,1.3975,1.3316,1.2713,1.2262,1.1837,1.1432,1.114,1.0855,1.0576,1.0484,1.0118,1,1,1,1,1,1,1],
+       [2.0088,1.8822,1.7584,1.71,1.6782,1.6326,1.609,1.5366,1.4328,1.3669,1.3065,1.2615,1.2191,1.1789,1.1499,1.1217,1.0942,1.0851,1.0492,1.0135,1,1,1,1,1,1],
+       [2.0088,1.8822,1.7584,1.71,1.6782,1.6326,1.609,1.5597,1.4557,1.3897,1.3293,1.2844,1.2421,1.202,1.1732,1.1452,1.1179,1.1089,1.0735,1.0383,1.0118,1,1,1,1,1],
+       [2.0088,1.8822,1.7584,1.71,1.6782,1.6326,1.609,1.5629,1.4999,1.4337,1.3733,1.3285,1.2864,1.2466,1.2181,1.1905,1.1637,1.1549,1.1202,1.0862,1.0606,1.0262,1.0087,1,1,1],
+       [2.0088,1.8822,1.7584,1.71,1.6782,1.6326,1.609,1.5629,1.5277,1.4655,1.4051,1.3603,1.3184,1.2788,1.2505,1.2231,1.1967,1.188,1.154,1.1206,1.0958,1.0625,1.0456,1.037,1.0019,1],
+       [2.0088,1.8822,1.7584,1.71,1.6782,1.6326,1.609,1.5629,1.5277,1.4962,1.4357,1.391,1.3492,1.3098,1.2817,1.2547,1.2285,1.22,1.1865,1.1539,1.1297,1.0975,1.0812,1.073,1.0393,1.013],
+       [2.0088,1.8822,1.7584,1.71,1.6782,1.6326,1.609,1.5629,1.5277,1.5084,1.4845,1.4399,1.3983,1.3593,1.3315,1.3049,1.2792,1.2709,1.2383,1.2069,1.1838,1.1532,1.1379,1.1302,1.0989,1.0746],
+       [2.0088,1.8822,1.7584,1.71,1.6782,1.6326,1.609,1.5629,1.5277,1.5084,1.4935,1.4847,1.4447,1.406,1.3785,1.3523,1.3271,1.319,1.2873,1.2569,1.2348,1.2058,1.1914,1.1842,1.1552,1.1328],
+       [2.0088,1.8822,1.7584,1.71,1.6782,1.6326,1.609,1.5629,1.5277,1.5084,1.4935,1.4847,1.4786,1.4586,1.4315,1.4057,1.3811,1.3732,1.3425,1.3134,1.2924,1.2652,1.2518,1.2452,1.2186,1.1985],
+       [2.0088,1.8822,1.7584,1.71,1.6782,1.6326,1.609,1.5629,1.5277,1.5084,1.4935,1.4847,1.4786,1.4752,1.4746,1.4557,1.4316,1.4239,1.3941,1.3661,1.3462,1.3207,1.3083,1.3022,1.2779,1.2599],
+       [2.0088,1.8822,1.7584,1.71,1.6782,1.6326,1.609,1.5629,1.5277,1.5084,1.4935,1.4847,1.4786,1.4752,1.4746,1.4755,1.4781,1.4793,1.4654,1.439,1.4205,1.3973,1.3863,1.3809,1.3599,1.3447],
+       [2.0088,1.8822,1.7584,1.71,1.6782,1.6326,1.609,1.5629,1.5277,1.5084,1.4935,1.4847,1.4786,1.4752,1.4746,1.4755,1.4781,1.4793,1.486,1.4957,1.488,1.4669,1.4571,1.4524,1.4343,1.4217],
+       [2.0088,1.8822,1.7584,1.71,1.6782,1.6326,1.609,1.5629,1.5277,1.5084,1.4935,1.4847,1.4786,1.4752,1.4746,1.4755,1.4781,1.4793,1.486,1.4957,1.5047,1.5098,1.5008,1.4964,1.4802,1.4691]] },
+};
+
+// Wind Loading engine: BS EN 1991-1-4 + UK NA for rectangular-plan buildings.
+// Peak velocity pressure by NA.2.17 (Figures NA.7 and NA.8, orography by A.3 with NA.4a/NA.4b), external pressure
+// coefficients from Tables NA.4 to NA.7, internal pressure by 7.2.9, size factor by Table NA.3, overall force and
+// overturning moment in each of the four orthogonal wind directions. Units: m, kN, kN/m², degrees.
+const Wind = (() => {
+  const T = UKNA_CHARTS;
+  const fin = (v, nm) => { if (!Number.isFinite(v)) throw new Error(`${nm}: give a number`); return v; };
+  const pos = (v, nm) => { fin(v, nm); if (!(v > 0)) throw new Error(`${nm} must be greater than 0`); return v; };
+  const lerp = (x, x0, x1, y0, y1) => x1 === x0 ? y0 : y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+  const interp1 = (xs, ys, x) => { if (x <= xs[0]) return ys[0]; for (let i = 1; i < xs.length; i++) if (x <= xs[i]) return lerp(x, xs[i - 1], xs[i], ys[i - 1], ys[i]); return ys[ys.length - 1]; };
+
+  // ---------- shape-preserving cubic (the Fritsch-Carlson slopes of scipy's PchipInterpolator) ----------
+  function slopes(x, y) {
+    const n = x.length, h = [], d = [], m = new Array(n).fill(0);
+    for (let i = 0; i < n - 1; i++) { h.push(x[i + 1] - x[i]); d.push((y[i + 1] - y[i]) / h[i]); }
+    for (let k = 1; k < n - 1; k++) { if (d[k - 1] * d[k] > 0) { const w1 = 2 * h[k] + h[k - 1], w2 = h[k] + 2 * h[k - 1]; m[k] = (w1 + w2) / (w1 / d[k - 1] + w2 / d[k]); } }
+    const edge = (h0, h1, d0, d1) => { let e = ((2 * h0 + h1) * d0 - h0 * d1) / (h0 + h1); if (Math.sign(e) !== Math.sign(d0)) e = 0; else if (Math.sign(d0) !== Math.sign(d1) && Math.abs(e) > Math.abs(3 * d0)) e = 3 * d0; return e; };
+    if (n > 2) { m[0] = edge(h[0], h[1], d[0], d[1]); m[n - 1] = edge(h[n - 2], h[n - 3], d[n - 2], d[n - 3]); } else { m[0] = m[1] = d[0]; }
+    return m;
+  }
+  function cubic(x, y, m, q) {
+    let i = 0; while (i < x.length - 2 && q > x[i + 1]) i++;
+    const h = x[i + 1] - x[i], t = (q - x[i]) / h;
+    return (2 * t ** 3 - 3 * t ** 2 + 1) * y[i] + (t ** 3 - 2 * t ** 2 + t) * h * m[i] + (-2 * t ** 3 + 3 * t ** 2) * y[i + 1] + (t ** 3 - t ** 2) * h * m[i + 1];
+  }
+  const PREP = {};
+  for (const [k, c] of Object.entries(T)) {
+    const lz = c.z.map(Math.log), lx = c.x.map(Math.log), lv = c.v.map(r => r.map(Math.log));
+    PREP[k] = { lz, lx, lv, mz: lv.map(r => slopes(lz, r)), zmin: c.z[0], zmax: c.z[c.z.length - 1], xmin: c.x[0], xmax: c.x[c.x.length - 1] };
+  }
+  // a chart value at height z (m, z − h_dis) and distance x (km); heights below 2 m read at 2 m, distances clamped to the figure
+  function chart(name, z, x) {
+    const P = PREP[name]; if (!P) throw new Error(`no chart ${name}`);
+    const lz = Math.log(Math.min(P.zmax, Math.max(P.zmin, z))), lx = Math.log(Math.min(P.xmax, Math.max(P.xmin, x)));
+    const col = P.lv.map((r, j) => cubic(P.lz, r, P.mz[j], lz));
+    return Math.exp(cubic(P.lx, col, slopes(P.lx, col), lx));
+  }
+
+  // ---------- basic wind ----------
+  const CDIR = [0.78, 0.73, 0.73, 0.74, 0.73, 0.80, 0.85, 0.93, 1.00, 0.99, 0.91, 0.82];   // Table NA.1, every 30° from north
+  function cdirAt(deg) { const a = ((deg % 360) + 360) % 360, i = Math.floor(a / 30), t = (a - 30 * i) / 30; return CDIR[i] + t * (CDIR[(i + 1) % 12] - CDIR[i]); }
+  // NA.2.6 Note 3: for an orthogonal load case, the largest value within ±45° of the normal to the face
+  function cdirFace(deg) { let m = 0; for (let k = -45; k <= 45; k += 0.5) m = Math.max(m, cdirAt(deg + k)); return m; }
+  const calt = (A, z) => z <= 10 ? 1 + 0.001 * A : 1 + 0.001 * A * Math.pow(10 / z, 0.2);   // (NA.2a), (NA.2b)
+  const cprob = Tr => { if (Tr === 50) return 1; const p = 1 / Tr; return Math.sqrt((1 - 0.2 * Math.log(-Math.log(1 - p))) / (1 - 0.2 * Math.log(-Math.log(0.98)))); };   // (4.2), K 0.2, n 0.5
+  // displacement height, BS EN 1991-1-4 A.5 (town terrain only): have average upwind building height, x open distance
+  function hdisOf(have, x, h) {
+    if (!(have > 0)) return 0;
+    if (x <= 2 * have) return Math.min(0.8 * have, 0.6 * h);
+    if (x < 6 * have) return Math.max(0, Math.min(1.2 * have - 0.2 * x, 0.6 * h));
+    return 0;
+  }
+  // ---------- orography, BS EN 1991-1-4 A.3 ----------
+  function orography(o, z) {
+    if (!o || o.type === 'none') return { co: 1, s: 0, phi: 0 };
+    const H = pos(fin(o.H, 'Orography height H'), 'Orography height H'), Lu = pos(fin(o.Lu, 'Upwind slope length Lu'), 'Upwind slope length Lu'), X = fin(o.X, 'Distance X from the crest');
+    const phi = H / Lu, Le = phi > 0.3 ? H / 0.3 : Lu, zr = z / Le;
+    if (phi < 0.05) return { co: 1, s: 0, phi, Le };
+    const A = zr2 => 0.1552 * zr2 ** 4 - 0.8575 * zr2 ** 3 + 1.8133 * zr2 ** 2 - 1.9115 * zr2 + 1.0124;
+    let s = 0;
+    if (zr > 2) s = 0;
+    else if (X <= 0) { s = X / Lu < -1.5 ? 0 : A(zr) * Math.exp((0.3542 * zr * zr - 1.0577 * zr + 2.6456) * X / Lu); }
+    else if (o.type === 'hill') { const Ld = pos(fin(o.Ld, 'Downwind slope length Ld'), 'Downwind slope length Ld'); s = X / Ld > 2 ? 0 : A(zr) * Math.exp((-0.3056 * zr * zr + 1.0212 * zr - 1.7637) * X / Ld); }
+    else {   // cliff or escarpment, downwind of the crest
+      const zl = Math.log10(Math.max(zr, 0.1)), a = -1.342 * zl ** 3 - 0.8222 * zl ** 2 + 0.4609 * zl - 0.0791, b = -1.0196 * zl ** 3 - 0.891 * zl ** 2 + 0.5343 * zl - 0.1156, c = 0.803 * zl ** 3 + 0.4236 * zl ** 2 - 0.5738 * zl + 0.1606;
+      const sAt = xr => { const xl = Math.log10(xr); return a * xl * xl + b * xl + c; };
+      const xr = X / Le;
+      if (xr > 3.5) s = 0; else if (xr >= 0.1) s = sAt(xr); else s = lerp(xr, 0, 0.1, A(zr), sAt(0.1));
+    }
+    s = Math.max(0, s);
+    const co = phi <= 0.3 ? 1 + 2 * s * phi : 1 + 0.6 * s;
+    return { co, s, phi, Le };
+  }
+
+  // ---------- peak velocity pressure at height z (NA.2.17) ----------
+  function site(inp) {
+    const vmap = pos(fin(inp.vbmap, 'v_b,map'), 'v_b,map'), A = fin(inp.A ?? 0, 'Site altitude'), town = inp.terrain === 'town';
+    if (vmap < 18 || vmap > 35) throw new Error('v_b,map must be between 18 and 35 m/s (Figure NA.1)');
+    const xs = pos(fin(inp.xSea ?? 100, 'Distance to the shoreline'), 'Distance to the shoreline'), xt = town ? fin(inp.xTown ?? 0, 'Distance inside town') : 0;
+    const inTown = town && xt >= 0.1, cseason = fin(inp.cseason ?? 1, 'c_season'), Tr = pos(fin(inp.Tr ?? 50, 'Return period'), 'Return period');
+    if (cseason <= 0 || cseason > 1) throw new Error('c_season must be between 0 and 1');
+    return { vmap, A, town, inTown, xs, xt, cseason, Tr, cprob: cprob(Tr), Abase: fin(inp.orog && inp.orog.type !== 'none' ? (inp.orog.Abase ?? A) : A, 'Altitude of the base of the feature'), orog: inp.orog || { type: 'none' } };
+  }
+  function qp(S, z, cdir, hdis = 0) {
+    const zr = Math.max(z - hdis, 0), zc = Math.max(zr, 2);
+    if (zr > 200) throw new Error('z − h_dis is above 200 m, the top of Figures NA.3 to NA.8');
+    const vbOf = A => S.vmap * calt(A, z) * cdir * S.cseason * S.cprob;
+    const ce = chart('ce', zc, S.xs), ceT = S.inTown ? Math.min(1, chart('ceT', zc, S.xt)) : 1;
+    const vb = vbOf(S.A), qb = 0.613 * vb * vb / 1000, flat = ce * ceT * qb;
+    const O = orography(S.orog, z), out = { z, zr, vb, qb, ce, ceT, calt: calt(S.A, z), co: O.co, s: O.s, phi: O.phi, qpFlat: flat, qp: flat, how: 'NA.3' + (S.inTown ? 'b' : 'a') };
+    if (O.co > 1) {
+      const vbo = vbOf(S.Abase), qbo = 0.613 * vbo * vbo / 1000;
+      let qo;
+      if (z <= 50) { qo = ce * ceT * qbo * ((O.co + 0.6) / 1.6) ** 2; out.howO = 'NA.4a'; }
+      else {   // NA.4b with the roughness and turbulence charts, Iv divided by co (NA.2.16)
+        const cr = chart('cr', zc, S.xs) * (S.inTown ? chart('crT', zc, S.xt) : 1), Iv = chart('Iv', zc, S.xs) * (S.inTown ? chart('kIT', zc, S.xt) : 1) / O.co, vm = cr * O.co * vbo;
+        qo = (1 + 3 * Iv) ** 2 * 0.613 * vm * vm / 1000; out.howO = 'NA.4b'; Object.assign(out, { cr, Iv, vm });
+      }
+      out.qpOrog = qo; if (qo > flat) { out.qp = qo; out.how = out.howO; }
+    }
+    return out;
+  }
+
+  // ---------- pressure coefficients ----------
+  // Table NA.4 walls, interpolated in h/d (≤ 0.25, 1, 5)
+  function wallCpe(hd) {
+    const rows = [[0.25, -1.2, -0.8, -0.5, 0.7, -0.3], [1, -1.2, -0.8, -0.5, 0.8, -0.5], [5, -1.2, -0.8, -0.5, 0.8, -0.7]];
+    const r = Math.min(5, Math.max(0.25, hd)), k = r <= 1 ? 0 : 1, t = (r - rows[k][0]) / (rows[k + 1][0] - rows[k][0]);
+    const v = j => rows[k][j] + t * (rows[k + 1][j] - rows[k][j]);
+    return { A: v(1), B: v(2), C: v(3), D: v(4), E: v(5) };
+  }
+  // NA.2.27 f): net coefficient for overall loads, and the 7.2.2(3) lack-of-correlation factor
+  const netCoeff = hd => { const r = Math.min(5, Math.max(0.25, hd)); return r >= 1 ? 1.1 + 0.1243 * Math.log(r) : 1.1 + 0.2164 * Math.log(r); };
+  const fCorr = hd => hd >= 5 ? 1 : hd <= 1 ? 0.85 : 0.85 + 0.15 * (hd - 1) / 4;
+  // flat roofs, Table NA.5: each zone {neg, pos}
+  function flatCpe(eaves, e) {
+    const Z = (F, G, H) => ({ F: { neg: F }, G: { neg: G }, H: { neg: H }, I: { neg: -0.2, pos: 0.2 } });
+    const sharp = [-2.0, -1.4, -0.7];
+    let r = sharp;
+    if (eaves.type === 'parapet') { const q = fin(eaves.hp, 'Parapet height') / e; r = [0, 1, 2].map(j => interp1([0, 0.05, 0.1, 0.2], [sharp[j], [-1.9, -1.3, -0.7][j], [-1.85, -1.3, -0.7][j], [-1.4, -1.0, -0.7][j]], q)); }
+    else if (eaves.type === 'curved') { const q = fin(eaves.r, 'Eaves radius') / e; r = [0, 1, 2].map(j => interp1([0, 0.05, 0.1, 0.2], [sharp[j], [-1.05, -1.2, -0.4][j], [-0.75, -0.8, -0.3][j], [-0.55, -0.55, -0.3][j]], q)); }
+    else if (eaves.type === 'mansard') { const a = fin(eaves.a, 'Mansard angle'); const t30 = [-0.95, -1.0, -0.3], t45 = [-1.2, -1.3, -0.4], t60 = [-1.35, -1.25, -0.6]; r = [0, 1, 2].map(j => a <= 30 ? t30[j] : a <= 45 ? lerp(a, 30, 45, t30[j], t45[j]) : a <= 60 ? lerp(a, 45, 60, t45[j], t60[j]) : lerp(Math.min(a, 90), 60, 90, t60[j], sharp[j])); }
+    return Z(...r);
+  }
+  // pitched roofs: rows by pitch, each zone a negative and a positive value (null where the table has none); interpolate
+  // between values of the same sign, a missing value counting as 0 next to one given as 0,0
+  const MONO0 = { a: [5, 15, 30, 45, 60, 75], z: ['F', 'G', 'H'], neg: [[-1.8, -1.2, -0.6], [-1.1, -0.8, -0.4], [-0.5, -0.5, -0.2], [0, 0, 0], [null, null, null], [null, null, null]], pos: [[0, 0, 0], [0.2, 0.2, 0.2], [0.8, 0.5, 0.4], [0.8, 0.6, 0.7], [0.8, 0.8, 0.8], [0.8, 0.8, 0.8]] };
+  const MONO180 = { a: [5, 15, 30, 45, 60, 75], z: ['F', 'G', 'H'], neg: [[-2.4, -1.1, -0.8], [-2.6, -1.0, -0.9], [-1.7, -1.0, -0.9], [-0.9, -0.8, -0.9], [-1.0, -0.7, -0.7], [-1.1, -0.7, -0.7]], pos: null };
+  const MONO90 = { a: [5, 15, 30, 45, 60, 75], z: ['Fup', 'Flow', 'G', 'H', 'I'],
+    neg: [[-2.2, -2.1, -1.1, -0.7, -0.7], [-2.6, -1.6, -1.1, -0.8, -0.8], [-1.7, -1.3, -1.2, -1.0, -0.8], [-1.5, -1.3, -1.2, -1.0, -0.9], [-1.2, -1.2, -1.2, -0.4, -0.2], [-1.2, -1.2, -1.2, -0.4, -0.2]],
+    pos: [[0, 0, 0, 0, 0], [0.2, 0.2, 0.2, 0.2, 0.2], [0.5, 0.5, 0.4, 0.3, 0.2], [0.6, 0.6, 0.5, 0.4, 0.3], [0.7, 0.7, 0.7, 0.5, 0.5], [0.8, 0.8, 0.8, 0.7, 0.6]] };
+  const DUO0 = { a: [5, 15, 30, 45, 60, 75], z: ['F', 'G', 'H', 'I', 'J'],
+    neg: [[-1.8, -1.2, -0.6, -0.4, -0.9], [-1.1, -0.8, -0.4, -0.5, -1.3], [-0.5, -0.5, -0.2, -0.5, -0.9], [0, 0, 0, -0.5, -0.8], [null, null, null, -0.6, -0.8], [null, null, null, -0.8, -0.9]],
+    pos: [[0, 0, 0, -0.4, -0.9], [0.2, 0.2, 0.2, -0.5, -1.3], [0.8, 0.5, 0.4, -0.5, -0.9], [0.8, 0.6, 0.7, -0.5, -0.8], [0.8, 0.8, 0.8, -0.6, -0.8], [0.8, 0.8, 0.8, -0.8, -0.9]] };
+  const DUO90 = { a: [5, 15, 30, 45, 60, 75], z: ['F', 'G', 'H', 'I'],
+    neg: [[-2.0, -1.1, -0.6, -0.5], [-1.6, -1.5, -0.6, -0.4], [-1.2, -1.1, -0.6, -0.5], [-1.2, -1.2, -0.6, -0.4], [-1.2, -1.2, -0.7, -0.6], [-1.2, -1.2, -0.7, -0.6]],
+    pos: [[0, 0, 0, 0], [0.2, 0.2, 0.2, 0.2], [0.5, 0.4, 0.3, 0.2], [0.6, 0.5, 0.4, 0.3], [0.7, 0.7, 0.5, 0.5], [0.8, 0.8, 0.7, 0.6]] };
+  function pitchedCpe(tab, a) {
+    const ac = Math.min(75, Math.max(5, a)), k = Math.min(tab.a.length - 2, tab.a.findIndex((x, i) => i < tab.a.length - 1 && ac <= tab.a[i + 1])), t = (ac - tab.a[k]) / (tab.a[k + 1] - tab.a[k]);
+    const val = (arr, j) => { if (!arr) return null; const v0 = arr[k][j], v1 = arr[k + 1][j]; if (v0 === null && v1 === null) return null; return lerp(t, 0, 1, v0 ?? 0, v1 ?? 0); };
+    const out = {}; tab.z.forEach((zn, j) => { const n = val(tab.neg, j), p = val(tab.pos, j); out[zn] = { neg: n, pos: p }; });
+    return out;
+  }
+  // Table NA.3 size factor, zones A, B, C
+  const CS_BH = [5, 10, 20, 30, 40, 50, 70, 100, 150, 200, 300], CS_Z = [6, 10, 30, 50, 200];
+  const CS = { A: [[1, 1, 1, 1, 1], [0.95, 0.95, 0.96, 0.97, 0.98], [0.93, 0.93, 0.95, 0.95, 0.96], [0.91, 0.92, 0.94, 0.94, 0.96], [0.90, 0.91, 0.93, 0.93, 0.95], [0.89, 0.90, 0.92, 0.92, 0.94], [0.87, 0.88, 0.90, 0.91, 0.93], [0.85, 0.86, 0.89, 0.90, 0.92], [0.83, 0.84, 0.87, 0.88, 0.90], [0.81, 0.83, 0.85, 0.86, 0.89], [0.79, 0.80, 0.83, 0.84, 0.87]],
+               B: [[1, 1, 1, 1, 1], [0.94, 0.95, 0.96, 0.96, 0.97], [0.91, 0.92, 0.94, 0.95, 0.96], [0.89, 0.91, 0.93, 0.93, 0.95], [0.88, 0.89, 0.91, 0.92, 0.94], [0.86, 0.88, 0.90, 0.91, 0.94], [0.84, 0.86, 0.89, 0.90, 0.92], [0.82, 0.84, 0.87, 0.88, 0.91], [0.80, 0.82, 0.85, 0.86, 0.89], [0.78, 0.80, 0.83, 0.84, 0.88], [0.75, 0.77, 0.80, 0.82, 0.85]],
+               C: [[1, 1, 1, 1, 1], [0.88, 0.90, 0.93, 0.94, 0.97], [0.84, 0.87, 0.90, 0.92, 0.95], [0.81, 0.84, 0.88, 0.90, 0.93], [0.79, 0.82, 0.86, 0.88, 0.92], [0.77, 0.80, 0.85, 0.87, 0.91], [0.74, 0.77, 0.83, 0.85, 0.90], [0.71, 0.74, 0.80, 0.82, 0.88], [0.67, 0.71, 0.77, 0.79, 0.85], [0.65, 0.69, 0.74, 0.77, 0.83], [0.62, 0.65, 0.71, 0.73, 0.80]] };
+  function sizeFactor(zone, bh, zr) {
+    const tab = CS[zone]; if (!tab) throw new Error('Size factor zone must be A, B or C');
+    const b = Math.min(300, Math.max(5, bh)), z = Math.min(200, Math.max(6, zr));
+    const i = Math.min(CS_BH.length - 2, CS_BH.findIndex((v, k) => k < CS_BH.length - 1 && b <= CS_BH[k + 1])), j = Math.min(CS_Z.length - 2, CS_Z.findIndex((v, k) => k < CS_Z.length - 1 && z <= CS_Z[k + 1]));
+    const tb = (b - CS_BH[i]) / (CS_BH[i + 1] - CS_BH[i]), tz = (z - CS_Z[j]) / (CS_Z[j + 1] - CS_Z[j]);
+    return (1 - tb) * ((1 - tz) * tab[i][j] + tz * tab[i][j + 1]) + tb * ((1 - tz) * tab[i + 1][j] + tz * tab[i + 1][j + 1]);
+  }
+  // Figure 7.4: windward-wall parts and their reference heights
+  function strips(h, b) {
+    if (h <= b) return [{ z0: 0, z1: h, ze: h }];
+    if (h <= 2 * b) return [{ z0: 0, z1: b, ze: b }, { z0: b, z1: h, ze: h }];
+    const n = Math.max(1, Math.ceil((h - 2 * b) / b)), hs = (h - 2 * b) / n, out = [{ z0: 0, z1: b, ze: b }];
+    for (let i = 0; i < n; i++) out.push({ z0: b + i * hs, z1: b + (i + 1) * hs, ze: b + (i + 1) * hs });
+    out.push({ z0: h - b, z1: h, ze: h }); return out;
+  }
+  // Figure 7.5: lengths of zones A, B, C along a side wall of depth d
+  function wallZones(e, d) {
+    if (e >= 5 * d) return { A: d, B: 0, C: 0 };
+    if (e >= d) return { A: e / 5, B: d - e / 5, C: 0 };
+    return { A: e / 5, B: 4 * e / 5, C: d - e };
+  }
+  // roof zones on plan: [{ zone, area }], b crosswind, d alongwind
+  function roofZones(kind, e, b, d) {
+    const c = (v, lo, hi) => Math.max(lo, Math.min(hi, v)), out = [];
+    const add = (zone, area) => { if (area > 1e-9) out.push({ zone, area }); };
+    if (kind === 'flat' || kind === 'mono0' || kind === 'mono180') {
+      const s1 = c(e / 10, 0, d), Fw = c(e / 4, 0, b / 2);
+      add('F', 2 * Fw * s1); add('G', (b - 2 * Fw) * s1);
+      if (kind === 'flat') { const s2 = c(e / 2, 0, d); add('H', b * (s2 - s1)); add('I', b * (d - s2)); }
+      else add('H', b * (d - s1));
+    } else if (kind === 'mono90') {
+      const s1 = c(e / 10, 0, d), Fw = c(e / 4, 0, b / 2), s2 = c(e / 2, 0, d);
+      add('Fup', Fw * s1); add('Flow', Fw * s1); add('G', (b - 2 * Fw) * s1); add('H', b * (s2 - s1)); add('I', b * (d - s2));
+    } else if (kind === 'duo0') {
+      const half = d / 2, s1 = c(e / 10, 0, half), Fw = c(e / 4, 0, b / 2);
+      add('F', 2 * Fw * s1); add('G', (b - 2 * Fw) * s1); add('H', b * (half - s1)); add('J', b * s1); add('I', b * (half - s1));
+    } else if (kind === 'duo90') {
+      const s1 = c(e / 10, 0, d), Fw = c(e / 4, 0, b / 2), s2 = c(e / 2, 0, d);
+      add('F', 2 * Fw * s1); add('G', (b - 2 * Fw) * s1); add('H', b * (s2 - s1)); add('I', b * (d - s2));
+    }
+    return out;
+  }
+
+  // ---------- the building in four wind directions ----------
+  function design(inp) {
+    const S = site(inp), L = pos(fin(inp.L, 'Length L'), 'Length L'), W = pos(fin(inp.W, 'Width W'), 'Width W'), he = pos(fin(inp.h, 'Eaves height h'), 'Eaves height h');
+    const roof = inp.roof || { type: 'flat' }, alpha = roof.type === 'flat' ? 0 : fin(roof.pitch, 'Roof pitch');
+    if (roof.type !== 'flat' && (alpha < 5 || alpha > 75)) throw new Error('Roof pitch must be between 5° and 75° (below 5° use a flat roof)');
+    // ridge along L for duopitch; monopitch falls towards side 1 (the low eave on side 1)
+    const rise = roof.type === 'duo' ? Math.tan(alpha * Math.PI / 180) * W / 2 : roof.type === 'mono' ? Math.tan(alpha * Math.PI / 180) * W : 0;
+    const H = he + rise, hp = roof.type === 'flat' && roof.eaves && roof.eaves.type === 'parapet' ? fin(roof.eaves.hp, 'Parapet height') : 0;
+    const have = S.inTown ? fin(inp.have ?? 0, 'Average height of the buildings upwind') : 0, hdis = S.inTown ? hdisOf(have, fin(inp.xOpen ?? 0, 'Open distance upwind'), H) : 0;
+    const cpi = inp.cpi || [0.2, -0.3], cd = fin(inp.cd ?? 1, 'c_d'), csZone = inp.csZone || null, bearing = fin(inp.bearing ?? 0, 'Bearing of side 1');
+    const R = { inp, S, L, W, he, H, hp, rise, alpha, roof, hdis, have, cpi, cases: [] };
+    const sides = [{ n: 1, b: L, d: W }, { n: 2, b: W, d: L }, { n: 3, b: L, d: W }, { n: 4, b: W, d: L }];
+    for (const sd of sides) {
+      const from = bearing + 90 * (sd.n - 1), cdir = inp.cdirOne ? 1 : cdirFace(from), b = sd.b, d = sd.d;
+      const hRoof = H + hp, e = Math.min(b, 2 * H), hd = (H + hp) / d;
+      const q = z => qp(S, z, cdir, hdis), qH = q(hRoof), qW = q(H);
+      // face outlines: width at height z of side n (gables, the sloping sides and the high eave of a monopitch, parapets)
+      const widthOf = (n, z) => {
+        if (z <= he + hp) return b;
+        const sloping = (roof.type === 'duo' || roof.type === 'mono') && (n === 2 || n === 4);
+        if (sloping) return z <= H ? b * (H - z) / (H - he) : 0;
+        if (roof.type === 'mono' && n === 3) return z <= H ? b : 0;
+        return 0;
+      };
+      const lee = ((sd.n + 1) % 4) + 1, width = z => widthOf(sd.n, z), faceTop = H + hp, P = strips(H + hp, b).map(s => ({ ...s, q: q(s.ze) }));
+      const cp = wallCpe(hd), cnet = netCoeff(hd), fc = fCorr(hd);
+      // cs: Table NA.3 with b + h and z − h_dis = H − h_dis
+      const cs = csZone ? sizeFactor(csZone, b + H, H - hdis) : 1, cscd = cs * cd;
+      // overall force on the walls: integrate the windward face over height, each part at its own q_p(ze)
+      let Fnet = 0, Mnet = 0, FD = 0, MD = 0, FE = 0, ME = 0, area = 0; const nz = 200;
+      for (const part of P) {
+        const dz = (part.z1 - part.z0) / nz, kinks = [he, he + hp, H].filter(k => k > part.z0 + 1e-9 && k < part.z1 - 1e-9);
+        for (let i = 0; i < nz; i++) {
+          const za = part.z0 + i * dz, zb = za + dz, cuts = [za, ...kinks.filter(k => k > za && k < zb), zb];   // split a step at a kink of the outline
+          for (let k = 0; k < cuts.length - 1; k++) {
+            const h = cuts[k + 1] - cuts[k], z = (cuts[k] + cuts[k + 1]) / 2, w = width(z), wl = widthOf(lee, z);
+            Fnet += part.q.qp * cnet * w * h; Mnet += part.q.qp * cnet * w * h * z; FD += part.q.qp * cp.D * w * h; MD += part.q.qp * cp.D * w * h * z; area += w * h;
+            FE += qW.qp * Math.abs(cp.E) * wl * h; ME += qW.qp * Math.abs(cp.E) * wl * h * z;   // leeward face at q_p(h) (NA.2.26)
+          }
+        }
+      }
+      // roof
+      let kind = 'flat', coeffs;
+      if (roof.type === 'flat') { coeffs = flatCpe(roof.eaves || { type: 'sharp' }, e); kind = 'flat'; }
+      else if (roof.type === 'mono') { kind = sd.n === 1 ? 'mono0' : sd.n === 3 ? 'mono180' : 'mono90'; coeffs = pitchedCpe(kind === 'mono0' ? MONO0 : kind === 'mono180' ? MONO180 : MONO90, alpha); }
+      else { kind = sd.n === 1 || sd.n === 3 ? 'duo0' : 'duo90'; coeffs = pitchedCpe(kind === 'duo0' ? DUO0 : DUO90, alpha); }
+      const zones = roofZones(kind, e, b, d).map(z => ({ ...z, cpe: coeffs[z.zone] }));
+      // roof horizontal force (along the wind) from the slopes facing into and away from it, and the net vertical force
+      const tan = Math.tan(alpha * Math.PI / 180), sense = zn => kind === 'duo0' ? (['F', 'G', 'H'].includes(zn) ? 1 : -1) : kind === 'mono0' ? 1 : kind === 'mono180' ? -1 : 0;   // +1: the slope faces the wind
+      const roofCases = ['neg', 'pos'].map(k => {
+        let Fh = 0, Fv = 0, Fvi = [0, 0];
+        for (const z of zones) { const c = z.cpe[k] ?? z.cpe.neg ?? z.cpe.pos ?? 0; Fh += qH.qp * c * z.area * tan * sense(z.zone); Fv += qH.qp * c * z.area; cpi.forEach((ci, j) => { Fvi[j] += qH.qp * (c - ci) * z.area; }); }
+        return { k, Fh, Fv, Fvi };
+      });
+      const FhRoof = Math.max(...roofCases.map(rc => rc.Fh)), MhRoof = FhRoof * (he + (H - he) / 2);
+      const Fw = cscd * fc * (Fnet + Math.max(0, FhRoof)), Mw = cscd * fc * (Mnet + Math.max(0, MhRoof));
+      const FwDE = cscd * fc * (FD + FE + Math.max(0, FhRoof)), MwDE = cscd * fc * (MD + ME + Math.max(0, MhRoof));
+      // wall zone pressures: windward D at each part's q_p, the others at q_p(H) (NA.2.26)
+      const zl = wallZones(e, d), walls = ['A', 'B', 'C', 'D', 'E'].filter(z => z === 'D' || z === 'E' || zl[z] > 1e-9).map(z => {
+        const qz = z === 'D' ? P[P.length - 1].q.qp : qW.qp, c = cp[z];
+        return { zone: z, len: z === 'D' || z === 'E' ? b : zl[z], cpe: c, we: qz * c, net: cpi.map(ci => qz * c - qW.qp * ci) };
+      });
+      const roofP = zones.map(z => ({ ...z, we: ['neg', 'pos'].map(k => z.cpe[k] === null || z.cpe[k] === undefined ? null : qH.qp * z.cpe[k]), net: ['neg', 'pos'].map(k => z.cpe[k] === null || z.cpe[k] === undefined ? null : cpi.map(ci => qH.qp * (z.cpe[k] - ci))) }));
+      R.cases.push({ side: sd.n, from: ((from % 360) + 360) % 360, cdir, b, d, e, hd, H, parts: P, qH, qW, cp, cnet, fc, cs, cd, cscd, walls, kind, roof: roofP, roofCases, FhRoof, area, Fnet, Fw, Mw, FwDE, MwDE, faceTop });
+    }
+    // governing orthogonal pairs for a core or bracing design: the larger of sides 1 and 3, and of 2 and 4
+    R.F13 = Math.max(R.cases[0].Fw, R.cases[2].Fw); R.M13 = Math.max(R.cases[0].Mw, R.cases[2].Mw);
+    R.F24 = Math.max(R.cases[1].Fw, R.cases[3].Fw); R.M24 = Math.max(R.cases[1].Mw, R.cases[3].Mw);
+    R.qpMax = Math.max(...R.cases.map(c => c.qH.qp));
+    return R;
+  }
+  return { chart, cdirAt, cdirFace, calt, cprob, hdisOf, orography, site, qp, wallCpe, netCoeff, fCorr, flatCpe, pitchedCpe, MONO0, MONO180, MONO90, DUO0, DUO90, sizeFactor, strips, wallZones, roofZones, design };
+})();
+
+</script>
+<script id="ui">
+'use strict';
+const $ = id => document.getElementById(id);
+const STORE = 'et-wind-v1';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const f1 = v => Number.isFinite(v) ? (Math.round(v * 10) / 10).toString() : '–', f0 = v => Number.isFinite(v) ? Math.round(v).toString() : '–', f2 = v => Number.isFinite(v) ? v.toFixed(2) : '–', f3 = v => Number.isFinite(v) ? v.toFixed(3) : '–';
+const fp = v => v === null || v === undefined ? '–' : (v > 0 ? '+' : '') + v.toFixed(2);
+const setVal = (id, v) => { const el = $(id); if (!el || v == null) return; if (el.tagName === 'SELECT' && ![...el.options].some(o => o.value === String(v))) return; el.value = v; };
+let last = null, view = 0;
+function refreshVis() {
+  const show = (sel, on) => document.querySelectorAll(sel).forEach(e => e.classList.toggle('hidden', !on));
+  const town = $('terrain').value === 'town', o = $('orog').value, r = $('rtype').value, ev = $('eaves').value;
+  show('.town', town); show('.oro', o !== 'none'); show('.ohill', o === 'hill'); show('.pitched', r !== 'flat'); show('.flatonly', r === 'flat');
+  show('.ev-parapet', r === 'flat' && ev === 'parapet'); show('.ev-curved', r === 'flat' && ev === 'curved'); show('.ev-mansard', r === 'flat' && ev === 'mansard'); show('.dirb', $('cdirm').value === 'table');
+}
+['terrain', 'orog', 'rtype', 'eaves', 'cdirm'].forEach(id => $(id).addEventListener('change', refreshVis));
+const FIELDS = ['pName', 'pJob', 'pBy', 'pRef', 'vbmap', 'alt', 'Tr', 'cdirm', 'bearing', 'cseason', 'terrain', 'xSea', 'xTown', 'have', 'xOpen', 'orog', 'oH', 'oLu', 'oX', 'oLd', 'oAb', 'L', 'W', 'h', 'rtype', 'pitch', 'eaves', 'hp', 'rr', 'ma', 'cpi1', 'cpi2', 'fmeth', 'cszone', 'cd'];
+const collect = () => { const s = { v: 1 }; FIELDS.forEach(id => s[id] = $(id).value); return s; };
+function input() {
+  const r = $('rtype').value, ev = $('eaves').value, o = $('orog').value;
+  return { vbmap: +$('vbmap').value, A: +$('alt').value, Tr: +$('Tr').value, cdirOne: $('cdirm').value === 'one', bearing: +$('bearing').value || 0, cseason: +$('cseason').value,
+    terrain: $('terrain').value, xSea: +$('xSea').value, xTown: +$('xTown').value, have: +$('have').value || 0, xOpen: +$('xOpen').value || 0,
+    orog: o === 'none' ? { type: 'none' } : { type: o, H: +$('oH').value, Lu: +$('oLu').value, X: +$('oX').value, Ld: +$('oLd').value, Abase: +$('oAb').value },
+    L: +$('L').value, W: +$('W').value, h: +$('h').value,
+    roof: r === 'flat' ? { type: 'flat', eaves: { type: ev, hp: +$('hp').value, r: +$('rr').value, a: +$('ma').value } } : { type: r, pitch: +$('pitch').value },
+    cpi: [+$('cpi1').value, +$('cpi2').value], fmeth: $('fmeth').value, csZone: $('cszone').value || null, cd: +$('cd').value };
+}
+// Wind Loading drawings (inlined into the UI script; uses f1, f2 and Wind).
+const INK = l => l ? '#000' : 'var(--txt)', MUT = l => l ? '#666' : 'var(--mut)', ACC = l => l ? '#1b67b0' : 'var(--accent)', FILL = l => l ? '#ececec' : '#e6e9ee';
+// roof zones of one wind case in plan, wind blowing up the page
+function roofRects(c) {
+  const b = c.b, d = c.d, e = c.e, r = [], cl = (v, lo, hi) => Math.max(lo, Math.min(hi, v)), s1 = cl(e / 10, 0, d), Fw = cl(e / 4, 0, b / 2), s2 = cl(e / 2, 0, d);
+  const R = (zone, x0, y0, x1, y1) => { if (x1 - x0 > 1e-9 && y1 - y0 > 1e-9) r.push({ zone, x0, y0, x1, y1 }); };
+  if (c.kind === 'flat' || c.kind === 'mono0' || c.kind === 'mono180') {
+    R('F', 0, 0, Fw, s1); R('G', Fw, 0, b - Fw, s1); R('F', b - Fw, 0, b, s1);
+    if (c.kind === 'flat') { R('H', 0, s1, b, s2); R('I', 0, s2, b, d); } else R('H', 0, s1, b, d);
+  } else if (c.kind === 'mono90') {   // looking downwind, the low eave (side 1) is on the right for wind on side 2 and on the left for side 4
+    const [lft, rgt] = c.side === 2 ? ['Fup', 'Flow'] : ['Flow', 'Fup'];
+    R(lft, 0, 0, Fw, s1); R('G', Fw, 0, b - Fw, s1); R(rgt, b - Fw, 0, b, s1); R('H', 0, s1, b, s2); R('I', 0, s2, b, d);
+  }
+  else if (c.kind === 'duo0') { const h = d / 2, t = cl(e / 10, 0, h); R('F', 0, 0, Fw, t); R('G', Fw, 0, b - Fw, t); R('F', b - Fw, 0, b, t); R('H', 0, t, b, h); R('J', 0, h, b, h + t); R('I', 0, h + t, b, d); }
+  else if (c.kind === 'duo90') { R('F', 0, 0, Fw, s1); R('G', Fw, 0, b - Fw, s1); R('F', b - Fw, 0, b, s1); R('H', 0, s1, b, s2); R('I', 0, s2, b, d); }
+  return r;
+}
+function svgPlan(R, c, light) {
+  const W0 = 440, pad = 46, sc = Math.min((W0 - 2 * pad) / c.b, 300 / c.d), H0 = c.d * sc + 30 + 92, X = x => pad + (W0 - 2 * pad - c.b * sc) / 2 + x * sc, Y = y => 30 + (c.d - y) * sc;
+  let g = '';
+  for (const z of roofRects(c)) g += `<rect x="${X(z.x0)}" y="${Y(z.y1)}" width="${(z.x1 - z.x0) * sc}" height="${(z.y1 - z.y0) * sc}" fill="${['F', 'Fup', 'Flow'].includes(z.zone) ? (light ? '#d4d4d4' : '#d3dbe8') : z.zone === 'G' || z.zone === 'J' ? (light ? '#e2e2e2' : '#e1e7f0') : FILL(light)}" stroke="${MUT(light)}" stroke-width="0.6"/>` + ((z.x1 - z.x0) * sc > 18 && (z.y1 - z.y0) * sc > 12 ? `<text x="${X((z.x0 + z.x1) / 2)}" y="${Y((z.y0 + z.y1) / 2) + 4}" font-size="12" text-anchor="middle" fill="${INK(light)}">${z.zone}</text>` : '');
+  g += `<rect x="${X(0)}" y="${Y(c.d)}" width="${c.b * sc}" height="${c.d * sc}" fill="none" stroke="${INK(light)}" stroke-width="1.4"/>`;
+  if (c.kind === 'duo0') g += `<line x1="${X(0)}" y1="${Y(c.d / 2)}" x2="${X(c.b)}" y2="${Y(c.d / 2)}" stroke="${INK(light)}" stroke-dasharray="6 3"/>`;
+  if (c.kind === 'duo90') g += `<line x1="${X(c.b / 2)}" y1="${Y(0)}" x2="${X(c.b / 2)}" y2="${Y(c.d)}" stroke="${INK(light)}" stroke-dasharray="6 3"/>`;
+  // wall zones along the sides: D windward (bottom), E leeward (top), A/B/C on the sides
+  const zl = Wind.wallZones(c.e, c.d); let y = 0;
+  for (const z of ['A', 'B', 'C']) { if (zl[z] > 1e-9) { for (const xx of [X(0) - 7, X(c.b) + 7]) g += `<line x1="${xx}" y1="${Y(y)}" x2="${xx}" y2="${Y(y + zl[z])}" stroke="${ACC(light)}" stroke-width="3"/>`; if (zl[z] * sc > 14) g += `<text x="${X(0) - 14}" y="${Y(y + zl[z] / 2) + 4}" font-size="12" text-anchor="end" fill="${ACC(light)}">${z}</text>`; } y += zl[z]; }
+  g += `<text x="${X(c.b / 2)}" y="${Y(0) + 18}" font-size="12" text-anchor="middle" fill="${ACC(light)}">D (side ${c.side})</text><text x="${X(c.b / 2)}" y="${Y(c.d) - 8}" font-size="12" text-anchor="middle" fill="${ACC(light)}">E</text>`;
+  const ya = Y(0) + 52;
+  g += `<path d="M${W0 / 2} ${ya} v-22 m-5 7 l5 -7 l5 7" fill="none" stroke="${INK(light)}" stroke-width="1.6"/><text x="${W0 / 2 + 10}" y="${ya - 4}" font-size="12" fill="${INK(light)}">wind from ${f1(c.from)}°</text>`;
+  g += `<text x="${W0 / 2}" y="${ya + 26}" font-size="12" text-anchor="middle" fill="${MUT(light)}">b = ${f1(c.b)} m across the wind, d = ${f1(c.d)} m along it, e = ${f2(c.e)} m</text>`;
+  return `<svg class="plan" viewBox="0 0 ${W0} ${H0}" role="img" aria-label="Plan with the roof and wall zones for this wind direction">${g}</svg>`;
+}
+// windward face with its reference-height parts and q_p
+function svgElev(R, c, light) {
+  const W0 = 440, pad = 40, top = R.H + R.hp, sc = Math.min((W0 - 2 * pad - 90) / c.b, 220 / top), H0 = top * sc + 50, X = x => pad + x * sc, Y = z => 16 + (top - z) * sc;
+  const sloping = (R.roof.type !== 'flat') && (c.side === 2 || c.side === 4), monoHigh = R.roof.type === 'mono' && c.side === 3;
+  let outline;
+  if (sloping && R.roof.type === 'duo') outline = `M${X(0)} ${Y(0)} V${Y(R.he)} L${X(c.b / 2)} ${Y(R.H)} L${X(c.b)} ${Y(R.he)} V${Y(0)} Z`;
+  else if (sloping && c.side === 2) outline = `M${X(0)} ${Y(0)} V${Y(R.H)} L${X(c.b)} ${Y(R.he)} V${Y(0)} Z`;   // monopitch seen from side 2: low eave (side 1) on the right
+  else if (sloping) outline = `M${X(0)} ${Y(0)} V${Y(R.he)} L${X(c.b)} ${Y(R.H)} V${Y(0)} Z`;
+  else outline = `M${X(0)} ${Y(0)} V${Y(monoHigh ? R.H : R.he + R.hp)} H${X(c.b)} V${Y(0)} Z`;
+  let g = '';
+  // the roof seen beyond an eaves face: ridge (duopitch) or the high eave (monopitch, low eave windward)
+  if (!sloping && !monoHigh && R.roof.type !== 'flat') g += `<path d="M${X(0)} ${Y(R.he)} V${Y(R.H)} H${X(c.b)} V${Y(R.he)} Z" fill="none" stroke="${MUT(light)}" stroke-dasharray="4 3"/><text x="${X(c.b / 2)}" y="${Y((R.he + R.H) / 2) + 4}" font-size="12" text-anchor="middle" fill="${MUT(light)}">roof beyond</text>`;
+  g += `<path d="${outline}" fill="${FILL(light)}" stroke="${INK(light)}" stroke-width="1.3"/>`;
+  c.parts.forEach(p => { g += `<line x1="${X(0)}" y1="${Y(p.z1)}" x2="${X(c.b) + 8}" y2="${Y(p.z1)}" stroke="${MUT(light)}" stroke-dasharray="3 3"/><text x="${X(c.b) + 12}" y="${Y((p.z0 + p.z1) / 2) + 4}" font-size="12" fill="${INK(light)}">z<tspan font-size="8.5" dy="2">e</tspan><tspan dy="-2"> ${f1(p.ze)} m: q</tspan><tspan font-size="8.5" dy="2">p</tspan><tspan dy="-2"> ${f2(p.q.qp)}</tspan></text>`; });
+  g += `<line x1="${X(0) - 12}" y1="${Y(0)}" x2="${X(c.b) + 12}" y2="${Y(0)}" stroke="${INK(light)}" stroke-width="1.6"/>`;
+  g += `<text x="${X(c.b / 2)}" y="${H0 - 8}" font-size="11.5" text-anchor="middle" fill="${MUT(light)}">side ${c.side}, ${f1(c.b)} m wide; q<tspan font-size="8" dy="2">p</tspan><tspan dy="-2"> in kN/m²</tspan></text>`;
+  return `<svg class="elev" viewBox="0 0 ${W0} ${H0}" role="img" aria-label="Windward face with its reference heights">${g}</svg>`;
+}
+
+const kv = (k, v) => `<div><b>${k}</b><span>${v}</span></div>`;
+const Fof = (c, m) => m === 'DE' ? c.FwDE : c.Fw, Mof = (c, m) => m === 'DE' ? c.MwDE : c.Mw;
+function caseHtml(R, c, m) {
+  const q = c.qH;
+  let h = `<div class="kv">${kv('c<sub>dir</sub>', f3(c.cdir))}${kv('c<sub>alt</sub>', f3(q.calt))}${kv('v<sub>b</sub> (m/s)', f2(q.vb))}${kv('q<sub>b</sub> (kN/m²)', f3(q.qb))}${kv('c<sub>e</sub>', f3(q.ce))}${R.S.inTown ? kv('c<sub>e,T</sub>', f3(q.ceT)) : ''}${q.co > 1 ? kv('c<sub>o</sub>', f3(q.co)) : ''}${kv(`q<sub>p</sub> at ${f1(q.z)} m`, f3(q.qp))}${kv('c<sub>s</sub>c<sub>d</sub>', f3(c.cscd))}${kv('h/d', f2(c.hd))}</div>`;
+  h += `<div class="dlabel">Plan with the roof and wall zones</div>${svgPlan(R, c, false)}<div class="dlabel">Windward face and reference heights</div>${svgElev(R, c, false)}`;
+  h += `<div class="dlabel">Walls <span class="aux">Table NA.4</span></div><table class="t"><tr><th>Zone</th><th>Length (m)</th><th>c<sub>pe</sub></th><th>w<sub>e</sub> (kN/m²)</th><th>net, c<sub>pi</sub> ${fp(R.cpi[0])}</th><th>net, c<sub>pi</sub> ${fp(R.cpi[1])}</th></tr>`
+    + c.walls.map(w => `<tr><td>${w.zone}</td><td>${f2(w.len)}</td><td>${fp(w.cpe)}</td><td>${f3(w.we)}</td><td>${f3(w.net[0])}</td><td>${f3(w.net[1])}</td></tr>`).join('') + `</table>`;
+  h += `<div class="dlabel">Roof <span class="aux">${c.kind === 'flat' ? 'Table NA.5' : c.kind.startsWith('mono') ? 'Table NA.6' : 'Table NA.7'}, q<sub>p</sub> at ${f1(c.qH.z)} m</span></div><table class="t"><tr><th>Zone</th><th>Area (m²)</th><th>c<sub>pe</sub></th><th>w<sub>e</sub> (kN/m²)</th><th>Most uplift, net</th><th>Most down, net</th></tr>`
+    + c.roof.map(z => { const vals = [z.cpe.neg, z.cpe.pos].filter(v => v !== null && v !== undefined); const lo = Math.min(...vals), hi = Math.max(...vals);
+      return `<tr><td>${z.zone}</td><td>${f1(z.area)}</td><td>${vals.length > 1 && lo !== hi ? `${fp(lo)} / ${fp(hi)}` : fp(lo)}</td><td>${f3(c.qH.qp * lo)}${vals.length > 1 && lo !== hi ? ' / ' + f3(c.qH.qp * hi) : ''}</td><td>${f3(c.qH.qp * (lo - Math.max(...R.cpi)))}</td><td>${f3(c.qH.qp * (hi - Math.min(...R.cpi)))}</td></tr>`; }).join('') + `</table>`;
+  const up = Math.min(...c.roofCases.flatMap(rc => rc.Fvi));
+  h += `<div class="help">Net pressure = external − internal (positive acts inward on the face). Roof: the most uplift takes the most negative c<sub>pe</sub> with the positive c<sub>pi</sub>, the most down the reverse; net upward force on the whole roof ${f0(Math.max(0, -up))} kN.</div>`;
+  h += `<div class="kv">${kv('Overall force F<sub>w</sub> (kN)', f1(Fof(c, m)))}${kv('Overturning moment (kNm)', f0(Mof(c, m)))}${kv('Lack of correlation', f3(c.fc))}${kv(m === 'DE' ? 'c<sub>pe,D</sub> − c<sub>pe,E</sub>' : 'Net coefficient', m === 'DE' ? f2(c.cp.D - c.cp.E) : f3(c.cnet))}${kv('Roof horizontal (kN)', f1(c.FhRoof))}</div>`;
+  return h;
+}
+function render() {
+  const { R, inp } = last, m = inp.fmeth, c = R.cases[view];
+  const hand = { v: 1, mode: 'core', cL: R.L, cW: R.W, cMns: Math.round(Math.max(Mof(R.cases[0], m), Mof(R.cases[2], m))), cMew: Math.round(Math.max(Mof(R.cases[1], m), Mof(R.cases[3], m))), from: `From Wind Loading: characteristic overturning moments at ground level (wind on sides 1 or 3 as NS, on sides 2 or 4 as EW) and the plan size ${f1(R.L)} × ${f1(R.W)} m. Reduce the moments for a level above the ground if needed.` };
+  const kMax = R.cases.reduce((a, cc, k) => cc.qH.qp > R.cases[a].qH.qp ? k : a, 0);
+  let h = `<div class="sum"><div class="big">q<sub>p</sub> up to ${f3(R.qpMax)} kN/m² at ${f1(R.H + R.hp)} m</div><div class="sub">Largest with the wind on side ${R.cases[kMax].side} (from ${f0(R.cases[kMax].from)}°, c<sub>dir</sub> ${f2(R.cases[kMax].cdir)}).</div><div class="sub" style="margin-top:8px">Overall wind force and overturning moment at ground: on sides 1 or 3 ${f1(Math.max(Fof(R.cases[0], m), Fof(R.cases[2], m)))} kN, ${f0(hand.cMns)} kNm; on sides 2 or 4 ${f1(Math.max(Fof(R.cases[1], m), Fof(R.cases[3], m)))} kN, ${f0(hand.cMew)} kNm (characteristic, c<sub>s</sub>c<sub>d</sub> and lack of correlation included).${R.hdis > 0 ? ` h<sub>dis</sub> = ${f2(R.hdis)} m.` : ''}</div></div>`;
+  h += `<div class="seg four" id="cases">${R.cases.map((cc, k) => `<button data-k="${k}" class="${k === view ? 'on' : ''}">Wind on side ${cc.side}</button>`).join('')}</div>`;
+  h += caseHtml(R, c, m);
+  h += `<div class="help"><a class="lnk" href="RC%20Wall%20Design.html#in=${encodeURIComponent(JSON.stringify(hand))}" target="_blank">Use these moments for core walls in RC Wall Design</a> (sides 1 and 3 as the NS wind, 2 and 4 as EW).</div>`;
+  h += `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  $('results').innerHTML = h;
+  $('results').querySelectorAll('#cases button').forEach(b => b.onclick = () => { view = +b.dataset.k; render(); });
+  $('printBtn').onclick = () => { $('report').innerHTML = report(); window.print(); };
+}
+function run() {
+  try { localStorage.setItem(STORE, JSON.stringify(collect())); } catch (e) { /* storage unavailable */ }
+  try { const inp = input(), R = Wind.design(inp); last = { R, inp }; render(); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+// ---------- A4 sheet ----------
+const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
+function report() {
+  const s = collect(), today = new Date().toLocaleDateString('en-GB'), { R, inp } = last, m = inp.fmeth, S = R.S;
+  const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.pRef) || '&nbsp;'}</div><div class="ttl">Wind loading to BS EN 1991-1-4 + UK NA</div></div>`;
+  let b = `<div class="rs"><h2>Site</h2>${rl(`v<sub>b,map</sub> = ${S.vmap} m/s, altitude ${S.A} m; ${inp.cdirOne ? 'c<sub>dir</sub> = 1.0' : `c<sub>dir</sub> from Table NA.1, side 1 facing ${inp.bearing}°`}; c<sub>season</sub> = ${S.cseason}, c<sub>prob</sub> = ${f3(S.cprob)} (${S.Tr} years)`, 'NA.2.4–2.8', '')}`
+    + rl(`${S.inTown ? `Town, ${S.xt} km inside, ` : 'Country, '}${S.xs} km from the shoreline${R.hdis > 0 ? `; h<sub>dis</sub> = ${f2(R.hdis)} m (A.5)` : ''}${S.orog.type !== 'none' ? `; ${S.orog.type === 'hill' ? 'hill or ridge' : 'cliff or escarpment'} H = ${S.orog.H} m, L<sub>u</sub> = ${S.orog.Lu} m, X = ${S.orog.X} m, base at ${S.Abase} m` : ''}`, 'NA.2.11–2.17', '')
+    + rl(`Building ${R.L} × ${R.W} m, eaves ${R.he} m, ${R.roof.type === 'flat' ? `flat roof (${(inp.roof.eaves || {}).type} eaves)` : `${R.roof.type === 'mono' ? 'monopitch' : 'duopitch'} roof at ${R.alpha}°`}, top at ${f2(R.H + R.hp)} m; c<sub>pi</sub> = ${fp(R.cpi[0])} / ${fp(R.cpi[1])}`, '', '') + '</div>';
+  for (const c of R.cases) {
+    b += `<div class="rs"><h2>Wind on side ${c.side} (from ${f1(c.from)}°)</h2>${rl(`c<sub>dir</sub> = ${f3(c.cdir)}; b = ${f1(c.b)} m, d = ${f1(c.d)} m, e = ${f2(c.e)} m, h/d = ${f2(c.hd)}`, '', '')}`
+      + c.parts.map(p => rl(`z<sub>e</sub> = ${f2(p.ze)} m: c<sub>alt</sub> ${f3(p.q.calt)}, v<sub>b</sub> = ${f2(p.q.vb)} m/s, q<sub>b</sub> = ${f3(p.q.qb)}, c<sub>e</sub> = ${f3(p.q.ce)}${S.inTown ? `, c<sub>e,T</sub> = ${f3(p.q.ceT)}` : ''}${p.q.co > 1 ? `, c<sub>o</sub> = ${f3(p.q.co)}` : ''}`, p.q.how, `q<sub>p</sub> = ${f3(p.q.qp)} kN/m²`)).join('')
+      + `<table class="rtab"><tr><th>Wall zone</th><th>c<sub>pe</sub></th><th>w<sub>e</sub></th><th>net (c<sub>pi</sub> ${fp(R.cpi[0])})</th><th>net (c<sub>pi</sub> ${fp(R.cpi[1])})</th></tr>${c.walls.map(w => `<tr><td>${w.zone}</td><td>${fp(w.cpe)}</td><td>${f3(w.we)}</td><td>${f3(w.net[0])}</td><td>${f3(w.net[1])}</td></tr>`).join('')}</table>`
+      + `<table class="rtab"><tr><th>Roof zone</th><th>Area (m²)</th><th>c<sub>pe</sub> −</th><th>c<sub>pe</sub> +</th></tr>${c.roof.map(z => `<tr><td>${z.zone}</td><td>${f1(z.area)}</td><td>${fp(z.cpe.neg)}</td><td>${fp(z.cpe.pos)}</td></tr>`).join('')}</table>`
+      + rl(`Overall: c<sub>s</sub>c<sub>d</sub> = ${f3(c.cscd)}, lack of correlation ${f3(c.fc)}, ${m === 'DE' ? 'zones D and E' : `net coefficient ${f3(c.cnet)}`}, roof horizontal ${f1(c.FhRoof)} kN`, '7.2.2(3), NA.2.27', `F<sub>w</sub> = ${f1(Fof(c, m))} kN, M = ${f0(Mof(c, m))} kNm`) + '</div>';
+  }
+  b += `<p class="rp" style="color:#555">Generated by EngineeringTools — Wind Loading. Values of Figures NA.3 to NA.8 are read at a grid of points and interpolated.</p>`;
+  return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
+}
+$('calc').onclick = run;
+(function init() {
+  let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
+  if (s && s.v === 1) FIELDS.forEach(id => setVal(id, s[id]));
+  refreshVis();
+})();
+</script>
+<footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent engineer to check and approve all calculations before they are used.</footer>
+</body>
+</html>

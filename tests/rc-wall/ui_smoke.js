@@ -4,8 +4,8 @@ const fs = require('fs'), path = require('path');
 const html = fs.readFileSync(path.join(__dirname, '..', '..', 'RC Wall Design.html'), 'utf8');
 let n = 0, fails = 0;
 const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`); if (!c) fails++; };
-function page(store) {
-  const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.org/', beforeParse(w) { w.print = () => { w.printed = true; }; w.scrollTo = () => {}; if (store) w.localStorage.setItem('et-rc-wall-v1', store); } });
+function page(store, hash = '') {
+  const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.org/' + hash, beforeParse(w) { w.print = () => { w.printed = true; }; w.scrollTo = () => {}; if (store) w.localStorage.setItem('et-rc-wall-v1', store); } });
   const w = dom.window; w.errs = []; w.addEventListener('error', e => w.errs.push(e.message)); return w;
 }
 const w = page(), d = w.document, $ = id => d.getElementById(id), res = () => $('results').textContent, shown = el => !el.classList.contains('hidden');
@@ -52,5 +52,12 @@ d.querySelector('#modes button[data-m=core]').click(); $('calc').click(); w.prin
 truth('print: core sheet', w.printed && /Building and wind/.test($('report').textContent) && /Stresses and vertical steel/.test($('report').textContent) && $('report').querySelectorAll('svg').length === 2);
 const w2 = page(w.localStorage.getItem('et-rc-wall-v1')), $2 = id => w2.document.getElementById(id);
 truth('inputs restored, mode and cores included', $2('cdir').value === 'tog' && !w2.document.getElementById('pane-core').classList.contains('hidden') && w2.document.querySelectorAll('#coreRows .row').length === 2 && $2('wh').value === '250');
-truth('no script errors', w.errs.length === 0 && w2.errs.length === 0);
+// wind moments handed over from Wind Loading (#in=), with and without a saved session
+const hand = { v: 1, mode: 'core', cL: 36, cW: 15, cMns: 4321, cMew: 1234, from: 'From Wind Loading: test.' };
+const w3 = page(null, '#in=' + encodeURIComponent(JSON.stringify(hand))), $3 = id => w3.document.getElementById(id);
+truth('hand-off from Wind Loading: core mode, moments and plan size, run with the note', !w3.document.getElementById('pane-core').classList.contains('hidden') && $3('cMns').value === '4321' && $3('cMew').value === '1234' && $3('cL').value === '36'
+  && /From Wind Loading: test\./.test($3('results').textContent) && /PASS|FAIL/.test($3('results').textContent) && w3.document.querySelectorAll('#coreRows .row').length === 2);
+const w4 = page(w.localStorage.getItem('et-rc-wall-v1'), '#in=' + encodeURIComponent(JSON.stringify(hand))), $4 = id => w4.document.getElementById(id);
+truth('hand-off keeps the saved cores and other inputs', $4('cMns').value === '4321' && $4('cdir').value === 'tog' && $4('wh').value === '250');
+truth('no script errors', w.errs.length === 0 && w2.errs.length === 0 && w3.errs.length === 0 && w4.errs.length === 0);
 console.log(`\n${n - fails}/${n} passed`); if (fails) process.exit(1);
