@@ -10,3 +10,4 @@ Title-row and home-page photographs, from Wikimedia Commons, cropped to 2:1 and 
 | `timber.jpg` | Modern timber framing in Pritzenhagen, Germany | [Commons](https://commons.wikimedia.org/wiki/File:Modern_timber_framing_in_pritzenhagen_germany_003.JPG) | Sebastian Wallroth | Public domain |
 | `frame.jpg` | Steel frame structure under construction | [Commons](https://commons.wikimedia.org/wiki/File:Steel_frame_structure.jpg) | Wikideas1 | CC0 |
 | `ground.jpg` | Construction pit with sheet pile walls, Oosterdokseiland, Amsterdam (2005) | [Commons](https://commons.wikimedia.org/wiki/File:2005,_Amsterdam_photo_-_a_view_in_a_construction_pit_with_sheet_pile_walls_and_concrete_basements_in_the_area_Oosterdokseiland._To_the_right_the_train_track._Street_photography_of_The_Netherlands_by_Fons_Heijnsbroek_-_free_photo,_CCO.tif) | Fons Heijnsbroek | CC0 |
+- `tour-poster.jpg`: a frame from the tour video's title card, over `steel.jpg` (Chevsapher, CC0).
