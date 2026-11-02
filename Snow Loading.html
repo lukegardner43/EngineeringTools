@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snow Loading</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* Engineering Tools: shared light style (tasteskill app sheet "Achromatic ledger", seed 959138263).
+   Ink chrome on a blue-grey drawing-office ground; the one hue (#1d5fbf) goes on the main data element
+   (envelopes, utilisation bars); status colour only on the verdict and on a check that is over. */
+:root{
+  --bg:#f2f4f7; --surf:#ffffff; --surf2:#f7f8fa; --bdr:#e3e5e8; --bdr2:#d1d5db; --rule:#eceef1;
+  --txt:#111111; --lbl:#33363a; --mut:#5f6368; --faint:#6b6b6b;
+  --accent:#1d5fbf; --accent-dim:#e3ebf8;
+  --primary:#1d1f20;
+  --pass:#247b50; --warn:#b45309; --fail:#c4242a;
+  --pass-bg:#dcfae5; --pass-ink:#04250e; --fail-bg:#ffedea; --fail-ink:#831c1e;
+  --r:6px; --rc:8px;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:var(--sans);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5;min-height:100svh;padding:28px 32px 40px;
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;}
+.container{max-width:1376px;margin:0 auto;}
+/* title row: a photograph of the member's material (img/<material>.jpg beside the page, set by <body data-material>)
+   under a neutral scrim, with the breadcrumb, the tool's name and one line of scope. Without the photo it is a plain ink band. */
+.page-hdr{position:relative;isolation:isolate;overflow:hidden;border-radius:var(--rc);min-height:164px;padding:18px 24px 20px;margin-bottom:12px;
+  display:flex;flex-direction:column;justify-content:flex-end;color:#fff;background:#2c3036 var(--photo,none) center/cover no-repeat;}
+.page-hdr::before{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.55) 45%,rgba(0,0,0,.18) 100%);} /* taste-skill-ignore: neutral scrim under text on a photograph */
+.page-hdr::after{content:var(--credit,'');position:absolute;right:10px;bottom:8px;font-size:11px;color:rgba(255,255,255,.9);background:rgba(0,0,0,.4);padding:1px 6px;border-radius:4px;}
+.home-lnk{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:rgba(255,255,255,.88);text-decoration:none;font-weight:500;margin-bottom:auto;align-self:flex-start;padding-bottom:12px;}
+.home-lnk:hover{color:#fff;text-decoration:underline;}
+.home-lnk svg{width:14px;height:14px;}
+.page-hdr h1{font-size:26px;font-weight:600;line-height:1.25;letter-spacing:-0.01em;margin-bottom:4px;color:#fff;}
+.page-hdr p{font-size:14px;color:rgba(255,255,255,.92);max-width:900px;}
+body[data-material="steel"]{--photo:url(img/steel.jpg);--credit:'Photo: Chevsapher, CC0';}
+body[data-material="concrete"]{--photo:url(img/concrete.jpg);--credit:'Photo: MassDOT, public domain';}
+body[data-material="masonry"]{--photo:url(img/masonry.jpg);--credit:'Photo: Håkan Svensson, CC BY 2.5';}
+body[data-material="timber"]{--photo:url(img/timber.jpg);--credit:'Photo: Sebastian Wallroth, public domain';}
+body[data-material="frame"]{--photo:url(img/frame.jpg);--credit:'Photo: Wikideas1, CC0';}
+body[data-material="ground"]{--photo:url(img/ground.jpg);--credit:'Photo: Fons Heijnsbroek, CC0';}
+@media print{.page-hdr{display:none;}}
+/* inputs on the left, the answer on the right: (1376 - 12) x 6/13 = 630 | 734 */
+.main-grid{display:grid;grid-template-columns:minmax(380px,6fr) 7fr;gap:12px;align-items:start;}
+@media(max-width:1100px){.main-grid{grid-template-columns:1fr;}}
+.main-grid > div{min-width:0;}
+#results table.t{display:block;overflow-x:auto;white-space:nowrap;}
+.card{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rc);padding:20px 24px;margin-bottom:12px;}
+.section-title{font-size:16px;font-weight:600;color:var(--txt);margin:0 0 14px;display:flex;justify-content:space-between;align-items:baseline;gap:12px;line-height:1.3;}
+.section-title .aux{color:var(--mut);font-size:13px;font-weight:400;text-align:right;}
+.form-group{margin-bottom:14px;}
+.form-group label,.lbl{display:block;font-size:13px;margin-bottom:5px;color:var(--lbl);font-weight:500;line-height:1.35;}
+input[type="number"],input[type="text"],select{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);padding:0 10px;height:36px;border-radius:var(--r);font-family:var(--sans);font-size:14px;width:100%;font-variant-numeric:tabular-nums;transition:border-color .12s;}
+input::placeholder{color:var(--faint);}
+input:hover,select:hover{border-color:#b9bec6;}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);}
+input:disabled,select:disabled{background:var(--surf2);color:var(--mut);}
+select option{background:var(--surf);color:var(--txt);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.grid2 > .form-group,.grid3 > .form-group{display:flex;flex-direction:column;justify-content:flex-end;}
+.chk{display:block;position:relative;padding-left:26px;font-size:13px;color:var(--lbl);margin:8px 0;cursor:pointer;line-height:1.45;}
+.chk input{position:absolute;left:0;top:1px;width:16px;height:16px;accent-color:var(--primary);}
+.help{font-size:13px;color:var(--mut);margin-top:4px;line-height:1.45;}
+/* segmented control: grey track, white pill on the chosen option */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#e9ecf0;border-radius:var(--rc);margin-bottom:14px;}
+.seg button{background:transparent;color:var(--mut);border:1px solid transparent;border-radius:var(--r);height:32px;padding:0 10px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;}
+.seg button:hover{color:var(--txt);}
+.seg button.on{background:var(--surf);color:var(--txt);border-color:var(--bdr);}
+/* repeating rows: spans, supports, loads */
+.rows{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+.row{display:grid;gap:8px;align-items:end;background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--r);padding:10px;}
+.row label{font-size:12px;color:var(--mut);margin-bottom:3px;display:block;font-weight:500;line-height:1.3;}
+.row input,.row select{height:32px;font-size:13px;padding:0 8px;}
+.row.span{grid-template-columns:1fr 1.6fr 1fr 32px;}
+.row.load{grid-template-columns:52px 64px 1.1fr 1.1fr 32px;}
+.row.load .vals{grid-column:1 / span 3;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.xbtn{height:32px;width:32px;background:var(--surf);border:1px solid var(--bdr2);color:var(--mut);border-radius:var(--r);cursor:pointer;font-size:16px;line-height:1;}
+.xbtn:hover{color:var(--fail);border-color:var(--fail);}
+.addbtn{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);border-radius:var(--r);height:36px;padding:0 12px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;width:100%;}
+.addbtn:hover{border-color:#9aa0a8;background:var(--surf2);}
+/* the one primary action, near-black; secondary actions white and outlined */
+.btn{height:44px;padding:0 16px;border:none;border-radius:var(--r);font-weight:600;cursor:pointer;font-family:var(--sans);font-size:15px;width:100%;background:var(--primary);color:#fff;}
+.btn:hover{background:#000;}
+.btn:focus-visible,.btn2:focus-visible,.addbtn:focus-visible,.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.btn2{width:100%;height:38px;padding:0 12px;background:var(--surf);border:1px solid var(--bdr2);border-radius:var(--r);font-size:14px;font-weight:500;color:var(--txt);cursor:pointer;font-family:var(--sans);margin-top:8px;}
+.btn2:hover{border-color:#9aa0a8;background:var(--surf2);}
+.hidden{display:none!important;}
+/* results */
+.placeholder{display:flex;align-items:center;justify-content:center;min-height:160px;color:var(--mut);font-size:14px;text-align:center;padding:0 24px;}
+.verdict{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--bdr);border-radius:var(--rc);background:var(--surf2);margin-bottom:16px;}
+.verdict .big{font-size:24px;font-weight:600;line-height:1.2;color:var(--pass);letter-spacing:-0.01em;}
+.verdict.fail .big{color:var(--fail);}
+.verdict .sub{font-size:13px;color:var(--mut);margin-top:2px;}
+/* the utilisation ledger: check, clause, bar to scale (full track = 1.2, ink tick at the 1.0 limit), figure */
+.checks{display:flex;flex-direction:column;margin-bottom:8px;}
+.ck{display:grid;grid-template-columns:1.25fr 2fr 56px;gap:14px;align-items:center;font-size:13px;padding:7px 0;border-bottom:1px solid var(--rule);}
+.ck:last-child{border-bottom:none;}
+.ck .nm{color:var(--txt);line-height:1.35;} .ck .nm small{display:block;color:var(--mut);font-size:12px;}
+.bar{height:8px;background:#e8ebef;border-radius:4px;position:relative;}
+.bar::after{content:'';position:absolute;left:83.333%;top:-4px;bottom:-4px;width:1.5px;background:var(--txt);border-radius:1px;}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:4px;}
+.bar i.over{background:var(--fail);} /* 0.9-1.0 stays blue: a well-used member is not a warning; the tick shows how close it is */
+.ck .u{text-align:right;font-weight:600;font-size:14px;}
+.ck .u.over{color:var(--fail);}
+.diag{width:100%;height:auto;display:block;margin-bottom:6px;}
+/* screen drawings: the smallest labels lifted to the 11px floor (the print sheet keeps its own sizes) */
+.container svg text[font-size="8"],.container svg text[font-size="8.5"],.container svg text[font-size="9"],.container svg text[font-size="9.5"],
+.container svg text[font-size="10"],.container svg text[font-size="10.5"]{font-size:11px;}
+.dlabel{font-size:14px;font-weight:600;color:var(--txt);margin:20px 0 6px;line-height:1.3;}
+table.t{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px;font-variant-numeric:tabular-nums;}
+table.t th{color:var(--mut);font-weight:500;text-align:right;padding:6px 8px;border-bottom:1px solid var(--bdr);font-size:12px;}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--rule);text-align:right;}
+table.t th:first-child,table.t td:first-child{text-align:left;}
+.note{font-size:13px;color:var(--mut);background:var(--surf2);border:1px solid var(--rule);border-radius:var(--r);padding:10px 12px;margin-top:10px;line-height:1.5;}
+.err{color:var(--fail-ink);background:var(--fail-bg);font-size:13px;padding:10px 12px;border-radius:var(--r);margin-bottom:12px;}
+.busy{opacity:.55;pointer-events:none;}
+a{color:var(--txt);}
+sub,sup{font-size:max(11px,.75em);line-height:0;}
+@media(max-width:560px){body{padding:16px 16px 32px;} .card{padding:16px;} .ck{grid-template-columns:1fr 1fr 48px;gap:10px;} .grid3{grid-template-columns:1fr 1fr;}
+  .row.span{grid-template-columns:1fr 32px;} .row.span > div:nth-child(2),.row.span > div:nth-child(3){display:none;} .row.load .vals{grid-template-columns:1fr 1fr;}
+  .page-hdr{min-height:150px;padding:14px 16px 16px;} .page-hdr h1{font-size:22px;} .page-hdr::after{top:10px;bottom:auto;} .page-hdr::before{background:rgba(0,0,0,.6);} .verdict .big{font-size:22px;}}
+/* disclaimer: on screen at the foot of the page, and printed at the end of the calculation sheet */
+.disclaimer{max-width:1376px;margin:24px auto 0;padding-top:14px;border-top:1px solid var(--bdr,#e3e5e8);font-size:13px;line-height:1.55;color:var(--mut,#5f6368);}
+.disclaimer b{color:var(--txt,#111);font-weight:600;}
+@media print{.disclaimer{display:block!important;max-width:none;margin:4mm 0 0;padding-top:1.5mm;border-top:0.4pt solid #888;font-family:Arial,Helvetica,sans-serif;font-size:7.5pt;color:#000;break-inside:avoid;} .disclaimer b{color:#000;}}
+/* ---------- print: A4 calculation sheet ---------- */
+#report{display:none;}
+@media print{
+  @page{size:A4;margin:12mm 12mm 14mm;}
+  body{background:#fff;color:#000;padding:0;background-image:none;font-size:9.5pt;}
+  .container{display:none;}
+  #report{display:block;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  #report table.wrap{width:100%;border-collapse:collapse;}
+  #report thead td{padding:0 0 3mm;}
+  .rh{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;border:0.6pt solid #000;font-size:8pt;}
+  .rh div{padding:1.2mm 2mm;border-right:0.6pt solid #000;}
+  .rh div:last-child{border-right:none;}
+  .rh b{display:block;font-size:6.5pt;color:#444;font-weight:normal;text-transform:uppercase;letter-spacing:.3pt;}
+  .rh .ttl{grid-column:1 / -1;border-top:0.6pt solid #000;border-right:none;font-weight:bold;font-size:10pt;}
+  .rs{margin:0 0 3.5mm;}
+  .rs h2,.rs h3{break-after:avoid;}
+  .rl,.rt,.rsvg,.rp,.rt tr{break-inside:avoid;}
+  .rs h2{font-size:10pt;margin:3mm 0 1.5mm;padding-bottom:0.8mm;border-bottom:0.8pt solid #000;}
+  .rs h3{font-size:9pt;margin:2mm 0 1mm;}
+  .rl{display:grid;grid-template-columns:1fr 92px 132px;gap:2mm;padding:0.5mm 0;font-size:8.6pt;}
+  .rl .cl{text-align:right;color:#444;font-size:7.5pt;}
+  .rl .rv{text-align:right;font-weight:bold;}
+  .ok{color:#0a7a3e;} .ng{color:#c00;}
+  .rt{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;}
+  .rt th,.rt td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;}
+  .rt th{background:#eee;font-weight:bold;}
+  .rt td:first-child,.rt th:first-child,.rt.lft td,.rt.lft th{text-align:left;}
+  .rp{font-size:8.3pt;line-height:1.45;margin:1mm 0;}
+  .rsvg{width:100%;height:auto;}
+  .rsvg *{vector-effect:non-scaling-stroke;}
+}
+
+svg.sec{width:100%;height:auto;display:block;max-width:480px;margin:4px auto 8px;}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px 20px;background:var(--surf2);border:1px solid var(--rule);border-radius:var(--rc);padding:12px 16px;margin-bottom:12px;}
+.kv div{min-width:0;} .kv b{display:block;font-size:12px;font-weight:400;color:var(--mut);} .kv span{font-size:15px;font-weight:600;}
+.sum{background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--rc);padding:14px 16px;margin-bottom:16px;}
+.sum .big{font-size:22px;font-weight:600;line-height:1.25;} .sum .sub{font-size:13px;color:var(--mut);margin-top:6px;line-height:1.5;}
+.case{border-top:1px solid var(--rule);padding-top:12px;margin-top:14px;}
+.case h3{font-size:15px;font-weight:600;margin:0 0 2px;} .case .meta{font-size:12px;color:var(--mut);margin-bottom:4px;}
+.tag{display:inline-block;font-size:12px;font-weight:500;border-radius:4px;padding:1px 7px;margin-left:6px;background:var(--accent-dim);color:var(--accent);}
+.tag.acc{background:#f1f1f1;color:var(--txt);}
+@media print{svg.sec{max-width:110mm;} .rtab{width:100%;border-collapse:collapse;font-size:7.5pt;margin:1mm 0 2mm;} .rtab th,.rtab td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;} .rtab th:first-child,.rtab td:first-child{text-align:left;}}
+</style>
+</head>
+<body data-material="frame">
+<div class="container">
+  <div class="page-hdr">
+    <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
+    <h1>Snow Loading</h1>
+    <p>Snow on roofs to BS EN 1991-1-3 + UK NA &nbsp;·&nbsp; ground snow from the map zone and altitude &nbsp;·&nbsp; monopitch, duopitch, multi-span and cylindrical roofs with the UK drifted cases &nbsp;·&nbsp; exceptional drifts (Annex B) against taller buildings, behind parapets, at obstructions and on canopies</p>
+  </div>
+  <div class="main-grid">
+    <div id="inputs">
+      <div class="card">
+        <div class="section-title">Project</div>
+        <div class="form-group"><label>Project</label><input type="text" id="pName" placeholder="Project name"></div>
+        <div class="grid3"><div class="form-group"><label>Job no.</label><input type="text" id="pJob"></div><div class="form-group"><label>By</label><input type="text" id="pBy"></div><div class="form-group"><label>Member ref.</label><input type="text" id="pRef" placeholder="e.g. Main roof"></div></div>
+      </div>
+      <div class="card">
+        <div class="section-title">Ground snow</div>
+        <div class="grid3">
+          <div class="form-group"><label>Zone (Figure NA.1)</label><select id="zone"><option value="1">1 (0.30 kN/m² at 100 m)</option><option value="2">2 (0.40)</option><option value="3" selected>3 (0.50)</option><option value="4">4 (0.60)</option><option value="5">5 (0.70)</option><option value="6.5">6.5 (0.85)</option></select></div>
+          <div class="form-group"><label>Site altitude A (m)</label><input type="number" id="alt" value="100" step="5"></div>
+          <div class="form-group"><label>C<sub>e</sub> / C<sub>t</sub></label><div style="display:flex;gap:8px"><input type="number" id="Ce" value="1" step="0.1" aria-label="Exposure coefficient Ce"><input type="number" id="Ct" value="1" step="0.1" aria-label="Thermal coefficient Ct"></div></div>
+        </div>
+        <label class="chk"><input type="checkbox" id="noReduce"> Coastal site below 100 m with unusual local conditions: use the map value without the altitude reduction (NA.2.8)</label>
+        <div class="help">s<sub>k</sub> = [0.15 + (0.1Z + 0.05)] + (A − 100)/525 (NA.1). Jersey is zone 3 and Guernsey zone 2; above 1500 m ask the Met Office (NA.2.1). The UK NA recommends C<sub>e</sub> = C<sub>t</sub> = 1.0 (NA.2.15, NA.2.16).</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Roof or drift</div>
+        <div class="form-group"><label>Case</label><select id="type">
+          <option value="mono">Monopitch roof</option><option value="duo">Duopitch roof</option><option value="multi">Multi-span roof, one valley</option><option value="cyl">Cylindrical roof</option>
+          <option value="abut">Roof abutting a taller building</option><option value="parapet">Roof behind a parapet</option><option value="obstr">Obstruction on a roof</option><option value="canopy">Canopy over a door or loading bay</option></select></div>
+        <div class="grid3 m-mono">
+          <div class="form-group"><label>Pitch α (°)</label><input type="number" id="mA" value="10" step="1"></div>
+          <div class="form-group"><label>Width on plan b (m)</label><input type="number" id="mB" value="12" step="0.5"></div>
+        </div>
+        <div class="grid3 m-duo">
+          <div class="form-group"><label>Pitch of slope 1, α₁ (°)</label><input type="number" id="dA1" value="22.5" step="0.5"></div>
+          <div class="form-group"><label>Pitch of slope 2, α₂ (°)</label><input type="number" id="dA2" value="22.5" step="0.5"></div>
+          <div class="form-group"><label>Span on plan b (m)</label><input type="number" id="dB" value="12" step="0.5"></div>
+        </div>
+        <label class="chk m-mono m-duo"><input type="checkbox" id="keep"> Snow fence, or a parapet at the lower edge (μ not below 0.8, 5.3.2(2))</label>
+        <div class="grid3 m-multi">
+          <div class="form-group"><label>Pitch into the valley, α₁ (°)</label><input type="number" id="vA1" value="22.5" step="0.5"></div>
+          <div class="form-group"><label>Pitch out of it, α₂ (°)</label><input type="number" id="vA2" value="22.5" step="0.5"></div>
+          <div class="form-group"><label>b₃, three slopes (m)</label><input type="number" id="vB3" step="0.5" placeholder="auto"></div>
+        </div>
+        <div class="grid3 m-multi">
+          <div class="form-group"><label>Slope 1 on plan, b₁ (m)</label><input type="number" id="vB1" value="6" step="0.5"></div>
+          <div class="form-group"><label>Slope 2 on plan, b₂ (m)</label><input type="number" id="vB2" value="6" step="0.5"></div>
+        </div>
+        <div class="help m-multi">b₁ and b₂ are the plan widths of the slopes either side of the valley, from the ridges. b₃ is the plan width of three slopes: 1.5 × the span for three or more uniform spans (B2(3)); left blank it is b₁ + b₂ + the larger of them.</div>
+        <div class="grid3 m-cyl">
+          <div class="form-group"><label>Span b (m)</label><input type="number" id="cB" value="20" step="0.5"></div>
+          <div class="form-group"><label>Rise h (m)</label><input type="number" id="cH" value="4" step="0.1"></div>
+        </div>
+        <div class="help m-cyl">A circular arc springing from the eaves; rise up to half the span.</div>
+        <div class="grid3 m-abut">
+          <div class="form-group"><label>Lower roof from the wall, b₁ (m)</label><input type="number" id="aB1" value="12" step="0.5"></div>
+          <div class="form-group"><label>Taller building, b₂ (m)</label><input type="number" id="aB2" value="15" step="0.5"></div>
+          <div class="form-group"><label>Height difference h (m)</label><input type="number" id="aH" value="4" step="0.1"></div>
+        </div>
+        <div class="grid3 m-abut">
+          <div class="form-group"><label>Pitch of the lower roof α (°)</label><input type="number" id="aA" value="0" step="1"></div>
+        </div>
+        <div class="help m-abut">Figure B2: b₁ is the lower roof measured away from the wall, b₂ the taller building in the same direction, h the height of the taller roof above the lower one. A pitched lower roof has its gable to the wall.</div>
+        <div class="grid3 m-parapet">
+          <div class="form-group"><label>Parapet height h (m)</label><input type="number" id="pH" value="1" step="0.1"></div>
+          <div class="form-group"><label>Roof behind it, b₁ (m)</label><input type="number" id="pB1" value="20" step="0.5"></div>
+          <div class="form-group"><label>Other roof dimension, b₂ (m)</label><input type="number" id="pB2" value="20" step="0.5"></div>
+        </div>
+        <div class="help m-parapet">Figure B4: h from the roof (or the gutter, behind an eaves parapet) to the top of the parapet; b₁ the roof measured from the parapet, b₂ the other dimension (for a pitched roof behind an eaves parapet, the full width).</div>
+        <div class="grid3 m-obstr">
+          <div class="form-group"><label>Height, side 1, h₁ (m)</label><input type="number" id="oH1" value="0.8" step="0.1"></div>
+          <div class="form-group"><label>Height, side 2, h₂ (m)</label><input type="number" id="oH2" value="0.8" step="0.1"></div>
+          <div class="form-group"><label>Length along the roof (m)</label><input type="number" id="oL" value="4" step="0.5"></div>
+        </div>
+        <div class="grid3 m-obstr">
+          <div class="form-group"><label>Roof on side 1, b₁ (m)</label><input type="number" id="oB1" value="10" step="0.5"></div>
+          <div class="form-group"><label>Roof on side 2, b₂ (m)</label><input type="number" id="oB2" value="10" step="0.5"></div>
+          <div class="form-group"><label>Width across (m)</label><input type="number" id="oW" value="0.5" step="0.1"></div>
+        </div>
+        <div class="help m-obstr">Plant, upstands and similar up to 1 m high, or slender ones up to 2 m wide (Annex B4(2)); a face of 1 m² or less needs no drift. Anything bigger is a taller building (Annex B3).</div>
+        <div class="grid3 m-canopy">
+          <div class="form-group"><label>Wall above the canopy, h (m)</label><input type="number" id="nH" value="3" step="0.1"></div>
+          <div class="form-group"><label>Projection b₁ (m, ≤ 5)</label><input type="number" id="nB1" value="2" step="0.1"></div>
+          <div class="form-group"><label>Building b₂ (m)</label><input type="number" id="nB2" value="12" step="0.5"></div>
+        </div>
+      </div>
+      <button class="btn" id="calc">Calculate</button>
+    </div>
+    <div><div class="card" id="results"><div class="placeholder">Choose the zone and altitude and the roof, then Calculate.</div></div></div>
+  </div>
+</div>
+<div id="report"></div>
+<script id="engine">
+// Snow Loading engine: BS EN 1991-1-3 + UK NA (NA to BS EN 1991-1-3:2003, incorporating corrigendum no. 1).
+// Ground snow by (NA.1); roof shape coefficients by 5.3 with the UK drifted arrangements of Table NA.1 (duopitch) and
+// Table NA.2 (cylindrical); exceptional drifts by Annex B as accidental actions (NA.2.5, NA.2.12). Units: m, kN/m², degrees.
+const Snow = (() => {
+  const fin = (v, nm) => { if (!Number.isFinite(v)) throw new Error(`${nm}: give a number`); return v; };
+  const pos = (v, nm) => { fin(v, nm); if (!(v > 0)) throw new Error(`${nm} must be greater than 0`); return v; };
+  const rad = d => d * Math.PI / 180, deg = r => r * 180 / Math.PI;
+  const ZONES = [1, 2, 3, 4, 5, 6.5];
+
+  // ---------- ground snow, NA.2.8 ----------
+  function ground(inp) {
+    const Z = fin(+inp.zone, 'Zone'), A = fin(inp.A ?? 0, 'Site altitude');
+    if (!ZONES.includes(Z)) throw new Error('Zone must be 1, 2, 3, 4, 5 or 6.5 (Figure NA.1)');
+    if (A > 1500) throw new Error('Above 1500 m the UK NA asks for Met Office advice (NA.2.1)');
+    if (A < -20) throw new Error('Site altitude below −20 m: check the input');
+    const map = 0.15 + (0.1 * Z + 0.05), adj = (A - 100) / 525, noReduce = !!inp.noReduce;
+    const sk = map + (noReduce ? Math.max(0, adj) : adj);
+    const Ce = fin(inp.Ce ?? 1, 'Cₑ'), Ct = fin(inp.Ct ?? 1, 'Cₜ');
+    if (Ce < 0.8 || Ce > 1.2) throw new Error('Cₑ is between 0.8 and 1.2 (Table 5.1); the UK NA recommends 1.0');
+    if (Ct <= 0 || Ct > 1) throw new Error('Cₜ is between 0 and 1.0; the UK NA recommends 1.0');
+    const psi = A <= 1000 ? [0.5, 0.2, 0] : [0.7, 0.5, 0.2];   // UK NA to BS EN 1990, Table NA.A1.1
+    return { Z, A, map, adj, sk, Ce, Ct, noReduce, psi };
+  }
+  // ---------- shape coefficients ----------
+  // Table 5.2 (μ1, undrifted, monopitch, duopitch and multi-span slopes); not below 0.8 where snow cannot slide off (5.3.2(2))
+  const mu1 = (a, keep) => { const v = a <= 30 ? 0.8 : a < 60 ? 0.8 * (60 - a) / 30 : 0; return keep ? Math.max(0.8, v) : v; };
+  // Table NA.1, drifted duopitch (one slope loaded, the other clear)
+  const muDrift = (a, keep) => { const v = a <= 15 ? 0.8 : a <= 30 ? 0.8 + 0.4 * (a - 15) / 15 : a < 60 ? 1.2 * (60 - a) / 30 : 0; return keep ? Math.max(0.8, v) : v; };
+  // Table NA.2, drifted cylindrical roof: α equivalent slope, δ angle of the tangent at the eaves
+  function muCyl(a, d) {
+    if (a <= 15 || a >= 60) return { m1: 0, m2: 0, m3: 0 };
+    const m2 = a <= 30 ? 0.8 + 0.4 * (a - 15) / 15 : 1.2 * (60 - a) / 30;
+    return { m1: 0.4, m2, m3: d >= 30 && d <= 60 ? m2 * (60 - d) / 30 : d < 30 ? m2 : 0 };
+  }
+  // Table B1, roofs abutting taller construction: α pitch of the lower roof, μ3 the cap
+  function tableB1(a, m3) {
+    const m1 = a <= 15 ? m3 : a <= 30 ? m3 * (30 - a) / 15 : 0;
+    const m2 = a <= 30 ? m3 : a < 60 ? m3 * (60 - a) / 30 : 0;
+    return { m1, m2 };
+  }
+  // UK NA to BS EN 1991-1-1, Table NA.7: imposed load on roofs not accessible except for maintenance (not with snow)
+  const qRoof = a => a < 30 ? 0.6 : a < 60 ? 0.6 * (60 - a) / 30 : 0;
+
+  // ---------- load cases ----------
+  // a case: { name, sit 'P' (persistent/transient, s = μ Ce Ct sk) or 'A' (accidental, exceptional drift, s = μ sk),
+  //   ref, segs: [{ x0, x1, m0, m1, at }] along the section (m), note }
+  function finish(c, G) {
+    const f = c.sit === 'A' ? G.sk : G.Ce * G.Ct * G.sk;
+    c.f = f;
+    c.segs = c.segs.filter(s => s.x1 - s.x0 > 1e-9).map(s => ({ ...s, s0: s.m0 * f, s1: s.m1 * f, w: (s.m0 + s.m1) / 2 * f * (s.x1 - s.x0) }));
+    c.muMax = Math.max(0, ...c.segs.map(s => Math.max(s.m0, s.m1)));
+    c.sMax = c.muMax * f; c.W = c.segs.reduce((t, s) => t + s.w, 0);
+    c.ed = c.sit === 'A' ? c.sMax : 1.5 * c.sMax;   // design value: γ_Q = 1.5 (6.10) or 1.0 accidental (6.11b)
+    return c;
+  }
+  const seg = (x0, x1, m0, m1 = m0, at = '') => ({ x0, x1, m0, m1, at });
+  const ang = (a, nm) => { fin(a, nm); if (a < 0 || a >= 90) throw new Error(`${nm} must be between 0° and 90°`); return a; };
+
+  function design(inp) {
+    const G = ground(inp), type = inp.type, he = Math.max(1.5, 0.15 * (inp.b || inp.b1 || 10)), cases = [], geo = { lines: [], marks: [] }, val = {};
+    const keep = !!inp.keep;
+    if (type === 'mono') {
+      const a = ang(inp.alpha, 'Pitch α'), b = pos(inp.b, 'Width b'), r = b * Math.tan(rad(a)), m = mu1(a, keep);
+      geo.lines.push([[0, -he], [0, 0], [b, r], [b, -he]]); geo.x0 = 0; geo.x1 = b;
+      Object.assign(val, { a, b, rise: r, mu1: m });
+      cases.push({ name: 'Undrifted and drifted', sit: 'P', ref: '5.3.2, Figure 5.2, Table 5.2', segs: [seg(0, b, m)], note: keep ? 'Snow cannot slide off (snow fence or parapet at the lower edge): μ₁ not below 0.8.' : '' });
+      G.qk = qRoof(a);
+    } else if (type === 'duo') {
+      const a1 = ang(inp.a1, 'Pitch α₁'), a2 = ang(inp.a2, 'Pitch α₂'), b = pos(inp.b, 'Span b');
+      if (a1 + a2 <= 0) throw new Error('A duopitch roof needs a pitch on at least one slope');
+      const t1 = Math.tan(rad(a1)), t2 = Math.tan(rad(a2)), b1 = b * t2 / (t1 + t2), b2 = b - b1, r = b1 * t1;
+      geo.lines.push([[0, -he], [0, 0], [b1, r], [b, 0], [b, -he]]); geo.x0 = 0; geo.x1 = b;
+      const u1 = mu1(a1, keep), u2 = mu1(a2, keep), d1 = muDrift(a1, keep), d2 = muDrift(a2, keep);
+      Object.assign(val, { a1, a2, b1, b2, rise: r, u1, u2, d1, d2 });
+      cases.push({ name: 'Case (i): undrifted', sit: 'P', ref: '5.3.3, Figure 5.3 case (i), Table 5.2', segs: [seg(0, b1, u1, u1, 'slope 1'), seg(b1, b, u2, u2, 'slope 2')] });
+      cases.push({ name: 'Case (ii): drifted onto slope 2', sit: 'P', ref: 'NA.2.17, Table NA.1', segs: [seg(b1, b, d2, d2, 'slope 2')], note: 'Slope 1 clear of snow.' });
+      cases.push({ name: 'Case (iii): drifted onto slope 1', sit: 'P', ref: 'NA.2.17, Table NA.1', segs: [seg(0, b1, d1, d1, 'slope 1')], note: 'Slope 2 clear of snow.' });
+      G.qk = Math.max(qRoof(a1), qRoof(a2));
+    } else if (type === 'multi') {
+      const a1 = ang(inp.a1, 'Pitch α₁'), a2 = ang(inp.a2, 'Pitch α₂'), b1 = pos(inp.b1, 'Slope width b₁'), b2 = pos(inp.b2, 'Slope width b₂');
+      if (a1 > 60 || a2 > 60) throw new Error('A valley with a side steeper than 60° needs special consideration (5.3.4(4))');
+      const r1 = b1 * Math.tan(rad(a1)), r2 = b2 * Math.tan(rad(a2)), h = r1 + (r2 - r1) * b1 / (b1 + b2);
+      if (!(h > 0)) throw new Error('The valley needs a pitch on at least one side');
+      const b3 = inp.b3 > 0 ? inp.b3 : b1 + b2 + Math.max(b1, b2);
+      if (b3 < b1 + b2) throw new Error('b₃ spans three slopes, so it is at least b₁ + b₂');
+      const ls1 = b1, ls2 = b2, caps = { h: 2 * h / G.sk, b: 2 * b3 / (ls1 + ls2), max: 5 }, m = Math.min(caps.h, caps.b, caps.max);
+      const gov = m === caps.max ? '5' : m === caps.h ? '2h/sₖ' : '2b₃/(lₛ₁ + lₛ₂)';
+      const xo1 = -Math.min(b1, 0.6 * b1), xo2 = b1 + b2 + Math.min(b2, 0.6 * b2);
+      geo.lines.push([[xo1, r1 - (-xo1) * r1 / b1], [0, r1], [b1, 0], [b1 + b2, r2], [xo2, r2 - (xo2 - b1 - b2) * r2 / b2]]);
+      geo.lines.push([[b1, 0], [b1, -he]]); geo.dashed = [[[0, r1], [b1 + b2, r2]]]; geo.x0 = xo1; geo.x1 = xo2;
+      const u1 = mu1(a1), u2 = mu1(a2);
+      Object.assign(val, { a1, a2, b1, b2, b3, r1, r2, h, caps, mu: m, gov, ls1, ls2 });
+      cases.push({ name: 'Undrifted', sit: 'P', ref: '5.3.4, Figure 5.4 case (i)', segs: [seg(0, b1, u1, u1, 'slope 1'), seg(b1, b1 + b2, u2, u2, 'slope 2')], note: 'Every slope of the roof carries μ₁ for its own pitch.' });
+      cases.push({ name: 'Exceptional drift in the valley', sit: 'A', ref: 'NA.2.18, Annex B2', segs: [seg(0, b1, 0, m, 'lₛ₁ = b₁'), seg(b1, b1 + b2, m, 0, 'lₛ₂ = b₂')],
+        note: `μ₁ = least of 2h/sₖ = ${caps.h.toFixed(2)}, 2b₃/(lₛ₁ + lₛ₂) = ${caps.b.toFixed(2)} and 5. No snow elsewhere on the roof (B1(2)). Drifts in several valleys at once: their total per metre width not more than sₖ × the building length across the valleys (B2(5)).` });
+      G.qk = Math.max(qRoof(a1), qRoof(a2));
+    } else if (type === 'cyl') {
+      const b = pos(inp.b, 'Span b'), h = pos(inp.h, 'Rise h');
+      if (h > b / 2 + 1e-9) throw new Error('Rise more than half the span: the arc would pass beyond a semicircle');
+      const R = (b * b / 4 + h * h) / (2 * h), d = deg(Math.asin(Math.min(1, b / 2 / R)));
+      const x60 = d > 60 ? b / 2 - R * Math.sin(rad(60)) : 0, x30 = d > 30 ? b / 2 - R * Math.sin(rad(30)) : 0;
+      const z = x => Math.sqrt(Math.max(0, R * R - (x - b / 2) ** 2)) - (R - h);   // height above the eaves
+      const a = d <= 60 ? deg(Math.atan(h / (b / 2))) : deg(Math.atan((h - z(x60)) / (b / 2 - x60)));
+      const C = muCyl(a, d), pts = []; for (let i = 0; i <= 60; i++) { const x = b * i / 60; pts.push([x, z(x)]); }
+      geo.lines.push([[0, -he], ...pts, [b, -he]]); geo.x0 = 0; geo.x1 = b;
+      Object.assign(val, { b, h, R, delta: d, alpha: a, x30, x60, ...C });
+      cases.push({ name: 'Undrifted', sit: 'P', ref: '5.3.5, Figure 5.6 case (i)', segs: [seg(x60, b - x60, 0.8)], note: d > 60 ? 'No snow where the roof is steeper than 60°.' : '' });
+      if (a > 15 && C.m2 > 0) {
+        const segs = d < 30 ? [seg(0, b / 2, C.m2, C.m1, 'eaves to crown')] : d <= 60 ? [seg(0, x30, C.m3, C.m2, 'eaves to the 30° point'), seg(x30, b / 2, C.m2, C.m1, 'to the crown')] : [seg(x60, x30, 0, C.m2, '60° to 30° point'), seg(x30, b / 2, C.m2, C.m1, 'to the crown')];
+        cases.push({ name: 'Drifted, one side', sit: 'P', ref: 'NA.2.20, Table NA.2, Figure NA.3', segs, note: 'The other side clear of snow; the mirror image is the second case.' });
+      } else cases.push({ name: 'Drifted', sit: 'P', ref: 'NA.2.20', segs: [], note: `Equivalent slope α = ${a.toFixed(1)}° ≤ 15°: Figure NA.3 need not be considered.` });
+      G.qk = qRoof(Math.min(d, 89));
+    } else if (type === 'abut') {
+      const a = ang(inp.alpha ?? 0, 'Pitch of the lower roof'), b1 = pos(inp.b1, 'Lower roof b₁'), b2 = pos(inp.b2, 'Taller building b₂'), h = pos(inp.h, 'Height difference h');
+      const ls = Math.min(5 * h, b1, 15), b = Math.max(b1, b2), caps = { h: 2 * h / G.sk, b: 2 * b / ls, max: 8 }, m3 = Math.min(caps.h, caps.b, caps.max), T = tableB1(a, m3);
+      const gov = m3 === caps.max ? '8' : m3 === caps.h ? '2h/sₖ' : '2b/lₛ', lsGov = ls === 15 ? '15 m' : ls === b1 ? 'b₁' : '5h';
+      geo.lines.push([[-Math.min(b2, 1.2 * b1), -he], [-Math.min(b2, 1.2 * b1), h], [0, h], [0, 0], [b1, 0], [b1, -he]]); geo.x0 = -Math.min(b2, 1.2 * b1); geo.x1 = b1;
+      Object.assign(val, { a, b1, b2, h, ls, b, caps, m3, gov, lsGov, ...T, u: mu1(a) });
+      cases.push({ name: 'Undrifted', sit: 'P', ref: '5.3.6(1), Table 5.2', segs: [seg(0, b1, mu1(a))], note: a <= 30 ? 'μ₁ = 0.8 on the lower roof.' : '' });
+      cases.push({ name: 'Exceptional drift against the taller building', sit: 'A', ref: 'NA.2.22, Annex B3, Table B1', segs: [seg(0, ls, T.m2, 0, a > 15 ? 'at the eaves (μ₂)' : 'from the wall')],
+        note: `μ₃ = least of 2h/sₖ = ${caps.h.toFixed(2)}, 2b/lₛ = ${caps.b.toFixed(2)} and 8 (b the larger of b₁ and b₂); lₛ = least of 5h, b₁ and 15 m.${a > 15 ? ` A pitched lower roof with its gable to the wall: μ₂ = ${T.m2.toFixed(2)} at the eaves, μ₁ = ${T.m1.toFixed(2)} at the ridge, varying across the roof (Figure B2).` : ''} Also for roofs within 1.5 m of a taller building (load on the lower roof only). No snow elsewhere on the roof.` });
+      G.qk = qRoof(a);
+    } else if (type === 'parapet') {
+      const h = pos(inp.h, 'Parapet height h'), b1 = pos(inp.b1, 'Roof length b₁'), b2 = fin(inp.b2 ?? 0, 'b₂');
+      const ls = Math.min(5 * h, b1, 15), b = Math.max(b1, b2), caps = { h: 2 * h / G.sk, b: 2 * b / ls, max: 8 }, m = Math.min(caps.h, caps.b, caps.max);
+      const gov = m === caps.max ? '8' : m === caps.h ? '2h/sₖ' : '2b/lₛ', lsGov = ls === 15 ? '15 m' : ls === b1 ? 'b₁' : '5h';
+      geo.lines.push([[0, -he], [0, h], [0.25, h], [0.25, 0], [b1, 0], [b1, -he]]); geo.x0 = 0; geo.x1 = b1;
+      Object.assign(val, { h, b1, b2, ls, b, caps, m, gov, lsGov });
+      cases.push({ name: 'Undrifted', sit: 'P', ref: '5.3.2(2), Table 5.2', segs: [seg(0.25, b1, 0.8)], note: 'Not below 0.8 where a parapet stops the snow sliding off.' });
+      cases.push({ name: 'Exceptional drift behind the parapet', sit: 'A', ref: 'NA.2.23, Annex B4(3)–(5)', segs: [seg(0.25, 0.25 + ls, m, 0, 'from the parapet')],
+        note: `μ₁ = least of 2h/sₖ = ${caps.h.toFixed(2)}, 2b/lₛ = ${caps.b.toFixed(2)} and 8; lₛ = least of 5h, b₁ and 15 m. In a valley behind a parapet at a gable end the load at the parapet falls linearly from the valley to zero at the ridges (if the parapet is not more than 300 mm above the ridge). No snow elsewhere on the roof.` });
+      G.qk = 0.6;
+    } else if (type === 'obstr') {
+      const h1 = pos(inp.h1, 'Height h₁'), h2 = pos(inp.h2 ?? inp.h1, 'Height h₂'), b1 = pos(inp.b1, 'Roof b₁'), b2 = pos(inp.b2, 'Roof b₂'), L = pos(inp.L, 'Obstruction length'), w = pos(inp.w ?? 0.3, 'Obstruction width');
+      const hMax = Math.max(h1, h2);
+      if (hMax > 1 && w > 2) throw new Error('Obstructions over 1 m high and more than 2 m wide are taller construction: use the roof abutting a taller building (Annex B3)');
+      const slender = hMax > 1, he1 = slender ? Math.min(h1, w) : h1, he2 = slender ? Math.min(h2, w) : h2;
+      const area = hMax * Math.max(L, w), ignore = area <= 1;
+      const caps1 = { h: 2 * he1 / G.sk, max: 5 }, caps2 = { h: 2 * he2 / G.sk, max: 5 }, m1 = Math.min(caps1.h, 5), m2 = Math.min(caps2.h, 5);
+      const ls1 = Math.min(5 * Math.min(he1, 1), b1), ls2 = Math.min(5 * Math.min(he2, 1), b2);
+      geo.lines.push([[-b1, -he], [-b1, 0], [0, 0], [0, h1], [w, h2], [w, 0], [w + b2, 0], [w + b2, -he]]); geo.x0 = -b1; geo.x1 = w + b2;
+      Object.assign(val, { h1, h2, b1, b2, L, w, slender, he1, he2, area, ignore, m1, m2, ls1, ls2 });
+      cases.push({ name: 'Undrifted', sit: 'P', ref: '5.3.2, Table 5.2', segs: [seg(-b1, 0, 0.8), seg(w, w + b2, 0.8)] });
+      if (ignore) cases.push({ name: 'Exceptional drift', sit: 'A', ref: 'Annex B4(2)a', segs: [], note: `The face against which a drift could form is ${area.toFixed(2)} m² ≤ 1 m²: drifting can be ignored.` });
+      else cases.push({ name: 'Exceptional drift each side', sit: 'A', ref: 'NA.2.23, Annex B4(2), Figure B3', segs: [seg(-ls1, 0, 0, m1, 'side 1'), seg(w, w + ls2, m2, 0, 'side 2')],
+        note: `μᵢ = least of 2hᵢ/sₖ and 5; lₛᵢ = least of 5h (h not more than 1 m) and bᵢ.${slender ? ' Slender obstruction over 1 m high and not more than 2 m wide: h taken as the lesser of its height and width.' : ''} The two drifts are alternatives with no snow elsewhere on the roof.` });
+      G.qk = 0.6;
+    } else if (type === 'canopy') {
+      const h = pos(inp.h, 'Height h above the canopy'), b1 = pos(inp.b1, 'Canopy projection b₁'), b2 = pos(inp.b2, 'Building b₂');
+      if (b1 > 5) throw new Error('Annex B4(2) covers canopies projecting not more than 5 m');
+      const ls = Math.min(5 * Math.min(h, 1), b1), b = Math.max(b1, b2), caps = { h: 2 * h / G.sk, b: 2 * b / ls, max: 5 }, m = Math.min(caps.h, caps.b, caps.max);
+      const gov = m === caps.max ? '5' : m === caps.h ? '2h/sₖ' : '2b/lₛ';
+      geo.lines.push([[-Math.min(b2, 2 * b1), -he], [-Math.min(b2, 2 * b1), h], [0, h], [0, -he]]); geo.lines.push([[0, 0], [b1, 0], [b1, -0.25]]); geo.x0 = -Math.min(b2, 2 * b1); geo.x1 = b1;
+      Object.assign(val, { h, b1, b2, ls, b, caps, m, gov });
+      cases.push({ name: 'Undrifted', sit: 'P', ref: '5.3.2, Table 5.2', segs: [seg(0, b1, 0.8)] });
+      cases.push({ name: 'Exceptional drift on the canopy', sit: 'A', ref: 'NA.2.23, Annex B4(2), Figure B3', segs: [seg(0, ls, m, 0, 'from the wall')],
+        note: `μ₁ = least of 2h/sₖ = ${caps.h.toFixed(2)}, 5 and, for a door canopy, 2b/lₛ = ${caps.b.toFixed(2)}; lₛ = least of 5h (h not more than 1 m) and b₁. No snow elsewhere.` });
+      G.qk = 0.6;
+    } else throw new Error('Choose a roof or drift case');
+    cases.forEach(c => finish(c, G));
+    const P = cases.filter(c => c.sit === 'P'), A = cases.filter(c => c.sit === 'A');
+    return { G, type, val, geo, cases, sP: Math.max(0, ...P.map(c => c.sMax)), sA: A.length ? Math.max(0, ...A.map(c => c.sMax)) : null };
+  }
+  return { ZONES, ground, mu1, muDrift, muCyl, tableB1, qRoof, design };
+})();
+
+</script>
+<script id="ui">
+'use strict';
+const $ = id => document.getElementById(id);
+const STORE = 'et-snow-v1';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const f1 = v => Number.isFinite(v) ? (Math.round(v * 10) / 10).toString() : '–', f2 = v => Number.isFinite(v) ? v.toFixed(2) : '–', f3 = v => Number.isFinite(v) ? v.toFixed(3) : '–';
+const setVal = (id, v) => { const el = $(id); if (!el || v == null) return; if (el.type === 'checkbox') { el.checked = !!v; return; } if (el.tagName === 'SELECT' && ![...el.options].some(o => o.value === String(v))) return; el.value = v; };
+const TYPES = ['mono', 'duo', 'multi', 'cyl', 'abut', 'parapet', 'obstr', 'canopy'];
+function refreshVis() { const t = $('type').value; TYPES.forEach(m => document.querySelectorAll('.m-' + m).forEach(e => e.classList.toggle('hidden', !e.classList.contains('m-' + t)))); }
+$('type').addEventListener('change', refreshVis);
+const FIELDS = ['pName', 'pJob', 'pBy', 'pRef', 'zone', 'alt', 'Ce', 'Ct', 'noReduce', 'type', 'mA', 'mB', 'dA1', 'dA2', 'dB', 'keep', 'vA1', 'vA2', 'vB1', 'vB2', 'vB3', 'cB', 'cH', 'aB1', 'aB2', 'aH', 'aA', 'pH', 'pB1', 'pB2', 'oH1', 'oH2', 'oL', 'oB1', 'oB2', 'oW', 'nH', 'nB1', 'nB2'];
+const collect = () => { const s = { v: 1 }; FIELDS.forEach(id => s[id] = $(id).type === 'checkbox' ? $(id).checked : $(id).value); return s; };
+const n = id => $(id).value === '' ? NaN : +$(id).value;
+function input() {
+  const t = $('type').value, base = { zone: +$('zone').value, A: n('alt'), Ce: n('Ce'), Ct: n('Ct'), noReduce: $('noReduce').checked, type: t, keep: $('keep').checked };
+  const by = { mono: { alpha: n('mA'), b: n('mB') }, duo: { a1: n('dA1'), a2: n('dA2'), b: n('dB') }, multi: { a1: n('vA1'), a2: n('vA2'), b1: n('vB1'), b2: n('vB2'), b3: $('vB3').value === '' ? null : n('vB3') },
+    cyl: { b: n('cB'), h: n('cH') }, abut: { b1: n('aB1'), b2: n('aB2'), h: n('aH'), alpha: n('aA') }, parapet: { h: n('pH'), b1: n('pB1'), b2: n('pB2') },
+    obstr: { h1: n('oH1'), h2: n('oH2'), L: n('oL'), b1: n('oB1'), b2: n('oB2'), w: n('oW') }, canopy: { h: n('nH'), b1: n('nB1'), b2: n('nB2') } };
+  return { ...base, ...by[t] };
+}
+// Snow Loading drawings (inlined into the UI script; uses f2 and the case data). A section through the roof with the load
+// diagram above it, μ to scale; persistent cases filled in the data colour, accidental drifts hatched.
+const INK = l => l ? '#000' : 'var(--txt)', MUT = l => l ? '#666' : 'var(--mut)', ACC = l => l ? '#1b67b0' : 'var(--accent)', FILL = l => l ? '#ececec' : '#e6e9ee';
+function svgCase(R, c, light, k) {
+  const W0 = 440, pad = 34, g0 = R.geo, he = Math.max(...g0.lines.flat().map(p => -p[1]));
+  const xs = g0.lines.flat().map(p => p[0]), x0 = Math.min(g0.x0, ...xs), x1 = Math.max(g0.x1, ...xs), zs = g0.lines.flat().map(p => p[1]), zTop = Math.max(...zs), zBot = Math.min(...zs);
+  const sc = Math.min((W0 - 2 * pad) / (x1 - x0), 100 / (zTop - zBot)), X = x => pad + (W0 - 2 * pad - (x1 - x0) * sc) / 2 + (x - x0) * sc;
+  const muAll = Math.max(1, ...R.cases.map(q => q.muMax)), Hb = 56, yB = 38 + Hb, Ym = m => yB - m / muAll * Hb, Y = z => yB + 14 + (zTop - z) * sc, H0 = Y(zBot) + 10;
+  const id = `h${k}${light ? 'p' : 's'}`, acc = c.sit === 'A';
+  let g = acc ? `<defs><pattern id="${id}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="${MUT(light)}" stroke-width="1.2"/></pattern></defs>` : '';
+  g += `<line x1="${X(x0)}" y1="${yB}" x2="${X(x1)}" y2="${yB}" stroke="${MUT(light)}" stroke-width="0.8"/>`;
+  for (const s of c.segs) {
+    g += `<path d="M${X(s.x0)} ${yB} L${X(s.x0)} ${Ym(s.m0)} L${X(s.x1)} ${Ym(s.m1)} L${X(s.x1)} ${yB} Z" fill="${acc ? `url(#${id})` : ACC(light)}" fill-opacity="${acc ? 1 : 0.16}" stroke="${acc ? INK(light) : ACC(light)}" stroke-width="1.3"/>`;
+  }
+  // μ labels at the ends of each part, once per distinct point
+  const lab = new Map();
+  for (const s of c.segs) { for (const [x, m] of [[s.x0, s.m0], [s.x1, s.m1]]) if (m > 1e-6) { const key = x.toFixed(3); if (!lab.has(key) || lab.get(key) < m) lab.set(key, m); } }
+  let lastX = -1e9;
+  [...lab.entries()].sort((a, b) => +a[0] - +b[0]).forEach(([x, m]) => { const px = X(+x); if (px - lastX < 34) return; lastX = px; g += `<text x="${Math.min(W0 - 18, Math.max(18, px))}" y="${Ym(m) - 6}" font-size="12" text-anchor="middle" fill="${INK(light)}">${f2(m)}</text>`; });
+  if (!c.segs.length) g += `<text x="${W0 / 2}" y="${yB - 30}" font-size="12" text-anchor="middle" fill="${MUT(light)}">no load in this case</text>`;
+  // the roof section
+  for (const L of g0.lines) g += `<path d="M${L.map(p => `${X(p[0]).toFixed(1)} ${Y(p[1]).toFixed(1)}`).join(' L')}" fill="none" stroke="${INK(light)}" stroke-width="1.5" stroke-linejoin="round"/>`;
+  for (const L of g0.dashed || []) g += `<path d="M${L.map(p => `${X(p[0]).toFixed(1)} ${Y(p[1]).toFixed(1)}`).join(' L')}" fill="none" stroke="${MUT(light)}" stroke-dasharray="4 3"/>`;
+  g += `<line x1="${X(x0) - 10}" y1="${Y(-he)}" x2="${X(x1) + 10}" y2="${Y(-he)}" stroke="${INK(light)}" stroke-width="1.6"/>`;
+  g += `<text x="4" y="13" font-size="11.5" fill="${MUT(light)}">μ to scale${acc ? ', accidental drift' : ''}</text>`;
+  return `<svg class="sec" viewBox="0 0 ${W0} ${H0.toFixed(0)}" role="img" aria-label="Section through the roof with the snow load shape coefficients">${g}</svg>`;
+}
+
+const kv = (k, v) => `<div><b>${k}</b><span>${v}</span></div>`;
+const TITLE = { mono: 'Monopitch roof', duo: 'Duopitch roof', multi: 'Multi-span roof, valley', cyl: 'Cylindrical roof', abut: 'Roof abutting a taller building', parapet: 'Roof behind a parapet', obstr: 'Obstruction on a roof', canopy: 'Canopy over a door or loading bay' };
+function values(R) {
+  const v = R.val, t = R.type;
+  if (t === 'mono') return kv('μ₁ (Table 5.2)', f3(v.mu1)) + kv('Rise (m)', f2(v.rise));
+  if (t === 'duo') return kv('Slope 1 on plan (m)', f2(v.b1)) + kv('Slope 2 on plan (m)', f2(v.b2)) + kv('μ₁(α₁), μ₁(α₂)', `${f2(v.u1)}, ${f2(v.u2)}`) + kv('Drifted (Table NA.1)', `${f2(v.d1)}, ${f2(v.d2)}`);
+  if (t === 'multi') return kv('h above the valley (m)', f2(v.h)) + kv('b₃ (m)', f2(v.b3)) + kv('2h/s<sub>k</sub>', f2(v.caps.h)) + kv('2b₃/(l<sub>s1</sub> + l<sub>s2</sub>)', f2(v.caps.b)) + kv('μ₁, drift', `${f2(v.mu)} (${v.gov})`);
+  if (t === 'cyl') return kv('Radius (m)', f2(v.R)) + kv('δ at the eaves', f1(v.delta) + '°') + kv('Equivalent slope α', f1(v.alpha) + '°') + kv('μ₁, μ₂, μ₃ (Table NA.2)', `${f2(v.m1)}, ${f2(v.m2)}, ${f2(v.m3)}`);
+  if (t === 'abut') return kv('l<sub>s</sub> (m)', `${f2(v.ls)} (${v.lsGov})`) + kv('2h/s<sub>k</sub>', f2(v.caps.h)) + kv('2b/l<sub>s</sub>', f2(v.caps.b)) + kv('μ₃', `${f2(v.m3)} (${v.gov})`) + kv('μ₁, μ₂ (Table B1)', `${f2(v.m1)}, ${f2(v.m2)}`);
+  if (t === 'parapet') return kv('l<sub>s</sub> (m)', `${f2(v.ls)} (${v.lsGov})`) + kv('2h/s<sub>k</sub>', f2(v.caps.h)) + kv('2b/l<sub>s</sub>', f2(v.caps.b)) + kv('μ₁', `${f2(v.m)} (${v.gov})`);
+  if (t === 'obstr') return kv('Face area (m²)', f2(v.area)) + kv('μ₁, μ₂', `${f2(v.m1)}, ${f2(v.m2)}`) + kv('l<sub>s1</sub>, l<sub>s2</sub> (m)', `${f2(v.ls1)}, ${f2(v.ls2)}`);
+  if (t === 'canopy') return kv('l<sub>s</sub> (m)', f2(v.ls)) + kv('2h/s<sub>k</sub>', f2(v.caps.h)) + kv('2b/l<sub>s</sub>', f2(v.caps.b)) + kv('μ₁', `${f2(v.m)} (${v.gov})`);
+  return '';
+}
+const segRows = c => c.segs.map(s => `<tr><td>${esc(s.at) || '–'}</td><td>${f2(s.x0)} – ${f2(s.x1)}</td><td>${s.m0 === s.m1 ? f2(s.m0) : `${f2(s.m0)} → ${f2(s.m1)}`}</td><td>${s.s0 === s.s1 ? f3(s.s0) : `${f3(s.s0)} → ${f3(s.s1)}`}</td><td>${f2(s.w)}</td></tr>`).join('');
+let last = null;
+function render() {
+  const { R } = last, G = R.G;
+  let h = `<div class="sum"><div class="big">Snow on the roof up to ${f3(R.sP)} kN/m²${R.sA !== null ? `; exceptional drift up to ${f3(R.sA)} kN/m²` : ''}</div>`
+    + `<div class="sub">${TITLE[R.type]}. Characteristic values: persistent and transient s = μ C<sub>e</sub>C<sub>t</sub>s<sub>k</sub> (5.1)${R.sA !== null ? ', accidental drift s = μ s<sub>k</sub> (5.3), NA.2.5' : ''}. Design values ${f3(1.5 * R.sP)} kN/m² with γ<sub>Q</sub> = 1.5${R.sA !== null ? ` and ${f3(R.sA)} kN/m² as the accidental action (γ = 1.0, 6.11b)` : ''}.</div></div>`;
+  h += `<div class="kv">${kv('s<sub>k</sub> (kN/m²)', f3(G.sk))}${kv('Map value at 100 m', f2(G.map))}${kv('Altitude term', (G.adj >= 0 ? '+' : '') + f3(G.noReduce ? Math.max(0, G.adj) : G.adj))}${kv('C<sub>e</sub>, C<sub>t</sub>', `${G.Ce}, ${G.Ct}`)}${kv('ψ₀, ψ₁, ψ₂', G.psi.join(', '))}${kv('Roof imposed q<sub>k</sub>', f2(G.qk) + ' kN/m²')}</div>`;
+  h += `<div class="dlabel">Values</div><div class="kv">${values(R)}</div>`;
+  R.cases.forEach((c, k) => {
+    h += `<div class="case"><h3>${esc(c.name)}<span class="tag ${c.sit === 'A' ? 'acc' : ''}">${c.sit === 'A' ? 'Accidental' : 'Persistent'}</span></h3><div class="meta">${esc(c.ref)}${c.segs.length ? ` · up to ${f3(c.sMax)} kN/m², ${f2(c.W)} kN per metre run` : ''}</div>${svgCase(R, c, false, k)}`;
+    if (c.segs.length) h += `<table class="t"><tr><th>Part</th><th>From – to (m)</th><th>μ</th><th>s (kN/m²)</th><th>kN/m run</th></tr>${segRows(c)}</table>`;
+    if (c.note) h += `<div class="help">${esc(c.note)}</div>`;
+    h += `</div>`;
+  });
+  h += `<div class="help" style="margin-top:12px">Loads act vertically on the plan area (5.2(4)). The roof imposed load q<sub>k</sub> (UK NA to BS EN 1991-1-1, Table NA.7) is not combined with snow. Where snow may be cleared by hand or melted by heat loss over part of the roof, also check the undrifted load on any part with none on the rest (NA.2.13).</div>`;
+  h += `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  $('results').innerHTML = h;
+  $('printBtn').onclick = () => { $('report').innerHTML = report(); window.print(); };
+}
+function run() {
+  try { localStorage.setItem(STORE, JSON.stringify(collect())); } catch (e) { /* storage unavailable */ }
+  try { const inp = input(), R = Snow.design(inp); last = { R, inp }; render(); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+// ---------- A4 sheet ----------
+const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
+function report() {
+  const s = collect(), today = new Date().toLocaleDateString('en-GB'), { R } = last, G = R.G;
+  const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.pRef) || '&nbsp;'}</div><div class="ttl">Snow loading to BS EN 1991-1-3 + UK NA</div></div>`;
+  let b = `<div class="rs"><h2>Ground snow</h2>${rl(`Zone ${G.Z}, altitude ${G.A} m: s<sub>k</sub> = [0.15 + (0.1 × ${G.Z} + 0.05)] + (${G.A} − 100)/525${G.noReduce && G.adj < 0 ? ', altitude reduction not taken' : ''}`, 'NA.2.8 (NA.1)', `s<sub>k</sub> = ${f3(G.sk)} kN/m²`)}`
+    + rl(`C<sub>e</sub> = ${G.Ce}, C<sub>t</sub> = ${G.Ct}; ψ₀ = ${G.psi[0]}, ψ₁ = ${G.psi[1]}, ψ₂ = ${G.psi[2]}`, 'NA.2.15, NA.2.16', '') + '</div>';
+  b += `<div class="rs"><h2>${TITLE[R.type]}</h2>${rl(`<span>${values(R).replace(/<div><b>/g, '').replace(/<\/b><span>/g, ' = ').replace(/<\/span><\/div>/g, '; ')}</span>`, '', '')}</div>`;
+  R.cases.forEach((c, k) => {
+    b += `<div class="rs"><h2>${esc(c.name)} (${c.sit === 'A' ? 'accidental, s = μ s<sub>k</sub>' : 'persistent, s = μ C<sub>e</sub>C<sub>t</sub>s<sub>k</sub>'})</h2>${svgCase(R, c, true, k)}`
+      + (c.segs.length ? `<table class="rtab"><tr><th>Part</th><th>From – to (m)</th><th>μ</th><th>s (kN/m²)</th><th>kN/m run</th></tr>${segRows(c)}</table>` : '')
+      + (c.note ? `<p class="rp">${esc(c.note)}</p>` : '') + rl('', c.ref, c.segs.length ? `s up to ${f3(c.sMax)} kN/m²` : '') + '</div>';
+  });
+  b += `<p class="rp" style="color:#555">Generated by EngineeringTools — Snow Loading.</p>`;
+  return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
+}
+$('calc').onclick = run;
+(function init() {
+  let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
+  if (s && s.v === 1) FIELDS.forEach(id => setVal(id, s[id]));
+  refreshVis();
+})();
+</script>
+<footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent engineer to check and approve all calculations before they are used.</footer>
+</body>
+</html>
