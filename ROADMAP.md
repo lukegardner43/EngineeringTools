@@ -255,6 +255,10 @@ The timber beam, member, stud wall and racking wall are checked against the work
 | Outrigger loading design | Outrigger (TWf) | Planned |
 | 2D Frame Analysis | 2D Frame Analysis | Done |
 | Rolling load analysis | Analysis | Planned |
+| (not in Tedds) Tower crane base, CIRIA C761 | Tower Crane Base | Planned (added November 2026) |
+| (not in Tedds) Foundations near trees, NHBC Standards 4.2 | Foundations Near Trees | Planned (added November 2026) |
+| (not in Tedds) Working platforms for tracked plant, BRE BR 470 | Working Platforms | Planned (added November 2026) |
+| (not in Tedds) Ground-bearing slabs, Concrete Society TR34 | Ground-Bearing Slab | Planned (added November 2026) |
 
 Wind Loading covers / limits (November 2026):
 - Peak velocity pressure by the UK NA (NA.2.17): v<sub>b,map</sub> typed from Figure NA.1; c<sub>alt</sub> (NA.2a/b), c<sub>dir</sub> from Table NA.1 (the largest within ±45° of each face, or 1.0), c<sub>season</sub>, c<sub>prob</sub> (4.2) for other return periods; c<sub>e</sub> and c<sub>e,T</sub> from Figures NA.7 and NA.8 (NA.3a/b), town under 0.1 km taken as country; displacement height by A.5; orography by A.3 with NA.4a up to 50 m and NA.4b above (Figures NA.3 to NA.6), v<sub>b</sub> at the altitude of the base, the larger of the orography and flat values.
