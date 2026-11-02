@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RC Wall Design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* Engineering Tools: shared light style (tasteskill app sheet "Achromatic ledger", seed 959138263).
+   Ink chrome on a blue-grey drawing-office ground; the one hue (#1d5fbf) goes on the main data element
+   (envelopes, utilisation bars); status colour only on the verdict and on a check that is over. */
+:root{
+  --bg:#f2f4f7; --surf:#ffffff; --surf2:#f7f8fa; --bdr:#e3e5e8; --bdr2:#d1d5db; --rule:#eceef1;
+  --txt:#111111; --lbl:#33363a; --mut:#5f6368; --faint:#6b6b6b;
+  --accent:#1d5fbf; --accent-dim:#e3ebf8;
+  --primary:#1d1f20;
+  --pass:#247b50; --warn:#b45309; --fail:#c4242a;
+  --pass-bg:#dcfae5; --pass-ink:#04250e; --fail-bg:#ffedea; --fail-ink:#831c1e;
+  --r:6px; --rc:8px;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:var(--sans);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5;min-height:100svh;padding:28px 32px 40px;
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;}
+.container{max-width:1376px;margin:0 auto;}
+/* title row: a photograph of the member's material (img/<material>.jpg beside the page, set by <body data-material>)
+   under a neutral scrim, with the breadcrumb, the tool's name and one line of scope. Without the photo it is a plain ink band. */
+.page-hdr{position:relative;isolation:isolate;overflow:hidden;border-radius:var(--rc);min-height:164px;padding:18px 24px 20px;margin-bottom:12px;
+  display:flex;flex-direction:column;justify-content:flex-end;color:#fff;background:#2c3036 var(--photo,none) center/cover no-repeat;}
+.page-hdr::before{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.55) 45%,rgba(0,0,0,.18) 100%);} /* taste-skill-ignore: neutral scrim under text on a photograph */
+.page-hdr::after{content:var(--credit,'');position:absolute;right:10px;bottom:8px;font-size:11px;color:rgba(255,255,255,.9);background:rgba(0,0,0,.4);padding:1px 6px;border-radius:4px;}
+.home-lnk{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:rgba(255,255,255,.88);text-decoration:none;font-weight:500;margin-bottom:auto;align-self:flex-start;padding-bottom:12px;}
+.home-lnk:hover{color:#fff;text-decoration:underline;}
+.home-lnk svg{width:14px;height:14px;}
+.page-hdr h1{font-size:26px;font-weight:600;line-height:1.25;letter-spacing:-0.01em;margin-bottom:4px;color:#fff;}
+.page-hdr p{font-size:14px;color:rgba(255,255,255,.92);max-width:900px;}
+body[data-material="steel"]{--photo:url(img/steel.jpg);--credit:'Photo: Chevsapher, CC0';}
+body[data-material="concrete"]{--photo:url(img/concrete.jpg);--credit:'Photo: MassDOT, public domain';}
+body[data-material="masonry"]{--photo:url(img/masonry.jpg);--credit:'Photo: Håkan Svensson, CC BY 2.5';}
+body[data-material="timber"]{--photo:url(img/timber.jpg);--credit:'Photo: Sebastian Wallroth, public domain';}
+body[data-material="frame"]{--photo:url(img/frame.jpg);--credit:'Photo: Wikideas1, CC0';}
+body[data-material="ground"]{--photo:url(img/ground.jpg);--credit:'Photo: Fons Heijnsbroek, CC0';}
+@media print{.page-hdr{display:none;}}
+/* inputs on the left, the answer on the right: (1376 - 12) x 6/13 = 630 | 734 */
+.main-grid{display:grid;grid-template-columns:minmax(380px,6fr) 7fr;gap:12px;align-items:start;}
+@media(max-width:1100px){.main-grid{grid-template-columns:1fr;}}
+.main-grid > div{min-width:0;}
+#results table.t{display:block;overflow-x:auto;white-space:nowrap;}
+.card{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rc);padding:20px 24px;margin-bottom:12px;}
+.section-title{font-size:16px;font-weight:600;color:var(--txt);margin:0 0 14px;display:flex;justify-content:space-between;align-items:baseline;gap:12px;line-height:1.3;}
+.section-title .aux{color:var(--mut);font-size:13px;font-weight:400;text-align:right;}
+.form-group{margin-bottom:14px;}
+.form-group label,.lbl{display:block;font-size:13px;margin-bottom:5px;color:var(--lbl);font-weight:500;line-height:1.35;}
+input[type="number"],input[type="text"],select{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);padding:0 10px;height:36px;border-radius:var(--r);font-family:var(--sans);font-size:14px;width:100%;font-variant-numeric:tabular-nums;transition:border-color .12s;}
+input::placeholder{color:var(--faint);}
+input:hover,select:hover{border-color:#b9bec6;}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);}
+input:disabled,select:disabled{background:var(--surf2);color:var(--mut);}
+select option{background:var(--surf);color:var(--txt);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.grid2 > .form-group,.grid3 > .form-group{display:flex;flex-direction:column;justify-content:flex-end;}
+.chk{display:block;position:relative;padding-left:26px;font-size:13px;color:var(--lbl);margin:8px 0;cursor:pointer;line-height:1.45;}
+.chk input{position:absolute;left:0;top:1px;width:16px;height:16px;accent-color:var(--primary);}
+.help{font-size:13px;color:var(--mut);margin-top:4px;line-height:1.45;}
+/* segmented control: grey track, white pill on the chosen option */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#e9ecf0;border-radius:var(--rc);margin-bottom:14px;}
+.seg button{background:transparent;color:var(--mut);border:1px solid transparent;border-radius:var(--r);height:32px;padding:0 10px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;}
+.seg button:hover{color:var(--txt);}
+.seg button.on{background:var(--surf);color:var(--txt);border-color:var(--bdr);}
+/* repeating rows: spans, supports, loads */
+.rows{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+.row{display:grid;gap:8px;align-items:end;background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--r);padding:10px;}
+.row label{font-size:12px;color:var(--mut);margin-bottom:3px;display:block;font-weight:500;line-height:1.3;}
+.row input,.row select{height:32px;font-size:13px;padding:0 8px;}
+.row.span{grid-template-columns:1fr 1.6fr 1fr 32px;}
+.row.load{grid-template-columns:52px 64px 1.1fr 1.1fr 32px;}
+.row.load .vals{grid-column:1 / span 3;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.xbtn{height:32px;width:32px;background:var(--surf);border:1px solid var(--bdr2);color:var(--mut);border-radius:var(--r);cursor:pointer;font-size:16px;line-height:1;}
+.xbtn:hover{color:var(--fail);border-color:var(--fail);}
+.addbtn{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);border-radius:var(--r);height:36px;padding:0 12px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;width:100%;}
+.addbtn:hover{border-color:#9aa0a8;background:var(--surf2);}
+/* the one primary action, near-black; secondary actions white and outlined */
+.btn{height:44px;padding:0 16px;border:none;border-radius:var(--r);font-weight:600;cursor:pointer;font-family:var(--sans);font-size:15px;width:100%;background:var(--primary);color:#fff;}
+.btn:hover{background:#000;}
+.btn:focus-visible,.btn2:focus-visible,.addbtn:focus-visible,.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.btn2{width:100%;height:38px;padding:0 12px;background:var(--surf);border:1px solid var(--bdr2);border-radius:var(--r);font-size:14px;font-weight:500;color:var(--txt);cursor:pointer;font-family:var(--sans);margin-top:8px;}
+.btn2:hover{border-color:#9aa0a8;background:var(--surf2);}
+.hidden{display:none!important;}
+/* results */
+.placeholder{display:flex;align-items:center;justify-content:center;min-height:160px;color:var(--mut);font-size:14px;text-align:center;padding:0 24px;}
+.verdict{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--bdr);border-radius:var(--rc);background:var(--surf2);margin-bottom:16px;}
+.verdict .big{font-size:24px;font-weight:600;line-height:1.2;color:var(--pass);letter-spacing:-0.01em;}
+.verdict.fail .big{color:var(--fail);}
+.verdict .sub{font-size:13px;color:var(--mut);margin-top:2px;}
+/* the utilisation ledger: check, clause, bar to scale (full track = 1.2, ink tick at the 1.0 limit), figure */
+.checks{display:flex;flex-direction:column;margin-bottom:8px;}
+.ck{display:grid;grid-template-columns:1.25fr 2fr 56px;gap:14px;align-items:center;font-size:13px;padding:7px 0;border-bottom:1px solid var(--rule);}
+.ck:last-child{border-bottom:none;}
+.ck .nm{color:var(--txt);line-height:1.35;} .ck .nm small{display:block;color:var(--mut);font-size:12px;}
+.bar{height:8px;background:#e8ebef;border-radius:4px;position:relative;}
+.bar::after{content:'';position:absolute;left:83.333%;top:-4px;bottom:-4px;width:1.5px;background:var(--txt);border-radius:1px;}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:4px;}
+.bar i.over{background:var(--fail);} /* 0.9-1.0 stays blue: a well-used member is not a warning; the tick shows how close it is */
+.ck .u{text-align:right;font-weight:600;font-size:14px;}
+.ck .u.over{color:var(--fail);}
+.diag{width:100%;height:auto;display:block;margin-bottom:6px;}
+/* screen drawings: the smallest labels lifted to the 11px floor (the print sheet keeps its own sizes) */
+.container svg text[font-size="8"],.container svg text[font-size="8.5"],.container svg text[font-size="9"],.container svg text[font-size="9.5"],
+.container svg text[font-size="10"],.container svg text[font-size="10.5"]{font-size:11px;}
+.dlabel{font-size:14px;font-weight:600;color:var(--txt);margin:20px 0 6px;line-height:1.3;}
+table.t{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px;font-variant-numeric:tabular-nums;}
+table.t th{color:var(--mut);font-weight:500;text-align:right;padding:6px 8px;border-bottom:1px solid var(--bdr);font-size:12px;}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--rule);text-align:right;}
+table.t th:first-child,table.t td:first-child{text-align:left;}
+.note{font-size:13px;color:var(--mut);background:var(--surf2);border:1px solid var(--rule);border-radius:var(--r);padding:10px 12px;margin-top:10px;line-height:1.5;}
+.err{color:var(--fail-ink);background:var(--fail-bg);font-size:13px;padding:10px 12px;border-radius:var(--r);margin-bottom:12px;}
+.busy{opacity:.55;pointer-events:none;}
+a{color:var(--txt);}
+sub,sup{font-size:max(11px,.75em);line-height:0;}
+@media(max-width:560px){body{padding:16px 16px 32px;} .card{padding:16px;} .ck{grid-template-columns:1fr 1fr 48px;gap:10px;} .grid3{grid-template-columns:1fr 1fr;}
+  .row.span{grid-template-columns:1fr 32px;} .row.span > div:nth-child(2),.row.span > div:nth-child(3){display:none;} .row.load .vals{grid-template-columns:1fr 1fr;}
+  .page-hdr{min-height:150px;padding:14px 16px 16px;} .page-hdr h1{font-size:22px;} .page-hdr::after{top:10px;bottom:auto;} .page-hdr::before{background:rgba(0,0,0,.6);} .verdict .big{font-size:22px;}}
+/* disclaimer: on screen at the foot of the page, and printed at the end of the calculation sheet */
+.disclaimer{max-width:1376px;margin:24px auto 0;padding-top:14px;border-top:1px solid var(--bdr,#e3e5e8);font-size:13px;line-height:1.55;color:var(--mut,#5f6368);}
+.disclaimer b{color:var(--txt,#111);font-weight:600;}
+@media print{.disclaimer{display:block!important;max-width:none;margin:4mm 0 0;padding-top:1.5mm;border-top:0.4pt solid #888;font-family:Arial,Helvetica,sans-serif;font-size:7.5pt;color:#000;break-inside:avoid;} .disclaimer b{color:#000;}}
+/* ---------- print: A4 calculation sheet ---------- */
+#report{display:none;}
+@media print{
+  @page{size:A4;margin:12mm 12mm 14mm;}
+  body{background:#fff;color:#000;padding:0;background-image:none;font-size:9.5pt;}
+  .container{display:none;}
+  #report{display:block;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  #report table.wrap{width:100%;border-collapse:collapse;}
+  #report thead td{padding:0 0 3mm;}
+  .rh{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;border:0.6pt solid #000;font-size:8pt;}
+  .rh div{padding:1.2mm 2mm;border-right:0.6pt solid #000;}
+  .rh div:last-child{border-right:none;}
+  .rh b{display:block;font-size:6.5pt;color:#444;font-weight:normal;text-transform:uppercase;letter-spacing:.3pt;}
+  .rh .ttl{grid-column:1 / -1;border-top:0.6pt solid #000;border-right:none;font-weight:bold;font-size:10pt;}
+  .rs{margin:0 0 3.5mm;}
+  .rs h2,.rs h3{break-after:avoid;}
+  .rl,.rt,.rsvg,.rp,.rt tr{break-inside:avoid;}
+  .rs h2{font-size:10pt;margin:3mm 0 1.5mm;padding-bottom:0.8mm;border-bottom:0.8pt solid #000;}
+  .rs h3{font-size:9pt;margin:2mm 0 1mm;}
+  .rl{display:grid;grid-template-columns:1fr 92px 132px;gap:2mm;padding:0.5mm 0;font-size:8.6pt;}
+  .rl .cl{text-align:right;color:#444;font-size:7.5pt;}
+  .rl .rv{text-align:right;font-weight:bold;}
+  .ok{color:#0a7a3e;} .ng{color:#c00;}
+  .rt{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;}
+  .rt th,.rt td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;}
+  .rt th{background:#eee;font-weight:bold;}
+  .rt td:first-child,.rt th:first-child,.rt.lft td,.rt.lft th{text-align:left;}
+  .rp{font-size:8.3pt;line-height:1.45;margin:1mm 0;}
+  .rsvg{width:100%;height:auto;}
+  .rsvg *{vector-effect:non-scaling-stroke;}
+}
+
+.row.fcore{grid-template-columns:repeat(4,minmax(0,1fr)) 32px;}
+.row.fop,.row.fload{grid-template-columns:repeat(4,minmax(0,1fr)) 32px;}
+.row.floc{grid-template-columns:repeat(3,minmax(0,1fr)) 32px;}
+.row .tag{font-size:12px;font-weight:600;color:var(--lbl);grid-column:1 / -1;margin-bottom:-2px;}
+svg.strip,svg.mn,svg.plan{width:100%;height:auto;display:block;max-width:480px;margin:4px auto 10px;}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px 20px;background:var(--surf2);border:1px solid var(--rule);border-radius:var(--rc);padding:12px 16px;margin-bottom:12px;}
+.kv div{min-width:0;} .kv b{display:block;font-size:12px;font-weight:400;color:var(--mut);} .kv span{font-size:15px;font-weight:600;}
+.from{font-size:13px;color:var(--lbl);background:var(--accent-dim);border-radius:var(--r);padding:8px 12px;margin-bottom:12px;}
+button.lnk{background:none;border:0;padding:0;color:var(--accent);font:inherit;font-size:13px;cursor:pointer;text-decoration:underline;}
+@media(max-width:560px){.row.fcore,.row.fop,.row.fload{grid-template-columns:repeat(2,minmax(0,1fr)) 32px;} .row.floc{grid-template-columns:repeat(3,minmax(0,1fr)) 32px;}}
+@media print{svg.strip,svg.mn,svg.plan{max-width:120mm;} .rtab{width:100%;border-collapse:collapse;font-size:7.5pt;margin:1mm 0 2mm;} .rtab th,.rtab td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;} .rtab th:first-child,.rtab td:first-child{text-align:left;}}
+</style>
+</head>
+<body data-material="concrete">
+<div class="container">
+  <div class="page-hdr">
+    <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
+    <h1>RC Wall Design</h1>
+    <p>Walls to BS EN 1992-1-1 + UK NA &nbsp;·&nbsp; wall panels per metre, braced or unbraced: reinforced (5.8 nominal curvature, 9.6 detailing) or plain (12.6.5) &nbsp;·&nbsp; core walls: wind shared by stiffness and torsion, stresses and vertical steel</p>
+  </div>
+  <div class="main-grid">
+    <div id="inputs">
+      <div class="seg" id="modes"><button data-m="panel" class="on">Wall panel</button><button data-m="core">Core walls</button></div>
+      <div class="card">
+        <div class="section-title">Project</div>
+        <div class="form-group"><label>Project</label><input type="text" id="pName" placeholder="Project name"></div>
+        <div class="grid3"><div class="form-group"><label>Job no.</label><input type="text" id="pJob"></div><div class="form-group"><label>By</label><input type="text" id="pBy"></div><div class="form-group"><label>Member ref.</label><input type="text" id="pRef" placeholder="e.g. Grid C, ground floor"></div></div>
+      </div>
+      <div id="pane-panel">
+        <div class="card">
+          <div class="section-title">Wall <span class="aux">designed per metre run</span></div>
+          <div class="grid3">
+            <div class="form-group"><label>Type</label><select id="wtype"><option value="rc">Reinforced</option><option value="plain">Plain concrete</option></select></div>
+            <div class="form-group"><label>Thickness h (mm)</label><input type="number" id="wh" value="200" step="5"></div>
+            <div class="form-group"><label>Clear height l (mm)</label><input type="number" id="wl" value="3500" step="50"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Concrete</label><select id="wfck"></select></div>
+            <div class="form-group rc"><label>Bars f<sub>yk</sub> (N/mm²)</label><input type="number" id="wfyk" value="500" step="10"></div>
+            <div class="form-group"><label>Wall length (m)</label><input type="number" id="wlw" value="4" step="0.1"></div>
+          </div>
+          <div class="help">A wall is at least 4 times as long as it is thick (9.6.1); a shorter one is designed as a column.</div>
+        </div>
+        <div class="card">
+          <div class="section-title">Restraint and slenderness</div>
+          <div class="grid3 rc">
+            <div class="form-group"><label>Frame</label><select id="wbr"><option value="braced">Braced</option><option value="unbraced">Unbraced</option></select></div>
+            <div class="form-group"><label>Ends</label><select id="wend"><option value="framed">Framed (k₁, k₂)</option><option value="pinned">Pinned top and bottom</option></select></div>
+            <div class="form-group"><label>φ<sub>ef</sub> (effective creep)</label><input type="number" id="wphi" value="2" step="0.1"></div>
+          </div>
+          <div class="grid3 rc">
+            <div class="form-group kfr"><label>k₁ at the top</label><input type="number" id="wk1" value="0.5" step="0.05"></div>
+            <div class="form-group kfr"><label>k₂ at the bottom</label><input type="number" id="wk2" value="0.5" step="0.05"></div>
+            <div class="form-group"><label>Imperfection e<sub>i</sub></label><select id="wei"><option value="400">l₀/400 (5.2(9))</option><option value="ah">θ₀·α<sub>h</sub>·l₀/2 (5.2(5))</option></select></div>
+          </div>
+          <div class="help rc">k is the rotational flexibility of each end (5.8.3.2(3)): 0.1 for a rigid end (the UK NA minimum), about 1 for a wall built into slabs of similar stiffness, large for a near-pin. l₀ by (5.15) braced or (5.16) unbraced.</div>
+          <div class="grid3 plain">
+            <div class="form-group"><label>Edges held (Table 12.1)</label><select id="wsides"><option value="2">Top and bottom</option><option value="3">Top, bottom and one side</option><option value="4">Top, bottom and both sides</option><option value="cant">Bottom only (cantilever)</option></select></div>
+            <div class="form-group sideb"><label>b, between side restraints (mm)</label><input type="number" id="wb" value="4000" step="50"></div>
+            <div class="form-group"><label>α<sub>cc,pl</sub></label><input type="number" id="wacc" value="0.6" step="0.05"></div>
+          </div>
+          <label class="chk plain"><input type="checkbox" id="wrigid"> Built in at the top and bottom by in-situ concrete and reinforcement (β × 0.85, 12.6.5.1(5))</label>
+          <div class="help plain">β from Table 12.1 (12.6.5.1); b is the distance between the side restraints, or from one restraint to the free edge. α<sub>cc,pl</sub> = 0.6 in the UK NA (12.3.1).</div>
+        </div>
+        <div class="card rc">
+          <div class="section-title">Reinforcement <span class="aux">each face</span></div>
+          <div class="grid3">
+            <div class="form-group"><label>Vertical bars φ (mm)</label><select id="wpv"></select></div>
+            <div class="form-group"><label>Vertical spacing (mm)</label><select id="wsv"></select></div>
+            <div class="form-group"><label>Cover (mm)</label><input type="number" id="wcov" value="30"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Horizontal bars φ (mm)</label><select id="wph"></select></div>
+            <div class="form-group"><label>Horizontal spacing (mm)</label><select id="wsh"></select></div>
+            <div class="form-group"><label>Outer layer</label><select id="whout"><option value="h">Horizontal bars</option><option value="v">Vertical bars</option></select></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="section-title">Loads <span class="aux">ULS, per metre run</span></div>
+          <div class="grid3">
+            <div class="form-group"><label>N<sub>Ed</sub> (kN/m)</label><input type="number" id="wN" value="900" step="10"></div>
+            <div class="form-group"><label>M at the top (kNm/m)</label><input type="number" id="wMt" value="6" step="0.5"></div>
+            <div class="form-group"><label>M at the bottom (kNm/m)</label><input type="number" id="wMb" value="-3" step="0.5"></div>
+          </div>
+          <div class="help">Out-of-plane first-order end moments, from the floors or wind on the face. Opposite signs mean double curvature. The imperfection, second-order moment and e₀ = max(h/30, 20 mm) are added by the tool.</div>
+        </div>
+      </div>
+      <div id="pane-core" class="hidden">
+        <div class="card">
+          <div class="section-title">Building and wind <span class="aux">characteristic, at the level checked</span></div>
+          <div class="grid3">
+            <div class="form-group"><label>Length L along x (m)</label><input type="number" id="cL" value="30" step="0.5"></div>
+            <div class="form-group"><label>Width W along y (m)</label><input type="number" id="cW" value="18" step="0.5"></div>
+            <div class="form-group"><label>Extra eccentricity (% of the face)</label><input type="number" id="cea" value="0" step="1"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>NS wind moment (kNm)</label><input type="number" id="cMns" value="9000" step="100"></div>
+            <div class="form-group"><label>EW wind moment (kNm)</label><input type="number" id="cMew" value="6000" step="100"></div>
+            <div class="form-group"><label>Wind directions</label><select id="cdir"><option value="sep">One at a time</option><option value="tog">Both at once</option></select></div>
+          </div>
+          <div class="help">The overturning moments of the whole building at the level checked: NS wind blows along y and bends the cores about x; EW wind blows along x. The resultant acts at the building centre, shifted each way by the extra eccentricity if given. "Both at once" applies the full NS and EW moments together, as the Concrete Centre's TCC63 does.</div>
+        </div>
+        <div class="card">
+          <div class="section-title">Cores <span class="aux">bottom-left corner in the building (m); outline B × D (mm)</span></div>
+          <div class="rows" id="coreRows"></div>
+          <button class="addbtn" id="addCore">+ Add core</button>
+          <div class="grid2"><div class="form-group"><label>Core to design and edit</label><select id="csel"></select></div></div>
+          <div class="help">Each core takes the wind in proportion to its second moment of area, plus its share of the torsion on a rigid floor (the floor turns about the stiffness centre). Cores are taken to be of equal height and fixed at the same level.</div>
+        </div>
+        <div class="card">
+          <div class="section-title"><span>Openings in <span id="opCore">core 1</span></span> <span class="aux">from the core's bottom-left corner, mm</span></div>
+          <div class="rows" id="opRows"></div>
+          <button class="addbtn" id="addOp">+ Add opening</button>
+          <div class="help">A core is its outline less rectangular openings: the inside of a box, a door through a wall, an open side.</div>
+        </div>
+        <div class="card">
+          <div class="section-title"><span>Vertical loads on <span id="ldCore">core 1</span></span> <span class="aux">characteristic, kN; position in mm</span></div>
+          <div class="rows" id="loadRows"></div>
+          <button class="addbtn" id="addLoad">+ Add load</button>
+          <div class="grid3">
+            <div class="form-group"><label>ψ₀ for the imposed load</label><select id="cpsi"><option value="0.7">0.7 (categories A–D, H)</option><option value="1">1.0 (E, storage)</option><option value="0.5">0.5 (snow)</option></select></div>
+            <div class="form-group"><label>Combinations</label><select id="crule"><option value="6.10ab">6.10a and 6.10b (UK NA)</option><option value="6.10">6.10</option></select></div>
+          </div>
+          <div class="help">Wind ψ₀ = 0.5 (UK NA). With G favourable it is taken at 1.0 and the imposed load at 1.5ψ₀ or 0.</div>
+        </div>
+        <div class="card">
+          <div class="section-title"><span>Check locations on <span id="lcCore">core 1</span></span> <span class="aux">mm; t = wall thickness there</span></div>
+          <div class="rows" id="locRows"></div>
+          <button class="addbtn" id="addLoc">+ Add location</button>
+          <div class="grid3"><div class="form-group"><label>Concrete</label><select id="cfck"></select></div><div class="form-group"><label>Bars f<sub>yk</sub> (N/mm²)</label><input type="number" id="cfyk" value="500" step="10"></div></div>
+          <div class="help">Points on the wall centrelines where the vertical steel is found: the ends of walls, corners and beside openings. The stresses are elastic on the gross section (product of inertia included).</div>
+        </div>
+      </div>
+      <button class="btn" id="calc">Calculate</button>
+    </div>
+    <div><div class="card" id="results"><div class="placeholder">Choose a wall panel or core walls, set the inputs, then Calculate.</div></div></div>
+  </div>
+</div>
+<div id="report"></div>
+<script id="engine">
+// RC Wall Design engine (BS EN 1992-1-1 + UK NA). Two parts:
+//  panel(inp): a wall designed per metre run for vertical load and out-of-plane moments: reinforced (5.8 nominal curvature,
+//              M-N by strain compatibility, 9.6 detailing) or plain (12.6.5);
+//  core(inp):  core walls in a building: section properties of each core (a rectangle less rectangular openings), the
+//              wind moments shared by stiffness and torsion of a rigid floor, and for one core the stresses at chosen
+//              points under the EN 1990 combinations, with the vertical steel each face needs (the Concrete Centre's
+//              stress method).
+// Units: mm, N/mm², kN, kNm (per metre run for panels).
+const Wall = (() => {
+  const ES = 200000, ECU = 0.0035, EC3 = 0.00175, AREA = p => Math.PI * p * p / 4;
+  const fin = (v, nm) => { if (!Number.isFinite(v)) throw new Error(`${nm}: give a number`); return v; };
+  const pos = (v, nm) => { fin(v, nm); if (!(v > 0)) throw new Error(`${nm} must be greater than 0`); return v; };
+
+  // ---------- rectangular section with bar layers: one point of the M-N diagram per neutral axis depth x ----------
+  // 0.8x block of fcd (at most h); εcu3 at the compression face while x ≤ h, then the pivot εc3 at h/2 (Figure 6.1);
+  // bars elastic-plastic, fcd taken off bars in compression. M about mid-depth, positive with the top face compressed.
+  function sectionPoint(x, S) {
+    const { b, h, fcd, fyd, layers } = S;
+    if (x <= 0) { const As = layers.reduce((t, l) => t + l.A, 0); return { N: -fyd * As, M: 0 }; }
+    const s = Math.min(0.8 * x, h), Fc = fcd * b * s; let N = Fc, M = Fc * (h / 2 - s / 2);
+    for (const { d, A } of layers) {
+      const e = x > h ? EC3 * (x - d) / (x - h / 2) : ECU * (x - d) / x;
+      const f = Math.max(-fyd, Math.min(fyd, ES * e)) - (e > 0 ? fcd : 0);
+      N += f * A; M += f * A * (h / 2 - d);
+    }
+    return { N, M };
+  }
+  const squash = S => { const As = S.layers.reduce((t, l) => t + l.A, 0); return S.fcd * (S.b * S.h - As) + Math.min(EC3 * ES, S.fyd) * As; };
+  // moment resistance at axial force N (N), found by bisection on the neutral axis depth; 0 outside the diagram
+  function mRd(S, N) {
+    const As = S.layers.reduce((t, l) => t + l.A, 0);
+    if (N <= -S.fyd * As || N >= squash(S)) return 0;
+    let lo = 1e-9, hi = S.h;
+    while (sectionPoint(hi, S).N < N) hi *= 2;
+    for (let i = 0; i < 200; i++) { const m = (lo + hi) / 2; if (sectionPoint(m, S).N > N) hi = m; else lo = m; }
+    return Math.max(0, sectionPoint((lo + hi) / 2, S).M);
+  }
+  // n at the peak of the M-N curve (EC2 5.8.8.3(3) nbal): scan, then golden-section refinement
+  function nPeak(S) {
+    let best = 0, bx = 0; const n = 400;
+    for (let i = 1; i <= n; i++) { const x = 3 * S.h * i / n, M = sectionPoint(x, S).M; if (M > best) { best = M; bx = x; } }
+    let a = Math.max(1e-9, bx - 3 * S.h / n), c = bx + 3 * S.h / n; const g = (Math.sqrt(5) - 1) / 2, F = x => sectionPoint(x, S).M;
+    let x1 = c - g * (c - a), x2 = a + g * (c - a), f1 = F(x1), f2 = F(x2);
+    for (let i = 0; i < 80; i++) { if (f1 > f2) { c = x2; x2 = x1; f2 = f1; x1 = c - g * (c - a); f1 = F(x1); } else { a = x1; x1 = x2; f1 = f2; x2 = a + g * (c - a); f2 = F(x2); } }
+    let xb = (a + c) / 2, Mb = F(xb);
+    // the curve can peak at a kink where a layer of bars reaches yield (εcu3 at the face); check those depths too,
+    const ey = S.fyd / ES;
+    // or where a layer's strain changes sign (the fcd taken off it starts there)
+    for (const { d } of S.layers) for (const x of [ECU * d / (ECU - ey), ECU * d / (ECU + ey), d * (1 - 1e-9), d * (1 + 1e-9)]) if (x > 0 && x <= S.h && F(x) > Mb) { Mb = F(x); xb = x; }
+    return sectionPoint(xb, S).N / (S.b * S.h * S.fcd);
+  }
+  function diagram(S, nPts = 120) {   // the M-N curve for drawing, kN and kNm
+    const pts = [{ N: -S.fyd * S.layers.reduce((t, l) => t + l.A, 0) / 1e3, M: 0 }];
+    for (let i = 1; i <= nPts; i++) { const x = S.h * Math.pow(i / nPts, 1.6) * 1.6, p = sectionPoint(x, S); pts.push({ N: p.N / 1e3, M: p.M / 1e6 }); }
+    for (const k of [2, 3, 5, 10]) { const p = sectionPoint(k * S.h, S); pts.push({ N: p.N / 1e3, M: p.M / 1e6 }); }
+    pts.push({ N: squash(S) / 1e3, M: 0 });
+    return pts;
+  }
+
+  // ---------- effective length ----------
+  function effLength(l, braced, k1, k2, pinned) {
+    if (pinned) return l;
+    k1 = Math.max(0.1, k1); k2 = Math.max(0.1, k2);
+    if (braced) return 0.5 * l * Math.sqrt((1 + k1 / (0.45 + k1)) * (1 + k2 / (0.45 + k2)));       // (5.15)
+    return l * Math.max(Math.sqrt(1 + 10 * k1 * k2 / (k1 + k2)), (1 + k1 / (1 + k1)) * (1 + k2 / (1 + k2)));   // (5.16)
+  }
+  // β for plain walls, Table 12.1 (12.6.5.1): lw clear height, b distance between restraining walls or wall to free edge
+  function betaPlain(sides, lw, b) {
+    if (sides === 'cant') return 2;
+    if (sides === '2') return 1;
+    if (sides === '3') return 1 / (1 + Math.pow(lw / (3 * b), 2));
+    return b >= lw ? 1 / (1 + Math.pow(lw / b, 2)) : b / (2 * lw);
+  }
+
+  // ---------- wall panel per metre ----------
+  function panel(inp) {
+    const h = pos(fin(inp.h, 'Thickness'), 'Thickness'), l = pos(fin(inp.l, 'Clear height'), 'Clear height'), fck = fin(inp.fck, 'f_ck');
+    if (fck < 12 || fck > 50) throw new Error('f_ck must be between 12 and 50 N/mm² (C12/15 to C50/60)');
+    const NEd = fin(inp.NEd, 'N_Ed'), Mtop = fin(inp.Mtop || 0, 'M_top'), Mbot = fin(inp.Mbot || 0, 'M_bot'), phief = fin(inp.phief ?? 2, 'φ_ef');
+    if (!(NEd > 0)) throw new Error('N_Ed must be a compression greater than 0 (kN/m)');
+    if (h < 100) throw new Error('Thickness must be at least 100 mm');
+    const R = { inp, h, l, b: 1000, Ac: 1000 * h, checks: [], notes: [] }, Nn = NEd * 1e3;
+    const sameSign = Mtop === 0 || Mbot === 0 || Math.sign(Mtop) === Math.sign(Mbot);
+    const Mi2 = Math.max(Math.abs(Mtop), Math.abs(Mbot)), Mi1 = Math.min(Math.abs(Mtop), Math.abs(Mbot));
+    if (inp.plain) return plainPanel(inp, R, { NEd, Mi2, Mi1, sameSign });
+    const fyk = pos(fin(inp.fyk, 'f_yk'), 'f_yk'), fyd = fyk / 1.15, fcd = 0.85 * fck / 1.5, cover = pos(fin(inp.cover, 'Cover'), 'Cover');
+    const pv = pos(fin(inp.phiV, 'Vertical bar φ'), 'Vertical bar φ'), sv = pos(fin(inp.sV, 'Vertical bar spacing'), 'Vertical bar spacing');
+    const ph = pos(fin(inp.phiH, 'Horizontal bar φ'), 'Horizontal bar φ'), sh = pos(fin(inp.sH, 'Horizontal bar spacing'), 'Horizontal bar spacing');
+    const d2 = cover + (inp.hOutside === false ? 0 : ph) + pv / 2;
+    if (2 * d2 >= h) throw new Error('The bars do not fit in the thickness (cover + bars on both faces)');
+    const Aface = AREA(pv) * 1000 / sv, As = 2 * Aface, AsH = 2 * AREA(ph) * 1000 / sh;
+    const S = { b: 1000, h, fcd, fyd, layers: [{ d: d2, A: Aface }, { d: h - d2, A: Aface }] };
+    Object.assign(R, { fck, fyk, fyd, fcd, cover, d2, Aface, As, AsH, S, N0: squash(S) / 1e3 });
+    // 5.8 slenderness
+    const braced = inp.braced !== false, l0 = effLength(l, braced, inp.k1 ?? 1, inp.k2 ?? 1, !!inp.pinned), i = h / Math.sqrt(12), lambda = l0 / i;
+    const n = Nn / (R.Ac * fcd), omega = As * fyd / (R.Ac * fcd);
+    let ei, thetaI = null, alphaH = null;
+    if (inp.eimode === 'ah') { alphaH = Math.min(1, Math.max(2 / 3, 2 / Math.sqrt(l / 1000))); thetaI = alphaH / 200; ei = thetaI * l0 / 2; } else ei = l0 / 400;
+    const eiN = NEd * ei / 1000, M02 = Mi2 + eiN, M01 = (sameSign ? Mi1 : -Mi1) + eiN, M01abs = Mi1 + eiN;
+    const rm = braced ? M01 / M02 : 1, A = 1 / (1 + 0.2 * phief), B = Math.sqrt(1 + 2 * omega), C = 1.7 - rm;
+    const lambdaLim = 20 * A * B * C / Math.sqrt(Math.max(n, 1e-6)), slender = lambda > lambdaLim;
+    const e0 = Math.max(h / 30, 20), Me0 = NEd * e0 / 1000, M0e = Math.max(0.6 * M02 + 0.4 * M01, 0.4 * M02);
+    const nbalPk = nPeak(S), nbal = Math.max(nbalPk, 0.4), nu = 1 + omega;
+    const dC = h / 2 + Math.sqrt(S.layers.reduce((t, q) => t + q.A * (q.d - h / 2) ** 2, 0) / As);   // d = h/2 + is (5.8.8.3(2))
+    const invR0 = fyd / ES / (0.45 * dC), Kr = Math.min(1, Math.max(0, (nu - n) / (nu - nbal))), beta = 0.35 + fck / 200 - lambda / 150, Kphi = Math.max(1, 1 + beta * phief);
+    const constM = sameSign && Math.abs(Mtop) === Math.abs(Mbot), c = constM ? 8 : Math.PI ** 2;
+    const curv = Kr * Kphi * invR0, e2 = slender ? curv * l0 * l0 / c : 0, M2 = NEd * e2 / 1000;
+    const cand = braced ? { 'M02': M02, 'M0e + M2': M0e + M2, '|M01| + M2/2': M01abs + M2 / 2, 'e0 NEd': Me0 } : { 'M02 + M2': M02 + M2, 'e0 NEd': Me0 };
+    const MEd = Math.max(...Object.values(cand)), governs = Object.keys(cand).find(k => cand[k] >= MEd - 1e-9);
+    const MRd = mRd(S, Nn) / 1e6;
+    Object.assign(R, { braced, l0, i, lambda, n, omega, ei, thetaI, alphaH, eiN, Mi1, Mi2, sameSign, M01, M02, M01abs, rm, A, B, C, lambdaLim, slender, e0, Me0, M0e,
+      nbalPk, nbal, nu, dC, invR0, Kr, beta, Kphi, constM, c, curv, e2, M2, cand, MEd, governs, MRd });
+    const ck = (name, ref, util, note) => R.checks.push({ name, ref, util, note: note || '' });
+    ck(`Axial load and out-of-plane bending, MEd = ${MEd.toFixed(1)} kNm/m (${governs})`, braced ? '5.8.8.2' : '5.8.8.2, 5.8.3.1', NEd >= R.N0 ? Infinity : MRd > 0 ? MEd / MRd : Infinity, `MRd = ${MRd.toFixed(1)} kNm/m at NEd`);
+    const AsMin = 0.002 * R.Ac, AsMax = 0.04 * R.Ac, sMax = Math.min(3 * h, 400), AhMin = Math.max(0.25 * As, 0.001 * R.Ac);
+    Object.assign(R, { AsMin, AsMax, sMax, AhMin });
+    ck('Vertical steel not less than 0.002 Ac', '9.6.2(1)', AsMin / As, `${As.toFixed(0)} mm²/m provided`);
+    ck('Vertical steel not more than 0.04 Ac away from laps', '9.6.2(1)', As / AsMax);
+    ck(`Vertical bar spacing not more than ${sMax.toFixed(0)} mm (3h, 400)`, '9.6.2(3)', sv / sMax);
+    ck(`Horizontal steel not less than max(0.25 As,v, 0.001 Ac) = ${AhMin.toFixed(0)} mm²/m`, '9.6.3(1)', AhMin / AsH, `${AsH.toFixed(0)} mm²/m provided`);
+    ck('Horizontal bar spacing not more than 400 mm', '9.6.3(2)', sh / 400);
+    const clear = sv - pv, clearMin = Math.max(pv, 25);
+    ck(`Clear gap between vertical bars at least ${clearMin} mm (φ, dg + 5 with dg = 20)`, '8.2(2)', clear > 0 ? clearMin / clear : Infinity);
+    if (As > 0.02 * R.Ac) R.notes.push('More than 0.02 Ac of vertical steel: links are needed through the wall as for columns (9.6.4, 9.5.3).');
+    if (inp.lw && inp.lw * 1000 < 4 * h) R.notes.push(`The wall is shorter than 4 × its thickness (${inp.lw} m < ${(4 * h / 1000).toFixed(2)} m): design it as a column (9.6.1).`);
+    if (lambda > 140) R.notes.push('λ is more than 140: outside the usual range of the nominal curvature method.');
+    R.util = Math.max(...R.checks.map(k => k.util));
+    return R;
+  }
+  function plainPanel(inp, R, { NEd, Mi2 }) {
+    const h = R.h, l = R.l, fck = inp.fck, acc = fin(inp.accPl ?? 0.6, 'α_cc,pl');
+    if (!(acc > 0 && acc <= 1)) throw new Error('α_cc,pl must be between 0 and 1');
+    const fcdPl = acc * fck / 1.5, sides = inp.sides || '2', bw = sides === '3' || sides === '4' ? pos(fin(inp.bSide, 'Distance between restraints b'), 'Distance between restraints b') : null;
+    let beta = betaPlain(sides, l, bw); if (inp.rigid && sides !== 'cant') beta *= 0.85;
+    const l0 = beta * l, lambda = l0 / (h / Math.sqrt(12)), ei = l0 / 400, e0 = Mi2 / NEd * 1000, etot = e0 + ei;
+    const phiCap = 1 - 2 * etot / h, Phi = Math.max(0, Math.min(1.14 * phiCap - 0.02 * l0 / h, phiCap)), NRd = 1000 * h * fcdPl * Phi / 1e3;
+    Object.assign(R, { plain: true, fck, acc, fcdPl, sides, bw, beta, l0, lambda, ei, e0, etot, Phi, NRd });
+    R.checks.push({ name: `Axial load with eccentricity etot = ${etot.toFixed(1)} mm, NRd = ${NRd.toFixed(0)} kN/m`, ref: '12.6.5.2 (12.10)', util: NRd > 0 ? NEd / NRd : Infinity, note: `Φ = ${Phi.toFixed(3)}` });
+    R.checks.push({ name: 'Slenderness λ not more than 86 (l₀/h ≤ 25)', ref: '12.6.5.1(5)', util: lambda / 86 });
+    if (h < 120) R.notes.push('Cast in-situ plain walls are normally at least 120 mm thick.');
+    R.util = Math.max(...R.checks.map(k => k.util));
+    return R;
+  }
+
+  // ---------- core walls ----------
+  function props(c) {   // c: { B, D, openings: [{ x, y, w, h }] } in mm, origin at the bottom-left corner of the core
+    const B = pos(fin(c.B, 'Core width B'), 'Core width B'), D = pos(fin(c.D, 'Core depth D'), 'Core depth D');
+    const parts = [{ x: 0, y: 0, w: B, h: D, s: 1 }];
+    (c.openings || []).forEach((o, k) => {
+      const ox = fin(o.x, `Opening ${k + 1} x`), oy = fin(o.y, `Opening ${k + 1} y`), w = pos(fin(o.w, `Opening ${k + 1} width`), `Opening ${k + 1} width`), hh = pos(fin(o.h, `Opening ${k + 1} depth`), `Opening ${k + 1} depth`);
+      if (ox < -1e-9 || oy < -1e-9 || ox + w > B + 1e-9 || oy + hh > D + 1e-9) throw new Error(`Opening ${k + 1} is not inside the core outline`);
+      parts.forEach((p, j) => { if (j > 0 && Math.min(ox + w, p.x + p.w) - Math.max(ox, p.x) > 1e-9 && Math.min(oy + hh, p.y + p.h) - Math.max(oy, p.y) > 1e-9) throw new Error(`Openings ${j} and ${k + 1} overlap`); });
+      parts.push({ x: ox, y: oy, w, h: hh, s: -1 });
+    });
+    const A = parts.reduce((t, p) => t + p.s * p.w * p.h, 0);
+    if (!(A > 1e-6 * B * D)) throw new Error('The openings leave no wall');
+    const xc = parts.reduce((t, p) => t + p.s * p.w * p.h * (p.x + p.w / 2), 0) / A, yc = parts.reduce((t, p) => t + p.s * p.w * p.h * (p.y + p.h / 2), 0) / A;
+    let Ix = 0, Iy = 0, Ixy = 0;
+    for (const p of parts) { const a = p.s * p.w * p.h, dx = p.x + p.w / 2 - xc, dy = p.y + p.h / 2 - yc; Ix += p.s * p.w * p.h ** 3 / 12 + a * dy * dy; Iy += p.s * p.h * p.w ** 3 / 12 + a * dx * dx; Ixy += a * dx * dy; }
+    return { B, D, A, xc, yc, Ix, Iy, Ixy, parts };
+  }
+  // wind moments shared between the cores by bending stiffness (I) and by the rotation of a rigid floor
+  function distribute(inp) {
+    const L = pos(fin(inp.L, 'Building length L'), 'Building length L') * 1000, Wb = pos(fin(inp.W, 'Building width W'), 'Building width W') * 1000;
+    const tcc = inp.method === 'tcc', a = fin(inp.eAcc ?? 0, 'Extra eccentricity');
+    if (!inp.cores || !inp.cores.length) throw new Error('Add at least one core');
+    const C = inp.cores.map((c, k) => { const P = props(c); const X = fin(c.x, `Core ${k + 1} x`) * 1000 + P.xc, Y = fin(c.y, `Core ${k + 1} y`) * 1000 + (tcc ? P.D / 2 : P.yc); return { ...P, X, Y, Ixm: P.Ix / 1e12, Iym: P.Iy / 1e12, x: c.x, y: c.y, name: c.name || `Core ${k + 1}` }; });
+    const sIx = C.reduce((t, c) => t + c.Ixm, 0), sIy = C.reduce((t, c) => t + c.Iym, 0);
+    const xs = C.reduce((t, c) => t + c.Ixm * c.X, 0) / sIx, ys = C.reduce((t, c) => t + c.Iym * c.Y, 0) / sIy;
+    const Jx = C.reduce((t, c) => t + c.Ixm * (c.X - xs) ** 2, 0), Jy = C.reduce((t, c) => t + c.Iym * (c.Y - ys) ** 2, 0), J = Jx + Jy;
+    const ex0 = L / 2 - xs, ey0 = Wb / 2 - ys, eAx = a * L, eAy = a * Wb;
+    const exs = eAx > 0 ? [ex0 + eAx, ex0 - eAx] : [ex0], eys = eAy > 0 ? [ey0 + eAy, ey0 - eAy] : [ey0];
+    const Mns = fin(inp.Mns ?? 0, 'NS wind moment'), Mew = fin(inp.Mew ?? 0, 'EW wind moment');
+    C.forEach(c => {
+      // NS wind (along y) is resisted by bending about x; EW wind (along x) by bending about y
+      c.ns = exs.map(e => ({ e, Mx: Mns * (c.Ixm / sIx + e * c.Ixm * (c.X - xs) / (tcc ? Jx : J)), My: tcc ? 0 : -Mns * e * c.Iym * (c.Y - ys) / J }));
+      c.ew = eys.map(e => ({ e, My: Mew * (c.Iym / sIy + e * c.Iym * (c.Y - ys) / (tcc ? Jy : J)), Mx: tcc ? 0 : -Mew * e * c.Ixm * (c.X - xs) / J }));
+      c.shareNS = Math.max(...c.ns.map(q => q.Mx)) / (Mns || 1); c.shareEW = Math.max(...c.ew.map(q => q.My)) / (Mew || 1);
+      c.stiffNS = c.Ixm / sIx; c.stiffEW = c.Iym / sIy;
+    });
+    return { L, W: Wb, C, sIx, sIy, xs, ys, J, Jx, Jy, ex0, ey0, exs, eys, Mns, Mew, tcc };
+  }
+  // EN 1990 STR combinations (UK NA): γ on G, Q and wind W
+  function combos(rule, psiQ, psiW = 0.5) {
+    if (rule === '6.10') return [
+      { name: '1.35G + 1.5Q + 1.5ψ₀W', gG: 1.35, gQ: 1.5, gW: 1.5 * psiW }, { name: '1.35G + 1.5ψ₀Q + 1.5W', gG: 1.35, gQ: 1.5 * psiQ, gW: 1.5 },
+      { name: '1.0G + 1.5Q + 1.5ψ₀W', gG: 1, gQ: 1.5, gW: 1.5 * psiW }, { name: '1.0G + 1.5ψ₀Q + 1.5W', gG: 1, gQ: 1.5 * psiQ, gW: 1.5 }, { name: '1.0G + 1.5W', gG: 1, gQ: 0, gW: 1.5 }];
+    return [
+      { name: '6.10a: 1.35G + 1.5ψ₀Q + 1.5ψ₀W', gG: 1.35, gQ: 1.5 * psiQ, gW: 1.5 * psiW }, { name: '6.10b: 1.25G + 1.5Q + 1.5ψ₀W', gG: 0.925 * 1.35, gQ: 1.5, gW: 1.5 * psiW },
+      { name: '6.10b: 1.25G + 1.5ψ₀Q + 1.5W', gG: 0.925 * 1.35, gQ: 1.5 * psiQ, gW: 1.5 }, { name: '1.0G + 1.5Q + 1.5ψ₀W', gG: 1, gQ: 1.5, gW: 1.5 * psiW },
+      { name: '1.0G + 1.5ψ₀Q + 1.5W', gG: 1, gQ: 1.5 * psiQ, gW: 1.5 }, { name: '1.0G + 1.5W', gG: 1, gQ: 0, gW: 1.5 }];
+  }
+  const BARS_V = [10, 12, 16, 20, 25, 32, 40], BARS_H = [8, 10, 12, 16, 20];
+  function pickBars(need, sMax, list) {   // smallest bar each face, spacing a multiple of 25 mm, need = both faces mm²/m
+    for (const p of list) {
+      const s = Math.min(sMax, Math.floor(2 * AREA(p) * 1000 / need / 25) * 25);
+      if (s >= Math.max(75, p + Math.max(p, 25))) return { phi: p, s, As: 2 * AREA(p) * 1000 / s };
+    }
+    return null;
+  }
+  function core(inp) {
+    const D = distribute(inp), k = inp.design ?? 0, c = D.C[k];
+    if (!c) throw new Error('Choose the core to design');
+    const fck = fin(inp.fck, 'f_ck'), fyd = pos(fin(inp.fyk, 'f_yk'), 'f_yk') / 1.15, fcd = 0.85 * Math.min(1, 1 - (fck - 50) / 200) * fck / 1.5;
+    const psiQ = fin(inp.psiQ ?? 0.7, 'ψ₀ for Q'), CB = inp.combos || combos(inp.rule || '6.10ab', psiQ);
+    const loads = (inp.loads || []).map((q, j) => {
+      const x = fin(q.x, `Load ${j + 1} x`), y = fin(q.y, `Load ${j + 1} y`);
+      if (x < 0 || y < 0 || x > c.B || y > c.D) throw new Error(`Load ${j + 1} is outside core ${k + 1}`);
+      return { x, y, G: fin(q.G ?? 0, `Load ${j + 1} G_k`), Q: fin(q.Q ?? 0, `Load ${j + 1} Q_k`) };
+    });
+    const det = c.Ix * c.Iy - (inp.ignoreIxy ? 0 : c.Ixy * c.Ixy), Ixy = inp.ignoreIxy ? 0 : c.Ixy;
+    const stress = (N, Mx, My, x, y) => {   // N kN, M kNm, compression positive
+      const X = x - c.xc, Y = y - c.yc, mx = Mx * 1e6, my = My * 1e6;
+      return N * 1e3 / c.A + ((mx * c.Iy - my * Ixy) * Y + (my * c.Ix - mx * Ixy) * X) / det;
+    };
+    // wind cases: each direction on its own (default) or both at once, either sign
+    const W = [];
+    if (inp.together) { for (const a of c.ns) for (const b of c.ew) for (const s1 of [1, -1]) for (const s2 of [1, -1]) W.push({ Mx: s1 * a.Mx + s2 * b.Mx, My: s1 * a.My + s2 * b.My, tag: `NS ${s1 > 0 ? '+' : '−'}, EW ${s2 > 0 ? '+' : '−'}` }); }
+    else { for (const a of c.ns) for (const s of [1, -1]) W.push({ Mx: s * a.Mx, My: s * a.My, tag: `NS ${s > 0 ? '+' : '−'}` }); for (const b of c.ew) for (const s of [1, -1]) W.push({ Mx: s * b.Mx, My: s * b.My, tag: `EW ${s > 0 ? '+' : '−'}` }); }
+    const cases = CB.map(cb => {
+      const P = loads.map(q => cb.gG * q.G + cb.gQ * q.Q), N = P.reduce((t, v) => t + v, 0);
+      const MxV = loads.reduce((t, q, j) => t + P[j] * (q.y - c.yc) / 1000, 0), MyV = loads.reduce((t, q, j) => t + P[j] * (q.x - c.xc) / 1000, 0);
+      return { ...cb, N, MxV, MyV };
+    });
+    const locs = (inp.locations || []).map((L, j) => {
+      const x = fin(L.x, `Location ${j + 1} x`), y = fin(L.y, `Location ${j + 1} y`), t = pos(fin(L.t, `Location ${j + 1} thickness`), `Location ${j + 1} thickness`);
+      if (x < 0 || y < 0 || x > c.B || y > c.D) throw new Error(`Location ${j + 1} is outside core ${k + 1}`);
+      let sMax = -Infinity, sMin = Infinity, gMax = null, gMin = null;
+      for (const cs of cases) for (const w of W) {
+        const s = stress(cs.N, cs.MxV + cs.gW * w.Mx, cs.MyV + cs.gW * w.My, x, y);
+        if (s > sMax) { sMax = s; gMax = `${cs.name}, wind ${w.tag}`; } if (s < sMin) { sMin = s; gMin = `${cs.name}, wind ${w.tag}`; }
+      }
+      const sT = Math.max(0, -sMin), AsT = sT * t * 1000 / fyd, AsC = Math.max(0, t * 1000 * (sMax - fcd)) / (fyd - fcd), AsMin = 0.002 * t * 1000, AsMax = 0.04 * t * 1000;
+      const need = Math.max(AsT, AsC, AsMin), sMaxV = Math.min(3 * t, 400), bv = need <= AsMax ? pickBars(need, sMaxV, BARS_V) : null;
+      const Ah = Math.max(0.001 * t * 1000, 0.25 * (bv ? bv.As : need)), bh = pickBars(Ah, 400, BARS_H);   // 9.6.3(1), on the vertical bars chosen
+      const inOpening = c.parts.slice(1).some(p => x > p.x + 1e-9 && x < p.x + p.w - 1e-9 && y > p.y + 1e-9 && y < p.y + p.h - 1e-9);
+      return { x, y, t, sMax, sMin, sT, gMax, gMin, AsT, AsC, AsMin, AsMax, need, Ah, bv, bh, NEdPanel: Math.max(0, sMax) * t, util: need / AsMax, inOpening, links: need > 0.02 * t * 1000 };
+    });
+    // the extremes anywhere: the linear stress field peaks at corners of the outline or of the openings
+    const corners = []; c.parts.forEach(p => [[p.x, p.y], [p.x + p.w, p.y], [p.x, p.y + p.h], [p.x + p.w, p.y + p.h]].forEach(q => corners.push(q)));
+    let peakC = { s: -Infinity }, peakT = { s: Infinity };
+    for (const [x, y] of corners) for (const cs of cases) for (const w of W) { const s = stress(cs.N, cs.MxV + cs.gW * w.Mx, cs.MyV + cs.gW * w.My, x, y); if (s > peakC.s) peakC = { s, x, y }; if (s < peakT.s) peakT = { s, x, y }; }
+    const util = locs.length ? Math.max(...locs.map(L => L.util)) : 0;
+    return { D, c, k, fck, fyd, fcd, psiQ, combos: CB, cases, wind: W, loads, locs, peakC, peakT, util, stress };
+  }
+  return { panel, core, props, distribute, combos, sectionPoint, mRd, nPeak, squash, diagram, effLength, betaPlain, pickBars, AREA };
+})();
+
+</script>
+<script id="ui">
+'use strict';
+const $ = id => document.getElementById(id);
+const STORE = 'et-rc-wall-v1';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ufmt = u => !Number.isFinite(u) ? '&gt;99' : u.toFixed(3);
+const f1 = v => Number.isFinite(v) ? (Math.round(v * 10) / 10).toString() : '–', f0 = v => Number.isFinite(v) ? Math.round(v).toString() : '–', f2 = v => Number.isFinite(v) ? v.toFixed(2) : '–', f3 = v => Number.isFinite(v) ? v.toFixed(3) : '–';
+const opt = (vals, sel) => vals.map(v => `<option${String(v) === String(sel) ? ' selected' : ''}>${v}</option>`).join('');
+const FCK = [[20, 'C20/25'], [25, 'C25/30'], [28, 'C28/35'], [30, 'C30/37'], [32, 'C32/40'], [35, 'C35/45'], [40, 'C40/50'], [45, 'C45/55'], [50, 'C50/60']];
+['wfck', 'cfck'].forEach(id => $(id).innerHTML = FCK.map(([v, t]) => `<option value="${v}"${v === 32 ? ' selected' : ''}>${t}</option>`).join(''));
+$('wpv').innerHTML = opt([10, 12, 16, 20, 25, 32], 12); $('wph').innerHTML = opt([8, 10, 12, 16], 10);
+$('wsv').innerHTML = opt([75, 100, 125, 150, 175, 200, 225, 250, 275, 300, 350, 400], 200); $('wsh').innerHTML = opt([100, 125, 150, 175, 200, 225, 250, 275, 300, 350, 400], 300);
+const setVal = (id, v) => { const el = $(id); if (!el || v == null) return; if (el.type === 'checkbox') { el.checked = !!v; return; } if (el.tagName === 'SELECT' && ![...el.options].some(o => o.value === String(v))) el.insertAdjacentHTML('beforeend', `<option>${esc(v)}</option>`); el.value = v; };
+let mode = 'panel', last = null, from = null;
+function setMode(m) { mode = m; document.querySelectorAll('#modes button').forEach(b => b.classList.toggle('on', b.dataset.m === m)); $('pane-panel').classList.toggle('hidden', m !== 'panel'); $('pane-core').classList.toggle('hidden', m !== 'core'); }
+document.querySelectorAll('#modes button').forEach(b => b.onclick = () => { setMode(b.dataset.m); from = null; });
+function refreshVis() {
+  const show = (sel, on) => document.querySelectorAll(sel).forEach(e => e.classList.toggle('hidden', !on));
+  const plain = $('wtype').value === 'plain';
+  show('#pane-panel .rc', !plain); show('#pane-panel .plain', plain); show('.kfr', $('wend').value === 'framed'); show('.sideb', ['3', '4'].includes($('wsides').value));
+}
+['wtype', 'wend', 'wsides'].forEach(id => $(id).addEventListener('change', refreshVis));
+// ---------- core rows, openings per core, loads and locations ----------
+let cores = [];
+const xb = () => '<button class="xbtn" title="Remove">&times;</button>';
+function coreRow(c, k) {
+  const d = document.createElement('div'); d.className = 'row fcore';
+  d.innerHTML = `<div class="tag">Core ${k + 1}</div><div><label>x (m)</label><input class="x" type="number" step="0.1" value="${c.x}"></div><div><label>y (m)</label><input class="y" type="number" step="0.1" value="${c.y}"></div><div><label>B along x (mm)</label><input class="B" type="number" step="50" value="${c.B}"></div><div><label>D along y (mm)</label><input class="D" type="number" step="50" value="${c.D}"></div>${xb()}`;
+  d.querySelector('.xbtn').onclick = () => { if (cores.length < 2) return; syncCores(); cores.splice(k, 1); renderCores(Math.min(+$('csel').value || 0, cores.length - 1)); };
+  return d;
+}
+function opRow(o) { const d = document.createElement('div'); d.className = 'row fop'; d.innerHTML = `<div><label>x (mm)</label><input class="x" type="number" step="50" value="${o.x}"></div><div><label>y (mm)</label><input class="y" type="number" step="50" value="${o.y}"></div><div><label>Width along x</label><input class="w" type="number" step="50" value="${o.w}"></div><div><label>Depth along y</label><input class="h" type="number" step="50" value="${o.h}"></div>${xb()}`; d.querySelector('.xbtn').onclick = () => d.remove(); return d; }
+function loadRow(q) { const d = document.createElement('div'); d.className = 'row fload'; d.innerHTML = `<div><label>x (mm)</label><input class="x" type="number" step="25" value="${q.x}"></div><div><label>y (mm)</label><input class="y" type="number" step="25" value="${q.y}"></div><div><label>G<sub>k</sub> (kN)</label><input class="G" type="number" step="10" value="${q.G}"></div><div><label>Q<sub>k</sub> (kN)</label><input class="Q" type="number" step="10" value="${q.Q}"></div>${xb()}`; d.querySelector('.xbtn').onclick = () => d.remove(); return d; }
+function locRow(q) { const d = document.createElement('div'); d.className = 'row floc'; d.innerHTML = `<div><label>x (mm)</label><input class="x" type="number" step="25" value="${q.x}"></div><div><label>y (mm)</label><input class="y" type="number" step="25" value="${q.y}"></div><div><label>t (mm)</label><input class="t" type="number" step="25" value="${q.t}"></div>${xb()}`; d.querySelector('.xbtn').onclick = () => d.remove(); return d; }
+const rowsOf = (id, keys) => [...$(id).children].map(r => Object.fromEntries(keys.map(k => [k, +r.querySelector('.' + k).value])));
+let editing = 0;
+function syncCores() {   // read the core rows and the openings, loads and locations of the core being edited
+  const rows = rowsOf('coreRows', ['x', 'y', 'B', 'D']);
+  rows.forEach((r, k) => Object.assign(cores[k], r));
+  if (cores[editing]) { cores[editing].openings = rowsOf('opRows', ['x', 'y', 'w', 'h']); cores[editing].loads = rowsOf('loadRows', ['x', 'y', 'G', 'Q']); cores[editing].locs = rowsOf('locRows', ['x', 'y', 't']); }
+}
+function renderCores(sel = editing) {
+  $('coreRows').innerHTML = ''; cores.forEach((c, k) => $('coreRows').appendChild(coreRow(c, k)));
+  $('csel').innerHTML = cores.map((c, k) => `<option value="${k}">Core ${k + 1}</option>`).join(''); $('csel').value = sel; editing = sel; renderEdit();
+}
+function renderEdit() {
+  const c = cores[editing] || { openings: [], loads: [], locs: [] };
+  ['opCore', 'ldCore', 'lcCore'].forEach(id => $(id).textContent = `core ${editing + 1}`);
+  $('opRows').innerHTML = ''; (c.openings || []).forEach(o => $('opRows').appendChild(opRow(o)));
+  $('loadRows').innerHTML = ''; (c.loads || []).forEach(q => $('loadRows').appendChild(loadRow(q)));
+  $('locRows').innerHTML = ''; (c.locs || []).forEach(q => $('locRows').appendChild(locRow(q)));
+}
+$('csel').onchange = () => { syncCores(); editing = +$('csel').value; renderEdit(); };
+$('addCore').onclick = () => { syncCores(); cores.push({ x: 1, y: 1, B: 2400, D: 3000, openings: [{ x: 250, y: 250, w: 1900, h: 2500 }], loads: [], locs: [] }); renderCores(cores.length - 1); };
+$('addOp').onclick = () => $('opRows').appendChild(opRow({ x: 250, y: 0, w: 1000, h: 250 }));
+$('addLoad').onclick = () => $('loadRows').appendChild(loadRow({ x: 125, y: 125, G: 200, Q: 50 }));
+$('addLoc').onclick = () => $('locRows').appendChild(locRow({ x: 125, y: 125, t: 250 }));
+const DEF_CORES = [
+  { x: 2, y: 2, B: 3000, D: 4200, openings: [{ x: 250, y: 250, w: 2500, h: 3700 }, { x: 1000, y: 0, w: 1000, h: 250 }],
+    loads: [{ x: 125, y: 2100, G: 650, Q: 160 }, { x: 2875, y: 2100, G: 650, Q: 160 }, { x: 1500, y: 4075, G: 420, Q: 110 }, { x: 500, y: 125, G: 180, Q: 45 }, { x: 2500, y: 125, G: 180, Q: 45 }],
+    locs: [{ x: 125, y: 125, t: 250 }, { x: 125, y: 4075, t: 250 }, { x: 2875, y: 125, t: 250 }, { x: 2875, y: 4075, t: 250 }, { x: 1500, y: 4075, t: 250 }, { x: 125, y: 2100, t: 250 }, { x: 875, y: 125, t: 250 }] },
+  { x: 25, y: 11, B: 2400, D: 3600, openings: [{ x: 250, y: 250, w: 2150, h: 3100 }], loads: [], locs: [] }];
+// ---------- state ----------
+const FIELDS = ['pName', 'pJob', 'pBy', 'pRef', 'wtype', 'wh', 'wl', 'wfck', 'wfyk', 'wlw', 'wbr', 'wend', 'wphi', 'wk1', 'wk2', 'wei', 'wsides', 'wb', 'wacc', 'wrigid', 'wpv', 'wsv', 'wcov', 'wph', 'wsh', 'whout', 'wN', 'wMt', 'wMb',
+  'cL', 'cW', 'cea', 'cMns', 'cMew', 'cdir', 'cpsi', 'crule', 'cfck', 'cfyk'];
+function collect() {
+  syncCores();
+  const s = { v: 1, mode, editing }; FIELDS.forEach(id => s[id] = $(id).type === 'checkbox' ? $(id).checked : $(id).value);
+  s.cores = JSON.parse(JSON.stringify(cores)); return s;
+}
+function restore(s) {
+  FIELDS.forEach(id => setVal(id, s[id]));
+  cores = Array.isArray(s.cores) && s.cores.length ? s.cores : JSON.parse(JSON.stringify(DEF_CORES));
+  renderCores(Math.min(s.editing || 0, cores.length - 1)); setMode(s.mode === 'core' ? 'core' : 'panel'); refreshVis();
+}
+// ---------- inputs ----------
+function panelInput() {
+  const plain = $('wtype').value === 'plain';
+  return { plain, h: +$('wh').value, l: +$('wl').value, fck: +$('wfck').value, fyk: +$('wfyk').value, lw: +$('wlw').value || null,
+    braced: $('wbr').value === 'braced', pinned: $('wend').value === 'pinned', k1: +$('wk1').value, k2: +$('wk2').value, phief: +$('wphi').value, eimode: $('wei').value,
+    sides: $('wsides').value, bSide: +$('wb').value, rigid: $('wrigid').checked, accPl: +$('wacc').value,
+    cover: +$('wcov').value, phiV: +$('wpv').value, sV: +$('wsv').value, phiH: +$('wph').value, sH: +$('wsh').value, hOutside: $('whout').value === 'h',
+    NEd: +$('wN').value, Mtop: +$('wMt').value || 0, Mbot: +$('wMb').value || 0 };
+}
+function coreInput() {
+  syncCores();
+  return { L: +$('cL').value, W: +$('cW').value, eAcc: (+$('cea').value || 0) / 100, Mns: +$('cMns').value || 0, Mew: +$('cMew').value || 0, together: $('cdir').value === 'tog',
+    cores: cores.map(c => ({ x: c.x, y: c.y, B: c.B, D: c.D, openings: c.openings || [] })), design: editing,
+    loads: cores[editing].loads || [], locations: cores[editing].locs || [], psiQ: +$('cpsi').value, rule: $('crule').value, fck: +$('cfck').value, fyk: +$('cfyk').value };
+}
+// RC Wall Design drawings (inlined into the UI script; uses f0, f1 and Wall).
+const INK = l => l ? '#000' : 'var(--txt)', MUT = l => l ? '#666' : 'var(--mut)', ACC = l => l ? '#1b67b0' : 'var(--accent)', FILL = l => l ? '#e4e4e4' : '#dfe3e8';
+// a one-metre strip of the wall in plan, with its two layers of vertical bars and the horizontal bars
+function svgStrip(R, light) {
+  const W = 440, sc = Math.min(380 / 1000, 130 / R.h), w = 1000 * sc, hh = R.h * sc, x0 = (W - w) / 2, y0 = 34, H = hh + 74;
+  let g = `<rect x="${x0}" y="${y0}" width="${w}" height="${hh}" fill="${FILL(light)}" stroke="${INK(light)}" stroke-width="1.2"/>`;
+  g += `<line x1="${x0 - 12}" y1="${y0}" x2="${x0 - 12}" y2="${y0 + hh}" stroke="${MUT(light)}"/><text x="${x0 - 16}" y="${y0 + hh / 2 + 4}" font-size="12" text-anchor="end" fill="${MUT(light)}">h ${R.h}</text>`;
+  g += `<line x1="${x0}" y1="${y0 + hh + 18}" x2="${x0 + w}" y2="${y0 + hh + 18}" stroke="${MUT(light)}"/><text x="${x0 + w / 2}" y="${y0 + hh + 32}" font-size="12" text-anchor="middle" fill="${MUT(light)}">1000 mm run</text>`;
+  if (!R.plain) {
+    const { phiV: pv, sV: sv, phiH: ph } = R.inp, n = Math.floor(1000 / sv + 1e-9), r = Math.max(2, pv * sc / 2);
+    for (const yy of [R.d2, R.h - R.d2]) {
+      if (R.inp.hOutside !== false) { const yh = yy < R.h / 2 ? R.d2 - pv / 2 - ph / 2 : R.h - R.d2 + pv / 2 + ph / 2; g += `<line x1="${x0 + 4}" y1="${y0 + yh * sc}" x2="${x0 + w - 4}" y2="${y0 + yh * sc}" stroke="${MUT(light)}" stroke-width="${Math.max(1, ph * sc)}"/>`; }
+      for (let i = 0; i < n; i++) g += `<circle cx="${x0 + (sv / 2 + i * sv) * sc}" cy="${y0 + yy * sc}" r="${r}" fill="${INK(light)}"/>`;
+    }
+    g += `<text x="${x0 + w / 2}" y="${y0 - 10}" font-size="12.5" text-anchor="middle" fill="${INK(light)}">H${pv} @ ${sv} each face (vertical), H${ph} @ ${R.inp.sH} each face (horizontal)</text>`;
+  } else g += `<text x="${x0 + w / 2}" y="${y0 - 10}" font-size="12.5" text-anchor="middle" fill="${INK(light)}">plain concrete</text>`;
+  return `<svg class="strip" viewBox="0 0 ${W} ${H}" role="img" aria-label="Plan of a one-metre run of the wall">${g}</svg>`;
+}
+// N-M interaction per metre with the design point
+function svgMN(R, light) {
+  const pts = Wall.diagram(R.S), W = 440, H = 300, L = 54, Rt = 14, T = 14, Bm = 44;
+  const Mmax = Math.max(...pts.map(p => p.M), R.MEd) * 1.12, Nmin = Math.min(...pts.map(p => p.N)), Nmax = Math.max(...pts.map(p => p.N)) * 1.04;
+  const X = m => L + m / Mmax * (W - L - Rt), Y = nv => T + (Nmax - nv) / (Nmax - Nmin) * (H - T - Bm);
+  const tick = (v, step) => Math.ceil(v / step) * step, nStep = Math.pow(10, Math.floor(Math.log10(Nmax - Nmin))) * ((Nmax - Nmin) / Math.pow(10, Math.floor(Math.log10(Nmax - Nmin))) > 4 ? 1 : 0.5), mStep = Math.pow(10, Math.floor(Math.log10(Mmax))) * (Mmax / Math.pow(10, Math.floor(Math.log10(Mmax))) > 4 ? 1 : 0.5);
+  let g = '';
+  for (let v = tick(Nmin, nStep); v <= Nmax; v += nStep) g += `<line x1="${L}" y1="${Y(v)}" x2="${W - Rt}" y2="${Y(v)}" stroke="${light ? '#ddd' : 'var(--rule)'}"/><text x="${L - 6}" y="${Y(v) + 4}" font-size="12" text-anchor="end" fill="${MUT(light)}">${f0(v)}</text>`;
+  for (let v = 0; v <= Mmax; v += mStep) g += `<text x="${X(v)}" y="${H - Bm + 16}" font-size="12" text-anchor="middle" fill="${MUT(light)}">${f0(v)}</text>`;
+  g += `<line x1="${L}" y1="${T}" x2="${L}" y2="${H - Bm}" stroke="${INK(light)}"/><line x1="${L}" y1="${Y(0)}" x2="${W - Rt}" y2="${Y(0)}" stroke="${INK(light)}"/>`;
+  g += `<text x="${(L + W - Rt) / 2}" y="${H - 8}" font-size="12" text-anchor="middle" fill="${MUT(light)}">M (kNm/m)</text><text x="14" y="${(T + H - Bm) / 2}" font-size="12" text-anchor="middle" fill="${MUT(light)}" transform="rotate(-90 14 ${(T + H - Bm) / 2})">N (kN/m)</text>`;
+  g += `<path d="${pts.map((p, k) => `${k ? 'L' : 'M'}${X(p.M).toFixed(1)} ${Y(p.N).toFixed(1)}`).join(' ')}" fill="none" stroke="${ACC(light)}" stroke-width="2"/>`;
+  const fail = R.MEd > R.MRd;
+  g += `<line x1="${X(0)}" y1="${Y(R.inp.NEd)}" x2="${X(R.MRd)}" y2="${Y(R.inp.NEd)}" stroke="${MUT(light)}" stroke-dasharray="4 3"/>`;
+  g += `<circle cx="${X(R.MEd)}" cy="${Y(R.inp.NEd)}" r="5" fill="${fail ? (light ? '#b00' : 'var(--fail)') : INK(light)}"/><text x="${X(R.MEd) + 8}" y="${Y(R.inp.NEd) - 8}" font-size="12.5" fill="${INK(light)}">N<tspan font-size="8" dy="2">Ed</tspan><tspan dy="-2"> ${f0(R.inp.NEd)}, M</tspan><tspan font-size="8" dy="2">Ed</tspan><tspan dy="-2"> ${f1(R.MEd)}</tspan></text>`;
+  return `<svg class="mn" viewBox="0 0 ${W} ${H}" role="img" aria-label="N-M interaction diagram per metre with the design point">${g}</svg>`;
+}
+// the building in plan: cores, the stiffness centre and the building centre
+function svgBuilding(D, sel, light) {
+  const W = 440, sc = Math.min((W - 40) / D.L, 260 / D.W), H = D.W * sc + 46, X = x => 20 + x * sc, Y = y => 20 + (D.W - y) * sc;
+  let g = `<rect x="${X(0)}" y="${Y(D.W)}" width="${D.L * sc}" height="${D.W * sc}" fill="none" stroke="${INK(light)}" stroke-width="1.2"/>`;
+  D.C.forEach((c, k) => {
+    const x0 = c.x * 1000, y0 = c.y * 1000, path = c.parts.map(p => `M${X(x0 + p.x)} ${Y(y0 + p.y)} h${p.w * sc} v${-p.h * sc} h${-p.w * sc} Z`).join(' ');
+    g += `<path d="${path}" fill-rule="evenodd" fill="${k === sel ? ACC(light) : (light ? '#999' : '#9aa1ab')}" stroke="none"/><text x="${X(x0 + c.B / 2)}" y="${Y(y0 + c.D) - 5}" font-size="12" text-anchor="middle" fill="${INK(light)}">${k + 1}</text>`;
+  });
+  const cross = (x, y, col, lab, below) => `<path d="M${X(x) - 6} ${Y(y)} h12 M${X(x)} ${Y(y) - 6} v12" stroke="${col}" stroke-width="1.6"/><text x="${X(x) + 8}" y="${Y(y) + (below ? 14 : -6)}" font-size="12" fill="${col}">${lab}</text>`;
+  g += cross(D.xs, D.ys, INK(light), 'stiffness centre', true) + cross(D.L / 2, D.W / 2, MUT(light), 'building centre', false);
+  g += `<text x="${X(D.L / 2)}" y="${H - 6}" font-size="12" text-anchor="middle" fill="${MUT(light)}">L ${f1(D.L / 1000)} m along x; NS wind along y, EW wind along x</text>`;
+  return `<svg class="plan" viewBox="0 0 ${W} ${H}" role="img" aria-label="Building plan with the cores">${g}</svg>`;
+}
+// the core being designed: outline, openings, loads and check locations
+function svgCore(Rc, light) {
+  const c = Rc.c, W = 440, pad = 30, sc = Math.min((W - 2 * pad) / c.B, 320 / c.D), H = c.D * sc + 2 * pad, X = x => pad + x * sc, Y = y => pad + (c.D - y) * sc;
+  const path = c.parts.map(p => `M${X(p.x)} ${Y(p.y)} h${p.w * sc} v${-p.h * sc} h${-p.w * sc} Z`).join(' ');
+  let g = `<path d="${path}" fill-rule="evenodd" fill="${FILL(light)}" stroke="${INK(light)}" stroke-width="1"/>`;
+  g += `<path d="M${X(c.xc) - 7} ${Y(c.yc)} h14 M${X(c.xc)} ${Y(c.yc) - 7} v14" stroke="${INK(light)}" stroke-width="1.4"/><text x="${X(c.xc) + 8}" y="${Y(c.yc) + 14}" font-size="12" fill="${MUT(light)}">centroid</text>`;
+  Rc.loads.forEach((q, j) => {   // label towards the centroid, clear of the location markers on the walls
+    const dx = q.x < c.xc ? 1 : -1, dy = q.y < c.yc ? 1 : -1;
+    g += `<circle cx="${X(q.x)}" cy="${Y(q.y)}" r="4.5" fill="none" stroke="${MUT(light)}" stroke-width="1.4"/><text x="${X(q.x) + dx * 14}" y="${Y(q.y) - dy * 14 + 4}" font-size="11.5" text-anchor="${dx > 0 ? 'start' : 'end'}" fill="${MUT(light)}">P${j + 1}</text>`;
+  });
+  Rc.locs.forEach((L, j) => { g += `<rect x="${X(L.x) - 9}" y="${Y(L.y) - 9}" width="18" height="18" rx="3" fill="${L.sT > 0 ? ACC(light) : INK(light)}"/><text x="${X(L.x)}" y="${Y(L.y) + 4}" font-size="12" font-weight="600" text-anchor="middle" fill="#fff">${j + 1}</text>`; });
+  g += `<text x="${X(c.B / 2)}" y="${H - 8}" font-size="12" text-anchor="middle" fill="${MUT(light)}">${f0(c.B)} × ${f0(c.D)} mm; origin at the bottom-left corner</text>`;
+  return `<svg class="plan" viewBox="0 0 ${W} ${H}" role="img" aria-label="Plan of the core with loads and check locations">${g}</svg>`;
+}
+
+// ---------- results ----------
+const bar = c => `<div class="ck"><div class="nm">${esc(c.name)}<small>${esc(c.ref)} &nbsp;${esc(c.note || '')}</small></div><div class="bar"><i class="${c.util > 1 ? 'over' : ''}" style="width:${Math.min(100, c.util * 100 / 1.2)}%"></i></div><div class="u ${c.util > 1 ? 'over' : ''}">${ufmt(c.util)}</div></div>`;
+const verdict = (util, sub) => `<div class="verdict ${util > 1 ? 'fail' : ''}"><div><div class="big">${util > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(util)}</div><div class="sub">${sub}</div></div></div>`;
+const kv = (k, v) => `<div><b>${k}</b><span>${v}</span></div>`;
+function panelValues(R) {
+  if (R.plain) return `<div class="kv">${kv('f<sub>cd,pl</sub> (N/mm²)', f2(R.fcdPl))}${kv('β (Table 12.1)', f3(R.beta))}${kv('l₀ (mm)', f0(R.l0))}${kv('λ', f1(R.lambda))}${kv('e₀ (mm)', f1(R.e0))}${kv('e<sub>i</sub> = l₀/400 (mm)', f1(R.ei))}${kv('e<sub>tot</sub> (mm)', f1(R.etot))}${kv('Φ', f3(R.Phi))}${kv('N<sub>Rd</sub> (kN/m)', f0(R.NRd))}</div>`;
+  return `<div class="kv">${kv('l₀ (mm)', f0(R.l0))}${kv('λ', f1(R.lambda))}${kv('λ<sub>lim</sub>', f1(R.lambdaLim))}${kv('n', f3(R.n))}${kv('ω', f3(R.omega))}${kv('e<sub>i</sub> (mm)', f1(R.ei))}${kv('M₀₂ (kNm/m)', f1(R.M02))}${kv('M₀₁ (kNm/m)', f1(R.M01))}${R.braced ? kv('M₀<sub>e</sub> (kNm/m)', f1(R.M0e)) : ''}${kv('e₀ N<sub>Ed</sub> (kNm/m)', f1(R.Me0))}`
+    + (R.slender ? `${kv('n<sub>bal</sub>', f3(R.nbal))}${kv('K<sub>r</sub>', f3(R.Kr))}${kv('K<sub>φ</sub>', f3(R.Kphi))}${kv('d = h/2 + i<sub>s</sub> (mm)', f0(R.dC))}${kv('c', R.constM ? '8' : 'π²')}${kv('M₂ (kNm/m)', f1(R.M2))}` : '')
+    + `${kv('M<sub>Ed</sub> (kNm/m)', f1(R.MEd))}${kv('M<sub>Rd</sub> at N<sub>Ed</sub> (kNm/m)', f1(R.MRd))}${kv('A<sub>s,v</sub> (mm²/m)', f0(R.As))}${kv('A<sub>s,h</sub> (mm²/m)', f0(R.AsH))}</div>`;
+}
+function runPanel() {
+  const inp = panelInput(), R = Wall.panel(inp), W = [...R.checks].sort((a, b) => b.util - a.util); last = { mode: 'panel', R, inp };
+  const what = R.plain ? `plain wall h ${inp.h} mm, l₀ = ${f0(R.l0)} mm (β ${f3(R.beta)})` : `${R.braced ? 'braced' : 'unbraced'} wall h ${inp.h} mm, l₀ = ${f0(R.l0)} mm, λ ${f1(R.lambda)} ${R.slender ? '>' : '≤'} λ<sub>lim</sub> ${f1(R.lambdaLim)} (${R.slender ? 'slender' : 'not slender'})`;
+  $('results').innerHTML = (from ? `<div class="from">${esc(from)}</div>` : '')
+    + verdict(R.util, `Governs: ${esc(W[0].name.charAt(0).toLowerCase() + W[0].name.slice(1))} (${esc(W[0].ref)})<br>${what}; N<sub>Ed</sub> ${f0(inp.NEd)} kN/m`)
+    + `<div class="dlabel">Section, one metre run</div>${svgStrip(R, false)}`
+    + (R.plain ? '' : `<div class="dlabel">N–M interaction per metre</div>${svgMN(R, false)}`)
+    + `<div class="dlabel">Checks</div><div class="checks">${W.map(bar).join('')}</div><div class="dlabel">Values</div>${panelValues(R)}`
+    + R.notes.map(t => `<div class="note">${esc(t)}</div>`).join('')
+    + `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  $('printBtn').onclick = () => { $('report').innerHTML = report(); window.print(); };
+}
+const barTxt = b => b ? `H${b.phi} @ ${b.s}` : '–';
+function runCore() {
+  const inp = coreInput(), R = Wall.core(inp), D = R.D, c = R.c; last = { mode: 'core', R, inp };
+  const iC = R.locs.reduce((a, L, j) => L.sMax > (R.locs[a]?.sMax ?? -Infinity) ? j : a, 0), iT = R.locs.reduce((a, L, j) => L.sT > (R.locs[a]?.sT ?? -Infinity) ? j : a, 0), iS = R.locs.reduce((a, L, j) => L.need > (R.locs[a]?.need ?? -Infinity) ? j : a, 0);
+  const sub = R.locs.length ? `Core ${R.k + 1}: compression up to ${f2(R.locs[iC].sMax)} N/mm² (location ${iC + 1}), tension up to ${f2(R.locs[iT].sT)} N/mm² (location ${iT + 1}); most steel at location ${iS + 1}: ${f0(R.locs[iS].need)} mm²/m, ${barTxt(R.locs[iS].bv)} each face`
+    : `Core ${R.k + 1}: add check locations to find the steel`;
+  let h = verdict(R.util, sub) + `<div class="dlabel">Building plan</div>${svgBuilding(D, R.k, false)}`;
+  h += `<table class="t"><tr><th>Core</th><th>A (m²)</th><th>x̄, ȳ (mm)</th><th>I<sub>x</sub> (m⁴)</th><th>I<sub>y</sub> (m⁴)</th><th>NS share</th><th>EW share</th></tr>`
+    + D.C.map((q, k) => `<tr${k === R.k ? ' style="font-weight:600"' : ''}><td>${k + 1}</td><td>${f3(q.A / 1e6)}</td><td>${f0(q.xc)}, ${f0(q.yc)}</td><td>${f3(q.Ixm)}</td><td>${f3(q.Iym)}</td><td>${f3(q.stiffNS)} → ${f3(q.shareNS)}</td><td>${f3(q.stiffEW)} → ${f3(q.shareEW)}</td></tr>`).join('') + `</table>`;
+  h += `<div class="help">Shares: by stiffness → with torsion (the larger with the extra eccentricity either way). Stiffness centre (${f2(D.xs / 1000)}, ${f2(D.ys / 1000)}) m; the wind resultant is ${f2(D.ex0 / 1000)} m from it along x and ${f2(D.ey0 / 1000)} m along y.</div>`;
+  h += `<div class="dlabel">Core ${R.k + 1} in plan</div>${svgCore(R, false)}`;
+  h += `<div class="kv">${kv('A (mm²)', f0(c.A))}${kv('x̄, ȳ (mm)', `${f0(c.xc)}, ${f0(c.yc)}`)}${kv('I<sub>x</sub> (m⁴)', f3(c.Ixm))}${kv('I<sub>y</sub> (m⁴)', f3(c.Iym))}${kv('I<sub>xy</sub> (m⁴)', f3(c.Ixy / 1e12))}${kv('Wind M<sub>x</sub> (kNm)', f0(Math.max(...c.ns.map(q => Math.abs(q.Mx)), ...c.ew.map(q => Math.abs(q.Mx)))))}${kv('Wind M<sub>y</sub> (kNm)', f0(Math.max(...c.ew.map(q => Math.abs(q.My)), ...c.ns.map(q => Math.abs(q.My)))))}${kv('f<sub>cd</sub> (N/mm²)', f2(R.fcd))}</div>`;
+  if (R.locs.length) {
+    const gov = L => L.need === L.AsT && L.AsT > 0 ? 'tension' : L.need === L.AsC && L.AsC > 0 ? 'compression' : 'minimum';
+    h += `<div class="dlabel">Stresses and vertical steel</div><table class="t"><tr><th>Loc.</th><th>x, y; t (mm)</th><th>σ<sub>c</sub></th><th>σ<sub>t</sub></th><th>A<sub>s</sub> needed</th><th>Bars each face</th><th>Panel</th></tr>`
+      + R.locs.map((L, j) => `<tr><td>${j + 1}</td><td>${f0(L.x)}, ${f0(L.y)}; ${f0(L.t)}</td><td>${f2(L.sMax)}</td><td>${f2(L.sT)}</td><td><b>${f0(L.need)}</b> ${gov(L)}</td><td>${L.need > L.AsMax ? 'over 0.04A<sub>c</sub>' : `${barTxt(L.bv)} / ${barTxt(L.bh)}`}</td><td><button class="lnk" data-loc="${j}" title="Check the wall here as a panel per metre">${f0(L.NEdPanel)} kN/m</button></td></tr>`).join('') + `</table>`;
+    h += `<div class="help">Stresses in N/mm² (compression positive), steel in mm²/m for both faces together: tension σ<sub>t</sub>t/f<sub>yd</sub>; compression above f<sub>cd</sub> as t(σ<sub>c</sub> − f<sub>cd</sub>)/(f<sub>yd</sub> − f<sub>cd</sub>); not less than 0.002A<sub>c</sub> (9.6.2); horizontal steel at least max(0.25A<sub>s,v</sub>, 0.001A<sub>c</sub>) (9.6.3). Bars each face: vertical / horizontal, spacing within min(3t, 400 mm) and 400 mm. Panel opens the wall at that point as a panel per metre with N<sub>Ed</sub> = σ<sub>c</sub>t, for slenderness and out-of-plane moments.</div>`;
+    const warn = R.locs.map((L, j) => L.inOpening ? `Location ${j + 1} is inside an opening.` : L.links ? `Location ${j + 1} needs more than 0.02A<sub>c</sub>: links through the wall as for columns (9.6.4).` : '').filter(Boolean);
+    warn.forEach(t => h += `<div class="note">${t}</div>`);
+  }
+  h += `<div class="note">Anywhere on the core the stresses peak at corners: up to ${f2(R.peakC.s)} N/mm² compression at (${f0(R.peakC.x)}, ${f0(R.peakC.y)}) and ${f2(Math.max(0, -R.peakT.s))} N/mm² tension at (${f0(R.peakT.x)}, ${f0(R.peakT.y)}) mm.</div>`;
+  h += `<div class="dlabel">Combinations</div><div class="help">${R.combos.map(cb => esc(cb.name)).join('; ')}; wind ${inp.together ? 'NS and EW together, every sign' : 'NS and EW one at a time, either sign'}.</div>`;
+  h += `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  $('results').innerHTML = h;
+  $('results').querySelectorAll('button.lnk').forEach(b => b.onclick = () => toPanel(+b.dataset.loc));
+  $('printBtn').onclick = () => { $('report').innerHTML = report(); window.print(); };
+}
+// a location on the core, opened as a wall panel per metre
+function toPanel(j) {
+  const { R, inp } = last, L = R.locs[j];
+  setVal('wtype', 'rc'); setVal('wh', L.t); setVal('wN', Math.round(L.NEdPanel)); setVal('wMt', 0); setVal('wMb', 0); setVal('wfck', inp.fck); setVal('wfyk', inp.fyk);
+  if (L.bv) { setVal('wpv', L.bv.phi); setVal('wsv', L.bv.s); } if (L.bh) { setVal('wph', L.bh.phi); setVal('wsh', L.bh.s); }
+  refreshVis(); setMode('panel'); from = `From core ${R.k + 1}, location ${j + 1}: N_Ed = σc t = ${f2(L.sMax)} × ${L.t} = ${f0(L.NEdPanel)} kN/m. Add the height, the end restraint and any out-of-plane moments.`;
+  run(); try { window.scrollTo(0, 0); } catch (e) { /* not available */ }
+}
+function run() {
+  try { localStorage.setItem(STORE, JSON.stringify(collect())); } catch (e) { /* storage unavailable */ }
+  try { mode === 'core' ? runCore() : runPanel(); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+// ---------- A4 sheet ----------
+const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
+const okng = u => u <= 1 ? `<span class="ok">${ufmt(u)} OK</span>` : `<span class="ng">${ufmt(u)} FAIL</span>`;
+const cls = f => (FCK.find(q => q[0] === +f) || [0, 'C' + f])[1];
+function report() {
+  const s = collect(), today = new Date().toLocaleDateString('en-GB');
+  const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.pRef) || '&nbsp;'}</div><div class="ttl">RC walls to BS EN 1992-1-1 + UK NA</div></div>`;
+  let b = '';
+  if (last.mode === 'panel') {
+    const { R, inp } = last;
+    b += `<div class="rs"><h2>Wall panel, per metre run</h2>` + rl(`${R.plain ? 'Plain concrete' : 'Reinforced'} wall h = ${inp.h} mm, clear height l = ${inp.l} mm, ${cls(inp.fck)}${R.plain ? `, α<sub>cc,pl</sub> = ${inp.accPl}` : `, f<sub>yk</sub> = ${inp.fyk} N/mm²; H${inp.phiV} @ ${inp.sV} vertical and H${inp.phiH} @ ${inp.sH} horizontal each face, cover ${inp.cover} mm`}`, '', '')
+      + rl(`N<sub>Ed</sub> = ${inp.NEd} kN/m; out-of-plane M<sub>top</sub> = ${inp.Mtop}, M<sub>bot</sub> = ${inp.Mbot} kNm/m`, '', '') + '</div>';
+    b += `<div class="rs"><h2>Section</h2>${svgStrip(R, true)}${R.plain ? '' : svgMN(R, true)}</div>`;
+    if (R.plain) b += `<div class="rs"><h2>Slenderness and resistance</h2>${rl(`β = ${f3(R.beta)} (${({ 2: 'held top and bottom', 3: 'held top, bottom and one side', 4: 'held on four sides', cant: 'cantilever' })[R.sides]}${inp.rigid ? ', × 0.85' : ''}); l₀ = β l = ${f0(R.l0)} mm; λ = l₀√12/h = ${f1(R.lambda)}`, '12.6.5.1', '')}${rl(`e<sub>tot</sub> = e₀ + e<sub>i</sub> = ${f1(R.e0)} + l₀/400 = ${f1(R.etot)} mm; Φ = 1.14(1 − 2e<sub>tot</sub>/h) − 0.02 l₀/h ≤ 1 − 2e<sub>tot</sub>/h = ${f3(R.Phi)}`, '(12.11)', '')}${rl(`N<sub>Rd</sub> = b h f<sub>cd,pl</sub> Φ = 1000 × ${inp.h} × ${f2(R.fcdPl)} × ${f3(R.Phi)} = ${f0(R.NRd)} kN/m`, '(12.10)', '')}</div>`;
+    else b += `<div class="rs"><h2>Slenderness (5.8)</h2>${rl(`l₀ = ${f0(R.l0)} mm (${inp.pinned ? 'pinned ends' : `${R.braced ? '(5.15)' : '(5.16)'}, k₁ = ${inp.k1}, k₂ = ${inp.k2}`}); λ = ${f1(R.lambda)}; λ<sub>lim</sub> = 20ABC/√n = 20 × ${f3(R.A)} × ${f3(R.B)} × ${f3(R.C)}/√${f3(R.n)} = ${f1(R.lambdaLim)}`, '5.8.3', '')}`
+      + rl(`e<sub>i</sub> = ${f1(R.ei)} mm; M₀₂ = ${f1(R.M02)}, M₀₁ = ${f1(R.M01)} kNm/m (imperfection included), r<sub>m</sub> = ${f3(R.rm)}${R.braced ? `, M₀<sub>e</sub> = ${f1(R.M0e)}` : ''}; e₀N<sub>Ed</sub> = ${f1(R.Me0)} kNm/m`, '5.2, 5.8.8.2, 6.1(4)', '')
+      + (R.slender ? rl(`K<sub>r</sub> = ${f3(R.Kr)} (n<sub>bal</sub> ${f3(R.nbal)}), K<sub>φ</sub> = ${f3(R.Kphi)}, 1/r₀ = ε<sub>yd</sub>/(0.45d), d = ${f0(R.dC)} mm; e₂ = (1/r) l₀²/${R.constM ? '8' : 'π²'} = ${f1(R.e2)} mm; M₂ = ${f1(R.M2)} kNm/m`, '5.8.8.3', '') : rl('Not slender: no second-order moment', '5.8.3.1', ''))
+      + rl(`M<sub>Ed</sub> = ${f1(R.MEd)} kNm/m (${esc(R.governs)}); M<sub>Rd</sub> = ${f1(R.MRd)} kNm/m at N<sub>Ed</sub>`, '5.8.8.2', '') + '</div>';
+    b += `<div class="rs"><h2>Checks</h2>` + R.checks.map(c => rl(esc(c.name) + ` <span style="color:#666">${esc(c.note || '')}</span>`, esc(c.ref), okng(c.util))).join('') + R.notes.map(t => `<p class="rp">${esc(t)}</p>`).join('') + '</div>';
+  } else {
+    const { R, inp } = last, D = R.D, c = R.c;
+    b += `<div class="rs"><h2>Building and wind</h2>${rl(`L × W = ${inp.L} × ${inp.W} m; characteristic wind overturning moments NS ${inp.Mns} kNm, EW ${inp.Mew} kNm at the level checked; extra eccentricity ${f1(inp.eAcc * 100)} %; wind ${inp.together ? 'both directions together' : 'one direction at a time'}`, '', '')}${svgBuilding(D, R.k, true)}`
+      + `<table class="rtab"><tr><th>Core</th><th>Position (m)</th><th>B × D (mm)</th><th>A (m²)</th><th>I<sub>x</sub> (m⁴)</th><th>I<sub>y</sub> (m⁴)</th><th>NS share</th><th>EW share</th></tr>` + D.C.map((q, k) => `<tr><td>${k + 1}</td><td>${q.x}, ${q.y}</td><td>${f0(q.B)} × ${f0(q.D)}</td><td>${f3(q.A / 1e6)}</td><td>${f3(q.Ixm)}</td><td>${f3(q.Iym)}</td><td>${f3(q.shareNS)}</td><td>${f3(q.shareEW)}</td></tr>`).join('') + `</table>`
+      + rl(`Stiffness centre (${f2(D.xs / 1000)}, ${f2(D.ys / 1000)}) m; torsion on a rigid floor with J = Σ I<sub>x</sub>(x − x<sub>s</sub>)² + Σ I<sub>y</sub>(y − y<sub>s</sub>)²`, '', '') + '</div>';
+    b += `<div class="rs"><h2>Core ${R.k + 1}</h2>${svgCore(R, true)}${rl(`A = ${f0(c.A)} mm², centroid (${f0(c.xc)}, ${f0(c.yc)}) mm, I<sub>x</sub> = ${f3(c.Ixm)} m⁴, I<sub>y</sub> = ${f3(c.Iym)} m⁴, I<sub>xy</sub> = ${f3(c.Ixy / 1e12)} m⁴; ${cls(inp.fck)}, f<sub>cd</sub> = ${f2(R.fcd)}, f<sub>yd</sub> = ${f1(R.fyd)} N/mm²`, '', '')}`
+      + rl(`Loads (characteristic): ${R.loads.map((q, j) => `P${j + 1} (${q.x}, ${q.y}) G ${q.G}, Q ${q.Q}`).join('; ') || 'none'}`, '', '') + rl(`Combinations: ${R.combos.map(cb => esc(cb.name)).join('; ')}`, 'EN 1990', '') + '</div>';
+    if (R.locs.length) b += `<div class="rs"><h2>Stresses and vertical steel</h2><table class="rtab"><tr><th>Loc.</th><th>x, y</th><th>t</th><th>σ<sub>c</sub></th><th>σ<sub>t</sub></th><th>A<sub>s</sub> needed</th><th>Vertical EF</th><th>Horizontal EF</th><th>Panel N<sub>Ed</sub></th></tr>`
+      + R.locs.map((L, j) => `<tr><td>${j + 1}</td><td>${f0(L.x)}, ${f0(L.y)}</td><td>${f0(L.t)}</td><td>${f2(L.sMax)}</td><td>${f2(L.sT)}</td><td>${f0(L.need)}</td><td>${L.need > L.AsMax ? 'over 0.04A<sub>c</sub>' : barTxt(L.bv)}</td><td>${barTxt(L.bh)}</td><td>${f0(L.NEdPanel)}</td></tr>`).join('') + `</table><p class="rp">Stresses N/mm², steel mm²/m both faces; panel N<sub>Ed</sub> in kN/m for the slenderness check of the wall at that point.</p></div>`;
+  }
+  b += `<p class="rp" style="color:#555">Generated by EngineeringTools — RC Wall Design.</p>`;
+  return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
+}
+$('calc').onclick = run;
+(function init() {
+  let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
+  if (s && s.v === 1) restore(s); else { cores = JSON.parse(JSON.stringify(DEF_CORES)); renderCores(0); refreshVis(); }
+})();
+</script>
+<footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent engineer to check and approve all calculations before they are used.</footer>
+</body>
+</html>
