@@ -1,0 +1,1551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prestressed Beam Design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* Engineering Tools: shared light style (tasteskill app sheet "Achromatic ledger", seed 959138263).
+   Ink chrome on a blue-grey drawing-office ground; the one hue (#1d5fbf) goes on the main data element
+   (envelopes, utilisation bars); status colour only on the verdict and on a check that is over. */
+:root{
+  --bg:#f2f4f7; --surf:#ffffff; --surf2:#f7f8fa; --bdr:#e3e5e8; --bdr2:#d1d5db; --rule:#eceef1;
+  --txt:#111111; --lbl:#33363a; --mut:#5f6368; --faint:#6b6b6b;
+  --accent:#1d5fbf; --accent-dim:#e3ebf8;
+  --primary:#1d1f20;
+  --pass:#247b50; --warn:#b45309; --fail:#c4242a;
+  --pass-bg:#dcfae5; --pass-ink:#04250e; --fail-bg:#ffedea; --fail-ink:#831c1e;
+  --r:6px; --rc:8px;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:var(--sans);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5;min-height:100svh;padding:28px 32px 40px;
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;}
+.container{max-width:1376px;margin:0 auto;}
+/* title row: a photograph of the member's material (img/<material>.jpg beside the page, set by <body data-material>)
+   under a neutral scrim, with the breadcrumb, the tool's name and one line of scope. Without the photo it is a plain ink band. */
+.page-hdr{position:relative;isolation:isolate;overflow:hidden;border-radius:var(--rc);min-height:164px;padding:18px 24px 20px;margin-bottom:12px;
+  display:flex;flex-direction:column;justify-content:flex-end;color:#fff;background:#2c3036 var(--photo,none) center/cover no-repeat;}
+.page-hdr::before{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.55) 45%,rgba(0,0,0,.18) 100%);} /* taste-skill-ignore: neutral scrim under text on a photograph */
+.page-hdr::after{content:var(--credit,'');position:absolute;right:10px;bottom:8px;font-size:11px;color:rgba(255,255,255,.9);background:rgba(0,0,0,.4);padding:1px 6px;border-radius:4px;}
+.home-lnk{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:rgba(255,255,255,.88);text-decoration:none;font-weight:500;margin-bottom:auto;align-self:flex-start;padding-bottom:12px;}
+.home-lnk:hover{color:#fff;text-decoration:underline;}
+.home-lnk svg{width:14px;height:14px;}
+.page-hdr h1{font-size:26px;font-weight:600;line-height:1.25;letter-spacing:-0.01em;margin-bottom:4px;color:#fff;}
+.page-hdr p{font-size:14px;color:rgba(255,255,255,.92);max-width:900px;}
+body[data-material="steel"]{--photo:url(img/steel.jpg);--credit:'Photo: Chevsapher, CC0';}
+body[data-material="concrete"]{--photo:url(img/concrete.jpg);--credit:'Photo: MassDOT, public domain';}
+body[data-material="masonry"]{--photo:url(img/masonry.jpg);--credit:'Photo: Håkan Svensson, CC BY 2.5';}
+body[data-material="timber"]{--photo:url(img/timber.jpg);--credit:'Photo: Sebastian Wallroth, public domain';}
+body[data-material="frame"]{--photo:url(img/frame.jpg);--credit:'Photo: Wikideas1, CC0';}
+body[data-material="ground"]{--photo:url(img/ground.jpg);--credit:'Photo: Fons Heijnsbroek, CC0';}
+@media print{.page-hdr{display:none;}}
+/* inputs on the left, the answer on the right: (1376 - 12) x 6/13 = 630 | 734 */
+.main-grid{display:grid;grid-template-columns:minmax(380px,6fr) 7fr;gap:12px;align-items:start;}
+@media(max-width:1100px){.main-grid{grid-template-columns:1fr;}}
+.main-grid > div{min-width:0;}
+#results table.t{display:block;overflow-x:auto;white-space:nowrap;}
+.card{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rc);padding:20px 24px;margin-bottom:12px;}
+.section-title{font-size:16px;font-weight:600;color:var(--txt);margin:0 0 14px;display:flex;justify-content:space-between;align-items:baseline;gap:12px;line-height:1.3;}
+.section-title .aux{color:var(--mut);font-size:13px;font-weight:400;text-align:right;}
+.form-group{margin-bottom:14px;}
+.form-group label,.lbl{display:block;font-size:13px;margin-bottom:5px;color:var(--lbl);font-weight:500;line-height:1.35;}
+input[type="number"],input[type="text"],select{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);padding:0 10px;height:36px;border-radius:var(--r);font-family:var(--sans);font-size:14px;width:100%;font-variant-numeric:tabular-nums;transition:border-color .12s;}
+input::placeholder{color:var(--faint);}
+input:hover,select:hover{border-color:#b9bec6;}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);}
+input:disabled,select:disabled{background:var(--surf2);color:var(--mut);}
+select option{background:var(--surf);color:var(--txt);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.grid2 > .form-group,.grid3 > .form-group{display:flex;flex-direction:column;justify-content:flex-end;}
+.chk{display:block;position:relative;padding-left:26px;font-size:13px;color:var(--lbl);margin:8px 0;cursor:pointer;line-height:1.45;}
+.chk input{position:absolute;left:0;top:1px;width:16px;height:16px;accent-color:var(--primary);}
+.help{font-size:13px;color:var(--mut);margin-top:4px;line-height:1.45;}
+/* segmented control: grey track, white pill on the chosen option */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#e9ecf0;border-radius:var(--rc);margin-bottom:14px;}
+.seg button{background:transparent;color:var(--mut);border:1px solid transparent;border-radius:var(--r);height:32px;padding:0 10px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;}
+.seg button:hover{color:var(--txt);}
+.seg button.on{background:var(--surf);color:var(--txt);border-color:var(--bdr);}
+/* repeating rows: spans, supports, loads */
+.rows{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+.row{display:grid;gap:8px;align-items:end;background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--r);padding:10px;}
+.row label{font-size:12px;color:var(--mut);margin-bottom:3px;display:block;font-weight:500;line-height:1.3;}
+.row input,.row select{height:32px;font-size:13px;padding:0 8px;}
+.row.span{grid-template-columns:1fr 1.6fr 1fr 32px;}
+.row.load{grid-template-columns:52px 64px 1.1fr 1.1fr 32px;}
+.row.load .vals{grid-column:1 / span 3;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.xbtn{height:32px;width:32px;background:var(--surf);border:1px solid var(--bdr2);color:var(--mut);border-radius:var(--r);cursor:pointer;font-size:16px;line-height:1;}
+.xbtn:hover{color:var(--fail);border-color:var(--fail);}
+.addbtn{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);border-radius:var(--r);height:36px;padding:0 12px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;width:100%;}
+.addbtn:hover{border-color:#9aa0a8;background:var(--surf2);}
+/* the one primary action, near-black; secondary actions white and outlined */
+.btn{height:44px;padding:0 16px;border:none;border-radius:var(--r);font-weight:600;cursor:pointer;font-family:var(--sans);font-size:15px;width:100%;background:var(--primary);color:#fff;}
+.btn:hover{background:#000;}
+.btn:focus-visible,.btn2:focus-visible,.addbtn:focus-visible,.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.btn2{width:100%;height:38px;padding:0 12px;background:var(--surf);border:1px solid var(--bdr2);border-radius:var(--r);font-size:14px;font-weight:500;color:var(--txt);cursor:pointer;font-family:var(--sans);margin-top:8px;}
+.btn2:hover{border-color:#9aa0a8;background:var(--surf2);}
+.hidden{display:none!important;}
+/* results */
+.placeholder{display:flex;align-items:center;justify-content:center;min-height:160px;color:var(--mut);font-size:14px;text-align:center;padding:0 24px;}
+.verdict{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--bdr);border-radius:var(--rc);background:var(--surf2);margin-bottom:16px;}
+.verdict .big{font-size:24px;font-weight:600;line-height:1.2;color:var(--pass);letter-spacing:-0.01em;}
+.verdict.fail .big{color:var(--fail);}
+.verdict .sub{font-size:13px;color:var(--mut);margin-top:2px;}
+/* the utilisation ledger: check, clause, bar to scale (full track = 1.2, ink tick at the 1.0 limit), figure */
+.checks{display:flex;flex-direction:column;margin-bottom:8px;}
+.ck{display:grid;grid-template-columns:1.25fr 2fr 56px;gap:14px;align-items:center;font-size:13px;padding:7px 0;border-bottom:1px solid var(--rule);}
+.ck:last-child{border-bottom:none;}
+.ck .nm{color:var(--txt);line-height:1.35;} .ck .nm small{display:block;color:var(--mut);font-size:12px;}
+.bar{height:8px;background:#e8ebef;border-radius:4px;position:relative;}
+.bar::after{content:'';position:absolute;left:83.333%;top:-4px;bottom:-4px;width:1.5px;background:var(--txt);border-radius:1px;}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:4px;}
+.bar i.over{background:var(--fail);} /* 0.9-1.0 stays blue: a well-used member is not a warning; the tick shows how close it is */
+.ck .u{text-align:right;font-weight:600;font-size:14px;}
+.ck .u.over{color:var(--fail);}
+.diag{width:100%;height:auto;display:block;margin-bottom:6px;}
+/* screen drawings: the smallest labels lifted to the 11px floor (the print sheet keeps its own sizes) */
+.container svg text[font-size="8"],.container svg text[font-size="8.5"],.container svg text[font-size="9"],.container svg text[font-size="9.5"],
+.container svg text[font-size="10"],.container svg text[font-size="10.5"]{font-size:11px;}
+.dlabel{font-size:14px;font-weight:600;color:var(--txt);margin:20px 0 6px;line-height:1.3;}
+table.t{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px;font-variant-numeric:tabular-nums;}
+table.t th{color:var(--mut);font-weight:500;text-align:right;padding:6px 8px;border-bottom:1px solid var(--bdr);font-size:12px;}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--rule);text-align:right;}
+table.t th:first-child,table.t td:first-child{text-align:left;}
+.note{font-size:13px;color:var(--mut);background:var(--surf2);border:1px solid var(--rule);border-radius:var(--r);padding:10px 12px;margin-top:10px;line-height:1.5;}
+.err{color:var(--fail-ink);background:var(--fail-bg);font-size:13px;padding:10px 12px;border-radius:var(--r);margin-bottom:12px;}
+.busy{opacity:.55;pointer-events:none;}
+a{color:var(--txt);}
+sub,sup{font-size:max(11px,.75em);line-height:0;}
+@media(max-width:560px){body{padding:16px 16px 32px;} .card{padding:16px;} .ck{grid-template-columns:1fr 1fr 48px;gap:10px;} .grid3{grid-template-columns:1fr 1fr;}
+  .row.span{grid-template-columns:1fr 32px;} .row.span > div:nth-child(2),.row.span > div:nth-child(3){display:none;} .row.load .vals{grid-template-columns:1fr 1fr;}
+  .page-hdr{min-height:150px;padding:14px 16px 16px;} .page-hdr h1{font-size:22px;} .page-hdr::after{top:10px;bottom:auto;} .page-hdr::before{background:rgba(0,0,0,.6);} .verdict .big{font-size:22px;}}
+/* disclaimer: on screen at the foot of the page, and printed at the end of the calculation sheet */
+.disclaimer{max-width:1376px;margin:24px auto 0;padding-top:14px;border-top:1px solid var(--bdr,#e3e5e8);font-size:13px;line-height:1.55;color:var(--mut,#5f6368);}
+.disclaimer b{color:var(--txt,#111);font-weight:600;}
+@media print{.disclaimer{display:block!important;max-width:none;margin:4mm 0 0;padding-top:1.5mm;border-top:0.4pt solid #888;font-family:Arial,Helvetica,sans-serif;font-size:7.5pt;color:#000;break-inside:avoid;} .disclaimer b{color:#000;}}
+/* ---------- print: A4 calculation sheet ---------- */
+#report{display:none;}
+@media print{
+  @page{size:A4;margin:12mm 12mm 14mm;}
+  body{background:#fff;color:#000;padding:0;background-image:none;font-size:9.5pt;}
+  .container{display:none;}
+  #report{display:block;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  #report table.wrap{width:100%;border-collapse:collapse;}
+  #report thead td{padding:0 0 3mm;}
+  .rh{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;border:0.6pt solid #000;font-size:8pt;}
+  .rh div{padding:1.2mm 2mm;border-right:0.6pt solid #000;}
+  .rh div:last-child{border-right:none;}
+  .rh b{display:block;font-size:6.5pt;color:#444;font-weight:normal;text-transform:uppercase;letter-spacing:.3pt;}
+  .rh .ttl{grid-column:1 / -1;border-top:0.6pt solid #000;border-right:none;font-weight:bold;font-size:10pt;}
+  .rs{margin:0 0 3.5mm;}
+  .rs h2,.rs h3{break-after:avoid;}
+  .rl,.rt,.rsvg,.rp,.rt tr{break-inside:avoid;}
+  .rs h2{font-size:10pt;margin:3mm 0 1.5mm;padding-bottom:0.8mm;border-bottom:0.8pt solid #000;}
+  .rs h3{font-size:9pt;margin:2mm 0 1mm;}
+  .rl{display:grid;grid-template-columns:1fr 92px 132px;gap:2mm;padding:0.5mm 0;font-size:8.6pt;}
+  .rl .cl{text-align:right;color:#444;font-size:7.5pt;}
+  .rl .rv{text-align:right;font-weight:bold;}
+  .ok{color:#0a7a3e;} .ng{color:#c00;}
+  .rt{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;}
+  .rt th,.rt td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;}
+  .rt th{background:#eee;font-weight:bold;}
+  .rt td:first-child,.rt th:first-child,.rt.lft td,.rt.lft th{text-align:left;}
+  .rp{font-size:8.3pt;line-height:1.45;margin:1mm 0;}
+  .rsvg{width:100%;height:auto;}
+  .rsvg *{vector-effect:non-scaling-stroke;}
+}
+
+svg.frame{width:100%;height:auto;display:block;margin:2px 0 10px;}
+svg.psec{width:100%;max-width:340px;height:auto;display:block;}
+.secrow{display:grid;grid-template-columns:340px minmax(0,1fr);gap:16px;align-items:start;margin-bottom:6px;}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:8px 18px;background:var(--surf2);border:1px solid var(--rule);border-radius:var(--rc);padding:12px 16px;margin-bottom:12px;}
+.kv div{min-width:0;} .kv b{display:block;font-size:12px;font-weight:400;color:var(--mut);} .kv span{font-size:15px;font-weight:600;}
+.lgd{font-size:12px;color:var(--faint);margin:-4px 0 8px;}
+.tscroll{overflow-x:auto;}
+.row.strand{grid-template-columns:repeat(3,minmax(0,1fr)) 28px;}
+.row.pload{grid-template-columns:repeat(3,minmax(0,1fr)) 28px;}
+.row.bars{grid-template-columns:1.2fr repeat(3,minmax(0,1fr));}
+.row .nm{font-size:12px;color:var(--mut);align-self:center;}
+textarea{width:100%;min-height:92px;font:inherit;font-size:14px;border:1px solid var(--bdr2);border-radius:6px;padding:8px 10px;background:var(--surf);color:var(--txt);}
+textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;}
+.aids{font-size:13px;line-height:1.55;color:var(--txt);margin:-2px 0 12px;}
+.aids b{font-weight:600;}
+@media(max-width:720px){.secrow{grid-template-columns:1fr;}}
+@media print{svg.frame{max-width:180mm;} svg.psec{max-width:80mm;} .ng{color:#c4242a;font-weight:600;} .rtab{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;} .rtab th,.rtab td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;} .rtab th:first-child,.rtab td:first-child{text-align:left;}}
+</style>
+</head>
+<body data-material="concrete">
+<div class="container">
+  <div class="page-hdr">
+    <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
+    <h1>Prestressed Beam Design</h1>
+    <p>Simply supported pretensioned or post-tensioned beams to BS EN 1992-1-1 + UK NA &nbsp;·&nbsp; double-tee, I, T, rectangular or any stack of trapezoids &nbsp;·&nbsp; losses, stresses at transfer and in service, the Magnel diagram and cable zone, deflection, ULS bending and shear, end blocks</p>
+  </div>
+  <div class="main-grid">
+    <div id="inputs">
+      <div class="seg" id="modes"><button data-m="pre" class="on">Pretensioned</button><button data-m="post">Post-tensioned</button></div>
+      <div class="card">
+        <div class="section-title">Project</div>
+        <div class="form-group"><label>Project</label><input type="text" id="pName" placeholder="Project name"></div>
+        <div class="grid3"><div class="form-group"><label>Job no.</label><input type="text" id="pJob"></div><div class="form-group"><label>By</label><input type="text" id="pBy"></div><div class="form-group"><label>Member ref.</label><input type="text" id="pRef" placeholder="e.g. Unit DT1"></div></div>
+      </div>
+      <div class="card">
+        <div class="section-title">Section <span class="aux">mm</span></div>
+        <div class="form-group"><label>Shape</label><select id="stype"><option value="dt">Double-tee</option><option value="I">I or T beam</option><option value="rect">Rectangle</option><option value="custom">Layers (trapezoids from the soffit)</option></select></div>
+        <div class="st st-rect grid3"><div class="form-group"><label>Breadth b</label><input type="number" id="rb" value="300" step="10"></div><div class="form-group"><label>Depth h</label><input type="number" id="rh" value="600" step="10"></div></div>
+        <div class="st st-dt">
+          <div class="grid3"><div class="form-group"><label>Flange width B</label><input type="number" id="dB" value="2400" step="50"></div><div class="form-group"><label>Flange thickness</label><input type="number" id="dhf" value="75" step="5"></div><div class="form-group"><label>Overall depth h</label><input type="number" id="dh" value="600" step="10"></div></div>
+          <div class="grid3"><div class="form-group"><label>Webs</label><input type="number" id="dn" value="2" step="1" min="1"></div><div class="form-group"><label>Web centres</label><input type="number" id="dsp" value="1200" step="50"></div><div class="form-group"><label>Web width, top / bottom</label><div style="display:flex;gap:8px"><input type="number" id="dbt" value="180" step="5" aria-label="Web width at the top"><input type="number" id="dbb" value="120" step="5" aria-label="Web width at the bottom"></div></div></div>
+        </div>
+        <div class="st st-I">
+          <div class="grid3"><div class="form-group"><label>Overall depth h</label><input type="number" id="ih" value="1200" step="10"></div><div class="form-group"><label>Web width b<sub>w</sub></label><input type="number" id="ibw" value="200" step="10"></div></div>
+          <div class="grid3"><div class="form-group"><label>Top flange width</label><input type="number" id="ibt" value="600" step="10"></div><div class="form-group"><label>Top flange depth</label><input type="number" id="iht" value="150" step="5"></div><div class="form-group"><label>Top haunch depth</label><input type="number" id="ihth" value="75" step="5"></div></div>
+          <div class="grid3"><div class="form-group"><label>Bottom flange width</label><input type="number" id="ibb" value="450" step="10"></div><div class="form-group"><label>Bottom flange depth</label><input type="number" id="ihb" value="200" step="5"></div><div class="form-group"><label>Bottom haunch depth</label><input type="number" id="ihbh" value="100" step="5"></div></div>
+          <div class="help">A T beam has no bottom flange (depth 0); an inverted T has no top flange.</div>
+        </div>
+        <div class="st st-custom form-group"><label>Layers from the soffit: depth, width at its bottom, width at its top</label><textarea id="clay">200, 450, 450
+100, 450, 200
+675, 200, 200
+75, 200, 600
+150, 600, 600</textarea></div>
+      </div>
+      <div class="card">
+        <div class="section-title">Span and loads <span class="aux">characteristic, self-weight added</span></div>
+        <div class="grid3">
+          <div class="form-group"><label>Span, bearing centres (m)</label><input type="number" id="L" value="12" step="0.1"></div>
+          <div class="form-group"><label>Bearing length (mm)</label><input type="number" id="lb" value="150" step="10"></div>
+          <div class="form-group"><label>Density (kN/m³)</label><input type="number" id="rho" value="25" step="0.5"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Extra permanent at transfer (kN/m)</label><input type="number" id="gT" value="0" step="0.1"></div>
+          <div class="form-group"><label>Finishes, other permanent (kN/m)</label><input type="number" id="g2" value="3.6" step="0.1"></div>
+          <div class="form-group"><label>Imposed q<sub>k</sub> (kN/m)</label><input type="number" id="q" value="6" step="0.1"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Usage (ψ₀, ψ₁, ψ₂)</label><select id="usage"></select></div>
+          <div class="form-group"><label>ULS combination</label><select id="rule"><option value="6.10">6.10: 1.35 G + 1.5 Q</option><option value="6.10ab">6.10a and 6.10b</option></select></div>
+        </div>
+        <div class="rows" id="ptRows"></div>
+        <button class="addbtn" id="addPt">+ Add point load</button>
+        <div class="help">The finishes go on after transfer. Point loads: position from the left bearing (m) with their permanent and imposed parts (kN).</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Concrete</div>
+        <div class="grid3">
+          <div class="form-group"><label>Class</label><select id="fck"></select></div>
+          <div class="form-group"><label>f<sub>ck</sub>(t) at transfer (N/mm²)</label><input type="number" id="fckT" value="32" step="1" placeholder="from age"></div>
+          <div class="form-group"><label>Age at transfer t₀ (days)</label><input type="number" id="t0" value="1" step="0.5"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Cement class</label><select id="cement"><option value="R">R (CEM 42.5R, 52.5)</option><option value="N">N (CEM 42.5N)</option><option value="S">S (slow, with GGBS)</option></select></div>
+          <div class="form-group"><label>Aggregate</label><select id="agg"><option value="quartzite">Quartzite (gravel)</option><option value="limestone">Limestone (−10%)</option><option value="sandstone">Sandstone (−30%)</option><option value="basalt">Basalt (+20%)</option></select></div>
+          <div class="form-group"><label>Creep and shrinkage</label><select id="crMode"><option value="ec2">EC2 Annex B</option><option value="given">Give values</option></select></div>
+        </div>
+        <div class="grid3 cr-ec2">
+          <div class="form-group"><label>Relative humidity (%)</label><input type="number" id="RH" value="50" step="5"></div>
+          <div class="form-group"><label>Curing temperature (°C)</label><input type="number" id="temp" value="20" step="1"></div>
+          <div class="form-group"><label>Notional size h₀ (mm)</label><input type="number" id="h0" step="10" placeholder="2A/u"></div>
+        </div>
+        <div class="grid3 cr-given">
+          <div class="form-group"><label>Creep φ(∞, t₀)</label><input type="number" id="phi" value="2.0" step="0.1"></div>
+          <div class="form-group"><label>Shrinkage after transfer (×10⁻⁶)</label><input type="number" id="ecs" value="400" step="10"></div>
+        </div>
+        <div class="help">Left blank, f<sub>ck</sub>(t) follows from the age (3.1.2(6)). Indoors take RH 50%, outdoors in the UK 80%. The curing temperature adjusts the age at loading for creep (B.10).</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Prestressing steel</div>
+        <div class="form-group"><label>Strand or wire</label><select id="strand"></select></div>
+        <div class="grid3 cust"><div class="form-group"><label>φ (mm)</label><input type="number" id="cPhi" value="12.9" step="0.1"></div><div class="form-group"><label>Area (mm²)</label><input type="number" id="cAp" value="100" step="1"></div><div class="form-group"><label>Type</label><select id="cType"><option value="strand">7-wire strand</option><option value="wire">Indented wire</option></select></div></div>
+        <div class="grid3">
+          <div class="form-group"><label>f<sub>pk</sub> (N/mm²)</label><input type="number" id="fpk" value="1860" step="10"></div>
+          <div class="form-group"><label>f<sub>p0.1k</sub> (N/mm²)</label><input type="number" id="fp01" step="10" placeholder="0.88 f_pk"></div>
+          <div class="form-group"><label>E<sub>p</sub> (kN/mm²)</label><input type="number" id="Ep" step="1" placeholder="195 / 205"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Initial stress (% f<sub>pk</sub>)</label><input type="number" id="sigJ" value="72" step="1"></div>
+          <div class="form-group"><label>Relaxation class, ρ<sub>1000</sub> (%)</label><div style="display:flex;gap:8px"><select id="relCls" aria-label="Relaxation class"><option value="2">2 (low)</option><option value="1">1</option><option value="3">3 (bars)</option></select><input type="number" id="rho1000" value="2.5" step="0.1" aria-label="rho 1000"></div></div>
+          <div class="form-group"><label>Long-term relaxation</label><select id="relMode"><option value="ec2">3.3.2(7) at 500 000 h</option><option value="factor">Multiple of ρ<sub>1000</sub></option></select></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group relf"><label>Multiple of ρ<sub>1000</sub></label><input type="number" id="relF" value="2.5" step="0.1"></div>
+          <div class="form-group"><label>Time-dependent losses</label><select id="lossMode"><option value="ec2">EC2 5.46 (combined)</option><option value="sum">Separate sums</option></select></div>
+        </div>
+        <div class="pre">
+          <div class="rows" id="layRows"></div>
+          <button class="addbtn" id="addLay">+ Add strand layer</button>
+          <div class="grid3" style="margin-top:10px">
+            <div class="form-group"><label>Release</label><select id="release"><option value="gradual">Gradual</option><option value="sudden">Sudden (flame cut)</option></select></div>
+            <div class="form-group"><label>Bond</label><select id="bond"><option value="good">Good</option><option value="poor">Other (η₁ 0.7)</option></select></div>
+            <div class="form-group"><label>k₆ at transfer</label><select id="k6"><option value="0.6">0.6 f<sub>ck</sub>(t)</option><option value="0.7">0.7 f<sub>ck</sub>(t), proven</option></select></div>
+          </div>
+          <div class="help">Each layer: strands, height of their centres above the soffit, and the length debonded at each end. The initial stress is at the bed, before release. 0.7f<sub>ck</sub>(t) needs tests or experience that longitudinal cracking does not occur (5.10.2.2(6)).</div>
+        </div>
+        <div class="post">
+          <div class="grid3">
+            <div class="form-group"><label>Tendons</label><input type="number" id="nT" value="2" step="1" min="1"></div>
+            <div class="form-group"><label>Strands per tendon</label><input type="number" id="nS" value="7" step="1" min="1"></div>
+            <div class="form-group"><label>Stressed from</label><select id="ends"><option value="both">Both ends</option><option value="one">One end</option></select></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Centroid above soffit, ends</label><input type="number" id="zE" value="600" step="5"></div>
+            <div class="form-group"><label>Centroid above soffit, mid-span</label><input type="number" id="zM" value="130" step="5"></div>
+            <div class="form-group"><label>Draw-in (mm)</label><input type="number" id="dIn" value="6" step="1"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Friction μ</label><input type="number" id="mu" value="0.19" step="0.01"></div>
+            <div class="form-group"><label>Wobble k (rad/m)</label><input type="number" id="kw" value="0.005" step="0.001"></div>
+            <div class="form-group"><label>Elastic shortening j</label><select id="esj"><option value="half">½ (5.10.5.1(2))</option><option value="seq">(n − 1)/2n, n tendons</option></select></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Duct φ (mm)</label><input type="number" id="dPhi" value="80" step="5"></div>
+            <div class="form-group"><label>Duct</label><select id="dKind"><option value="steel">Grouted steel</option><option value="plastic">Plastic or unbonded</option></select></div>
+            <div class="form-group"><label>Ducts side by side in the web</label><input type="number" id="dAcross" value="1" step="1" min="1"></div>
+          </div>
+          <div class="help">The tendons follow one parabola, at the given height above the soffit at the bearings and at mid-span. The initial stress is at the jack.</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="section-title">Reinforcement</div>
+        <div class="row bars"><span class="nm">Bottom bars</span><div><label>Number</label><input type="number" id="bN" value="0" step="1"></div><div><label>φ</label><input type="number" id="bPhi" value="16" step="2"></div><div><label>Centre above soffit</label><input type="number" id="bZ" value="50" step="5"></div></div>
+        <div class="row bars"><span class="nm">Links</span><div><label>φ</label><input type="number" id="lPhi" value="8" step="2"></div><div><label>Legs</label><input type="number" id="lLegs" value="2" step="1"></div><div><label>Spacing</label><input type="number" id="lS" value="200" step="25"></div></div>
+        <div class="grid3" style="margin-top:8px"><div class="form-group"><label>f<sub>yk</sub> (N/mm²)</label><input type="number" id="fyk" value="500" step="10"></div><div class="form-group"><label>Shear without links</label><select id="vRule"><option value="ec2">6.2.2(2): 6.4 where uncracked</option><option value="lower">Lower of 6.2a and 6.4</option></select></div></div>
+        <div class="help">Bottom bars count in the ULS bending, ρ<sub>l</sub> for shear and the tension chord. Set the link spacing to 0 to check the section without links.</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Limits</div>
+        <div class="grid3">
+          <div class="form-group"><label>Tension at transfer</label><select id="tT"><option value="fctm">f<sub>ctm</sub>(t), uncracked</option><option value="value">Value given</option><option value="zero">None</option></select></div>
+          <div class="form-group tTv"><label>Allowed (N/mm²)</label><input type="number" id="tTv" value="1" step="0.1"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Tension in service</label><select id="tS"><option value="fctm">f<sub>ctm</sub>, uncracked</option><option value="value">Value given</option><option value="zero">None</option></select></div>
+          <div class="form-group tSv"><label>Allowed (N/mm²)</label><input type="number" id="tSv" value="0" step="0.1"></div>
+          <div class="form-group"><label>Checked under</label><select id="tComb"><option value="freq">Frequent</option><option value="char">Characteristic</option></select></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Exposure</label><select id="expo"><option value="XC1">X0, XC1</option><option value="XC2">XC2 to XC4</option><option value="XD">XD, XS</option></select></div>
+          <div class="form-group"><label>Deflection limits L/</label><div style="display:flex;gap:8px"><input type="number" id="dl1" value="250" step="10" aria-label="Quasi-permanent sag limit"><input type="number" id="dl2" value="500" step="10" aria-label="Movement limit"></div></div>
+          <div class="form-group"><label>Torsional restraints at (m)</label><input type="number" id="lt" step="0.5" placeholder="span"></div>
+        </div>
+        <label class="chk"><input type="checkbox" id="comp06" checked> Limit compression to 0.6f<sub>ck</sub> under the characteristic combination (7.2(2))</label>
+        <div class="help">Tension within f<sub>ctm</sub> keeps the section uncracked (7.1(2)), so crack widths need no check. XC2 to XC4 add decompression under the quasi-permanent combination, XD and XS under the frequent (Table 7.1N).</div>
+      </div>
+      <div class="card post">
+        <div class="section-title">End block <span class="aux">post-tensioned anchorages</span></div>
+        <label class="chk"><input type="checkbox" id="ebOn" checked> Check the anchorage zone</label>
+        <div class="eb">
+          <div class="grid3">
+            <div class="form-group"><label>Anchor plate</label><select id="ebShape"><option value="square">Square</option><option value="circle">Circular</option></select></div>
+            <div class="form-group"><label>Plate size (mm)</label><input type="number" id="ebA" value="250" step="5"></div>
+            <div class="form-group"><label>Link φ, zone / all</label><div style="display:flex;gap:8px"><input type="number" id="ebP1" value="12" step="2" aria-label="Zone link diameter"><input type="number" id="ebP2" value="16" step="2" aria-label="Overall link diameter"></div></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>End zone per anchor b × h</label><div style="display:flex;gap:8px"><input type="number" id="ebB1" value="450" step="10" aria-label="Zone width"><input type="number" id="ebH1" value="450" step="10" aria-label="Zone height"></div></div>
+            <div class="form-group"><label>Whole block B × H</label><div style="display:flex;gap:8px"><input type="number" id="ebB" value="600" step="10" aria-label="Block width"><input type="number" id="ebH" value="1200" step="10" aria-label="Block height"></div></div>
+            <div class="form-group"><label>Link stress</label><select id="ebS"><option value="300">300 N/mm² (no crack check)</option><option value="fyd">f<sub>yd</sub></option></select></div>
+          </div>
+          <div class="help">One anchor per tendon, each with its own end zone. The bearing uses f<sub>ck</sub>(t) and γ<sub>P</sub> = 1.2 (2.4.2.2(3)); the force spreads at arctan(2/3) (8.10.3(5)).</div>
+        </div>
+      </div>
+      <button class="btn" id="calc">Calculate</button>
+    </div>
+    <div><div class="card" id="results"><div class="placeholder">Set out the section, span, loads and tendons, then Calculate.</div></div></div>
+  </div>
+</div>
+<div id="report"></div>
+<script id="engine">
+/* ===== EC2 DESIGN CORE (EngineeringTools) =====
+   Clean-room implementation from BS EN 1992-1-1:2004 + A1:2014 and the UK National Annex (NA to BS EN 1992-1-1:2004+A1:2014),
+   cross-read with The Concrete Centre "How to design concrete structures using Eurocode 2". Units: N, mm (stresses N/mm2).
+   - materials (Table 3.1, 3.1.7(3), UK NA alpha_cc = 0.85 flexure / 1.0 shear and torsion, gamma_c 1.5, gamma_s 1.15);
+   - bending of rectangular and flanged sections by the rectangular stress block: required steel (singly or doubly
+     reinforced, x/d limit from ductility or redistribution, 5.5(4) with the UK NA) and the resistance of a given
+     arrangement by strain compatibility;
+   - shear 6.2.2 / 6.2.3 (vertical links, variable strut, fck limited to 50 N/mm2 in shear as the UK NA);
+   - torsion 6.3 (thin-walled closed section, interaction 6.29 / 6.31);
+   - SLS: cracked elastic section, crack control by Tables 7.2N / 7.3N or the calculated crack width 7.3.4, minimum
+     steel 7.3.2, span / effective depth 7.4.2 with the UK NA modifiers;
+   - detailing: 9.2.1.1 min / max steel, bar spacing 8.2, anchorage 8.4 and laps 8.7 (simplified alpha = 1), flange
+     width 5.3.2.1. */
+const EC2 = (() => {
+  'use strict';
+  const GC = 1.5, GS = 1.15, ES = 200000, ACC = 0.85, ACC_V = 1.0;
+  const CUBE = { 12: 15, 16: 20, 20: 25, 25: 30, 28: 35, 30: 37, 32: 40, 35: 45, 40: 50, 45: 55, 50: 60, 55: 67, 60: 75, 70: 85, 80: 95, 90: 105 };
+  const area = (n, phi) => n * Math.PI * phi * phi / 4;
+  // ---------- materials ----------
+  function concrete(fck) {
+    if (!(fck >= 12 && fck <= 90)) throw new Error('f_ck must be between 12 and 90 N/mm²');
+    const fcm = fck + 8, hi = fck > 50;
+    const fctm = hi ? 2.12 * Math.log(1 + fcm / 10) : 0.30 * fck ** (2 / 3);
+    const ec2 = hi ? (2.0 + 0.085 * (fck - 50) ** 0.53) * 1e-3 : 2.0e-3, ecu2 = hi ? (2.6 + 35 * ((90 - fck) / 100) ** 4) * 1e-3 : 3.5e-3;
+    const ec3 = hi ? (1.75 + 0.55 * (fck - 50) / 40) * 1e-3 : 1.75e-3, n = hi ? 1.4 + 23.4 * ((90 - fck) / 100) ** 4 : 2;
+    const lambda = hi ? 0.8 - (fck - 50) / 400 : 0.8, eta = hi ? 1 - (fck - 50) / 200 : 1;
+    const fv = Math.min(fck, 50);                                  // UK NA: shear and torsion with f_ck not above C50/60
+    return { fck, fckCube: CUBE[fck] ?? null, fcm, fctm, fctk05: 0.7 * fctm, fctk95: 1.3 * fctm, Ecm: 22000 * (fcm / 10) ** 0.3,
+      ec2, ecu2, ec3, ecu3: ecu2, n, lambda, eta, fcd: ACC * fck / GC, fcdV: ACC_V * fv / GC, fv, fctd: 1.0 * 0.7 * fctm / GC,
+      nu: 0.6 * (1 - fv / 250) };
+  }
+  const steel = (fyk = 500) => ({ fyk, fyd: fyk / GS, Es: ES, eyd: fyk / GS / ES });
+  // ---------- flexure: rectangular stress block (3.1.7(3)) ----------
+  // section: { b (width of the compression flange or rectangle), bw (web), hf (flange depth; 0 = rectangular), h }
+  // compression-zone force and its depth to the centroid for a block depth s = lambda x
+  function block(sec, s) {
+    const bw = sec.bw ?? sec.b, hf = sec.hf > 0 ? sec.hf : Infinity;
+    if (s <= hf || sec.b === bw) return { A: sec.b * s, y: s / 2 };
+    const Af = (sec.b - bw) * hf, Aw = bw * s;
+    return { A: Af + Aw, y: (Af * hf / 2 + Aw * s / 2) / (Af + Aw) };
+  }
+  // x/d limit: 5.5(4) with the UK NA (k1 = 0.4, k2 = 0.6 + 0.0014/eps_cu2; fck > 50: k3 = 0.4, k4 = 0.6 + 0.0014/eps_cu2)
+  // and an optional practical ductility limit (0.45 for fck <= 50 is the usual UK choice)
+  function xdLimit(c, delta = 1, practical = 0.45) {
+    const k2 = 0.6 + 0.0014 / c.ecu2, red = c.fck <= 50 ? (delta - 0.4) / k2 : (delta - 0.4) / k2;
+    return Math.min(red, practical ?? Infinity);
+  }
+  // required reinforcement for M (>= 0) on effective depth d; d2 to the compression steel
+  function bendingDesign({ sec, d, d2 = 50, M, c, s: st, delta = 1, xdMax = 0.45, zMax = 0.95 }) {
+    const a = c.eta * c.fcd, L = c.lambda, xlim = xdLimit(c, delta, xdMax) * d;
+    const Mx = x => { const bl = block(sec, L * x); return a * bl.A * (d - bl.y); };
+    const out = { M, d, xlim, K: M / (sec.b * d * d * c.fck) };
+    if (!(M > 0)) return { ...out, As: 0, As2: 0, x: 0, z: zMax * d, Kp: null };
+    const Mlim = Mx(xlim);
+    out.Kp = Mlim / (sec.b * d * d * c.fck); out.Mlim = Mlim;
+    if (M <= Mlim) {
+      let lo = 0, hi = xlim; for (let i = 0; i < 100; i++) { const m = (lo + hi) / 2; if (Mx(m) < M) lo = m; else hi = m; }
+      const x = (lo + hi) / 2, bl = block(sec, L * x), z = Math.min(d - bl.y, zMax * d);
+      return { ...out, x, z, zCap: d - bl.y > zMax * d, As: M / (st.fyd * z), As2: 0, inFlange: !(sec.hf > 0) || L * x <= sec.hf };
+    }
+    // compression steel at the x/d limit
+    const bl = block(sec, L * xlim), z = Math.min(d - bl.y, zMax * d), esc = c.ecu2 * (xlim - d2) / xlim;
+    // compression steel stress from the strain diagram, net of the concrete it displaces (inside the stress block)
+    const fscG = Math.min(st.fyd, st.Es * esc), fsc = fscG - (d2 < L * xlim ? a : 0);
+    if (!(fsc > 0)) throw new Error('Compression steel would be in tension at the limiting neutral axis (d2 too large)');
+    const As2 = (M - Mlim) / (fsc * (d - d2));
+    return { ...out, x: xlim, z, As2, fsc, fscGross: fscG, As: Mlim / (st.fyd * z) + As2 * fsc / st.fyd, doubly: true, inFlange: !(sec.hf > 0) || L * xlim <= sec.hf };
+  }
+  // resistance of a given arrangement by strain compatibility (eps_cu2 at the top, rectangular block; bilinear steel
+  // with a horizontal top branch). layers: [{ As, d }] measured from the compression face (any layer may be in compression)
+  function bendingResistance({ sec, layers, c, s: st, N = 0 }) {
+    const a = c.eta * c.fcd, L = c.lambda, h = sec.h, ecu = c.ecu2;
+    const sig = (x, di) => { const e = ecu * (x - di) / x; return Math.max(-st.fyd, Math.min(st.fyd, st.Es * e)); };   // compression +
+    const F = x => { const bl = block(sec, Math.min(L * x, h)); return a * bl.A + layers.reduce((t, l) => t + l.As * (sig(x, l.d) - (L * x > l.d ? a : 0)), 0) - N; };
+    let lo = 1e-6, hi = 2 * h;
+    if (F(lo) > 0) lo = 1e-9;
+    for (let i = 0; i < 200; i++) { const m = (lo + hi) / 2; if (F(m) > 0) hi = m; else lo = m; }
+    const x = (lo + hi) / 2, bl = block(sec, Math.min(L * x, h));
+    // moment about the compression face, then shifted to the section's mid-depth reference (N acts at h/2)
+    let Mtop = 0; Mtop += -a * bl.A * bl.y;
+    for (const l of layers) Mtop += -l.As * (sig(x, l.d) - (L * x > l.d ? a : 0)) * l.d;
+    // M about mid-depth (where N acts) = moment of the internal forces about the top + N h/2; N = 0 gives pure bending
+    const MRd = Mtop + N * h / 2;
+    const dt = Math.max(...layers.map(l => l.d));
+    return { x, xd: x / dt, MRd, eps: layers.map(l => ecu * (x - l.d) / x), sig: layers.map(l => sig(x, l.d)),
+      yielded: layers.map(l => ecu * (l.d - x) / x >= st.eyd) };
+  }
+  // ---------- shear, 6.2.2 / 6.2.3 (vertical links) ----------
+  function shearConcrete({ bw, d, Asl, c, NEd = 0, Ac = null }) {
+    const k = Math.min(2, 1 + Math.sqrt(200 / d)), rho = Math.min(0.02, Asl / (bw * d));
+    const scp = Ac ? Math.min(Math.max(NEd, 0) / Ac, 0.2 * c.fcd) : 0;
+    const vmin = 0.035 * k ** 1.5 * Math.sqrt(c.fv);
+    const v = 0.18 / GC * k * (100 * rho * c.fv) ** (1 / 3);
+    const VRdc = Math.max(v + 0.15 * scp, vmin + 0.15 * scp) * bw * d;
+    return { k, rho, scp, vmin, v, VRdc, governs: v >= vmin ? 'formula' : 'vmin' };
+  }
+  const acw = (scp, fcd) => scp <= 0 ? 1 : scp <= 0.25 * fcd ? 1 + scp / fcd : scp <= 0.5 * fcd ? 1.25 : 2.5 * (1 - scp / fcd);
+  function vrdMax(bw, z, c, cot, scp = 0) { const t = 1 / cot; return acw(scp, c.fcdV) * bw * z * c.nu * c.fcdV / (cot + t); }
+  // design of vertical links for V_Ed: strut angle (cot theta 1..2.5), Asw/s, minimum, maximum spacing
+  // VEdStrut (default VEd): the shear that sets the strut angle, normally V_Ed at the support face, so that one truss
+  // angle serves both the V_Rd,max check at the face and the links designed for V_Ed at d from the face
+  function shearDesign({ bw, d, VEd, VEdStrut = null, c, fywk = 500, z = null, scp = 0 }) {
+    z = z ?? 0.9 * d; const fywd = fywk / GS, Vs = Math.max(VEd, VEdStrut ?? 0);
+    const Vmax25 = vrdMax(bw, z, c, 2.5, scp), Vmax45 = vrdMax(bw, z, c, 1, scp);
+    let cot = 2.5, ok = true;
+    if (Vs > Vmax25) {
+      const s2 = 2 * Vs / (acw(scp, c.fcdV) * bw * z * c.nu * c.fcdV);
+      if (s2 > 1) { ok = false; cot = 1; } else { const th = 0.5 * Math.asin(s2); cot = 1 / Math.tan(th); }
+    }
+    const AswS = VEd / (z * fywd * cot), AswSmin = 0.08 * Math.sqrt(c.fck) / fywk * bw;
+    return { z, fywd, cot, theta: Math.atan(1 / cot) * 180 / Math.PI, VRdmax: vrdMax(bw, z, c, cot, scp), Vmax25, Vmax45, ok, AswS, AswSmin, AswSreq: Math.max(AswS, AswSmin),
+      slMax: 0.75 * d, stMax: Math.min(0.75 * d, 600), dFtd: 0.5 * VEd * cot };
+  }
+  // resistance of provided links: the best strut angle in 1 <= cot <= 2.5 (V_Rd,s = V_Rd,max where possible)
+  function shearResistance({ bw, d, AswS, c, fywk = 500, z = null, scp = 0 }) {
+    z = z ?? 0.9 * d; const fywd = fywk / GS, Vs = cot => AswS * z * fywd * cot;
+    let cot;
+    if (Vs(2.5) <= vrdMax(bw, z, c, 2.5, scp)) cot = 2.5;
+    else if (Vs(1) >= vrdMax(bw, z, c, 1, scp)) cot = 1;
+    else { let lo = 1, hi = 2.5; for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; if (Vs(m) > vrdMax(bw, z, c, m, scp)) hi = m; else lo = m; } cot = (lo + hi) / 2; }
+    const VRds = Vs(cot), VRdmax = vrdMax(bw, z, c, cot, scp);
+    return { cot, VRds, VRdmax, VRd: Math.min(VRds, VRdmax), z, fywd };
+  }
+  // ---------- torsion, 6.3 (rectangular solid section treated as thin-walled closed) ----------
+  function torsion({ b, h, cEdge, c, TEd, VEd = 0, bw = b, d, cot = null, VRdc = null, VRdmax = null, fywk = 500, fyk = 500 }) {
+    const A = b * h, u = 2 * (b + h), tef = Math.max(A / u, 2 * cEdge);
+    if (!(tef < Math.min(b, h) / 2)) throw new Error('Torsion: the effective wall thickness exceeds half the section');
+    const Ak = (b - tef) * (h - tef), uk = 2 * ((b - tef) + (h - tef));
+    const TRdc = 2 * Ak * tef * c.fctd;
+    cot = cot ?? 2.5; const sn = 1 / Math.sqrt(1 + cot * cot), cs = cot * sn;
+    const TRdmax = 2 * c.nu * 1.0 * c.fcdV * Ak * tef * sn * cs;
+    const AswS1 = TEd / (2 * Ak * (fywk / GS) * cot), Asl = TEd * uk * cot / (2 * Ak * (fyk / GS));
+    const crackFree = VRdc ? TEd / TRdc + VEd / VRdc <= 1 : null;
+    const inter = VRdmax ? TEd / TRdmax + VEd / VRdmax : TEd / TRdmax;
+    return { A, u, tef, Ak, uk, TRdc, TRdmax, cot, AswS1, Asl, crackFree, inter, sMax: Math.min(uk / 8, b, h) };
+  }
+  // ---------- SLS sections ----------
+  // cracked elastic section (no concrete in tension): neutral axis and stresses for moment M, modular ratio ae
+  function cracked({ sec, As, d, As2 = 0, d2 = 50, ae, M = 0 }) {
+    const bw = sec.bw ?? sec.b, hf = sec.hf > 0 ? sec.hf : Infinity;
+    const Q = x => {   // first moment of the transformed area about the neutral axis (compression +)
+      const xc = Math.min(x, hf), q1 = sec.b * xc * (x - xc / 2), q2 = x > hf ? bw * (x - hf) * (x - hf) / 2 : 0;
+      return q1 + q2 + (ae - 1) * As2 * (x - d2) - ae * As * (d - x);
+    };
+    let lo = 0, hi = d; for (let i = 0; i < 100; i++) { const m = (lo + hi) / 2; if (Q(m) > 0) hi = m; else lo = m; }
+    const x = (lo + hi) / 2, xc = Math.min(x, hf);
+    // second moment about the neutral axis: flange part [0, xc], web part [hf, x], transformed steel
+    const Icr = sec.b * (x ** 3 - (x - xc) ** 3) / 3 + (x > hf ? bw * (x - hf) ** 3 / 3 : 0) + (ae - 1) * As2 * (x - d2) ** 2 + ae * As * (d - x) ** 2;
+    return { x, Icr, sc: M * x / Icr, ss: ae * M * (d - x) / Icr, ss2: ae * M * (x - d2) / Icr };
+  }
+  function uncracked({ sec, h, As = 0, d = 0, As2 = 0, d2 = 0, ae = 0 }) {
+    const bw = sec.bw ?? sec.b, hf = sec.hf > 0 ? Math.min(sec.hf, h) : 0;
+    const parts = [[bw * h, h / 2, bw * h ** 3 / 12], [(sec.b - bw) * hf, hf / 2, (sec.b - bw) * hf ** 3 / 12], [(ae - 1) * As, d, 0], [(ae - 1) * As2, d2, 0]];
+    const A = parts.reduce((t, p) => t + p[0], 0), y = parts.reduce((t, p) => t + p[0] * p[1], 0) / A;
+    const I = parts.reduce((t, p) => t + p[2] + p[0] * (p[1] - y) ** 2, 0);
+    return { A, y, I };
+  }
+  // ---------- crack control, 7.3 ----------
+  const T72 = { s: [160, 200, 240, 280, 320, 360, 400, 450], 0.4: [40, 32, 20, 16, 12, 10, 8, 6], 0.3: [32, 25, 16, 12, 10, 8, 6, 5], 0.2: [25, 16, 12, 8, 6, 5, 4, null] };
+  const T73 = { s: [160, 200, 240, 280, 320, 360], 0.4: [300, 300, 250, 200, 150, 100], 0.3: [300, 250, 200, 150, 100, 50], 0.2: [200, 150, 100, 50, null, null] };
+  function tableLookup(T, wk, ss) {
+    const col = T[wk]; if (!col) throw new Error('w_k must be 0.2, 0.3 or 0.4 mm for Tables 7.2N / 7.3N');
+    const s = T.s;
+    if (ss <= s[0]) return col[0];
+    for (let i = 1; i < s.length; i++) if (ss <= s[i]) { const a = col[i - 1], b = col[i]; if (a == null || b == null) return null; return a + (b - a) * (ss - s[i - 1]) / (s[i] - s[i - 1]); }
+    return null;   // stress beyond the table
+  }
+  // quasi-permanent steel stress by the ratio method (How to guide): fyd x (M_qp/M_Ed) x (As,req/As,prov) / delta
+  const sigmaQP = ({ fyd, Mqp, MEd, AsReq, AsProv, delta = 1 }) => fyd * (Mqp / MEd) * (AsReq / AsProv) / delta;
+  function crackTables({ ss, wk = 0.3, h, d, fctEff, kc = 0.4, hcr = null, tension = false }) {
+    const phiStar = tableLookup(T72, wk, ss), sMax = tableLookup(T73, wk, ss);
+    hcr = hcr ?? h / 2;
+    const mod = tension ? (fctEff / 2.9) * hcr / (8 * (h - d)) : (fctEff / 2.9) * kc * hcr / (2 * (h - d));
+    return { phiStar, phiMax: phiStar == null ? null : phiStar * mod, mod, sMax };
+  }
+  function crackWidth({ sec, h, As, d, phi, cover, spacing, ss, x, c, fctEff = null, kt = 0.4, k2 = 0.5 }) {
+    fctEff = fctEff ?? c.fctm; const ae = ES / c.Ecm, bw = sec.bw ?? sec.b;
+    const hcef = Math.min(2.5 * (h - d), (h - x) / 3, h / 2), Aceff = bw * hcef, rho = As / Aceff;
+    const de = Math.max((ss - kt * fctEff / rho * (1 + ae * rho)) / ES, 0.6 * ss / ES);
+    const close = spacing <= 5 * (cover + phi / 2);
+    const sr = close ? 3.4 * cover + 0.8 * k2 * 0.425 * phi / rho : 1.3 * (h - x);
+    return { hcef, Aceff, rho, ae, de, sr, close, wk: sr * de };
+  }
+  function asMinCrack({ kc = 0.4, k = 1.0, fctEff, Act, ss }) { return kc * k * fctEff * Act / ss; }
+  // k for 7.3.2: 1.0 for h <= 300, 0.65 for h >= 800, linear between
+  const kSize = h => h <= 300 ? 1.0 : h >= 800 ? 0.65 : 1.0 - 0.35 * (h - 300) / 500;
+  // ---------- deflection: span / effective depth, 7.4.2 with the UK NA ----------
+  const KSYS = { ss: 1.0, end: 1.3, interior: 1.5, flat: 1.2, cantilever: 0.4 };
+  function spanDepth({ fck, rho, rho2 = 0, system = 'ss', fyk = 500, AsReq, AsProv, flangeRatio = 1, span, brittle = true, flat = false }) {
+    const K = KSYS[system], r0 = 1e-3 * Math.sqrt(fck), sf = Math.sqrt(fck);
+    const base = rho <= r0 ? K * (11 + 1.5 * sf * r0 / rho + 3.2 * sf * (r0 / rho - 1) ** 1.5)
+      : K * (11 + 1.5 * sf * r0 / (rho - rho2) + sf / 12 * Math.sqrt(rho2 / r0));
+    const fs = Math.min(1.5, (500 / fyk) * (AsProv / AsReq));                         // 310/sigma_s ~ 500/(fyk As,req/As,prov), UK NA limit 1.5
+    const ff = flangeRatio > 3 ? 0.8 : 1;
+    const lim = flat ? 8500 : 7000, fl = brittle && span > lim && system !== 'cantilever' ? lim / span : 1;
+    return { K, rho0: r0, rho, base, fs, ff, fl, allowed: base * fs * ff * fl };
+  }
+  // ---------- detailing ----------
+  function asMin({ fctm, fyk = 500, bt, d }) { return Math.max(0.26 * fctm / fyk * bt * d, 0.0013 * bt * d); }
+  const clearMin = (phi, dg = 20) => Math.max(phi, dg + 5, 20);
+  // anchorage and laps, 8.4 / 8.7: straight or bent bars in tension, compression bars; alpha1 (shape), alpha2 (cover cd),
+  // alpha3 = alpha4 = alpha5 = 1 (conservative), alpha2 alpha3 alpha5 >= 0.7; alpha6 from the proportion lapped (Table 8.3)
+  function anchorage({ phi, c, ss = null, good = true, fyk = 500, tension = true, bent = false, cd = null, lappedPct = 100 }) {
+    const fbd = 2.25 * (good ? 1 : 0.7) * (phi <= 32 ? 1 : (132 - phi) / 100) * c.fctd;
+    const sd = ss ?? fyk / GS, lbrqd = phi / 4 * sd / fbd;
+    let a1 = 1, a2 = 1;
+    if (tension) {
+      cd = cd ?? 3 * phi;
+      if (bent) { a1 = cd > 3 * phi ? 0.7 : 1; a2 = Math.min(1, Math.max(0.7, 1 - 0.15 * (cd - 3 * phi) / phi)); }
+      else a2 = Math.min(1, Math.max(0.7, 1 - 0.15 * (cd - phi) / phi));
+    }
+    const a235 = Math.max(0.7, a2), lbmin = tension ? Math.max(0.3 * lbrqd, 10 * phi, 100) : Math.max(0.6 * lbrqd, 10 * phi, 100);
+    const lbd = Math.max(a1 * a235 * lbrqd, lbmin);
+    const a6 = tension ? Math.min(1.5, Math.max(1, Math.sqrt(lappedPct / 25))) : 1;
+    const l0min = Math.max(0.3 * a6 * lbrqd, 15 * phi, 200), l0 = Math.max(a1 * a235 * a6 * lbrqd, l0min);
+    return { fbd, sd, lbrqd, a1, a2, a6, lbmin, lbd, l0min, l0 };
+  }
+  // effective flange width, 5.3.2.1: bi = half clear distance to the next web (each side), l0 distance between zero moments
+  function flangeWidth({ bw, b1, b2, l0, bMax = Infinity }) {
+    const bi = b => Math.max(0, Math.min(0.2 * b + 0.1 * l0, 0.2 * l0, b));
+    return Math.min(bw + bi(b1) + bi(b2), bMax, bw + b1 + b2);
+  }
+  // l0 for 5.3.2.1 Figure 5.2: 0.85 L end span, 0.7 L interior span, 0.15 (L1 + L2) over an internal support, 0.15 L2 + L3 at a cantilever root
+  return { GC, GS, ES, CUBE, area, concrete, steel, block, xdLimit, bendingDesign, bendingResistance, shearConcrete, shearDesign, shearResistance, vrdMax, acw,
+    torsion, cracked, uncracked, T72, T73, tableLookup, sigmaQP, crackTables, crackWidth, asMinCrack, kSize, KSYS, spanDepth, asMin, clearMin, anchorage, flangeWidth };
+})();
+if (typeof module !== 'undefined') module.exports = { EC2 };
+
+/* ===== PRESTRESSED BEAM ENGINE (EngineeringTools) =====
+   Simply supported pretensioned or post-tensioned (bonded) beam to BS EN 1992-1-1:2004+A1:2014 and the UK National Annex,
+   written clean-room from the code and from Mosley, Bungey & Hulse, Reinforced Concrete Design to Eurocode 2 (7th edn),
+   chapter 11, whose worked examples 11.1 to 11.12 are the tests. Units: N, mm (stresses N/mm2), x along the span from the
+   left bearing centreline. Compression is positive and the eccentricity e is positive below the centroid (the book's
+   convention, Figure 11.7).
+   - sections: rectangle, I / T (flanges with haunches), double-tee (tapered webs) or a stack of trapezoids, gross properties;
+   - pretensioned strand layers with debonding and the transmission length 8.10.2.2 (lpt1 for stresses, lpt2 for shear and
+     anchorage, 8.10.2.3); post-tensioned parabolic tendon with friction 5.10.5.2, draw-in and elastic shortening 5.10.5.1;
+   - time-dependent losses by 5.10.6 (Expression 5.46) or as separate sums (the book), creep and shrinkage from Annex B
+     (or given), relaxation from 3.3.2(7) at 500 000 h (or a multiple of rho1000);
+   - stresses at transfer (5.10.2.2) and in service (7.1, 7.2, Table 7.1N decompression), tendon stress 7.2(5);
+   - the Magnel diagram and cable zone (book 11.24 to 11.31), minimum moduli (11.15, 11.16), economic P0 (11.23);
+   - deflection by integrating curvature (transfer, finishes, long term with Ec,eff), 7.4.1;
+   - ULS bending by strain compatibility with the prestrain gamma_P sigma_pm,inf / Ep (gamma_P,fav = 0.9, UK NA), shear
+     by 6.2.2 (6.2a and 6.4 with alpha_l), 6.2.3 (alpha_cw, inclined tendon), the tension chord 6.2.3(7);
+   - lateral stability 5.9(3); post-tensioned end block (6.7 bearing, 8.10.3 spread at arctan 2/3, gamma_P = 1.2).
+   Requires EC2 (ec2/core.js) for the concrete properties. */
+const PSC = (() => {
+  'use strict';
+  const GC = 1.5, GS = 1.15, ES = 200000, GP_FAV = 0.9, GP_LOCAL = 1.2, T_REL = 500000;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const AGG = { quartzite: 1.0, limestone: 0.9, sandstone: 0.7, basalt: 1.2 };
+
+  // ---------- sections: a stack of trapezoids from the soffit [{ z0, z1, b0, b1 }] ----------
+  function stackFrom(parts) {   // parts: [{ h, b0, b1 }] from the soffit up
+    let z = 0; const L = [];
+    for (const p of parts) { if (!(p.h > 0)) continue; if (!(p.b0 >= 0 && p.b1 >= 0) || (p.b0 === 0 && p.b1 === 0)) throw new Error('Section widths must be positive'); L.push({ z0: z, z1: z + p.h, b0: p.b0, b1: p.b1 }); z += p.h; }
+    if (!L.length) throw new Error('The section has no depth');
+    return L;
+  }
+  function widthIn(t, z) { return t.b0 + (t.b1 - t.b0) * (z - t.z0) / (t.z1 - t.z0); }
+  // area and first moment about the soffit of the part of the section between za and zb
+  function slice(L, za, zb) {
+    let A = 0, M = 0;
+    for (const t of L) {
+      const lo = Math.max(za, t.z0), hi = Math.min(zb, t.z1); if (hi <= lo) continue;
+      const bl = widthIn(t, lo), bh = widthIn(t, hi), h = hi - lo, a = (bl + bh) / 2 * h;
+      if (a <= 0) continue;
+      A += a; M += a * (lo + h * (bl + 2 * bh) / (3 * (bl + bh)));
+    }
+    return { A, M, y: A > 0 ? M / A : 0 };
+  }
+  function props(L) {
+    let A = 0, S = 0, I0 = 0;
+    for (const t of L) {
+      const h = t.z1 - t.z0, a = t.b0, d = (t.b1 - t.b0) / h;
+      const m0 = a * h + d * h * h / 2, m1 = a * h * h / 2 + d * h ** 3 / 3, m2 = a * h ** 3 / 3 + d * h ** 4 / 4;
+      A += m0; S += m1 + t.z0 * m0; I0 += m2 + 2 * t.z0 * m1 + t.z0 * t.z0 * m0;
+    }
+    const h = L[L.length - 1].z1, yb = S / A, I = I0 - A * yb * yb;
+    return { A, h, yb, yt: h - yb, I, zt: I / (h - yb), zb: I / yb };
+  }
+  // width at level z (the smaller side at an interface)
+  function width(L, z) {
+    let w = Infinity;
+    for (const t of L) if (z >= t.z0 - 1e-9 && z <= t.z1 + 1e-9) w = Math.min(w, widthIn(t, clamp(z, t.z0, t.z1)));
+    return Number.isFinite(w) ? w : 0;
+  }
+  // first moment about the centroid of the area above level z
+  function S(L, z, yb) { const s = slice(L, z, L[L.length - 1].z1); return s.A * (s.y - yb); }
+  // the section from its description; outline polygons for the drawing ([x, z], x about the vertical centreline)
+  function section(s) {
+    let parts, poly, u;
+    const slant = (h, b0, b1) => Math.hypot(h, (b1 - b0) / 2);
+    if (s.type === 'rect') {
+      if (!(s.b > 0 && s.h > 0)) throw new Error('Give the breadth and depth of the rectangle');
+      parts = [{ h: s.h, b0: s.b, b1: s.b }];
+    } else if (s.type === 'I') {
+      const { h, bt, ht = 0, hth = 0, bw, bb = bw, hb = 0, hbh = 0 } = s, hw = h - ht - hth - hb - hbh;
+      if (!(bw > 0)) throw new Error('Give the web width');
+      if (!(hw > 0)) throw new Error('The flanges and haunches leave no web: reduce them or deepen the section');
+      if (ht > 0 && !(bt >= bw)) throw new Error('The top flange must be at least as wide as the web');
+      if (hb > 0 && !(bb >= bw)) throw new Error('The bottom flange must be at least as wide as the web');
+      parts = [{ h: hb, b0: bb, b1: bb }, { h: hbh, b0: hb > 0 ? bb : bw, b1: bw }, { h: hw, b0: bw, b1: bw }, { h: hth, b0: bw, b1: ht > 0 ? bt : bw }, { h: ht, b0: bt, b1: bt }];
+    } else if (s.type === 'dt') {
+      const { B, hf, h, n = 2, bwt, bwb, sp } = s;
+      if (!(B > 0 && hf > 0 && h > hf && bwt > 0 && bwb > 0 && n >= 1)) throw new Error('Give the flange width and thickness, the depth and the web widths');
+      if (n * bwt > B) throw new Error('The webs are wider than the flange');
+      parts = [{ h: h - hf, b0: n * bwb, b1: n * bwt }, { h: hf, b0: B, b1: B }];
+      const spc = sp > 0 ? sp : B / n, xs = Array.from({ length: n }, (_, i) => (i - (n - 1) / 2) * spc);
+      if (xs.some(x => Math.abs(x) + bwt / 2 > B / 2 + 1e-6)) throw new Error('A web lies outside the flange: reduce the web spacing');
+      poly = [[-B / 2, h], [B / 2, h], [B / 2, h - hf]];
+      for (let i = n - 1; i >= 0; i--) { const x = xs[i]; poly.push([x + bwt / 2, h - hf], [x + bwb / 2, 0], [x - bwb / 2, 0], [x - bwt / 2, h - hf]); }
+      poly.push([-B / 2, h - hf]);
+      u = B + 2 * hf + (B - n * bwt) + n * (bwb + 2 * slant(h - hf, bwb, bwt));
+    } else if (s.type === 'custom') {
+      if (!Array.isArray(s.layers) || !s.layers.length) throw new Error('Give at least one layer');
+      parts = s.layers.map(l => ({ h: +l.h, b0: +l.b0, b1: +(l.b1 ?? l.b0) }));
+    } else throw new Error('Unknown section type');
+    const L = stackFrom(parts), P = props(L);
+    if (!poly) {   // symmetric outline of the stack
+      const right = []; L.forEach(t => { right.push([t.b0 / 2, t.z0], [t.b1 / 2, t.z1]); });
+      poly = [...right, ...right.slice().reverse().map(([x, z]) => [-x, z])];
+      u = L[0].b0 + L[L.length - 1].b1 + L.reduce((a, t) => a + 2 * slant(t.z1 - t.z0, t.b0, t.b1), 0) + L.slice(1).reduce((a, t, i) => a + Math.abs(t.b0 - L[i].b1), 0);
+    }
+    // smallest width in the tension zone (below the centroid) and the web's smallest b/S over the depth (for 6.4)
+    const zs = []; L.forEach(t => { for (let k = 0; k <= 20; k++) zs.push(t.z0 + (t.z1 - t.z0) * k / 20); });
+    const bwT = Math.min(...zs.filter(z => z <= P.yb + 1e-9).map(z => width(L, z)).filter(w => w > 0));
+    let bS = Infinity, zbS = P.yb;
+    zs.filter(z => z > 1e-6 && z < P.h - 1e-6).forEach(z => { const sv = S(L, z, P.yb); if (sv > 0) { const r = width(L, z) / sv; if (r < bS) { bS = r; zbS = z; } } });
+    const bCent = width(L, P.yb), SCent = S(L, P.yb, P.yb);
+    const bTop = L[L.length - 1].b1;
+    return { ...P, L, poly, u, h0: 2 * P.A / u, bw: bwT, bS, zbS, bCent, SCent, bTop, type: s.type, spec: s };
+  }
+
+  // ---------- materials ----------
+  const SCEM = { S: 0.38, N: 0.25, R: 0.20 };
+  // concrete at 28 days (EC2 Table 3.1) and at transfer, 3.1.2(5)-(6), 3.1.3(3); fckT given directly or from the age
+  function concrete({ fck, fckT = null, t0 = 28, cement = 'N', agg = 'quartzite' }) {
+    const c = EC2.concrete(fck), f = AGG[agg] ?? 1, Ecm = c.Ecm * f;
+    let bcc, fcmT, src;
+    if (fckT > 0) { fcmT = fckT + 8; bcc = fcmT / c.fcm; src = 'given'; }
+    else { if (!(t0 > 0)) throw new Error('Give the age at transfer'); bcc = t0 >= 28 ? 1 : Math.exp(SCEM[cement] * (1 - Math.sqrt(28 / t0))); fcmT = bcc * c.fcm; src = 'age'; }
+    if (bcc > 1 + 1e-9) throw new Error('The strength at transfer exceeds the 28-day strength');
+    const fckt = fckT > 0 ? fckT : Math.min(fck, fcmT - 8);
+    if (!(fckt > 0)) throw new Error('The concrete is too young at transfer for 3.1.2 (f_ck(t) ≤ 0): give f_ck(t)');
+    const fctmT = bcc * c.fctm, EcmT = (fcmT / c.fcm) ** 0.3 * Ecm;
+    return { ...c, Ecm, aggF: f, T: { fck: fckt, fcm: fcmT, bcc, fctm: fctmT, Ecm: EcmT, src, t0 } };
+  }
+  // creep coefficient phi(infinity, t0), EC2 Annex B.1 (B.2-B.10; constant curing temperature T in B.10)
+  function creepEC2({ fcm, RH, h0, t0, cement = 'N', T = 20 }) {
+    if (!(RH > 0 && RH <= 100)) throw new Error('Relative humidity must be 1–100 %');
+    const a1 = (35 / fcm) ** 0.7, a2 = (35 / fcm) ** 0.2, a3 = (35 / fcm) ** 0.5, hi = fcm > 35;
+    const phiRH = hi ? (1 + (1 - RH / 100) / (0.1 * h0 ** (1 / 3)) * a1) * a2 : 1 + (1 - RH / 100) / (0.1 * h0 ** (1 / 3));
+    const bfcm = 16.8 / Math.sqrt(fcm), tT = t0 * Math.exp(-(4000 / (273 + T) - 13.65));
+    const alpha = { S: -1, N: 0, R: 1 }[cement] ?? 0, t0a = Math.max(0.5, tT * (9 / (2 + tT ** 1.2) + 1) ** alpha);
+    const bt0 = 1 / (0.1 + t0a ** 0.2), phi0 = phiRH * bfcm * bt0;
+    const bH = Math.min(1.5 * (1 + (0.012 * RH) ** 18) * h0 + 250 * (hi ? a3 : 1), 1500 * (hi ? a3 : 1));
+    return { phiRH, bfcm, tT, t0a, bt0, phi0, bH, phi: phi0 };
+  }
+  // shrinkage strain, 3.1.4(6) and Annex B.2: drying (B.11, kh Table 3.3) and autogenous (3.12, 3.13); the part after age t0
+  function shrinkEC2({ fck, fcm, RH, h0, cement = 'N', ts = 1, t0 = 28 }) {
+    const ads1 = { S: 3, N: 4, R: 6 }[cement] ?? 4, ads2 = { S: 0.13, N: 0.12, R: 0.11 }[cement] ?? 0.12;
+    const bRH = 1.55 * (1 - (RH / 100) ** 3);
+    const ecd0 = 0.85 * (220 + 110 * ads1) * Math.exp(-ads2 * fcm / 10) * 1e-6 * bRH;
+    const kh = h0 <= 100 ? 1 : h0 <= 200 ? 1 - 0.15 * (h0 - 100) / 100 : h0 <= 300 ? 0.85 - 0.1 * (h0 - 200) / 100 : h0 <= 500 ? 0.75 - 0.05 * (h0 - 300) / 200 : 0.7;
+    const ecdInf = kh * ecd0, ecaInf = 2.5 * (fck - 10) * 1e-6;
+    const bds = Math.max(0, t0 - ts) / (Math.max(0, t0 - ts) + 0.04 * Math.sqrt(h0 ** 3)), bas = 1 - Math.exp(-0.2 * Math.sqrt(t0));
+    const ecdT0 = bds * ecdInf, ecaT0 = bas * ecaInf;
+    return { bRH, ecd0, kh, ecdInf, ecaInf, ecsInf: ecdInf + Math.max(0, ecaInf), ecdT0, ecaT0, ecs: ecdInf - ecdT0 + Math.max(0, ecaInf - ecaT0) };
+  }
+  // relaxation, 3.3.2(7): the loss as a fraction of sigma_pi at t hours (classes 1, 2, 3)
+  const REL = { 1: [5.39, 6.7], 2: [0.66, 9.1], 3: [1.98, 8.0] };
+  function relaxation({ cls = 2, rho1000 = 2.5, mu, t = T_REL }) {
+    const [k, b] = REL[cls] ?? REL[2];
+    return k * rho1000 * Math.exp(b * mu) * (t / 1000) ** (0.75 * (1 - mu)) * 1e-5;
+  }
+
+  // ---------- book equations (Mosley, Bungey & Hulse chapter 11) ----------
+  // stresses at the top and bottom fibres and at level z (above the soffit) for force P, prestress moment Pe and M (sagging)
+  function fibre(sp, P, Pe, M) {
+    const at = z => P / sp.A + (Pe - M) * (sp.yb - z) / sp.I;
+    return { top: at(sp.h), bot: at(0), at };
+  }
+  // minimum section moduli, 11.13-11.16
+  function minModuli({ Mmax, Mmin, K, fmax, fmin, fmaxT, fminT }) {
+    const Mv = Mmax - K * Mmin;
+    return { Mv, ztMin: Mv / (fmax - K * fminT), zbMin: Mv / (K * fmaxT - fmin) };
+  }
+  // limits on P0 at eccentricity e, 11.17-11.20 (the sense follows the sign of the denominator)
+  function p0Limits({ A, zt, zb, e, K, fmax, fmin, fmaxT, fminT, Mmax, Mmin }) {
+    const L = [];
+    const put = (eq, num, den, senseIfPos) => { const v = num / den, pos = den > 0, sense = pos ? senseIfPos : (senseIfPos === '<=' ? '>=' : '<='); L.push({ eq, value: v, sense }); };
+    put('11.17', zt * fmax - Mmax, K * (zt / A - e), '<=');
+    put('11.18', zt * fminT - Mmin, zt / A - e, '>=');
+    put('11.19', zb * fmin + Mmax, K * (zb / A + e), '>=');
+    put('11.20', zb * fmaxT + Mmin, zb / A + e, '<=');
+    const lo = Math.max(0, ...L.filter(l => l.sense === '>=').map(l => l.value)), hi = Math.min(...L.filter(l => l.sense === '<=').map(l => l.value));
+    return { list: L, lo, hi, ok: lo <= hi };
+  }
+  // maximum economic prestress, 11.23
+  const p0Economic = ({ A, zt, zb, K, fmax, fmin }) => (fmax * zt + fmin * zb) / (K * (zb + zt) / A);
+  // a stress limit as a half-plane in (e, u = 1/P0): ae e + au u + c <= 0. y = yb - z (positive below the centroid).
+  // kind 'max': Ks P0 (1/A + e y / I) - M y / I <= lim; 'min': >= lim
+  function halfPlane(sp, { y, Ks, M, lim, kind }) {
+    const ae = Ks * y / sp.I, au = -(M * y / sp.I + lim), c = Ks / sp.A;
+    return kind === 'max' ? { ae, au, c } : { ae: -ae, au: -au, c: -c };
+  }
+  // the four inequalities of the book (11.9-11.12) as constraints: transfer top tension, transfer bottom compression,
+  // service top compression, service bottom tension
+  function bookConstraints(sp, { K, fmax, fmin, fmaxT, fminT, Mmax, Mmin }) {
+    return [
+      { id: 'T-top-min', eq: '11.25', label: 'Transfer, top tension', y: -sp.yt, Ks: 1, M: Mmin, lim: fminT, kind: 'min' },
+      { id: 'T-bot-max', eq: '11.27', label: 'Transfer, bottom compression', y: sp.yb, Ks: 1, M: Mmin, lim: fmaxT, kind: 'max' },
+      { id: 'S-top-max', eq: '11.24', label: 'Service, top compression', y: -sp.yt, Ks: K, M: Mmax, lim: fmax, kind: 'max' },
+      { id: 'S-bot-min', eq: '11.26', label: 'Service, bottom tension', y: sp.yb, Ks: K, M: Mmax, lim: fmin, kind: 'min' }];
+  }
+  // clip a convex polygon by a half-plane
+  function clip(poly, h) {
+    const f = p => h.ae * p[0] + h.au * p[1] + h.c, out = [];
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length], fa = f(a), fb = f(b);
+      if (fa <= 0) out.push(a);
+      if ((fa < 0 && fb > 0) || (fa > 0 && fb < 0)) { const t = fa / (fa - fb); out.push([a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])]); }
+    }
+    return out;
+  }
+  // Magnel diagram: the feasible (e, 1/P0) region, its extreme forces and the ranges through a chosen point
+  function magnel(sp, cons, { emin, emax, uMax = null, e0 = null, P0 = null }) {
+    uMax = uMax ?? 4 / sp.A;   // P0 = 0.25 A N: below any useful prestress
+    const H = cons.map(k => ({ ...k, ...halfPlane(sp, k) }));
+    let poly = [[emin, 0], [emax, 0], [emax, uMax], [emin, uMax]];
+    for (const h of H) { poly = clip(poly, h); if (!poly.length) break; }
+    const res = { cons: H, poly, emin, emax, uMax, feasible: poly.length >= 3 };
+    if (!res.feasible) return res;
+    const top = poly.reduce((a, p) => p[1] > a[1] ? p : a), bot = poly.reduce((a, p) => p[1] < a[1] ? p : a);
+    res.minP0 = { P0: 1 / top[1], e: top[0], unbounded: top[1] >= uMax * (1 - 1e-9) };
+    res.maxP0 = { P0: bot[1] > 0 ? 1 / bot[1] : Infinity, e: bot[0] };
+    const along = (fix, val) => {   // range of the other coordinate on the line coordinate[fix] = val
+      let lo = Infinity, hi = -Infinity;
+      for (let i = 0; i < poly.length; i++) {
+        const a = poly[i], b = poly[(i + 1) % poly.length];
+        if ((a[fix] - val) * (b[fix] - val) <= 0 && a[fix] !== b[fix]) { const t = (val - a[fix]) / (b[fix] - a[fix]), v = a[1 - fix] + t * (b[1 - fix] - a[1 - fix]); lo = Math.min(lo, v); hi = Math.max(hi, v); }
+        else if (a[fix] === val) { lo = Math.min(lo, a[1 - fix]); hi = Math.max(hi, a[1 - fix]); }
+      }
+      return lo <= hi ? [lo, hi] : null;
+    };
+    if (e0 != null) { const r = along(0, e0); res.atE = r ? { e: e0, P0lo: 1 / r[1], P0hi: r[0] > 0 ? 1 / r[0] : Infinity } : { e: e0, none: true }; }
+    if (P0 != null) { const r = along(1, 1 / P0); res.atP = r ? { P0, elo: r[0], ehi: r[1] } : { P0, none: true }; }
+    // which constraints bind (touch the region)
+    H.forEach(h => { h.binds = poly.some(p => Math.abs(h.ae * p[0] + h.au * p[1] + h.c) <= 1e-9 * (Math.abs(h.c) + Math.abs(h.ae * p[0]) + Math.abs(h.au * p[1]))); });
+    return res;
+  }
+  // cable zone: the eccentricity range at a section for given P0 (transfer) and the constraints there (11.28-11.31)
+  function cableZone(sp, cons, P0) {
+    const u = 1 / P0; let lo = -Infinity, hi = Infinity;
+    for (const k of cons) { const h = halfPlane(sp, k), r = -(h.au * u + h.c); if (Math.abs(h.ae) < 1e-30) { if (r < 0) return { lo: NaN, hi: NaN, none: true }; continue; } if (h.ae > 0) hi = Math.min(hi, r / h.ae); else lo = Math.max(lo, r / h.ae); }
+    return { lo, hi, none: lo > hi };
+  }
+  // friction 5.10.5.2 (book: Px = P0 e^-mu(theta + kx))
+  const friction = ({ P, mu, theta, k, x }) => P * Math.exp(-mu * (theta + k * x));
+  // elastic shortening (book): force remaining = P / (1 + j alpha_e Ap/A (1 + e^2 A / I)), j = 1 pretensioned, 0.5 post
+  const elasticBook = ({ P, Ap, A, I, e, ae, j = 1 }) => P / (1 + j * ae * Ap / A * (1 + e * e * A / I));
+  // EC2 Expression 5.46: time-dependent loss of stress in the tendon
+  function loss546({ ecs, Ep, Ecm, phi, dsr, scQP, Ap, Ac, Ic, zcp }) {
+    const ae = Ep / Ecm, num = ecs * Ep + 0.8 * dsr + ae * phi * scQP, den = 1 + ae * Ap / Ac * (1 + Ac / Ic * zcp * zcp) * (1 + 0.8 * phi);
+    return { num, den, ds: num / den, parts: { shrink: ecs * Ep / den, relax: 0.8 * dsr / den, creep: ae * phi * scQP / den } };
+  }
+  // separate sums (book): creep with the specific creep phi / (1.05 Ecm), shrinkage ecs Ep, relaxation
+  const lossSum = ({ ecs, Ep, Ecm, phi, dsr, scQP }) => { const creep = Ep * phi * scQP / (1.05 * Ecm), shrink = ecs * Ep; return { ds: creep + shrink + dsr, parts: { creep, shrink, relax: dsr } }; };
+
+  // ---------- ULS bending: strain compatibility with a rectangular block (3.1.7(3)), prestrained tendons ----------
+  // tendons: [{ A, d (from the top), eps0, cap }], bars: [{ As, d, fyk }]; fpd = fp0.1k / 1.15, horizontal top branch
+  function ulsBending({ L, h, c, tendons, bars = [], Ep, fpd }) {
+    const a = c.eta * c.fcd, lam = c.lambda, ecu = c.ecu2;
+    const forces = x => {
+      let T = 0, Mt = 0; const ts = [], bs = [];
+      for (const t of tendons) { const eps = t.eps0 + ecu * (t.d - x) / x; const s = Math.max(-fpd, Math.min(Ep * eps, fpd, t.cap ?? Infinity)); T += t.A * s; Mt += t.A * s * t.d; ts.push({ eps, s }); }
+      for (const b of bars) { const fyd = (b.fyk ?? 500) / GS, eps = ecu * (b.d - x) / x; let s = clamp(ES * eps, -fyd, fyd); if (s < 0 && b.d < lam * x) s += a; T += b.As * s; Mt += b.As * s * b.d; bs.push({ eps, s }); }
+      const sl = slice(L, h - Math.min(lam * x, h), h), C = a * sl.A, yc = h - sl.y;
+      return { T, Mt, C, yc, ts, bs };
+    };
+    let lo = 1e-4 * h, hi = 4 * h;
+    if (forces(hi).C - forces(hi).T < 0) throw new Error('ULS bending: the steel force exceeds the whole concrete section in compression');
+    for (let i = 0; i < 200; i++) { const m = (lo + hi) / 2, f = forces(m); if (f.C - f.T > 0) hi = m; else lo = m; }
+    const x = (lo + hi) / 2, f = forces(x), MRd = f.Mt - f.C * f.yc;
+    const dmax = Math.max(...tendons.map(t => t.d), ...bars.filter(b => b.d > x).map(b => b.d), x);
+    return { x, xd: x / dmax, C: f.C, T: f.T, z: f.C > 0 ? MRd / f.C : 0, MRd, tendons: f.ts, bars: f.bs };
+  }
+
+  // ---------- shear at a section, 6.2.2 / 6.2.3 (book 11.40-11.50) ----------
+  function shearAt({ VEd, P, slope = 0, d, bw, bwNom = null, A, I, bS, Asl, fck, fctk = null, alphaL = 1, gp = GP_FAV, fywk = 500, rule = 'ec2', uncracked = null }) {
+    const fv = Math.min(fck, 50), fcdV = fv / GC, k = Math.min(2, 1 + Math.sqrt(200 / d)), rho = Math.min(0.02, Asl / (bw * d));
+    const scp = gp * P / A, scpC = Math.min(scp, 0.2 * fcdV);
+    const v1 = 0.18 / GC * k * (100 * rho * fv) ** (1 / 3), vmin = 0.035 * k ** 1.5 * Math.sqrt(fv);
+    const Vc1 = (Math.max(v1, vmin) + 0.15 * scpC) * bw * d;
+    fctk = fctk ?? EC2.concrete(fck).fctk05;
+    const fctd = fctk / GC, Vc2 = I * bS * Math.sqrt(fctd * fctd + alphaL * scp * fctd);
+    const useUnc = rule === 'lower' ? Vc2 < Vc1 : !!uncracked;
+    const VRdc = rule === 'lower' ? Math.min(Vc1, Vc2) : (uncracked ? Vc2 : Vc1);
+    const Vt = P * Math.sin(Math.atan(slope)), gVt = gp * Vt, Vnet = Math.max(0, VEd - gVt);
+    const z = 0.9 * d, nu = 0.6 * (1 - fv / 250), bwm = bwNom ?? bw;
+    const acw = scp <= 0 ? 1 : scp <= 0.25 * fcdV ? 1 + scp / fcdV : scp <= 0.5 * fcdV ? 1.25 : Math.max(0, 2.5 * (1 - scp / fcdV));
+    const Vmax = cot => acw * bwm * z * nu * fcdV / (cot + 1 / cot), Vmax22 = Vmax(2.5), Vmax45 = Vmax(1);
+    let cot = 2.5, strutOK = true;
+    if (VEd > Vmax22) { if (VEd <= Vmax45) cot = 1 / Math.tan(0.5 * Math.asin(VEd / Vmax45)); else { cot = 1; strutOK = false; } }
+    const fywd = fywk / GS, need = Vnet > VRdc;
+    const AswS = need ? Vnet / (z * fywd * cot) : 0, AswSmin = 0.08 * Math.sqrt(fck) / fywk * bw;
+    return { VEd, k, rho, scp, scpC, v1, vmin, Vc1, fctk, fctd, Vc2, VRdc, useUnc, Vt, gVt, Vnet, Vcap: VRdc + gVt, need, z, nu, acw, Vmax22, Vmax45, VRdmax: Vmax(cot), cot, theta: Math.atan(1 / cot) * 180 / Math.PI, strutOK, AswS, AswSmin, AswSreq: Math.max(AswS, AswSmin), dFtd: 0.5 * Vnet * cot, fywd };
+  }
+
+  // ---------- post-tensioned end block (book 11.4.9; EC2 6.7 and 8.10.3(5)) ----------
+  function endBlock({ P, gp = GP_LOCAL, shape = 'circle', a0, b1, h1, fck, nA = 1, B = null, H = null, sigS = 300, fyk = 500, phiZone = 10, phiAll = 12 }) {
+    if (!(a0 > 0 && b1 > 0 && h1 > 0)) throw new Error('End block: give the anchor plate and the end zone dimensions');
+    if (a0 > Math.min(b1, h1)) throw new Error('End block: the anchor plate is larger than its end zone');
+    const fcd = fck / GC, Ac0 = shape === 'circle' ? Math.PI * a0 * a0 / 4 : a0 * a0, m = Math.min(b1, h1);
+    const Ac1 = Math.min(shape === 'circle' ? Math.PI * m * m / 4 : m * m, 9 * Ac0);
+    const fRdu = Math.min(fcd * Math.sqrt(Ac1 / Ac0), 3 * fcd), sb = gp * P / Ac0;
+    const beta = Math.atan(2 / 3), ss = sigS === 'fyd' ? fyk / GS : sigS;
+    const T = gp * P * Math.tan(beta) / 2, As = T / ss, Fs = 0.5 * gp * P / Math.cos(beta), sStrut = Fs / (b1 * h1 * Math.cos(beta));
+    const nuP = 1 - fck / 250, sRd = 0.6 * nuP * fcd;
+    const leg = Math.PI * phiZone * phiZone / 4, nZone = Math.ceil(As / (2 * leg) - 1e-9);
+    const out = { P, gp, Ac0, Ac1, fRdu, sb, beta: beta * 180 / Math.PI, T, ss, As, Fs, sStrut, nuP, sRd, nZone, phiZone, lenZone: Math.max(b1, h1) };
+    if (nA > 1 && B > 0 && H > 0) { const Ta = gp * nA * P * Math.tan(beta) / 2, Aa = Ta / ss, la = Math.PI * phiAll * phiAll / 4; Object.assign(out, { Tall: Ta, AsAll: Aa, nAll: Math.ceil(Aa / (2 * la) - 1e-9), phiAll, lenAll: Math.max(B, H) }); }
+    return out;
+  }
+
+  // ---------- loads: simply supported span L, UDLs (N/mm) and point loads ----------
+  function beamMV(L, w, points, x) {   // points: [{ a, P }]
+    let M = w * x * (L - x) / 2, V = w * (L / 2 - x);
+    for (const p of points) { const b = L - p.a; if (x <= p.a) { M += p.P * b * x / L; V += p.P * b / L; } else { M += p.P * p.a * (L - x) / L; V -= p.P * p.a / L; } }
+    return { M, V };
+  }
+
+  // ---------- the design ----------
+  function design(inp) {
+    const notes = [], checks = [];
+    const sp = section(inp.sec), L = inp.L, lb = inp.lb ?? 0, a = lb / 2;
+    if (!(L > 0)) throw new Error('Give the span');
+    if (L <= lb) throw new Error('The bearing is longer than the span');
+    const ld = inp.loads || {}, psi0 = ld.psi0 ?? 0.7, psi1 = ld.psi1 ?? 0.5, psi2 = ld.psi2 ?? 0.3;
+    const gSW = (ld.rho ?? 25) * sp.A * 1e-6, gT = gSW + (ld.gT ?? 0), gG = gT + (ld.g2 ?? 0), q = ld.q ?? 0;   // kN/m = N/mm
+    const pts = (ld.points || []).filter(p => p && (p.G || p.Q)).map(p => ({ a: +p.a, G: (+p.G || 0) * 1e3, Q: (+p.Q || 0) * 1e3 }));
+    pts.forEach(p => { if (!(p.a >= 0 && p.a <= L)) throw new Error('A point load lies outside the span'); });
+    const ptsG = pts.map(p => ({ a: p.a, P: p.G })), ptsQ = pts.map(p => ({ a: p.a, P: p.Q }));
+    const inSpan = x => x >= 0 && x <= L;
+    const MT = x => inSpan(x) ? beamMV(L, gT, [], x).M : 0;
+    const MG = x => inSpan(x) ? beamMV(L, gG, ptsG, x).M : 0, MQ = x => inSpan(x) ? beamMV(L, q, ptsQ, x).M : 0;
+    const VG = x => beamMV(L, gG, ptsG, clamp(x, 0, L)).V, VQ = x => beamMV(L, q, ptsQ, clamp(x, 0, L)).V;
+    // concrete
+    const cs = inp.conc || {}, c = concrete({ fck: cs.fck, fckT: cs.fckT, t0: cs.t0 ?? 3, cement: cs.cement || 'N', agg: cs.agg || 'quartzite' });
+    const t0 = cs.t0 ?? 3, EcmT = cs.EcT ?? c.T.Ecm, Ecm = cs.Ec ?? c.Ecm, h0 = cs.h0 > 0 ? cs.h0 : sp.h0;
+    let cr = null, sh = null, phi, ecs;
+    if ((cs.creepMode || 'ec2') === 'ec2') {
+      cr = creepEC2({ fcm: c.fcm, RH: cs.RH ?? 50, h0, t0, cement: cs.cement || 'N', T: cs.temp ?? 20 });
+      sh = shrinkEC2({ fck: c.fck, fcm: c.fcm, RH: cs.RH ?? 50, h0, cement: cs.cement || 'N', ts: Math.min(cs.ts ?? 1, t0), t0 });
+      phi = cr.phi; ecs = sh.ecs;
+    } else { phi = cs.phi; ecs = (cs.ecs ?? 0) * 1e-6; if (phi == null || !(phi >= 0)) throw new Error('Give the creep coefficient'); }
+    // prestressing steel
+    const pr = inp.pre || {}, pre = pr.kind !== 'post', fpk = pr.fpk ?? 1860, fp01 = pr.fp01k > 0 ? pr.fp01k : 0.88 * fpk, Ep = pr.Ep ?? (pre && pr.wire === 'wire' ? 205000 : 195000), fpd = fp01 / GS;
+    const sigJ = pr.sigJ, aeT = Ep / EcmT, ae28 = Ep / Ecm;
+    if (!(sigJ > 0)) throw new Error('Give the initial (jacking) stress in the tendons');
+    const sMax = Math.min(0.8 * fpk, 0.9 * fp01), sPm0 = Math.min(0.75 * fpk, 0.85 * fp01);
+    const relOf = s0 => (pr.relMode || 'ec2') === 'factor' ? (pr.relFactor ?? 2.5) * (pr.rho1000 ?? 2.5) / 100 * s0 : relaxation({ cls: pr.relClass ?? 2, rho1000: pr.rho1000 ?? 2.5, mu: s0 / fpk }) * s0;
+    const lossMode = inp.lossMode || 'ec2';
+    const timeLoss = (s0, scQP, Ap, zcp) => { const dsr = relOf(s0); return lossMode === 'sum' ? { ...lossSum({ ecs, Ep, Ecm, phi, dsr, scQP }), dsr } : { ...loss546({ ecs, Ep, Ecm, phi, dsr, scQP, Ap, Ac: sp.A, Ic: sp.I, zcp }), dsr }; };
+
+    // ----- tendons: transfer force P0(x), final P(x) and their moments about the centroid -----
+    let tendon, layers = [], post = null;
+    if (pre) {
+      const ss = pr.strands || [];
+      if (!ss.length) throw new Error('Give at least one layer of strands');
+      const wire = pr.wire === 'wire', a1 = pr.release === 'sudden' ? 1.25 : 1.0, a2 = wire ? 0.25 : 0.19, ep1 = wire ? 2.7 : 3.2, ep2 = wire ? 1.4 : 1.2, eta1 = pr.bondGood === false ? 0.7 : 1.0;
+      const fbpt = ep1 * eta1 * 0.7 * c.T.fctm / GC, fbpd = ep2 * eta1 * 0.7 * c.fctm / GC;
+      layers = ss.map((s, i) => {
+        if (!(s.n > 0 && s.Ap > 0)) throw new Error(`Strand layer ${i + 1}: give the number and the area`);
+        if (!(s.z > 0 && s.z < sp.h)) throw new Error(`Strand layer ${i + 1} lies outside the section`);
+        return { i, n: s.n, A: s.n * s.Ap, Ap1: s.Ap, phi: s.phi > 0 ? s.phi : Math.sqrt(4 * s.Ap / (0.75 * Math.PI)), z: s.z, e: sp.yb - s.z, db: Math.max(0, s.debond || 0) };
+      });
+      if (layers.some(l => 2 * l.db >= L + lb)) throw new Error('A layer is debonded over the whole length');
+      // full-bond stresses after release at a section with moment M (2 x 2 solve: alpha_e transformed section, exact for pretensioning)
+      const release = (beta, M) => {
+        let W0 = 0, W1 = 0, W2 = 0, S0 = 0, S1 = 0;
+        layers.forEach((l, k) => { const w = beta[k] * l.A; W0 += w; W1 += w * l.e; W2 += w * l.e * l.e; S0 += w * sigJ; S1 += w * sigJ * l.e; });
+        const a11 = sp.A + aeT * W0, a12 = aeT * W1, a22 = sp.I + aeT * W2, b1 = S0, b2 = S1 - M, det = a11 * a22 - a12 * a12;
+        const ca = (b1 * a22 - a12 * b2) / det, cb = (a11 * b2 - a12 * b1) / det;   // sigma_c(e) = ca + cb e
+        return layers.map(l => sigJ - aeT * (ca + cb * l.e));
+      };
+      const sFull = release(layers.map(() => 1), 0);   // after release, no moment: the stress that sets the transmission length
+      layers.forEach((l, k) => { l.s0Full = sFull[k]; l.lpt = a1 * a2 * l.phi * sFull[k] / fbpt; l.lpt1 = 0.8 * l.lpt; l.lpt2 = 1.2 * l.lpt; });
+      const beta = (l, x, lp) => { const dL = x + a - l.db, dR = L + a - x - l.db; return clamp(Math.min(dL, dR) / lp, 0, 1); };
+      tendon = x => {
+        const b1 = layers.map(l => beta(l, x, l.lpt1)), sT = release(b1, MT(x));
+        let P0 = 0, Pe0 = 0, W = 0, We = 0;
+        layers.forEach((l, k) => { const F = b1[k] * l.A * sT[k]; P0 += F; Pe0 += F * l.e; W += b1[k] * l.A; We += b1[k] * l.A * l.e; });
+        const zcp = W > 0 ? We / W : 0, MQP = MG(x) + psi2 * MQ(x);
+        const at = z => P0 / sp.A + (Pe0 - MQP) * (sp.yb - z) / sp.I;
+        let P = 0, Pe = 0; const ly = layers.map((l, k) => {
+          const scQP = at(l.z), tl = timeLoss(sT[k], scQP, W, zcp), sInf = sT[k] - tl.ds, F = b1[k] * l.A * sInf;
+          P += F; Pe += F * l.e; return { beta1: b1[k], beta2: beta(l, x, l.lpt2), s0: sT[k], scQP, tl, sInf, F0: b1[k] * l.A * sT[k], F };
+        });
+        return { P0, Pe0, P, Pe, ly, Ap: W, e0: P0 > 0 ? Pe0 / P0 : zcp, e: P > 0 ? Pe / P : zcp, zcpE: zcp };
+      };
+      layers.forEach(l => { l.fbpt = fbpt; l.fbpd = fbpd; l.a2 = a2; });
+      Object.assign(layers, { meta: { wire, a1, a2, ep1, ep2, eta1, fbpt, fbpd } });
+    } else {
+      const Ap = pr.Ap, zE = pr.zEnd, zM = pr.zMid, mu = pr.mu ?? 0.19, kw = (pr.k ?? 0.005) / 1000, dIn = pr.drawIn ?? 0, both = pr.ends === 'both';
+      if (!(Ap > 0)) throw new Error('Give the area of the tendons');
+      if (!(zE > 0 && zE < sp.h && zM > 0 && zM < sp.h)) throw new Error('The tendon lies outside the section');
+      if (zM > zE + 1e-9) throw new Error('The tendon must sag: at mid-span it should be no higher than at the ends');
+      const zOf = x => zE + (zM - zE) * 4 * x * (L - x) / (L * L), slope = x => (zM - zE) * 4 * (L - 2 * x) / (L * L);
+      const eOf = x => sp.yb - zOf(x), Lt = L + 2 * a, N = 600, sArr = Array.from({ length: N + 1 }, (_, i) => Lt * i / N);
+      const Pj = sigJ * Ap, th = (x0, x1) => Math.abs(Math.atan(slope(x0)) - Math.atan(slope(x1)));
+      const Pfl = s => friction({ P: Pj, mu, theta: th(-a, s - a), k: kw, x: s }), Pfr = s => friction({ P: Pj, mu, theta: th(L + a, s - a), k: kw, x: Lt - s });
+      const Pf = s => both ? Math.max(Pfl(s), Pfr(s)) : Pfl(s);
+      // draw-in from the left (and mirrored from the right when stressed at both ends)
+      const W = dIn * Ep * Ap, sLim = both ? Lt / 2 : Lt;
+      const areaTo = l => { const n = 200; let t = 0; const pl = Pfl(l); for (let i = 0; i < n; i++) { const s0 = l * i / n, s1 = l * (i + 1) / n; t += (2 * (Pfl(s0) - pl) + 2 * (Pfl(s1) - pl)) / 2 * (s1 - s0); } return t; };
+      let lset = 0, delta = 0, Panchor = Pj;
+      if (W > 0) {
+        if (areaTo(sLim) >= W) { let lo = 0, hi = sLim; for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; if (areaTo(m) < W) lo = m; else hi = m; } lset = (lo + hi) / 2; }
+        else { lset = sLim; delta = (W - areaTo(sLim)) / sLim; }
+      }
+      const plset = Pfl(lset);
+      const Plock = s => {
+        const sl = both && s > Lt / 2 ? Lt - s : s, pf = both && s > Lt / 2 ? Pfr(s) : Pfl(s);
+        if (W > 0 && sl <= lset) return 2 * plset - (both ? (s > Lt / 2 ? Pfr(s) : Pfl(s)) : Pfl(s)) - delta;
+        return both ? pf : Pfl(s);
+      };
+      Panchor = Plock(0);
+      // elastic shortening averaged along the tendon (ducts not yet grouted): Delta = j ae Ap c0 / (1 + j ae Ap c1)
+      const nT = Math.max(1, Math.round(pr.nT ?? 1)), j = pr.esj === 'seq' ? (nT - 1) / (2 * nT) : 0.5;
+      let c0 = 0, c1 = 0;
+      sArr.forEach((s, i) => { const x = s - a, e = eOf(clamp(x, 0, L)), w = (i === 0 || i === N) ? 0.5 : 1, k1 = 1 / sp.A + e * e / sp.I; c0 += w * Plock(s) * k1; c1 += w * k1; });
+      c0 /= N; c1 /= N;
+      const dEl = j * aeT * Ap * c0 / (1 + j * aeT * Ap * c1);
+      const duct = pr.duct || {};
+      post = { Ap, zE, zM, mu, k: kw * 1000, dIn, both, Pj, Pf, Plock, lset, delta, Panchor, j, nT, dEl, zOf, slope, eOf, duct, sLock: Panchor / Ap };
+      tendon = x => {
+        const s = clamp(x + a, 0, Lt), e = eOf(clamp(x, 0, L)), Pf0 = Pf(s), Pl = Plock(s), P0 = Pl - dEl, s0 = P0 / Ap;
+        const scQP = P0 / sp.A + (P0 * e - (MG(x) + psi2 * MQ(x))) * e / sp.I, tl = timeLoss(s0, scQP, Ap, e), P = P0 - Ap * tl.ds;
+        return { P0, Pe0: P0 * e, P, Pe: P * e, e0: e, e, Ap, zcpE: e, Pf: Pf0, Pl, s0, scQP, tl, ly: [{ beta1: 1, beta2: 1, s0, scQP, tl, sInf: P / Ap, F0: P0, F: P }] };
+      };
+      layers = [{ i: 0, A: Ap, z: zM, e: eOf(L / 2), phi: duct.phi || 0 }];
+    }
+
+    // ----- stations: the span plus the overhang to the beam ends -----
+    const xsSet = new Set();
+    for (let i = 0; i <= 96; i++) xsSet.add(L * i / 96);
+    if (a > 0) for (let i = 0; i <= 4; i++) { xsSet.add(-a + a * i / 4); xsSet.add(L + a * i / 4); }
+    if (pre) layers.forEach(l => [l.db, l.db + l.lpt1, l.db + l.lpt2, l.db + 0.5 * l.lpt1].forEach(dd => { const x = dd - a; if (x > -a && x < L + a) { xsSet.add(x); xsSet.add(L - x); } }));
+    pts.forEach(p => xsSet.add(p.a));
+    const xs = [...xsSet].filter(x => x >= -a - 1e-9 && x <= L + a + 1e-9).sort((p, q) => p - q);
+    const st = xs.map(x => ({ x, ...tendon(x), MT: MT(x), MG: MG(x), MQ: MQ(x) }));
+    const mid = tendon(L / 2);
+    const cmid = st.reduce((b, s) => Math.abs(s.x - L / 2) < Math.abs(b.x - L / 2) ? s : b);
+
+    // ----- non-linear creep 3.1.4(4): sigma_c at the tendons at transfer above 0.45 fck(t0) -----
+    let sigTmax = 0; st.forEach(s => { if (s.P0 > 0) sigTmax = Math.max(sigTmax, s.P0 / sp.A + (s.Pe0 - s.MT) * (s.Pe0 / s.P0) / sp.I); });
+    const ksig = sigTmax / c.T.fck;
+    if (ksig > 0.45) {
+      if (cr) notes.push(`The concrete stress at the tendons at transfer is ${(ksig).toFixed(2)}f<sub>ck</sub>(t<sub>0</sub>), above 0.45f<sub>ck</sub>(t<sub>0</sub>): the creep is non-linear (3.1.4(4)), φ<sub>nl</sub> = φ e<sup>1.5(k<sub>σ</sub> − 0.45)</sup> would apply. The losses use the linear φ; check them with the higher value if the margin is small.`);
+      else notes.push(`The concrete stress at the tendons at transfer is ${(ksig).toFixed(2)}f<sub>ck</sub>(t<sub>0</sub>), above 0.45f<sub>ck</sub>(t<sub>0</sub>): make sure the creep coefficient given allows for non-linear creep (3.1.4(4)).`);
+    }
+
+    // ----- stress limits -----
+    const lim = inp.limits || {}, k6 = pre && lim.k6 === 0.7 ? 0.7 : 0.6;
+    const tLim = (m, fct) => m.mode === 'zero' ? 0 : m.mode === 'value' ? Math.max(0, +m.value || 0) : fct;
+    const fTT = tLim(lim.tT || { mode: 'fctm' }, c.T.fctm), fTS = tLim(lim.tS || { mode: 'fctm' }, c.fctm), tComb = lim.tComb || 'char', expo = lim.exposure || 'XC1';
+    const fcT = k6 * c.T.fck, fc06 = 0.6 * c.fck, fc045 = 0.45 * c.fck, comp06 = lim.comp06 !== false;
+    const decComb = expo === 'XC2' ? 'qp' : expo === 'XD' ? 'freq' : null;
+    // level for decompression: 25 mm below the lowest tendon or duct (Table 7.1N note)
+    const zLow = pre ? Math.min(...layers.map(l => l.z - l.phi / 2)) : post.zM - (post.duct.phi || 0) / 2;
+    const zDec = Math.max(0, zLow - 25);
+    const comb = { char: 1, freq: psi1, qp: psi2 };
+    const stress = (P, Pe, M) => fibre(sp, P, Pe, M);
+    const rows = st.map(s => {
+      const T = stress(s.P0, s.Pe0, s.MT), r = { x: s.x, T, S: {} };
+      for (const k of ['char', 'freq', 'qp']) { const lo = stress(s.P, s.Pe, s.MT), hi = stress(s.P, s.Pe, s.MG + comb[k] * s.MQ); r.S[k] = { lo, hi, top: [Math.min(lo.top, hi.top), Math.max(lo.top, hi.top)], bot: [Math.min(lo.bot, hi.bot), Math.max(lo.bot, hi.bot)], dec: Math.min(lo.at(zDec), hi.at(zDec)) }; }
+      return r;
+    });
+    const worst = (f) => { let b = null; rows.forEach(r => { const v = f(r); if (b === null || v > b.v) b = { v, x: r.x }; }); return b; };
+    const xs1 = x => `x = ${(x / 1000).toFixed(2)} m`;
+    // transfer
+    const wTc = worst(r => Math.max(r.T.top, r.T.bot)), wTt = worst(r => -Math.min(r.T.top, r.T.bot));
+    checks.push({ id: 'tc', name: 'Compression at transfer', ref: '5.10.2.2(5)', util: wTc.v / fcT, x: wTc.x, note: `σ<sub>c</sub> = ${wTc.v.toFixed(2)} ≤ ${k6}f<sub>ck</sub>(t) = ${fcT.toFixed(2)} N/mm² at ${xs1(wTc.x)}` });
+    checks.push(fTT > 0 ? { id: 'tt', name: 'Tension at transfer', ref: lim.tT?.mode === 'value' ? 'limit given' : '7.1(2)', util: Math.max(0, wTt.v) / fTT, x: wTt.x, note: wTt.v > 0 ? `σ<sub>t</sub> = ${wTt.v.toFixed(2)} ≤ ${fTT.toFixed(2)} N/mm² at ${xs1(wTt.x)}` : 'no tension' }
+      : { id: 'tt', name: 'No tension at transfer', ref: 'limit chosen', rule: true, util: wTt.v > 1e-6 ? Infinity : 0, x: wTt.x, note: wTt.v > 1e-6 ? `σ<sub>t</sub> = ${wTt.v.toFixed(2)} N/mm² at ${xs1(wTt.x)}` : 'no tension' });
+    // service compression
+    if (comp06) { const w = worst(r => Math.max(r.S.char.top[1], r.S.char.bot[1])); checks.push({ id: 'sc', name: 'Compression, characteristic', ref: '7.2(2)', util: w.v / fc06, x: w.x, note: `σ<sub>c</sub> = ${w.v.toFixed(2)} ≤ 0.6f<sub>ck</sub> = ${fc06.toFixed(1)} N/mm² at ${xs1(w.x)}` }); }
+    { const w = worst(r => Math.max(r.S.qp.top[1], r.S.qp.bot[1])); checks.push({ id: 'sq', name: 'Compression, quasi-permanent', ref: '7.2(3)', util: w.v / fc045, x: w.x, note: `σ<sub>c</sub> = ${w.v.toFixed(2)} ≤ 0.45f<sub>ck</sub> = ${fc045.toFixed(1)} N/mm² at ${xs1(w.x)} (linear creep)` }); }
+    { const w = worst(r => -Math.min(r.S[tComb].top[0], r.S[tComb].bot[0])), cn = tComb === 'char' ? 'characteristic' : 'frequent';
+      checks.push(fTS > 0 ? { id: 'st', name: `Tension, ${cn}`, ref: lim.tS?.mode === 'value' ? 'limit given' : '7.1(2)', util: Math.max(0, w.v) / fTS, x: w.x, note: w.v > 0 ? `σ<sub>t</sub> = ${w.v.toFixed(2)} ≤ ${fTS.toFixed(2)} N/mm² at ${xs1(w.x)}${lim.tS?.mode === 'value' ? '' : ': uncracked, so no crack width check'}` : 'no tension' }
+        : { id: 'st', name: `No tension, ${cn}`, ref: 'limit chosen', rule: true, util: w.v > 1e-6 ? Infinity : 0, x: w.x, note: w.v > 1e-6 ? `σ<sub>t</sub> = ${w.v.toFixed(2)} N/mm² at ${xs1(w.x)}` : 'no tension' }); }
+    if (decComb) { const w = worst(r => -r.S[decComb].dec), cn = decComb === 'qp' ? 'quasi-permanent' : 'frequent';
+      checks.push({ id: 'dec', name: `Decompression, ${cn}`, ref: 'Table 7.1N', rule: true, util: w.v > 1e-6 ? Infinity : 0, x: w.x, note: `σ = ${(-w.v).toFixed(2)} N/mm² at ${zDec.toFixed(0)} mm above the soffit, 25 mm below the ${pre ? 'lowest strand' : 'duct'}, at ${xs1(w.x)}` }); }
+    // tendon stresses
+    const sJk = sigJ, s0max = Math.max(...st.map(s => Math.max(...s.ly.map(l => l.s0)))), sJmax = pre ? sJk : Math.max(post.Pj / post.Ap, ...st.map(s => s.Pf / post.Ap));
+    checks.push({ id: 'sj', name: 'Tendon stress at stressing', ref: '5.10.2.1', util: sJmax / sMax, note: `σ<sub>p,max</sub> = ${sJmax.toFixed(0)} ≤ min(0.8f<sub>pk</sub>, 0.9f<sub>p0.1k</sub>) = ${sMax.toFixed(0)} N/mm²` });
+    checks.push({ id: 's0', name: 'Tendon stress after transfer', ref: '5.10.3(2)', util: s0max / sPm0, note: `σ<sub>pm0</sub> = ${s0max.toFixed(0)} ≤ min(0.75f<sub>pk</sub>, 0.85f<sub>p0.1k</sub>) = ${sPm0.toFixed(0)} N/mm²` });
+    let spChar = 0; st.forEach(s => s.ly.forEach((l, k) => { if (l.beta1 < 0.999) return; const ei = pre ? layers[k].e : s.e; spChar = Math.max(spChar, l.sInf + ae28 * (s.MG + s.MQ - s.MT) * ei / sp.I); }));
+    checks.push({ id: 'sp', name: 'Tendon stress, characteristic', ref: '7.2(5)', util: spChar / (0.75 * fpk), note: `σ<sub>p</sub> = ${spChar.toFixed(0)} ≤ 0.75f<sub>pk</sub> = ${(0.75 * fpk).toFixed(0)} N/mm²` });
+
+    // ----- Magnel diagram and cable zone (constraints from the same limits) -----
+    const K = cmid.P0 > 0 ? cmid.P / cmid.P0 : 1;
+    const consAt = (s, Ks) => {
+      const out = [];
+      const add = (id, eq, label, y, Ksv, M, limv, kind) => out.push({ id, eq, label, y, Ks: Ksv, M, lim: limv, kind });
+      add('T-top-min', '11.25', 'top tension, transfer', -sp.yt, 1, s.MT, -fTT, 'min');
+      add('T-bot-max', '11.27', 'bottom compr., transfer', sp.yb, 1, s.MT, fcT, 'max');
+      add('T-top-max', '', 'top compr., transfer', -sp.yt, 1, s.MT, fcT, 'max');
+      add('T-bot-min', '', 'bottom tension, transfer', sp.yb, 1, s.MT, -fTT, 'min');
+      const Mc = s.MG + s.MQ, Mt = s.MG + comb[tComb] * s.MQ, Mq = s.MG + psi2 * s.MQ;
+      if (comp06) { add('S-top-max', '11.24', 'top compr., characteristic', -sp.yt, Ks, Mc, fc06, 'max'); add('S-bot-maxL', '', 'bottom compr., characteristic', sp.yb, Ks, s.MT, fc06, 'max'); }
+      add('Q-top-max', '', 'top compr., quasi-perm.', -sp.yt, Ks, Mq, fc045, 'max');
+      add('Q-bot-max', '', 'bottom compr., quasi-perm.', sp.yb, Ks, s.MT, fc045, 'max');
+      add('S-bot-min', '11.26', `bottom tension, ${tComb === 'char' ? 'characteristic' : 'frequent'}`, sp.yb, Ks, Mt, -fTS, 'min');
+      add('S-top-min', '', 'top tension, service', -sp.yt, Ks, s.MT, -fTS, 'min');
+      if (decComb) add('D', '', `decompression at ${zDec.toFixed(0)} mm`, sp.yb - zDec, Ks, s.MG + comb[decComb] * s.MQ, 0, 'min');
+      return out;
+    };
+    const consMid = consAt(cmid, K);
+    const zTmin = pre ? Math.min(...layers.map(l => l.z)) : post.zM;
+    const mg = inp.magnel || {};
+    const emax = mg.emax ?? (sp.yb - Math.min(zTmin, Math.max(40, zTmin))), emin = mg.emin ?? -(sp.yt - 50);
+    const MG_ = magnel(sp, consMid, { emin, emax: Math.max(emax, cmid.e0), e0: cmid.e0, P0: cmid.P0 });
+    const aid = { K, Mmax: cmid.MG + cmid.MQ, Mmin: cmid.MT, fmax: fc06, fmin: -fTS, fmaxT: fcT, fminT: -fTT };
+    const moduli = minModuli(aid), econ = p0Economic({ A: sp.A, zt: sp.zt, zb: sp.zb, K, fmax: fc06, fmin: -fTS });
+    const zone = st.filter(s => s.x >= 0 && s.x <= L && s.P0 > 0.05 * mid.P0).map(s => ({ x: s.x, e: s.e0, ...cableZone(sp, consAt(s, s.P0 > 0 ? s.P / s.P0 : K), s.P0) }));
+
+    // ----- deflection: curvature integrated along the span -----
+    const df = inp.defl || {}, Ecf = Ecm / (1 + phi), NG = 400;
+    const curv = (fM, fPe, E) => Array.from({ length: NG + 1 }, (_, i) => { const x = L * i / NG; return (fM(x) - fPe(x)) / (E * sp.I); });
+    const tState = Array.from({ length: NG + 1 }, (_, i) => tendon(L * i / NG));
+    const integ = k => {   // y'' = -k (sagging curvature gives downward deflection, positive), y(0) = y(L) = 0
+      const h = L / NG, th = [0], y = [0];
+      for (let i = 1; i <= NG; i++) th.push(th[i - 1] + (k[i - 1] + k[i]) / 2 * h);
+      for (let i = 1; i <= NG; i++) y.push(y[i - 1] + (th[i - 1] + th[i]) / 2 * h);
+      const corr = y[NG] / L; return y.map((v, i) => -(v - corr * L * i / NG));
+    };
+    const kT = curv(x => MT(x), x => tState[Math.round(x / L * NG)].Pe0, EcmT);
+    const kF = curv(x => (ld.g2 ?? 0) * x * (L - x) / 2 + beamMV(L, 0, ptsG, x).M, () => 0, Ecm);
+    const kL = curv(x => MG(x) + psi2 * MQ(x), x => tState[Math.round(x / L * NG)].Pe, Ecf);
+    const yT = integ(kT), yF = integ(kF).map((v, i) => v + yT[i]), yL = integ(kL), yD = yL.map((v, i) => v - yF[i]);
+    const ext = arr => { let mx = -Infinity, mn = Infinity, ix = 0, inn = 0; arr.forEach((v, i) => { if (v > mx) { mx = v; ix = i; } if (v < mn) { mn = v; inn = i; } }); return { max: mx, min: mn, xMax: L * ix / NG, xMin: L * inn / NG, mid: arr[NG / 2] }; };
+    const defl = { Ecf, EcmT, Ecm, phi, yT, yF, yL, yD, T: ext(yT), F: ext(yF), Lg: ext(yL), D: ext(yD), lim1: L / (df.lim1 ?? 250), lim2: L / (df.lim2 ?? 500), NG };
+    checks.push({ id: 'd1', name: 'Long-term sag, quasi-permanent', ref: '7.4.1(4)', util: Math.max(0, defl.Lg.max) / defl.lim1, note: `${defl.Lg.max > 0 ? `${defl.Lg.max.toFixed(1)} mm down` : `${(-defl.Lg.min).toFixed(1)} mm up (camber)`}; limit L/${df.lim1 ?? 250} = ${defl.lim1.toFixed(1)} mm` });
+    { const dm = Math.max(Math.abs(defl.D.max), Math.abs(defl.D.min)); checks.push({ id: 'd2', name: 'Movement after the finishes', ref: '7.4.1(5)', util: dm / defl.lim2, note: `${dm.toFixed(1)} mm; limit L/${df.lim2 ?? 500} = ${defl.lim2.toFixed(1)} mm` }); }
+
+    // ----- ULS -----
+    const ul = inp.uls || {}, rule = ul.rule || '6.10';
+    const sets = rule === '6.10ab' ? [{ gG: 1.35, gQ: 1.5 * psi0, label: '6.10a' }, { gG: 0.925 * 1.35, gQ: 1.5, label: '6.10b' }] : [{ gG: 1.35, gQ: 1.5, label: '6.10' }];
+    const MEd = x => Math.max(...sets.map(k => k.gG * MG(x) + k.gQ * MQ(x)));
+    const VEd = x => Math.max(...sets.map(k => Math.abs(k.gG * VG(x) + k.gQ * VQ(x))));
+    const bars = (inp.bars || []).filter(b => b && b.As > 0).map(b => ({ As: +b.As, z: +b.z, d: sp.h - b.z, fyk: +b.fyk || 500 }));
+    bars.forEach(b => { if (!(b.z > 0 && b.z < sp.h)) throw new Error('A reinforcing bar layer lies outside the section'); });
+    const capAt = (l, k, x, sInf) => {   // 8.10.2.3: the stress a pretensioned strand can develop at x (lpt2 then lbpd)
+      if (!pre) return Infinity;
+      const dL = Math.min(x + a - l.db, L + a - x - l.db); if (dL <= 0) return 0;
+      const lbpd = l.lpt2 + l.a2 * l.phi * Math.max(0, fpd - sInf) / l.fbpd;
+      return dL <= l.lpt2 ? sInf * dL / l.lpt2 : dL <= lbpd ? sInf + (fpd - sInf) * (dL - l.lpt2) / (lbpd - l.lpt2) : fpd;
+    };
+    const ulsAt = s => {
+      const tdn = pre ? s.ly.map((l, k) => ({ A: layers[k].A * (l.beta1 > 0 || l.beta2 > 0 ? 1 : 0), d: sp.h - layers[k].z, eps0: GP_FAV * l.sInf / Ep, cap: capAt(layers[k], k, s.x, l.sInf) })).filter(t => t.A > 0)
+        : [{ A: post.Ap, d: sp.h - post.zOf(clamp(s.x, 0, L)), eps0: GP_FAV * (s.P / post.Ap) / Ep }];
+      return ulsBending({ L: sp.L, h: sp.h, c, tendons: tdn, bars, Ep, fpd });
+    };
+    const ulsSt = st.filter(s => s.x >= 0 && s.x <= L).map(s => ({ x: s.x, MEd: MEd(s.x), R: ulsAt(s) }));
+    let wU = null; ulsSt.forEach(u => { const ut = u.MEd > 1 ? u.MEd / Math.max(1, u.R.MRd) : 0; if (!wU || ut > wU.u) wU = { u: ut, ...u }; });
+    const ulsMid = ulsAt(cmid);
+    checks.push({ id: 'mu', name: 'Bending resistance', ref: '6.1', util: wU.u, x: wU.x, note: `M<sub>Ed</sub> = ${(wU.MEd / 1e6).toFixed(1)} ≤ M<sub>Rd</sub> = ${(wU.R.MRd / 1e6).toFixed(1)} kNm at ${xs1(wU.x)}, x/d = ${wU.R.xd.toFixed(2)}` });
+    // shear along the span
+    const lk = ul.links || {}, AswSprov = lk.s > 0 && lk.phi > 0 ? (lk.legs ?? 2) * Math.PI * lk.phi * lk.phi / 4 / lk.s : 0, fywk = lk.fywk ?? 500;
+    const dPost = pr.duct || {}, ductRed = !pre && dPost.phi > sp.bw / 8 ? (dPost.kind === 'plastic' ? 1.2 : 0.5) * (dPost.across ?? 1) * dPost.phi : 0;
+    const fctk = cs.fctk ?? c.fctk05;
+    const shearSt = st.filter(s => s.x >= 0 && s.x <= L).map(s => {
+      const V = VEd(s.x), dT = pre ? sp.h - (s.Ap > 0 ? sp.yb - s.zcpE : sp.yb) : sp.h - post.zOf(s.x);
+      const Ap2 = pre ? s.ly.reduce((t, l, k) => t + (l.beta2 > 0 ? layers[k].A : 0), 0) : post.Ap;
+      const tb = bars.filter(b => b.z < sp.yb), Asb = tb.reduce((t, b) => t + b.As, 0);
+      const dd = tb.length ? (Ap2 * dT + tb.reduce((t, b) => t + b.As * b.d, 0)) / (Ap2 + Asb) : dT;
+      // prestress for shear: the strands develop over lpt2 (alpha_l), the final force with gamma_P,fav
+      const P2 = pre ? s.ly.reduce((t, l, k) => t + l.beta2 * layers[k].A * l.sInf, 0) : s.P;
+      const Pfull = pre ? s.ly.reduce((t, l, k) => t + (l.beta2 > 0 ? layers[k].A * l.sInf : 0), 0) : s.P;
+      const slopeFav = pre ? 0 : Math.abs(post.slope(s.x));
+      const Mx = MEd(s.x), sb = GP_FAV * (s.P / sp.A + s.Pe * sp.yb / sp.I) - Mx * sp.yb / sp.I, unc = sb > -fctk / GC;
+      const R = shearAt({ VEd: V, P: P2, slope: slopeFav, d: dd, bw: sp.bw, bwNom: sp.bw - ductRed, A: sp.A, I: sp.I, bS: sp.bS, Asl: Ap2 + Asb, fck: c.fck, fctk, alphaL: 1, fywk, rule: ul.shearRule || 'ec2', uncracked: unc });
+      R.alphaL = Pfull > 0 ? P2 / Pfull : 0; R.uncracked = unc; R.sigBot = sb;
+      // tension chord 6.2.3(7): MEd/z + dFtd, not above MEd,max/z, against the bonded steel the section can develop
+      const cap = pre ? s.ly.reduce((t, l, k) => t + layers[k].A * Math.min(fpd, capAt(layers[k], k, s.x, l.sInf)), 0) : post.Ap * fpd;
+      const Fcap = cap + tb.reduce((t, b) => t + b.As * b.fyk / GS, 0);
+      return { x: s.x, d: dd, R, MEd: Mx, Fcap };
+    });
+    const MEdMax = Math.max(...ulsSt.map(u => u.MEd));
+    // only where the section cracks in flexure at the ULS: an uncracked end zone needs no more than the prestress (8.10.2.3(1))
+    shearSt.forEach(q => { const zc = q.R.z; q.Freq = Math.min(q.MEd / zc + q.R.dFtd, MEdMax / zc); q.Fu = q.R.uncracked ? 0 : q.Freq / Math.max(1, q.Fcap); });
+    // the checks start at d from the support face (6.2.1(8)); V_Rd,max at the face
+    const xFace = lb / 2;
+    const inZone = q => q.x >= xFace + q.d - 1e-6 && q.x <= L - xFace - q.d + 1e-6;
+    const zoneSt = shearSt.filter(inZone), faceL = shearSt.reduce((b, q) => Math.abs(q.x - xFace) < Math.abs(b.x - xFace) ? q : b);
+    const linkReq = q => q.R.need ? q.R.AswS : q.R.AswSmin;
+    let wV = null; (zoneSt.length ? zoneSt : shearSt).forEach(q => { const r = q.R.need ? q.R.AswS : 0; if (!wV || r > wV.r || (r === wV.r && q.R.Vnet / q.R.Vcap > wV.q.R.Vnet / wV.q.R.Vcap)) wV = { r, q }; });
+    const needAny = (zoneSt.length ? zoneSt : shearSt).some(q => q.R.need);
+    // links required at d from the face carry back to the support
+    const reqMax = Math.max(...(zoneSt.length ? zoneSt : shearSt).map(linkReq)), AswSmin = Math.max(...shearSt.map(q => q.R.AswSmin));
+    if (AswSprov > 0) {
+      checks.push({ id: 'vl', name: needAny ? 'Shear links' : 'Shear links (minimum)', ref: needAny ? '6.2.3(3)' : '9.2.2(5)', util: reqMax / AswSprov, x: wV.q.x, note: `A<sub>sw</sub>/s = ${reqMax.toFixed(3)} required, ${AswSprov.toFixed(3)} mm²/mm provided${needAny ? ` (V<sub>Ed</sub> − γ<sub>P</sub>V<sub>t</sub> = ${(wV.q.R.Vnet / 1e3).toFixed(0)} kN > V<sub>Rd,c</sub> = ${(wV.q.R.VRdc / 1e3).toFixed(0)} kN at ${xs1(wV.q.x)})` : ''}` });
+      const sl = Math.min(...shearSt.map(q => 0.75 * q.d));
+      checks.push({ id: 'vs', name: 'Link spacing', ref: '9.2.2(6)', rule: true, util: lk.s > sl + 1e-6 ? Infinity : 0, note: `s = ${lk.s} mm ≤ 0.75d = ${sl.toFixed(0)} mm` });
+    } else {
+      const wq = wV.q;
+      checks.push({ id: 'vc', name: 'Shear without links', ref: '6.2.2', util: Math.max(...(zoneSt.length ? zoneSt : shearSt).map(q => q.R.Vnet / q.R.VRdc)), x: wq.x, note: `V<sub>Ed</sub> − γ<sub>P</sub>V<sub>t</sub> ≤ V<sub>Rd,c</sub>; links are normally still provided (9.2.2)` });
+    }
+    { checks.push({ id: 'vm', name: 'Shear: web crushing', ref: '6.2.3(3)', util: faceL.R.VEd / faceL.R.Vmax45, x: faceL.x, note: `V<sub>Ed</sub> = ${(faceL.R.VEd / 1e3).toFixed(0)} kN at the support face ≤ V<sub>Rd,max</sub>(45°) = ${(faceL.R.Vmax45 / 1e3).toFixed(0)} kN, α<sub>cw</sub> = ${faceL.R.acw.toFixed(3)}${ductRed > 0 ? `, web net of ducts ${(sp.bw - ductRed).toFixed(0)} mm` : ''}` }); }
+    { const cr = shearSt.filter(q => !q.R.uncracked);
+      if (cr.length) { const w = cr.reduce((b, q) => q.Fu > b.Fu ? q : b); checks.push({ id: 'ft', name: 'Tension chord with the shear', ref: '6.2.3(7)', util: w.Fu, x: w.x, note: `M<sub>Ed</sub>/z + ΔF<sub>td</sub> = ${(w.Freq / 1e3).toFixed(0)} ≤ ${(w.Fcap / 1e3).toFixed(0)} kN the bonded steel develops at ${xs1(w.x)}${w.Fu > 1 ? `: add ${((w.Freq - w.Fcap) / (500 / GS)).toFixed(0)} mm² of anchored bars` : ''}` }); }
+      else notes.push('The section stays uncracked in flexure at the ULS along the whole span, so the tendons need develop no more than their prestress (8.10.2.3(1)) and the tension chord check does not arise.'); }
+    // lateral stability 5.9(3)
+    const l0t = inp.lt > 0 ? inp.lt : L, bf = sp.bTop, hb = sp.h / bf, latLim = 50 / hb ** (1 / 3);
+    checks.push({ id: 'lt', name: 'Lateral stability', ref: '5.9(3)', util: Math.max((l0t / bf) / latLim, hb / 2.5), note: `l<sub>0t</sub>/b = ${(l0t / bf).toFixed(1)} ≤ 50/(h/b)<sup>1/3</sup> = ${latLim.toFixed(1)}; h/b = ${hb.toFixed(2)} ≤ 2.5` });
+    // end block
+    let eb = null;
+    if (!pre && inp.end && inp.end.on) {
+      const e = inp.end, nA = Math.max(1, Math.round(e.na ?? post.nT ?? 1));
+      eb = endBlock({ P: post.Pj / nA, shape: e.shape || 'circle', a0: e.a0, b1: e.b1, h1: e.h1, fck: c.T.fck, nA, B: e.B, H: e.H, sigS: e.sigS ?? 300, phiZone: e.phiZone ?? 10, phiAll: e.phiAll ?? 12 });
+      checks.push({ id: 'eb1', name: 'Bearing under the anchor', ref: '6.7(2)', util: eb.sb / eb.fRdu, note: `γ<sub>P</sub>P/A<sub>c0</sub> = ${eb.sb.toFixed(1)} ≤ f<sub>Rdu</sub> = ${eb.fRdu.toFixed(1)} N/mm² (f<sub>ck</sub>(t) = ${c.T.fck.toFixed(1)})` });
+      checks.push({ id: 'eb2', name: 'End block strut', ref: '6.5.2(2)', util: eb.sStrut / eb.sRd, note: `${eb.sStrut.toFixed(2)} ≤ 0.6ν′f<sub>cd</sub> = ${eb.sRd.toFixed(2)} N/mm²` });
+      notes.push(`End block: bursting tie ${(eb.T / 1e3).toFixed(0)} kN per anchor → ${eb.As.toFixed(0)} mm² at ${eb.ss.toFixed(0)} N/mm²: ${eb.nZone} closed H${eb.phiZone} links round each anchor over ${eb.lenZone.toFixed(0)} mm${eb.Tall ? `; all ${nA} anchors together ${(eb.Tall / 1e3).toFixed(0)} kN → ${eb.AsAll.toFixed(0)} mm²: ${eb.nAll} closed H${eb.phiAll} links over ${eb.lenAll.toFixed(0)} mm` : ''}.`);
+    }
+    if (pts.some(p => p.a < 2 * sp.h || p.a > L - 2 * sp.h)) notes.push('A point load sits within 2d of a support: the shear checks start at d from the face as for distributed load; check the reduction β of 6.2.2(6) by hand.');
+    if (!pre && post.lset >= (post.both ? (L + 2 * a) / 2 : L + 2 * a) - 1e-6 && post.dIn > 0) notes.push('The draw-in reaches the far end of its tendon: the whole tendon loses force uniformly after lock-off.');
+
+    // losses at mid-span for the summary
+    const lossMid = (() => {
+      if (pre) {
+        const ly = mid.ly, Aall = layers.reduce((t, l) => t + l.A, 0), F = sigJ * Aall, P0 = mid.P0, P = mid.P;
+        const sum = key => ly.reduce((t, l, k) => t + layers[k].A * l.beta1 * l.tl.parts[key], 0);
+        return { Pj: F, el: F - P0, fr: 0, di: 0, P0, creep: sum('creep'), shrink: sum('shrink'), relax: sum('relax'), P, s0: P0 / Aall };
+      }
+      const P0 = mid.P0, P = mid.P, d = mid.tl.parts;
+      return { Pj: post.Pj, fr: post.Pj - mid.Pf, di: mid.Pf - mid.Pl, el: post.dEl, P0, creep: post.Ap * d.creep, shrink: post.Ap * d.shrink, relax: post.Ap * d.relax, P, s0: P0 / post.Ap };
+    })();
+
+    return { inp, sp, c, cr, sh, phi, ecs, h0, pre, post, layers, Ep, fpk, fp01, fpd, sigJ, sMax, sPm0, EcmT, Ecm, aeT, ae28, gSW, gT, gG, q, psi0, psi1, psi2, pts,
+      st, rows, mid, cmid, lossMid, K, k6, fcT, fc06, fc045, fTT, fTS, tComb, decComb, zDec, magnel: MG_, aid, moduli, econ, zone, defl, sets, ulsSt, ulsMid, shearSt, AswSprov, AswSmin, reqMax, needAny,
+      ductRed, xFace, eb, l0t, latLim, MT, MG, MQ, MEd, VEd, checks, notes, util: Math.max(...checks.map(k => k.util)), L, lb, a };
+  }
+
+  return { GC, GS, GP_FAV, GP_LOCAL, AGG, section, slice, props, width, S, concrete, creepEC2, shrinkEC2, relaxation, fibre, minModuli, p0Limits, p0Economic, halfPlane, bookConstraints, magnel, cableZone,
+    friction, elasticBook, loss546, lossSum, ulsBending, shearAt, endBlock, beamMV, design };
+})();
+if (typeof module !== 'undefined') module.exports = { PSC };
+
+</script>
+<script id="ui">
+'use strict';
+const $ = id => document.getElementById(id);
+const STORE = 'et-prestress-v1';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const f0 = v => Number.isFinite(v) ? Math.round(v).toString() : '–', f1 = v => Number.isFinite(v) ? (Math.round(v * 10) / 10).toFixed(1) : '–', f2 = v => Number.isFinite(v) ? v.toFixed(2) : '–', f3 = v => Number.isFinite(v) ? v.toFixed(3) : '–';
+const ufmt = u => !Number.isFinite(u) ? '&gt;99' : u.toFixed(3);
+const FCK = [[30, 'C30/37'], [35, 'C35/45'], [40, 'C40/50'], [45, 'C45/55'], [50, 'C50/60'], [55, 'C55/67'], [60, 'C60/75'], [70, 'C70/85']];
+$('fck').innerHTML = FCK.map(([v, t]) => `<option value="${v}"${v === 50 ? ' selected' : ''}>${t}</option>`).join('');
+const PSI = { A: ['Domestic', 0.7, 0.5, 0.3], B: ['Office', 0.7, 0.5, 0.3], C: ['Congregation', 0.7, 0.7, 0.6], D: ['Shopping', 0.7, 0.7, 0.6], E: ['Storage', 1.0, 0.9, 0.8], F: ['Traffic ≤ 30 kN', 0.7, 0.7, 0.6], G: ['Traffic 30–160 kN', 0.7, 0.5, 0.3], H: ['Roof', 0.7, 0, 0] };
+$('usage').innerHTML = Object.entries(PSI).map(([k, [nm, a, b, c]]) => `<option value="${k}"${k === 'B' ? ' selected' : ''}>${k}: ${nm} (${a}, ${b}, ${c})</option>`).join('');
+// EN 10138-3 strand and wire: [key, label, phi, area, fpk, type]
+const STRANDS = [['s93', '9.3 mm strand, Y1860S7, 52 mm²', 9.3, 52, 1860, 'strand'], ['s125', '12.5 mm strand, Y1860S7, 93 mm²', 12.5, 93, 1860, 'strand'], ['s129', '12.9 mm strand, Y1860S7, 100 mm²', 12.9, 100, 1860, 'strand'],
+  ['s152', '15.2 mm strand, Y1860S7, 140 mm²', 15.2, 140, 1860, 'strand'], ['s157', '15.7 mm strand, Y1860S7, 150 mm²', 15.7, 150, 1860, 'strand'], ['s157b', '15.7 mm strand, Y1770S7, 150 mm²', 15.7, 150, 1770, 'strand'],
+  ['w5', '5 mm indented wire, Y1770C, 19.6 mm²', 5, 19.6, 1770, 'wire'], ['w7', '7 mm indented wire, Y1670C, 38.5 mm²', 7, 38.5, 1670, 'wire'], ['custom', 'Other: give φ, area and f_pk', null, null, null, null]];
+$('strand').innerHTML = STRANDS.map(s => `<option value="${s[0]}"${s[0] === 's129' ? ' selected' : ''}>${esc(s[1]).replace('f_pk', 'f<sub>pk</sub>')}</option>`).join('');
+const setVal = (id, v) => { const el = $(id); if (!el || v == null) return; if (el.type === 'checkbox') { el.checked = !!v; return; } if (el.tagName === 'SELECT' && ![...el.options].some(o => o.value === String(v))) return; el.value = v; };
+let mode = 'pre', last = null;
+// ---------- dynamic rows ----------
+function layRow(s = {}) {
+  s = { n: 2, z: 60, db: 0, ...s };
+  const d = document.createElement('div'); d.className = 'row strand';
+  d.innerHTML = `<div><label>Strands</label><input class="n" type="number" step="1" min="1" value="${s.n}"></div><div><label>Height (mm)</label><input class="z" type="number" step="5" value="${s.z}"></div><div><label>Debonded (mm)</label><input class="db" type="number" step="100" value="${s.db}"></div><button class="xbtn" title="Remove layer">&times;</button>`;
+  d.querySelector('.xbtn').onclick = () => { if (document.querySelectorAll('#layRows .row').length > 1) d.remove(); };
+  $('layRows').appendChild(d);
+}
+function ptRow(s = {}) {
+  s = { a: 3, G: 0, Q: 0, ...s };
+  const d = document.createElement('div'); d.className = 'row pload';
+  d.innerHTML = `<div><label>From left (m)</label><input class="a" type="number" step="0.1" value="${s.a}"></div><div><label>G<sub>k</sub> (kN)</label><input class="G" type="number" step="1" value="${s.G}"></div><div><label>Q<sub>k</sub> (kN)</label><input class="Q" type="number" step="1" value="${s.Q}"></div><button class="xbtn" title="Remove load">&times;</button>`;
+  d.querySelector('.xbtn').onclick = () => d.remove();
+  $('ptRows').appendChild(d);
+}
+$('addLay').onclick = () => layRow({ n: 2, z: 110 }); $('addPt').onclick = () => ptRow();
+const lays = () => [...document.querySelectorAll('#layRows .row')].map(r => ({ n: +r.querySelector('.n').value, z: +r.querySelector('.z').value, db: +r.querySelector('.db').value || 0 }));
+const ptsIn = () => [...document.querySelectorAll('#ptRows .row')].map(r => ({ a: +r.querySelector('.a').value, G: +r.querySelector('.G').value || 0, Q: +r.querySelector('.Q').value || 0 }));
+// ---------- modes and visibility ----------
+const DEF = {
+  pre: { stype: 'dt', L: 12, lb: 150, g2: 3.6, q: 6, fck: 50, fckT: 32, t0: 1, cement: 'R', RH: 50, strand: 's129', sigJ: 72, tT: 'fctm', tS: 'fctm', tComb: 'freq', expo: 'XC1', lPhi: 8, lS: 200, fpk: 1860 },
+  post: { stype: 'I', L: 20, lb: 300, g2: 10, q: 15, fck: 40, fckT: '', t0: 7, cement: 'N', RH: 70, strand: 's157', sigJ: 75, tT: 'fctm', tS: 'fctm', tComb: 'freq', expo: 'XC1', lPhi: 10, lS: 250, fpk: 1860 } };
+function swapDefaults(to) { const from = to === 'post' ? 'pre' : 'post'; if (Object.keys(DEF[from]).every(k => String($(k).value) === String(DEF[from][k]))) Object.entries(DEF[to]).forEach(([k, v]) => setVal(k, v)); }
+function setMode(m) { mode = m; document.querySelectorAll('#modes button').forEach(b => b.classList.toggle('on', b.dataset.m === m)); refreshVis(); }
+document.querySelectorAll('#modes button').forEach(b => b.onclick = () => { if (b.dataset.m !== mode) swapDefaults(b.dataset.m); setMode(b.dataset.m); });
+function refreshVis() {
+  const show = (sel, on) => document.querySelectorAll(sel).forEach(e => e.classList.toggle('hidden', !on)), st = $('stype').value;
+  ['rect', 'dt', 'I', 'custom'].forEach(t => show('.st-' + t, st === t));
+  show('.pre', mode === 'pre'); show('.post', mode === 'post'); show('.cr-ec2', $('crMode').value === 'ec2'); show('.cr-given', $('crMode').value === 'given');
+  show('.cust', $('strand').value === 'custom'); show('.relf', $('relMode').value === 'factor'); show('.tTv', $('tT').value === 'value'); show('.tSv', $('tS').value === 'value');
+  show('.eb', $('ebOn').checked);
+}
+$('strand').addEventListener('change', () => { const s = STRANDS.find(q => q[0] === $('strand').value); if (s && s[4]) $('fpk').value = s[4]; });
+['stype', 'crMode', 'strand', 'relMode', 'tT', 'tS', 'ebOn'].forEach(id => $(id).addEventListener('change', refreshVis));
+const FIELDS = ['pName', 'pJob', 'pBy', 'pRef', 'stype', 'rb', 'rh', 'dB', 'dhf', 'dh', 'dn', 'dsp', 'dbt', 'dbb', 'ih', 'ibw', 'ibt', 'iht', 'ihth', 'ibb', 'ihb', 'ihbh', 'clay', 'L', 'lb', 'rho', 'gT', 'g2', 'q', 'usage', 'rule',
+  'fck', 'fckT', 't0', 'cement', 'agg', 'crMode', 'RH', 'temp', 'h0', 'phi', 'ecs', 'strand', 'cPhi', 'cAp', 'cType', 'fpk', 'fp01', 'Ep', 'sigJ', 'relCls', 'rho1000', 'relMode', 'relF', 'lossMode', 'release', 'bond', 'k6',
+  'nT', 'nS', 'ends', 'zE', 'zM', 'dIn', 'mu', 'kw', 'esj', 'dPhi', 'dKind', 'dAcross', 'bN', 'bPhi', 'bZ', 'lPhi', 'lLegs', 'lS', 'fyk', 'vRule', 'tT', 'tTv', 'tS', 'tSv', 'tComb', 'expo', 'dl1', 'dl2', 'lt', 'comp06',
+  'ebOn', 'ebShape', 'ebA', 'ebP1', 'ebP2', 'ebB1', 'ebH1', 'ebB', 'ebH', 'ebS'];
+const collect = () => { const s = { v: 1, mode, lays: lays(), pts: ptsIn() }; FIELDS.forEach(id => s[id] = $(id).type === 'checkbox' ? $(id).checked : $(id).value); return s; };
+const num = id => $(id).value === '' ? null : +$(id).value;
+function strandSpec() {
+  const s = STRANDS.find(q => q[0] === $('strand').value);
+  if (!s || s[0] === 'custom') return { phi: num('cPhi'), Ap: num('cAp'), type: $('cType').value, label: `${num('cPhi')} mm ${$('cType').value === 'wire' ? 'wire' : 'strand'}, ${num('cAp')} mm²` };
+  return { phi: s[2], Ap: s[3], type: s[5], label: s[1] };
+}
+function secSpec() {
+  const t = $('stype').value;
+  if (t === 'rect') return { type: 'rect', b: num('rb'), h: num('rh') };
+  if (t === 'dt') return { type: 'dt', B: num('dB'), hf: num('dhf'), h: num('dh'), n: Math.max(1, Math.round(num('dn') || 2)), sp: num('dsp'), bwt: num('dbt'), bwb: num('dbb') };
+  if (t === 'I') return { type: 'I', h: num('ih'), bw: num('ibw'), bt: num('ibt'), ht: num('iht') || 0, hth: num('ihth') || 0, bb: num('ibb') || num('ibw'), hb: num('ihb') || 0, hbh: num('ihbh') || 0 };
+  const layers = $('clay').value.split(/\n/).map(l => l.trim()).filter(Boolean).map((l, i) => { const v = l.split(/[,;\s]+/).map(Number); if (v.length < 2 || v.some(x => !Number.isFinite(x))) throw new Error(`Layer ${i + 1}: give depth, bottom width and top width`); return { h: v[0], b0: v[1], b1: v[2] ?? v[1] }; });
+  return { type: 'custom', layers };
+}
+function input() {
+  const u = PSI[$('usage').value], ss = strandSpec(), fpk = num('fpk'), pre = mode === 'pre';
+  const bars = num('bN') > 0 ? [{ As: num('bN') * Math.PI * num('bPhi') ** 2 / 4, z: num('bZ'), fyk: num('fyk'), n: num('bN'), phi: num('bPhi') }] : [];
+  const lim = { k6: pre ? +$('k6').value : 0.6, tT: { mode: $('tT').value, value: num('tTv') }, tS: { mode: $('tS').value, value: num('tSv') }, tComb: $('tComb').value, exposure: $('expo').value, comp06: $('comp06').checked };
+  const base = { sec: secSpec(), L: num('L') * 1000, lb: num('lb') || 0,
+    loads: { rho: num('rho') ?? 25, gT: num('gT') || 0, g2: num('g2') || 0, q: num('q') || 0, psi0: u[1], psi1: u[2], psi2: u[3], points: ptsIn().map(p => ({ a: p.a * 1000, G: p.G, Q: p.Q })) },
+    conc: { fck: +$('fck').value, fckT: num('fckT'), t0: num('t0'), cement: $('cement').value, agg: $('agg').value, RH: num('RH'), temp: num('temp') ?? 20, h0: num('h0'), creepMode: $('crMode').value, phi: num('phi'), ecs: num('ecs') },
+    lossMode: $('lossMode').value, bars, limits: lim, defl: { lim1: num('dl1') || 250, lim2: num('dl2') || 500 }, lt: num('lt') ? num('lt') * 1000 : null,
+    uls: { rule: $('rule').value, shearRule: $('vRule').value, links: { phi: num('lPhi'), legs: num('lLegs') || 2, s: num('lS') || 0, fywk: num('fyk') } } };
+  const steel = { fpk, fp01k: num('fp01'), Ep: num('Ep') ? num('Ep') * 1000 : (ss.type === 'wire' ? 205000 : 195000), sigJ: num('sigJ') / 100 * fpk, relClass: +$('relCls').value, rho1000: num('rho1000'), relMode: $('relMode').value, relFactor: num('relF') };
+  if (pre) base.pre = { kind: 'pre', ...steel, wire: ss.type, release: $('release').value, bondGood: $('bond').value === 'good', strands: lays().map(l => ({ n: l.n, Ap: ss.Ap, phi: ss.phi, z: l.z, debond: l.db })) };
+  else {
+    const nT = Math.max(1, Math.round(num('nT') || 1)), nS = Math.max(1, Math.round(num('nS') || 1));
+    base.pre = { kind: 'post', ...steel, Ap: nT * nS * ss.Ap, nT, nS, zEnd: num('zE'), zMid: num('zM'), mu: num('mu'), k: num('kw'), drawIn: num('dIn') || 0, ends: $('ends').value, esj: $('esj').value, duct: { phi: num('dPhi'), kind: $('dKind').value, across: num('dAcross') || 1 } };
+    base.end = { on: $('ebOn').checked, na: nT, shape: $('ebShape').value, a0: num('ebA'), b1: num('ebB1'), h1: num('ebH1'), B: num('ebB'), H: num('ebH'), sigS: $('ebS').value === 'fyd' ? 'fyd' : 300, phiZone: num('ebP1'), phiAll: num('ebP2') };
+  }
+  base.strandLabel = ss.label;
+  return base;
+}
+// Prestressed Beam drawings (inlined into the UI script; uses f0, f1). The cross-section with its tendons, the elevation
+// with the cable zone (book Figure 11.14) at a stretched vertical scale, the Magnel diagram at mid-span (Figure 11.12) and
+// line charts along the span (force, fibre stresses, deflection). light = print colours.
+const PINK = l => l ? '#000' : 'var(--txt)', PMUT = l => l ? '#666' : 'var(--mut)', PACC = l => l ? '#1b67b0' : 'var(--accent)', PFAIL = l => l ? '#c4242a' : 'var(--fail)';
+const PFILL = l => l ? '#ececec' : '#e6e9ee', PGRID = l => l ? '#d8d8d8' : '#e3e5e8';
+// horizontal places of n strands at level z, spread over the solid parts of the section there
+function strandXs(sp, z, n) {
+  const s = sp.spec; let iv;
+  if (s.type === 'dt') {
+    const spc = s.sp > 0 ? s.sp : s.B / s.n, hw = s.h - s.hf, w = z >= hw ? s.B : s.bwb + (s.bwt - s.bwb) * z / hw;
+    iv = Array.from({ length: s.n }, (_, i) => { const xc = (i - (s.n - 1) / 2) * spc; return [xc - w / 2, xc + w / 2]; });
+  } else { const w = PSC.width(sp.L, z); iv = [[-w / 2, w / 2]]; }
+  const per = iv.map(() => 0); for (let k = 0; k < n; k++) per[k % iv.length]++;
+  const xs = [];
+  iv.forEach(([a, b], i) => { const m = per[i], cov = Math.min(40, (b - a) / 4), lo = a + cov, hi = b - cov; for (let k = 0; k < m; k++) xs.push(m === 1 ? (a + b) / 2 : lo + (hi - lo) * k / (m - 1)); });
+  return xs;
+}
+function svgSection(R, light) {
+  const sp = R.sp, xs = sp.poly.map(p => p[0]), W = Math.max(...xs) - Math.min(...xs), H = sp.h, W0 = 340;
+  const sc = Math.min((W0 - 130) / W, 200 / H), H0 = Math.max(120, H * sc + 44), ox = 20 + (W0 - 130 - W * sc) / 2 - Math.min(...xs) * sc, X = x => ox + x * sc, Y = z => H0 - 22 - z * sc;
+  let g = `<path d="M${sp.poly.map(p => `${X(p[0]).toFixed(1)} ${Y(p[1]).toFixed(1)}`).join(' L')} Z" fill="${PFILL(light)}" stroke="${PINK(light)}" stroke-width="1.3" stroke-linejoin="round"/>`;
+  const xl = Math.min(...xs), xr = Math.max(...xs);
+  g += `<line x1="${X(xl) - 8}" y1="${Y(sp.yb)}" x2="${X(xr) + 8}" y2="${Y(sp.yb)}" stroke="${PMUT(light)}" stroke-width="0.8" stroke-dasharray="6 3 1.5 3"/>`;
+  g += `<text x="${X(xr) + 12}" y="${Y(sp.yb) + 4}" font-size="11" fill="${PMUT(light)}">centroid</text><text x="${X(xr) + 12}" y="${Y(sp.yb) + 17}" font-size="11" fill="${PMUT(light)}">y<tspan font-size="8" dy="2">b</tspan><tspan dy="-2"> = ${f0(sp.yb)}</tspan></text>`;
+  // depth dimension
+  g += `<line x1="${X(xr) + 64}" y1="${Y(0)}" x2="${X(xr) + 64}" y2="${Y(H)}" stroke="${PMUT(light)}" stroke-width="0.8"/><line x1="${X(xr) + 60}" y1="${Y(0)}" x2="${X(xr) + 68}" y2="${Y(0)}" stroke="${PMUT(light)}" stroke-width="0.8"/><line x1="${X(xr) + 60}" y1="${Y(H)}" x2="${X(xr) + 68}" y2="${Y(H)}" stroke="${PMUT(light)}" stroke-width="0.8"/><text x="${X(xr) + 72}" y="${(Y(0) + Y(H)) / 2 + 4}" font-size="11" fill="${PMUT(light)}">${f0(H)}</text>`;
+  if (R.pre) {
+    R.layers.forEach(l => strandXs(sp, l.z, l.n).forEach(x => { g += `<circle cx="${X(x).toFixed(1)}" cy="${Y(l.z).toFixed(1)}" r="${Math.max(2.6, l.phi / 2 * sc).toFixed(1)}" fill="${l.db > 0 ? (light ? '#fff' : 'var(--surf)') : PACC(light)}" stroke="${PACC(light)}" stroke-width="1.3"/>`; }));
+  } else {
+    const p = R.post, r = Math.max(4, (p.duct.phi || 60) / 2 * sc);
+    g += `<circle cx="${X(0)}" cy="${Y(p.zE)}" r="${r}" fill="none" stroke="${PMUT(light)}" stroke-width="1" stroke-dasharray="3 2"/>`;
+    g += `<circle cx="${X(0)}" cy="${Y(p.zM)}" r="${r}" fill="none" stroke="${PACC(light)}" stroke-width="1.4"/><circle cx="${X(0)}" cy="${Y(p.zM)}" r="${Math.max(2.4, r * 0.55)}" fill="${PACC(light)}"/>`;
+    g += `<text x="${X(0) - r - 4}" y="${Y(p.zE) + 4}" font-size="10.5" text-anchor="end" fill="${PMUT(light)}">ends</text><text x="${X(0) - r - 4}" y="${Y(p.zM) + 4}" font-size="10.5" text-anchor="end" fill="${PINK(light)}">mid-span</text>`;
+  }
+  (R.inp.bars || []).filter(b => b.As > 0).forEach(b => { const n = Math.max(2, b.n || 2); strandXs(sp, b.z, n).forEach(x => { g += `<circle cx="${X(x).toFixed(1)}" cy="${Y(b.z).toFixed(1)}" r="${Math.max(2.2, (b.phi || 12) / 2 * sc).toFixed(1)}" fill="${PINK(light)}"/>`; }); });
+  return `<svg class="psec" viewBox="0 0 ${W0} ${H0}" role="img" aria-label="Cross-section with the tendons">${g}</svg>`;
+}
+// elevation with the cable zone: vertical scale stretched so the zone can be read
+function svgZone(R, light) {
+  const sp = R.sp, L = R.L, a = R.a, W0 = 760, H0 = 250, x0 = -a, x1 = L + a, bh = 150, top = 26;
+  const X = x => 40 + (x - x0) / (x1 - x0) * (W0 - 80), Y = z => top + (sp.h - z) / sp.h * bh;
+  let g = `<rect x="${X(x0)}" y="${Y(sp.h)}" width="${X(x1) - X(x0)}" height="${bh}" fill="${PFILL(light)}" stroke="${PINK(light)}" stroke-width="1.2"/>`;
+  g += `<line x1="${X(x0)}" y1="${Y(sp.yb)}" x2="${X(x1)}" y2="${Y(sp.yb)}" stroke="${PMUT(light)}" stroke-width="0.8" stroke-dasharray="6 3 1.5 3"/>`;
+  const Z = R.zone.filter(q => Number.isFinite(q.lo) && Number.isFinite(q.hi) && !q.none);
+  if (Z.length > 1) {
+    const zc = z => Math.max(0, Math.min(sp.h, z)), up = Z.map(q => [q.x, zc(sp.yb - q.lo)]), dn = Z.map(q => [q.x, zc(sp.yb - q.hi)]).reverse();
+    g += `<path d="M${[...up, ...dn].map(p => `${X(p[0]).toFixed(1)} ${Y(p[1]).toFixed(1)}`).join(' L')} Z" fill="${PACC(light)}" fill-opacity="0.16" stroke="${PACC(light)}" stroke-width="0.9" stroke-dasharray="4 3"/>`;
+  }
+  if (R.pre) R.layers.forEach(l => {
+    const xa = -a + l.db, xb = L + a - l.db;
+    if (l.db > 0) g += `<line x1="${X(x0)}" y1="${Y(l.z)}" x2="${X(xa)}" y2="${Y(l.z)}" stroke="${PMUT(light)}" stroke-width="1" stroke-dasharray="2 3"/><line x1="${X(xb)}" y1="${Y(l.z)}" x2="${X(x1)}" y2="${Y(l.z)}" stroke="${PMUT(light)}" stroke-width="1" stroke-dasharray="2 3"/>`;
+    g += `<line x1="${X(xa)}" y1="${Y(l.z)}" x2="${X(xb)}" y2="${Y(l.z)}" stroke="${PMUT(light)}" stroke-width="1"/>`;
+  });
+  // the resultant tendon line at transfer; red where it leaves the zone
+  const T = R.st.filter(s => s.x >= 0 && s.x <= L && s.P0 > 0.05 * R.mid.P0);
+  const out = s => { const q = R.zone.find(z => Math.abs(z.x - s.x) < 1e-6); return q && !q.none && (s.e0 > q.hi + 0.5 || s.e0 < q.lo - 0.5); };
+  for (let i = 1; i < T.length; i++) { const s0 = T[i - 1], s1 = T[i], bad = out(s0) || out(s1); g += `<line x1="${X(s0.x).toFixed(1)}" y1="${Y(sp.yb - s0.e0).toFixed(1)}" x2="${X(s1.x).toFixed(1)}" y2="${Y(sp.yb - s1.e0).toFixed(1)}" stroke="${bad ? PFAIL(light) : PACC(light)}" stroke-width="2.2" stroke-linecap="round"/>`; }
+  if (!R.pre) g += `<line x1="${X(x0)}" y1="${Y(R.post.zE)}" x2="${X(0)}" y2="${Y(R.post.zE)}" stroke="${PACC(light)}" stroke-width="2.2"/><line x1="${X(L)}" y1="${Y(R.post.zE)}" x2="${X(x1)}" y2="${Y(R.post.zE)}" stroke="${PACC(light)}" stroke-width="2.2"/>`;
+  for (const xs of [0, L]) g += `<path d="M${X(xs)} ${Y(0)} l-7 12 h14 Z" fill="none" stroke="${PINK(light)}" stroke-width="1.2"/>`;
+  const yl = Y(0) + 30, xr = (bh / sp.h) / ((W0 - 80) / (x1 - x0));
+  g += `<text x="${X(L / 2)}" y="${yl}" font-size="11" text-anchor="middle" fill="${PMUT(light)}">span ${f1(L / 1000)} m; depth ${f0(sp.h)} mm drawn at ${xr >= 10 ? f0(xr) : f1(xr)}× the horizontal scale</text>`;
+  g += `<text x="${X(x0)}" y="16" font-size="11" fill="${PMUT(light)}"><tspan fill="${PACC(light)}">━</tspan> tendon resultant at transfer${R.pre ? ', strand layers in grey (dotted where debonded)' : ''} &nbsp; <tspan fill="${PACC(light)}" fill-opacity="0.5">■</tspan> cable zone: every stress within its limits</text>`;
+  return `<svg class="frame" viewBox="0 0 ${W0} ${H0}" role="img" aria-label="Elevation with the cable zone and the tendon">${g}</svg>`;
+}
+// Magnel diagram at mid-span: 10^6/P0 (P0 in kN) against e
+function svgMagnel(R, light) {
+  const M = R.magnel; if (!M.feasible && !M.cons) return '';
+  const W0 = 760, H0 = 400, pl = 64, pr = 178, pt = 18, pb = 44, U = u => u * 1e9;
+  const eLo = M.emin, eHi = M.emax + 0.08 * (M.emax - M.emin);
+  let uTop = 0; if (M.feasible) M.poly.forEach(p => { if (p[1] < M.uMax * 0.999) uTop = Math.max(uTop, p[1]); });
+  const uPt = R.cmid.P0 > 0 ? 1 / R.cmid.P0 : 0; uTop = Math.max(uTop, uPt) * 1.35 || 4e-6;
+  const X = e => pl + (e - eLo) / (eHi - eLo) * (W0 - pl - pr), Y = u => H0 - pb - u / uTop * (H0 - pt - pb);
+  let g = '';
+  // grid and axes
+  const step = (r) => { const s = 10 ** Math.floor(Math.log10(r / 5)); return [1, 2, 5, 10].map(k => k * s).find(k => r / k <= 7); };
+  const es = step(eHi - eLo), us = step(U(uTop));
+  for (let e = Math.ceil(eLo / es) * es; e <= eHi; e += es) g += `<line x1="${X(e)}" y1="${pt}" x2="${X(e)}" y2="${H0 - pb}" stroke="${PGRID(light)}" stroke-width="${Math.abs(e) < 1e-9 ? 1.2 : 0.6}"/><text x="${X(e)}" y="${H0 - pb + 16}" font-size="10.5" text-anchor="middle" fill="${PMUT(light)}">${f0(e)}</text>`;
+  for (let v = 0; v <= U(uTop) + 1e-9; v += us) g += `<line x1="${pl}" y1="${Y(v / 1e9)}" x2="${W0 - pr}" y2="${Y(v / 1e9)}" stroke="${PGRID(light)}" stroke-width="0.6"/><text x="${pl - 6}" y="${Y(v / 1e9) + 4}" font-size="10.5" text-anchor="end" fill="${PMUT(light)}">${f0(v)}</text>`;
+  g += `<text x="${(pl + W0 - pr) / 2}" y="${H0 - 8}" font-size="11" text-anchor="middle" fill="${PMUT(light)}">eccentricity e below the centroid (mm)</text>`;
+  g += `<text transform="translate(16 ${(pt + H0 - pb) / 2}) rotate(-90)" font-size="11" text-anchor="middle" fill="${PMUT(light)}">10⁶ / P₀ (P₀ in kN)</text>`;
+  g += `<defs><clipPath id="mgclip"><rect x="${pl}" y="${pt}" width="${W0 - pl - pr}" height="${H0 - pt - pb}"/></clipPath></defs>`;
+  if (M.feasible) g += `<path clip-path="url(#mgclip)" d="M${M.poly.map(p => `${X(p[0]).toFixed(1)} ${Y(p[1]).toFixed(1)}`).join(' L')} Z" fill="${PACC(light)}" fill-opacity="0.16" stroke="${PACC(light)}" stroke-width="1.4"/>`;
+  // constraint lines: the binding ones labelled at the right edge
+  const labs = [];
+  M.cons.forEach(h => {
+    if (Math.abs(h.au) < 1e-30) return;
+    const uf = e => -(h.ae * e + h.c) / h.au, bind = h.binds;
+    g += `<line clip-path="url(#mgclip)" x1="${X(eLo)}" y1="${Y(uf(eLo)).toFixed(1)}" x2="${X(eHi)}" y2="${Y(uf(eHi)).toFixed(1)}" stroke="${bind ? PINK(light) : PMUT(light)}" stroke-width="${bind ? 1.3 : 0.7}" stroke-opacity="${bind ? 1 : 0.55}"${bind ? '' : ' stroke-dasharray="3 3"'}/>`;
+    if (bind) { let ey = eHi, uy = uf(eHi); if (uy > uTop) { ey = eLo + (eHi - eLo) * 0.5; uy = uf(ey); for (let e = eHi; e > eLo; e -= (eHi - eLo) / 200) if (uf(e) <= uTop && uf(e) >= 0) { ey = e; uy = uf(e); break; } } if (uy < 0) { for (let e = eHi; e > eLo; e -= (eHi - eLo) / 200) if (uf(e) >= 0 && uf(e) <= uTop) { ey = e; uy = uf(e); break; } } labs.push({ y: Y(Math.min(uTop, Math.max(0, uy))), t: (h.eq ? h.eq + ' ' : '') + h.label }); }
+  });
+  labs.sort((p, q) => p.y - q.y); labs.forEach((l, i) => { if (i && l.y < labs[i - 1].y + 13) l.y = labs[i - 1].y + 13; g += `<text x="${W0 - pr + 6}" y="${(l.y + 4).toFixed(1)}" font-size="10" fill="${PINK(light)}">${l.t}</text>`; });
+  // the physical limit on e and the design point
+  g += `<line x1="${X(M.emax)}" y1="${pt}" x2="${X(M.emax)}" y2="${H0 - pb}" stroke="${PMUT(light)}" stroke-width="1" stroke-dasharray="6 3"/><text x="${X(M.emax) - 4}" y="${pt + 12}" font-size="10" text-anchor="end" fill="${PMUT(light)}">e<tspan font-size="8" dy="2">max</tspan></text>`;
+  if (M.feasible && M.minP0 && !M.minP0.unbounded) g += `<circle cx="${X(M.minP0.e)}" cy="${Y(1 / M.minP0.P0)}" r="3.5" fill="${PINK(light)}"/><text x="${X(M.minP0.e) - 6}" y="${Y(1 / M.minP0.P0) - 7}" font-size="10.5" text-anchor="end" fill="${PINK(light)}">min P₀ ${f0(M.minP0.P0 / 1e3)} kN</text>`;
+  if (M.feasible && M.maxP0 && Number.isFinite(M.maxP0.P0)) g += `<circle cx="${X(M.maxP0.e)}" cy="${Y(1 / M.maxP0.P0)}" r="3.5" fill="${PINK(light)}"/><text x="${X(M.maxP0.e) + 6}" y="${Y(1 / M.maxP0.P0) + 14}" font-size="10.5" fill="${PINK(light)}">max P₀ ${f0(M.maxP0.P0 / 1e3)} kN</text>`;
+  if (uPt > 0) { const ok = M.atE && !M.atE.none && R.cmid.P0 >= M.atE.P0lo * (1 - 1e-6) && R.cmid.P0 <= M.atE.P0hi * (1 + 1e-6); g += `<circle cx="${X(R.cmid.e0)}" cy="${Y(uPt)}" r="6" fill="${ok ? PACC(light) : PFAIL(light)}" stroke="${light ? '#fff' : 'var(--surf)'}" stroke-width="2"/><text x="${X(R.cmid.e0) + 10}" y="${Y(uPt) - 8}" font-size="11" font-weight="600" fill="${ok ? PINK(light) : PFAIL(light)}">this design: P₀ ${f0(R.cmid.P0 / 1e3)} kN, e ${f0(R.cmid.e0)} mm</text>`; }
+  return `<svg class="frame" viewBox="0 0 ${W0} ${H0}" role="img" aria-label="Magnel diagram at mid-span">${g}</svg>`;
+}
+// line chart along the span. series: [{ name, pts: [[x(mm), y]], col, dash, w, op }], hl: [{ y, label }]
+function svgChart({ series, hl = [], yLabel, light, H0 = 210, flip = false, unit = '' }) {
+  const W0 = 760, pl = 58, pr = 150, pt = 12, pb = 34, all = series.flatMap(s => s.pts), xs = all.map(p => p[0]);
+  const xa = Math.min(...xs), xb = Math.max(...xs);
+  let ya = Math.min(0, ...all.map(p => p[1]), ...hl.map(h => h.y)), yb = Math.max(0, ...all.map(p => p[1]), ...hl.map(h => h.y));
+  const pad = (yb - ya) * 0.08 || 1; ya -= pad; yb += pad;
+  const X = x => pl + (x - xa) / (xb - xa) * (W0 - pl - pr), Y = y => flip ? pt + (y - ya) / (yb - ya) * (H0 - pt - pb) : H0 - pb - (y - ya) / (yb - ya) * (H0 - pt - pb);
+  const step = r => { const s = 10 ** Math.floor(Math.log10(r / 4)); return [1, 2, 5, 10].map(k => k * s).find(k => r / k <= 6); };
+  let g = '';
+  const ys = step(yb - ya); for (let v = Math.ceil(ya / ys) * ys; v <= yb; v += ys) g += `<line x1="${pl}" y1="${Y(v)}" x2="${W0 - pr}" y2="${Y(v)}" stroke="${PGRID(light)}" stroke-width="${Math.abs(v) < 1e-9 ? 1.1 : 0.6}"/><text x="${pl - 6}" y="${Y(v) + 4}" font-size="10.5" text-anchor="end" fill="${PMUT(light)}">${Math.abs(ys) < 1 ? v.toFixed(1) : f0(v)}</text>`;
+  const xsT = step((xb - xa) / 1000) * 1000; for (let v = Math.ceil(xa / xsT) * xsT; v <= xb + 1e-6; v += xsT) g += `<text x="${X(v)}" y="${H0 - pb + 15}" font-size="10.5" text-anchor="middle" fill="${PMUT(light)}">${(v / 1000).toFixed(xsT < 1000 ? 1 : 0)}</text>`;
+  g += `<text x="${W0 - pr}" y="${H0 - 4}" font-size="10.5" text-anchor="end" fill="${PMUT(light)}">x along the span (m)</text><text transform="translate(14 ${(pt + H0 - pb) / 2}) rotate(-90)" font-size="10.5" text-anchor="middle" fill="${PMUT(light)}">${yLabel}</text>`;
+  const labs = [];
+  // limits: thin grey lines labelled inside the plot at the left; the series are labelled in the right margin
+  const hy = [];
+  hl.forEach(h => { const y = Y(h.y), up = !hy.some(v => Math.abs(v - y) < 11); hy.push(y); g += `<line x1="${pl}" y1="${y}" x2="${W0 - pr}" y2="${y}" stroke="${h.col || PMUT(light)}" stroke-width="0.9" stroke-opacity="0.8"/><text x="${pl + 6}" y="${up ? y - 3 : y + 11}" font-size="9.5" fill="${h.col || PMUT(light)}">${h.label}</text>`; });
+  series.forEach(s => { g += `<path d="M${s.pts.map(p => `${X(p[0]).toFixed(1)} ${Y(p[1]).toFixed(1)}`).join(' L')}" fill="none" stroke="${s.col}" stroke-width="${s.w || 1.8}"${s.dash ? ` stroke-dasharray="${s.dash}"` : ''}${s.op ? ` stroke-opacity="${s.op}"` : ''} stroke-linejoin="round"/>`; const mid = s.pts.reduce((b, p) => Math.abs(p[0] - (xa + xb) / 2) < Math.abs(b[0] - (xa + xb) / 2) ? p : b); if (s.name) labs.push({ y: Y(s.lab ?? mid[1]), t: s.name, col: s.col, op: s.op }); });
+  labs.sort((p, q) => p.y - q.y); labs.forEach((l, i) => { if (i && l.y < labs[i - 1].y + 12) l.y = labs[i - 1].y + 12; });
+  labs.forEach(l => { g += `<text x="${W0 - pr + 6}" y="${(l.y + 4).toFixed(1)}" font-size="10" fill="${l.col}"${l.op ? ` fill-opacity="${Math.max(0.75, l.op)}"` : ''}>${l.t}</text>`; });
+  return `<svg class="frame" viewBox="0 0 ${W0} ${H0}" role="img" aria-label="${esc(yLabel)} along the span">${g}</svg>`;
+}
+function chartForce(R, light) {
+  const S = R.st, s = [{ name: 'P₀ at transfer', pts: S.map(q => [q.x, q.P0 / 1e3]), col: PINK(light), dash: '5 3', w: 1.5 }, { name: 'P after all losses', pts: S.map(q => [q.x, q.P / 1e3]), col: PACC(light), w: 2 }];
+  if (!R.pre) s.unshift({ name: 'after friction', pts: S.map(q => [q.x, q.Pf / 1e3]), col: PMUT(light), w: 1.2, op: 0.8 });
+  return svgChart({ series: s, hl: R.pre ? [] : [{ y: R.post.Pj / 1e3, label: 'jacking force' }], yLabel: 'prestress force (kN)', light });
+}
+function chartStress(R, light, fibre) {
+  const rows = R.rows, top = fibre === 'top';
+  const T = rows.map(r => [r.x, top ? r.T.top : r.T.bot]);
+  const full = rows.map(r => [r.x, top ? r.S.char.hi.top : r.S.char.hi.bot]), sw = rows.map(r => [r.x, top ? r.S.char.lo.top : r.S.char.lo.bot]);
+  const hl = [{ y: R.fcT, label: `${R.k6}f<tspan font-size="7" dy="2">ck</tspan><tspan dy="-2">(t) transfer</tspan>` }, { y: R.fc06, label: '0.6f<tspan font-size="7" dy="2">ck</tspan>' }];
+  if (R.fTT > 0) hl.push({ y: -R.fTT, label: 'tension, transfer' }); if (R.fTS > 0 && Math.abs(R.fTS - R.fTT) > 0.05) hl.push({ y: -R.fTS, label: 'tension, service' });
+  return svgChart({ series: [{ name: 'transfer', pts: T, col: PINK(light), dash: '2 3', w: 1.6 }, { name: 'service, G + Q', pts: full, col: PACC(light), w: 2 }, { name: 'service, self-weight', pts: sw, col: PACC(light), w: 1.6, op: 0.45 }],
+    hl, yLabel: `${top ? 'top' : 'bottom'} fibre (N/mm², compression +)`, light, H0: 200 });
+}
+function chartDefl(R, light) {
+  const D = R.defl, xs = Array.from({ length: D.NG + 1 }, (_, i) => R.L * i / D.NG), mk = arr => arr.map((v, i) => [xs[i], v]);
+  return svgChart({ series: [{ name: 'at transfer', pts: mk(D.yT), col: PINK(light), dash: '2 3', w: 1.6 }, { name: 'with the finishes', pts: mk(D.yF), col: PMUT(light), w: 1.4 }, { name: 'long term (q-p)', pts: mk(D.yL), col: PACC(light), w: 2 }],
+    hl: [{ y: D.lim1, label: `L/${R.inp.defl?.lim1 ?? 250} sag limit` }], yLabel: 'deflection (mm, down +)', light, H0: 200, flip: true });
+}
+
+const sub = s => s;
+const bar = c => c.rule ? `<div class="ck"><div class="nm">${c.name}<small>${esc(c.ref)} &nbsp;${c.note || ''}</small></div><div class="bar"></div><div class="u ${c.util > 1 ? 'over' : ''}">${c.util > 1 ? 'FAIL' : 'OK'}</div></div>`
+  : `<div class="ck"><div class="nm">${c.name}<small>${esc(c.ref)} &nbsp;${c.note || ''}</small></div><div class="bar"><i class="${c.util > 1 ? 'over' : c.util > 0.9 ? 'hi' : ''}" style="width:${Math.min(100, c.util * 100 / 1.2)}%"></i></div><div class="u ${c.util > 1 ? 'over' : ''}">${ufmt(c.util)}</div></div>`;
+const kv = (k, v) => `<div><b>${k}</b><span>${v}</span></div>`;
+const kN = v => f0(v / 1e3), kNm = v => f1(v / 1e6), pc = (v, of) => f1(100 * v / of) + '%', updn = v => Math.abs(v) < 0.05 ? '0' : v > 0 ? `${f1(v)} down` : `${f1(-v)} up`;
+const SECNAME = { rect: 'Rectangle', I: 'I beam', dt: 'Double-tee', custom: 'Layered section' };
+function secLabel(R) { const s = R.sp.spec; return s.type === 'rect' ? `${s.b} × ${s.h} rectangle` : s.type === 'dt' ? `double-tee ${s.B} × ${s.h}` : s.type === 'I' ? `I beam ${s.bt || s.bw} × ${s.h}` : `layered section ${f0(R.sp.h)} deep`; }
+function tendonLabel(R) {
+  if (R.pre) { const n = R.layers.reduce((t, l) => t + l.n, 0); return `${n} × ${R.inp.strandLabel.split(',')[0]} at ${f0(100 * R.sigJ / R.fpk)}% f<sub>pk</sub>`; }
+  return `${R.inp.pre.nT} tendons of ${R.inp.pre.nS} × ${R.inp.strandLabel.split(',')[0]}, A<sub>p</sub> ${f0(R.post.Ap)} mm², jacked at ${f0(100 * R.sigJ / R.fpk)}% f<sub>pk</sub>`;
+}
+function lossTable(R) {
+  const m = R.lossMid, P = m.Pj, row = (t, v, ref, strong) => `<tr${strong ? ' style="font-weight:600"' : ''}><td>${t}</td><td>${ref}</td><td>${kN(v)}</td><td>${pc(v, P)}</td></tr>`;
+  let h = `<table class="t"><thead><tr><th>At mid-span</th><th>Clause</th><th>kN</th><th>of initial</th></tr></thead><tbody>`;
+  h += row(R.pre ? 'Initial force at the bed' : 'Jacking force', P, R.pre ? '5.10.2.1' : '5.10.2.1', true);
+  if (!R.pre) { h += row('Friction, μ(θ + kx)', -m.fr, '5.10.5.2'); h += row('Draw-in at lock-off', -m.di, '5.10.5.3'); }
+  h += row(R.pre ? 'Elastic shortening at release' : `Elastic shortening, j = ${f2(R.post.j)}`, -m.el, '5.10.5.1');
+  h += row('P₀ after transfer', m.P0, '5.10.3', true);
+  h += row(`Creep, φ = ${f2(R.phi)}`, -m.creep, R.inp.lossMode === 'sum' ? 'φ/(1.05E<sub>cm</sub>)' : '5.46'); h += row(`Shrinkage, ε<sub>cs</sub> = ${f0(R.ecs * 1e6)}×10⁻⁶`, -m.shrink, R.inp.lossMode === 'sum' ? 'ε<sub>cs</sub>E<sub>p</sub>' : '5.46');
+  h += row('Relaxation', -m.relax, R.inp.lossMode === 'sum' ? '3.3.2(7)' : '5.46, 0.8Δσ<sub>pr</sub>');
+  h += row('P after all losses', m.P, '', true);
+  return h + `</tbody></table><div class="help">Long-term losses ${pc(m.P0 - m.P, m.P0)} of P₀; total ${pc(m.Pj - m.P, m.Pj)} of the initial force.</div>`;
+}
+function shearTable(R) {
+  const S = R.shearSt.filter(q => q.x <= R.L / 2 + 1), pick = [];
+  for (let k = 0; k <= 6; k++) { const xt = Math.max(R.xFace, 0) + (R.L / 2 - Math.max(R.xFace, 0)) * k / 6; pick.push(S.reduce((b, q) => Math.abs(q.x - xt) < Math.abs(b.x - xt) ? q : b)); }
+  const rows = [...new Set(pick)].map(q => { const r = q.R; return `<tr><td>${f2(q.x / 1000)}</td><td>${f0(q.d)}</td><td>${kN(r.VEd)}</td><td>${kN(r.VRdc)} <small>${r.useUnc ? '6.4' : '6.2a'}</small></td><td>${kN(r.gVt)}</td><td>${kN(r.Vmax22)}</td><td>${r.need ? f3(r.AswS) : 'min ' + f3(r.AswSmin)}</td><td>${kN(r.dFtd)}</td></tr>`; }).join('');
+  return `<table class="t"><thead><tr><th>x (m)</th><th>d</th><th>V<sub>Ed</sub></th><th>V<sub>Rd,c</sub></th><th>γ<sub>P</sub>V<sub>t</sub></th><th>V<sub>Rd,max</sub> 22°</th><th>A<sub>sw</sub>/s</th><th>ΔF<sub>td</sub></th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function aidsHTML(R) {
+  const M = R.magnel, A = R.aid; let t = '';
+  if (M.feasible) {
+    t += `Feasible at mid-span: P₀ from <b>${M.minP0.unbounded ? '0' : kN(M.minP0.P0)} kN</b> (at e = ${f0(M.minP0.e)} mm) to <b>${Number.isFinite(M.maxP0.P0) ? kN(M.maxP0.P0) + ' kN' : 'unbounded'}</b> (at e = ${f0(M.maxP0.e)} mm).`;
+    if (M.atE) t += M.atE.none ? ` At this eccentricity, ${f0(M.atE.e)} mm, no prestress satisfies every limit.` : ` At this eccentricity, ${f0(M.atE.e)} mm: P₀ ${kN(M.atE.P0lo)} to ${Number.isFinite(M.atE.P0hi) ? kN(M.atE.P0hi) : '∞'} kN.`;
+    if (M.atP) t += M.atP.none ? ` At this force no eccentricity works.` : ` At this force, ${kN(M.atP.P0)} kN: e ${f0(M.atP.elo)} to ${f0(M.atP.ehi)} mm.`;
+  } else t += '<b>No prestress force and eccentricity satisfy every limit at mid-span:</b> the section is too small for these limits.';
+  t += `<br>Loss ratio K = P/P₀ = ${f3(R.K)}. Minimum moduli (11.15, 11.16): z<sub>t</sub> ≥ ${f1(R.moduli.ztMin / 1e6)}×10⁶, z<sub>b</sub> ≥ ${f1(R.moduli.zbMin / 1e6)}×10⁶ mm³ (provided ${f1(R.sp.zt / 1e6)}, ${f1(R.sp.zb / 1e6)}). Maximum economic P₀ (11.23): ${kN(R.econ)} kN.`;
+  return t;
+}
+function values(R) {
+  const c = R.c; let h = kv('A (mm²)', f0(R.sp.A)) + kv('y<sub>b</sub> (mm)', f1(R.sp.yb)) + kv('I (×10⁶ mm⁴)', f0(R.sp.I / 1e6)) + kv('z<sub>t</sub>, z<sub>b</sub> (×10⁶ mm³)', `${f1(R.sp.zt / 1e6)}, ${f1(R.sp.zb / 1e6)}`)
+    + kv('h₀ (mm)', f0(R.h0)) + kv('Self-weight (kN/m)', f2(R.gSW)) + kv('f<sub>ck</sub>(t), f<sub>ctm</sub>(t)', `${f1(c.T.fck)}, ${f2(c.T.fctm)}`) + kv('E<sub>cm</sub>(t), E<sub>cm</sub> (kN/mm²)', `${f1(R.EcmT / 1e3)}, ${f1(R.Ecm / 1e3)}`)
+    + kv('φ(∞, t₀)', f2(R.phi)) + kv('ε<sub>cs</sub> after transfer', `${f0(R.ecs * 1e6)}×10⁻⁶`) + kv('f<sub>p0.1k</sub>, f<sub>pd</sub>', `${f0(R.fp01)}, ${f0(R.fpd)}`) + kv('E<sub>p</sub> (kN/mm²)', f0(R.Ep / 1e3));
+  if (R.pre) h += kv('l<sub>pt</sub> (mm)', R.layers.map(l => f0(l.lpt)).filter((v, i, a) => a.indexOf(v) === i).join(', ')) + kv('f<sub>bpt</sub> (N/mm²)', f2(R.layers[0].fbpt));
+  else h += kv('Draw-in length (mm)', f0(R.post.lset)) + kv('Force at the anchor (kN)', kN(R.post.Panchor));
+  h += kv('M<sub>Rd</sub> mid-span (kNm)', kNm(R.ulsMid.MRd)) + kv('x/d at ULS', f2(R.ulsMid.xd)) + kv('At transfer (mm)', updn(R.defl.T.mid)) + kv('Long term, q-p (mm)', updn(R.defl.Lg.mid));
+  return h;
+}
+function render() {
+  const { R } = last, W = R.checks.filter(k => !(k.rule && k.util <= 1)).sort((a, b) => b.util - a.util);
+  const top = W[0] || R.checks[0], m = R.lossMid;
+  const what = `${secLabel(R)}, span ${f1(R.L / 1000)} m; ${tendonLabel(R)}; P₀ ${kN(m.P0)} kN, P ${kN(m.P)} kN at mid-span`;
+  let h = `<div class="verdict ${R.util > 1 ? 'fail' : ''}"><div><div class="big">${R.util > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(R.util)}</div><div class="sub">Governs: ${top.name.charAt(0).toLowerCase() + top.name.slice(1)} (${esc(top.ref)})<br>${what}</div></div></div>`;
+  h += `<div class="dlabel">Section and values</div><div class="secrow">${svgSection(R, false)}<div class="kv" style="margin:0">${values(R)}</div></div>`;
+  h += `<div class="dlabel">Cable zone</div>${svgZone(R, false)}`;
+  h += `<div class="dlabel">Magnel diagram at mid-span</div>${svgMagnel(R, false)}<div class="aids">${aidsHTML(R)}</div>`;
+  h += `<div class="dlabel">Checks</div><div class="checks">${W.concat(R.checks.filter(k => k.rule && k.util <= 1)).map(bar).join('')}</div>`;
+  if (R.notes.length) h += R.notes.map(n => `<div class="note">${n}</div>`).join('');
+  h += `<div class="dlabel">Losses</div><div class="tscroll">${lossTable(R)}</div>`;
+  h += `<div class="dlabel">Prestress force</div>${chartForce(R, false)}`;
+  h += `<div class="dlabel">Top fibre stress</div>${chartStress(R, false, 'top')}<div class="dlabel">Bottom fibre stress</div>${chartStress(R, false, 'bot')}`;
+  h += `<div class="dlabel">Deflection</div>${chartDefl(R, false)}<div class="help">Transfer: P₀ and the self-weight on E<sub>cm</sub>(t). With the finishes: add them on E<sub>cm</sub>, before most losses. Long term: the quasi-permanent load and the final force on E<sub>c,eff</sub> = E<sub>cm</sub>/(1 + φ) = ${f1(R.defl.Ecf / 1e3)} kN/mm². Movement after the finishes = long term − with the finishes: ${updn(R.defl.D.mid)} mm at mid-span.</div>`;
+  h += `<div class="dlabel">Shear, support to mid-span</div><div class="tscroll">${shearTable(R)}</div><div class="help">kN and mm²/mm. V<sub>Rd,c</sub> by 6.2a where the section cracks in flexure at the ULS, by 6.4 (with α<sub>l</sub> over l<sub>pt2</sub>) where it does not${R.inp.uls.shearRule === 'lower' ? '; here the lower of the two, as Mosley et al. do' : ''}. σ<sub>cp</sub> and the inclined tendon force V<sub>t</sub> take γ<sub>P,fav</sub> = 0.9. Links where V<sub>Ed</sub> − γ<sub>P</sub>V<sub>t</sub> > V<sub>Rd,c</sub>, from d beyond the support face; z = 0.9d.</div>`;
+  h += `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  $('results').innerHTML = h;
+  $('printBtn').onclick = () => { $('report').innerHTML = report(); window.print(); };
+}
+function run() {
+  try { localStorage.setItem(STORE, JSON.stringify(collect())); } catch (e) { /* storage unavailable */ }
+  try { const inp = input(), R = PSC.design(inp); last = { R, inp }; render(); } catch (e) { $("results").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+// ---------- A4 sheet ----------
+const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
+const okng = u => u > 1 ? `<span class="ng">${ufmt(u)}</span>` : `<span class="ok">${ufmt(u)}</span>`;
+function report() {
+  const s = collect(), today = new Date().toLocaleDateString('en-GB'), { R } = last, c = R.c, m = R.lossMid, cls = (FCK.find(q => q[0] === c.fck) || [0, 'C' + c.fck])[1];
+  const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.pRef) || '&nbsp;'}</div><div class="ttl">${R.pre ? 'Pretensioned' : 'Post-tensioned'} beam to BS EN 1992-1-1 + UK NA</div></div>`;
+  let b = `<div class="rs"><h2>Member</h2>${svgSection(R, true)}`
+    + rl(`${SECNAME[R.sp.type]}: A = ${f0(R.sp.A)} mm², y<sub>b</sub> = ${f1(R.sp.yb)} mm, I = ${f0(R.sp.I / 1e6)}×10⁶ mm⁴, z<sub>t</sub> = ${f1(R.sp.zt / 1e6)}×10⁶, z<sub>b</sub> = ${f1(R.sp.zb / 1e6)}×10⁶ mm³; h₀ = 2A/u = ${f0(R.h0)} mm`, 'gross section', '')
+    + rl(`Simply supported, span ${f2(R.L / 1000)} m between bearing centres, bearings ${f0(R.lb)} mm; self-weight ${f2(R.gSW)}, extra at transfer ${f2(R.gT - R.gSW)}, finishes ${f2(R.gG - R.gT)}, imposed ${f2(R.q)} kN/m${R.pts.length ? `; ${R.pts.length} point load${R.pts.length > 1 ? 's' : ''}` : ''}; ψ₀ ${R.psi0}, ψ₁ ${R.psi1}, ψ₂ ${R.psi2}`, 'EN 1990', '')
+    + rl(`${cls}: f<sub>ck</sub>(t) = ${f1(c.T.fck)} at transfer (${c.T.src === 'given' ? 'given' : `t₀ = ${R.inp.conc.t0} days, cement ${R.inp.conc.cement}`}), f<sub>ctm</sub>(t) = ${f2(c.T.fctm)}, E<sub>cm</sub>(t) = ${f1(R.EcmT / 1e3)}, E<sub>cm</sub> = ${f1(R.Ecm / 1e3)} kN/mm²`, '3.1.2, 3.1.3', '')
+    + rl(`φ(∞, t₀) = ${f2(R.phi)}, ε<sub>cs</sub> after transfer = ${f0(R.ecs * 1e6)}×10⁻⁶${R.cr ? ` (RH ${R.inp.conc.RH}%, h₀ ${f0(R.h0)} mm, φ<sub>RH</sub> ${f3(R.cr.phiRH)}, β(t₀) ${f3(R.cr.bt0)}; ε<sub>cd,∞</sub> ${f0(R.sh.ecdInf * 1e6)}, ε<sub>ca,∞</sub> ${f0(R.sh.ecaInf * 1e6)}×10⁻⁶)` : ' (given)'}`, R.cr ? 'Annex B' : '', '')
+    + rl(`${tendonLabel(R)}; f<sub>pk</sub> = ${f0(R.fpk)}, f<sub>p0.1k</sub> = ${f0(R.fp01)}, E<sub>p</sub> = ${f0(R.Ep / 1e3)} kN/mm²; relaxation class ${R.inp.pre.relClass}, ρ<sub>1000</sub> = ${R.inp.pre.rho1000}%`, '3.3', '') + '</div>';
+  b += `<div class="rs"><h2>Prestress and losses</h2>`;
+  if (R.pre) b += rl(`Transmission length l<sub>pt</sub> = α₁α₂φσ<sub>pm0</sub>/f<sub>bpt</sub>, f<sub>bpt</sub> = η<sub>p1</sub>η₁f<sub>ctd</sub>(t) = ${f2(R.layers[0].fbpt)} N/mm²: ${R.layers.map(l => f0(l.lpt)).join(', ')} mm; l<sub>pt1</sub> = 0.8l<sub>pt</sub> for stresses, l<sub>pt2</sub> = 1.2l<sub>pt</sub> for shear and anchorage`, '8.10.2.2', '');
+  else b += rl(`Friction P(x) = P<sub>max</sub>e<sup>−μ(θ + kx)</sup>, μ = ${R.post.mu}, k = ${R.post.k} rad/m, stressed from ${R.post.both ? 'both ends' : 'one end'}; draw-in ${R.post.dIn} mm affects ${f0(R.post.lset)} mm; elastic shortening averaged along the tendon with j = ${f2(R.post.j)}`, '5.10.5', '');
+  b += rl(`At mid-span: initial ${kN(m.Pj)}${R.pre ? '' : `, friction −${kN(m.fr)}, draw-in −${kN(m.di)}`}, elastic −${kN(m.el)} → P₀ = ${kN(m.P0)} kN; creep −${kN(m.creep)}, shrinkage −${kN(m.shrink)}, relaxation −${kN(m.relax)} → P = ${kN(m.P)} kN (${pc(m.P0 - m.P, m.P0)} of P₀)`, R.inp.lossMode === 'sum' ? 'separate sums' : '5.46', `K = ${f3(R.K)}`) + '</div>';
+  b += `<div class="rs"><h2>Stresses and cable zone</h2>${svgZone(R, true)}` + rl(`Limits: transfer ${R.k6}f<sub>ck</sub>(t) = ${f2(R.fcT)}, tension ${R.fTT > 0 ? f2(R.fTT) : 'none'}; service 0.6f<sub>ck</sub> = ${f1(R.fc06)} (characteristic), 0.45f<sub>ck</sub> = ${f1(R.fc045)} (quasi-permanent), tension ${R.fTS > 0 ? f2(R.fTS) : 'none'} (${R.tComb === 'char' ? 'characteristic' : 'frequent'}) N/mm²; r<sub>sup</sub> = r<sub>inf</sub> = 1.0 (UK NA)`, '5.10.2.2, 7.1, 7.2', '')
+    + `${svgMagnel(R, true)}<p class="rp">${aidsHTML(R)}</p></div>`;
+  b += `<div class="rs"><h2>Deflection</h2>` + rl(`At mid-span: transfer ${updn(R.defl.T.mid)}, with the finishes ${updn(R.defl.F.mid)}, long term (quasi-permanent, E<sub>c,eff</sub> = ${f1(R.defl.Ecf / 1e3)} kN/mm²) ${updn(R.defl.Lg.mid)}, movement after the finishes ${updn(R.defl.D.mid)} mm`, '7.4.1', '') + '</div>';
+  b += `<div class="rs"><h2>ULS</h2>` + rl(`M<sub>Ed</sub> = ${kNm(R.MEd(R.L / 2))} kNm at mid-span (${R.inp.uls.rule === '6.10' ? '6.10' : '6.10a/b'}); strain compatibility, ε<sub>cu2</sub> = ${(c.ecu2 * 1e3).toFixed(1)}‰, block ${f3(c.eta)} × ${f2(c.fcd)} over ${f2(c.lambda)}x, prestrain γ<sub>P</sub>σ<sub>p</sub>/E<sub>p</sub> with γ<sub>P,fav</sub> = 0.9, f<sub>pd</sub> = ${f0(R.fpd)} N/mm²: x = ${f0(R.ulsMid.x)} mm, M<sub>Rd</sub> = ${kNm(R.ulsMid.MRd)} kNm`, '6.1, 3.3.6', '')
+    + `<div class="tscroll">${shearTable(R).replace('class="t"', 'class="rtab"')}</div></div>`;
+  b += `<div class="rs"><h2>Checks</h2>${R.checks.map(q => rl(`${q.name}: ${q.note}`, q.ref, q.rule ? (q.util <= 1 ? '<span class="ok">OK</span>' : '<span class="ng">FAIL</span>') : okng(q.util))).join('')}${R.notes.map(n => `<p class="rp">${n}</p>`).join('')}</div>`;
+  b += `<p class="rp" style="color:#555">Generated by EngineeringTools — Prestressed Beam Design.</p>`;
+  return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
+}
+$('calc').onclick = run;
+(function init() {
+  let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
+  if (s && s.v === 1) {
+    FIELDS.forEach(id => setVal(id, s[id]));
+    (s.lays && s.lays.length ? s.lays : [{ n: 4, z: 60 }]).forEach(l => layRow(l)); (s.pts || []).forEach(p => ptRow(p));
+    setMode(s.mode === 'post' ? 'post' : 'pre'); if (s.strand) setVal('strand', s.strand); refreshVis(); if (s.fpk) setVal('fpk', s.fpk);
+  } else { [{ n: 4, z: 60 }, { n: 2, z: 110 }, { n: 2, z: 110, db: 1500 }].forEach(l => layRow(l)); refreshVis(); }
+})();
+</script>
+<footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent engineer to check and approve all calculations before they are used.</footer>
+</body>
+</html>
