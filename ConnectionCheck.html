@@ -1054,7 +1054,9 @@ const JDraw = (() => {
     o += Tx(v.X(xr) - 2, v.Y(yb) + 16, full ? `Beam ${num(b.h)} deep` : secName(g.beamSec), { size: 10.5, anchor: 'end', color: C.mute, weight: 600 });
     o += LA(v.X(tp + Lvis * 0.8), v.Y(0) - 3, 0, 48, `V_Ed = ${num(fv(g.V))} kN`, { ldy: -6 });
     if (fv(g.T) > 0) o += LA(v.X(xr) + 58, v.Y(yb / 2), 42, 0, `T ${num(fv(g.T))} kN`, { ldy: -10, ldx: 44, anchor: 'start' });
-    if (eb < 0) o += Tx(BOX.L[0], 432, `Bolt rows extend ${num(-eb)} mm beyond the plate: increase h_p or reduce the rows`, { size: 10.5, color: C.load, weight: 600 });
+    const d0 = d + (d > 24 ? 3 : 2);   // clearance hole
+    if (eb < 0) o += Tx(BOX.L[0], 22, `Bolt rows extend ${num(-eb)} mm beyond the plate: increase h_p or reduce the rows`, { size: 10.5, color: C.load, weight: 600 });
+    else if (eb < 1.2 * d0) o += Tx(BOX.L[0], 22, `Bottom edge distance ${num(eb)} mm is below 1.2 d₀ = ${num(1.2 * d0)} mm: increase h_p or reduce e₁ or p₁`, { size: 10.5, color: C.load, weight: 600 });
     o += title(v.X((-sp.h + xr) / 2), 462, 'ELEVATION', 'on the beam web');
     // view on the end plate
     const w = view(BOX.Rt, [-Math.max(sp.b, Wp, b.b) / 2 - 35, Math.min(ybot, yb) - 60, Math.max(sp.b, Wp, b.b) / 2 + 30, Math.max(ytop, 0) + 30]);
@@ -1933,7 +1935,7 @@ function formPDEP(){return`
 <div class="card"><div class="card-title">Geometry</div>
   <div class="g2">
     <div class="field"><label>Plate thick t_p</label><div class="iw"><input type="number" id="pdep-tp" value="10"><span class="unit">mm</span></div></div>
-    <div class="field"><label>Plate height h_p</label><div class="iw"><input type="number" id="pdep-hp" value="200"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Plate height h_p</label><div class="iw"><input type="number" id="pdep-hp" value="240"><span class="unit">mm</span></div></div>
     <div class="field"><label>Col. flange t_fc <em>auto</em></label><div class="iw"><input type="number" id="pdep-tfc" value="17.3"><span class="unit">mm</span></div></div>
     <div class="field"><label>Beam web t_w <em>auto</em></label><div class="iw"><input type="number" id="pdep-tw" value="9.9"><span class="unit">mm</span></div></div>
     <div class="field"><label>Weld leg a_w <em>both sides</em></label><div class="iw"><input type="number" id="pdep-aw" value="6"><span class="unit">mm</span></div></div>
@@ -1967,7 +1969,7 @@ function formFDEP(){return`
     <div class="field"><label>Bolt Size</label><div class="iw"><select id="fdep-boltSize">
       <option>M16</option><option selected>M20</option><option>M24</option><option>M27</option>
     </select></div></div>
-    <div class="field"><label>No. of Bolts n</label><div class="iw"><input type="number" id="fdep-n" value="4"></div></div>
+    <div class="field"><label>No. of Bolts n <em>total, two lines</em></label><div class="iw"><input type="number" id="fdep-n" value="4"></div></div>
     <div class="field"><label>Pitch p₁</label><div class="iw"><input type="number" id="fdep-p1" value="70"><span class="unit">mm</span></div></div>
     <div class="field"><label>End dist e₁ <em>from flange face</em></label><div class="iw"><input type="number" id="fdep-e1" value="50"><span class="unit">mm</span></div></div>
     <div class="field"><label>Edge dist e₂</label><div class="iw"><input type="number" id="fdep-e2" value="40"><span class="unit">mm</span></div></div>
@@ -2395,6 +2397,22 @@ const rd=(v,d=2)=>(+v).toFixed(d), esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'
 const rc=r=>r>1?'var(--fail)':'var(--pass)', rb=r=>r>1?'var(--fail)':'var(--accent)';
 function jchk(list){return list.map(c=>chk(c.id,c.name,c.ref,c.lines,c.cap,c.dem,c.unit,null));}
 function chk(id,name,ref,lines,cap,dem,unit,latex){const r=cap>0?dem/cap:999;return{id,name,ref,lines,cap,dem,unit,r,pass:r<=1,latex:latex||null};}
+// End plates carry two vertical bolt lines: n is the total, n1 = n/2 rows in each line.
+function epRows(n){if(n%2)throw new Error('End plate: n must be even (two vertical bolt lines)');return n/2;}
+// Detailing to EN 1993-1-8 Table 3.3, including the bottom edge distance left below the last row.
+function epDetail(o){
+  const e1b=o.hp-o.e1-(o.n1-1)*o.p1, m1=1.2*o.d0;
+  const D1=chk('D1','Detailing - Bottom Edge Distance','EN 1993-1-8 Table 3.3',[
+    `e₁,b = hp − e₁ − (n₁ − 1)p₁ = ${rd(o.hp,0)} − ${rd(o.e1,0)} − ${o.n1-1}×${rd(o.p1,0)} = ${rd(e1b,1)} mm   (n₁ = ${o.n1} rows in each bolt line)`,
+    `Minimum e₁,b ≥ 1.2 d₀ = 1.2 × ${o.d0} = ${rd(m1,1)} mm`,
+    ...(e1b<o.d0/2?[`The bottom hole (d₀ = ${o.d0} mm) ${e1b<0?'lies beyond':'breaks out of'} the plate edge: increase hp, or reduce e₁, p₁ or the number of rows`]:[]),
+  ],e1b,m1,'mm');
+  const req=[['Top end distance e₁',o.e1,m1,'1.2 d₀'],['Edge distance e₂',o.e2,m1,'1.2 d₀'],...(o.n1>1?[['Pitch p₁',o.p1,2.2*o.d0,'2.2 d₀']]:[]),['Gauge p₂',o.g,2.4*o.d0,'2.4 d₀']];
+  const gov=req.reduce((a,b)=>(b[1]>0?b[2]/b[1]:Infinity)>(a[1]>0?a[2]/a[1]:Infinity)?b:a);
+  const D2=chk('D2','Detailing - End and Edge Distances, Spacing','EN 1993-1-8 Table 3.3',
+    req.map(([nm,v,m,t])=>`${nm} = ${rd(v,1)} mm ${v>=m?'≥':'<'} ${t} = ${rd(m,1)} mm`).concat([`Governing: ${gov[0].toLowerCase()}`]),gov[1],gov[2],'mm');
+  return{e1b,checks:[D1,D2]};
+}
 
 function calcFin(g){
   const b=BOLT[g.boltSize],pm=MAT[g.platGrade],bm=MAT[g.beamGrade];
@@ -2527,6 +2545,7 @@ function calcPDEP(g){
   const Vn=fv(g.V)*1e3,nb=fi(g.n),P1=fv(g.p1),E1=fv(g.e1),E2=fv(g.e2),Ep=fv(g.ep);
   const Tp=fv(g.tp),Hp=fv(g.hp),Tfc=fv(g.tfc),Tw=fv(g.tw),Aw=.707*fv(g.aw);
   const{d,d0,As}=b,fub=800,Fvd=Vn/nb;
+  const n1=epRows(nb), DT=epDetail({hp:Hp,e1:E1,p1:P1,n1,e2:E2,g:fv(g.gauge),d0}), E1b=DT.e1b, E1v=Math.min(E1,E1b);
   const GM2s=1.1;  // section fracture (EC3-1-1 UK NA)
   const C=[];
 
@@ -2567,22 +2586,23 @@ function calcPDEP(g){
     `Vpl,Rd = ${pm.fy}×${Hp*Tp}/√3 = ${rd(VgRd_p)} kN`,
   ],VgRd_p,fv(g.V),'kN',`V_{pl,Rd}=\\dfrac{${pm.fy}\\times${Hp*Tp}}{\\sqrt{3}\\times1.0}=${rd(VgRd_p)}\\text{ kN}`));
 
-  // 5 - End plate net shear [γM2 = 1.1 per EC3-1-1 UK NA]
-  const Avnet_p=Math.max(0,(Hp-nb*d0)*Tp);
+  // 5 - End plate net shear [γM2 = 1.1 per EC3-1-1 UK NA]; a vertical section through one bolt line cuts n1 holes
+  const Avnet_p=Math.max(0,(Hp-n1*d0)*Tp);
   const VnRd_p=.9*pm.fu*Avnet_p/(Math.sqrt(3)*GM2s)/1e3;
   C.push(chk('5','End Plate - Net Section Shear','EC3-1-1 §6.2.6 / P358 §4.5 Check 6',[
-    `Anet = (${Hp} − ${nb}×${d0}) × ${Tp} = ${Avnet_p} mm²`,
+    `Anet = (hp − n₁ d₀) × tp = (${Hp} − ${n1}×${d0}) × ${Tp} = ${Avnet_p} mm²   (n₁ = ${n1} holes in each bolt line)`,
     `Vnet,Rd = 0.9×${pm.fu}×${Avnet_p}/(√3×1.1) = ${rd(VnRd_p)} kN`,
     `γM2 = 1.1 per EC3-1-1 UK NA (plate cross-section fracture)`,
   ],VnRd_p,fv(g.V),'kN',`V_{net,Rd}=\\dfrac{0.9\\times${pm.fu}\\times${Avnet_p}}{\\sqrt{3}\\times1.1}=${rd(VnRd_p)}\\text{ kN}`));
 
   // 6 - End plate block shear [fu term: γM2 = 1.1]
   const Ant_p=Math.max(0,(E2-d0/2)*Tp);
-  const Anv_p=Math.max(0,(E1+(nb-1)*P1-(nb-.5)*d0)*Tp);
+  const Anv_p=Math.max(0,(E1v+(n1-1)*P1-(n1-.5)*d0)*Tp);   // shear plane along one bolt line, to the nearer end of the plate
   const Veff_p=(pm.fu*Ant_p/GM2s+pm.fy*Anv_p/(Math.sqrt(3)*GM0))/1e3;
   C.push(chk('6','End Plate - Block Shear','EC3-1-8 §3.10.2 / P358 §4.5 Check 7',[
     `Ant = (e₂ − d₀/2)×tp = (${E2}−${d0/2})×${Tp} = ${rd(Ant_p,0)} mm²`,
-    `Anv = (e₁+(n−1)p₁−(n−0.5)d₀)×tp = ${rd(Anv_p,0)} mm²`,
+    `Shear plane to the nearer end of the plate: e₁,min = min(e₁, e₁,b) = min(${E1}, ${rd(E1b,1)}) = ${rd(E1v,1)} mm`,
+    `Anv = (e₁,min + (n₁−1)p₁ − (n₁−0.5)d₀) × tp = (${rd(E1v,1)} + ${n1-1}×${P1} − ${n1-.5}×${d0}) × ${Tp} = ${rd(Anv_p,0)} mm²`,
     `Veff,Rd = fu·Ant/γM2 + fy·Anv/(√3·γM0) = ${rd(pm.fu*Ant_p/GM2s/1e3)} + ${rd(pm.fy*Anv_p/(Math.sqrt(3)*GM0)/1e3)} = ${rd(Veff_p)} kN`,
     `γM2 = 1.1 for plate cross-section fracture (EC3-1-1 UK NA)`,
   ],Veff_p,fv(g.V),'kN',`V_{eff,Rd}=\\dfrac{${pm.fu}\\times${rd(Ant_p,0)}}{1.1}+\\dfrac{${pm.fy}\\times${rd(Anv_p,0)}}{\\sqrt{3}}=${rd(Veff_p)}\\text{ kN}`));
@@ -2621,24 +2641,10 @@ function calcPDEP(g){
     `Vpl,Rd = ${bm.fy}×${Hp*Tw}/√3 = ${rd(VgRd_bw)} kN`,
   ],VgRd_bw,fv(g.V),'kN',`V_{pl,Rd}=\\dfrac{${bm.fy}\\times${Hp*Tw}}{\\sqrt{3}\\times1.0}=${rd(VgRd_bw)}\\text{ kN}`));
 
-  // 10 - Beam web net shear [γM2 = 1.1]
-  const Avnet_bw=Math.max(0,(Hp-nb*d0)*Tw);
-  const VnRd_bw=.9*bm.fu*Avnet_bw/(Math.sqrt(3)*GM2s)/1e3;
-  C.push(chk('10','Beam Web - Net Section Shear','EC3-1-1 §6.2.6 / P358 §4.5 Check 11',[
-    `Anet = (${Hp}−${nb}×${d0})×${Tw} = ${Avnet_bw} mm²`,
-    `Vnet,Rd = 0.9×${bm.fu}×${Avnet_bw}/(√3×1.1) = ${rd(VnRd_bw)} kN`,
-    `γM2 = 1.1 per EC3-1-1 UK NA`,
-  ],VnRd_bw,fv(g.V),'kN',`V_{net,Rd}=\\dfrac{0.9\\times${bm.fu}\\times${Avnet_bw}}{\\sqrt{3}\\times1.1}=${rd(VnRd_bw)}\\text{ kN}`));
+  // The beam web is welded to the plate, not bolted: it has no holes, so there is no net section or block tearing check on the web.
 
-  // 11 - Beam web block shear [γM2 = 1.1]
-  const Ant_bw=Math.max(0,(E2-d0/2)*Tw);
-  const Anv_bw=Math.max(0,(E1+(nb-1)*P1-(nb-.5)*d0)*Tw);
-  const Veff_bw=(bm.fu*Ant_bw/GM2s+bm.fy*Anv_bw/(Math.sqrt(3)*GM0))/1e3;
-  C.push(chk('11','Beam Web - Block Shear','EC3-1-8 §3.10.2 / P358 §4.5 Check 12',[
-    `Ant = (e₂−d₀/2)×tw = ${rd(Ant_bw,0)} mm²   Anv = ${rd(Anv_bw,0)} mm²`,
-    `Veff,Rd = fu·Ant/γM2 + fy·Anv/(√3·γM0) = ${rd(bm.fu*Ant_bw/GM2s/1e3)} + ${rd(bm.fy*Anv_bw/(Math.sqrt(3)*GM0)/1e3)} = ${rd(Veff_bw)} kN`,
-    `γM2 = 1.1 for beam web fracture (EC3-1-1 UK NA)`,
-  ],Veff_bw,fv(g.V),'kN',`V_{eff,Rd}=\\dfrac{${bm.fu}\\times${rd(Ant_bw,0)}}{1.1}+\\dfrac{${bm.fy}\\times${rd(Anv_bw,0)}}{\\sqrt{3}}=${rd(Veff_bw)}\\text{ kN}`));
+  // Detailing: bolt positions on the plate, including the bottom edge distance
+  C.push(...DT.checks);
 
   // structural integrity (tying): end plate T-stub, beam web, welds, supporting column flange - joints engine
   if(fv(g.T)>0){ const nT=fi(g.n); if(nT%2) throw new Error('Tying check: n must be even (two vertical bolt lines)');
@@ -2663,6 +2669,7 @@ function calcFDEP(g){
   const Aw_w=.707*fv(g.aww);
   const Aw_f=.707*fv(g.awf);
   const{d,d0,As}=b,fub=800;
+  const n1=epRows(nb), DT=epDetail({hp:Hp,e1:E1,p1:P1,n1,e2:E2,g:fv(g.gauge),d0}), E1b=DT.e1b, E1v=Math.min(E1,E1b);
   const GM2s=1.1;  // section fracture (EC3-1-1 UK NA)
   const C=[];
 
@@ -2705,21 +2712,22 @@ function calcFDEP(g){
   ],VgRd_p,fv(g.V),'kN',`V_{pl,Rd}=\\dfrac{${pm.fy}\\times${D*Tp}}{\\sqrt{3}\\times1.0}=${rd(VgRd_p)}\\text{ kN}`));
 
   // 5 - End plate net shear [γM2 = 1.1 per EC3-1-1 UK NA]
-  const Avnet_p=Math.max(0,(Hp-nb*d0)*Tp);
+  const Avnet_p=Math.max(0,(Hp-n1*d0)*Tp);   // a vertical section through one bolt line cuts n1 holes
   const VnRd_p=.9*pm.fu*Avnet_p/(Math.sqrt(3)*GM2s)/1e3;
   C.push(chk('5','End Plate - Net Section Shear','EC3-1-1 §6.2.6 / P358 §4.7 Check 6',[
-    `Anet = (${D}−${nb}×${d0})×${Tp} = ${Avnet_p} mm²`,
+    `Anet = (hp − n₁ d₀) × tp = (${D} − ${n1}×${d0}) × ${Tp} = ${Avnet_p} mm²   (n₁ = ${n1} holes in each bolt line)`,
     `Vnet,Rd = 0.9×${pm.fu}×${Avnet_p}/(√3×1.1) = ${rd(VnRd_p)} kN`,
     `γM2 = 1.1 per EC3-1-1 UK NA (plate cross-section fracture)`,
   ],VnRd_p,fv(g.V),'kN',`V_{net,Rd}=\\dfrac{0.9\\times${pm.fu}\\times${Avnet_p}}{\\sqrt{3}\\times1.1}=${rd(VnRd_p)}\\text{ kN}`));
 
   // 6 - End plate block shear [fu term: γM2 = 1.1]
   const Ant_p=Math.max(0,(E2-d0/2)*Tp);
-  const Anv_p=Math.max(0,(E1+(nb-1)*P1-(nb-.5)*d0)*Tp);
+  const Anv_p=Math.max(0,(E1v+(n1-1)*P1-(n1-.5)*d0)*Tp);   // shear plane along one bolt line, to the nearer end of the plate
   const Veff_p=(pm.fu*Ant_p/GM2s+pm.fy*Anv_p/(Math.sqrt(3)*GM0))/1e3;
   C.push(chk('6','End Plate - Block Shear','EC3-1-8 §3.10.2 / P358 §4.7 Check 7',[
     `Ant = (e₂−d₀/2)×tp = (${E2}−${d0/2})×${Tp} = ${rd(Ant_p,0)} mm²`,
-    `Anv = (e₁+(n−1)p₁−(n−0.5)d₀)×tp = ${rd(Anv_p,0)} mm²`,
+    `Shear plane to the nearer end of the plate: e₁,min = min(e₁, e₁,b) = min(${E1}, ${rd(E1b,1)}) = ${rd(E1v,1)} mm`,
+    `Anv = (e₁,min + (n₁−1)p₁ − (n₁−0.5)d₀) × tp = (${rd(E1v,1)} + ${n1-1}×${P1} − ${n1-.5}×${d0}) × ${Tp} = ${rd(Anv_p,0)} mm²`,
     `Veff,Rd = fu·Ant/γM2 + fy·Anv/(√3·γM0)  (γM2 = 1.1)`,
     `       = ${rd(pm.fu*Ant_p/GM2s/1e3)} + ${rd(pm.fy*Anv_p/(Math.sqrt(3)*GM0)/1e3)} = ${rd(Veff_p)} kN`,
   ],Veff_p,fv(g.V),'kN',`V_{eff,Rd}=\\dfrac{${pm.fu}\\times${rd(Ant_p,0)}}{1.1}+\\dfrac{${pm.fy}\\times${rd(Anv_p,0)}}{\\sqrt{3}}=${rd(Veff_p)}\\text{ kN}`));
@@ -2771,24 +2779,10 @@ function calcFDEP(g){
     `Vpl,Rd = ${bm.fy}×${Hp*Tw}/√3 = ${rd(VgRd_bw)} kN`,
   ],VgRd_bw,fv(g.V),'kN',`V_{pl,Rd}=\\dfrac{${bm.fy}\\times${Hp*Tw}}{\\sqrt{3}\\times1.0}=${rd(VgRd_bw)}\\text{ kN}`));
 
-  // 11 - Beam web net shear [γM2 = 1.1]
-  const Avnet_bw=Math.max(0,(Hp-nb*d0)*Tw);
-  const VnRd_bw=.9*bm.fu*Avnet_bw/(Math.sqrt(3)*GM2s)/1e3;
-  C.push(chk('11','Beam Web - Net Section Shear','EC3-1-1 §6.2.6 / P358 §4.7 Check 11',[
-    `Anet = (${Hp}−${nb}×${d0})×${Tw} = ${Avnet_bw} mm²`,
-    `Vnet,Rd = 0.9×${bm.fu}×${Avnet_bw}/(√3×1.1) = ${rd(VnRd_bw)} kN`,
-    `γM2 = 1.1 per EC3-1-1 UK NA`,
-  ],VnRd_bw,fv(g.V),'kN',`V_{net,Rd}=\\dfrac{0.9\\times${bm.fu}\\times${Avnet_bw}}{\\sqrt{3}\\times1.1}=${rd(VnRd_bw)}\\text{ kN}`));
+  // The beam web is welded to the plate, not bolted: it has no holes, so there is no net section or block tearing check on the web.
 
-  // 12 - Beam web block shear [γM2 = 1.1]
-  const Ant_bw=Math.max(0,(E2-d0/2)*Tw);
-  const Anv_bw=Math.max(0,(E1+(nb-1)*P1-(nb-.5)*d0)*Tw);
-  const Veff_bw=(bm.fu*Ant_bw/GM2s+bm.fy*Anv_bw/(Math.sqrt(3)*GM0))/1e3;
-  C.push(chk('12','Beam Web - Block Shear','EC3-1-8 §3.10.2 / P358 §4.7 Check 12',[
-    `Ant = (e₂−d₀/2)×tw = ${rd(Ant_bw,0)} mm²   Anv = ${rd(Anv_bw,0)} mm²`,
-    `Veff,Rd = fu·Ant/γM2 + fy·Anv/(√3·γM0) = ${rd(bm.fu*Ant_bw/GM2s/1e3)} + ${rd(bm.fy*Anv_bw/(Math.sqrt(3)*GM0)/1e3)} = ${rd(Veff_bw)} kN`,
-    `γM2 = 1.1 for beam web fracture (EC3-1-1 UK NA)`,
-  ],Veff_bw,fv(g.V),'kN',`V_{eff,Rd}=\\dfrac{${bm.fu}\\times${rd(Ant_bw,0)}}{1.1}+\\dfrac{${bm.fy}\\times${rd(Anv_bw,0)}}{\\sqrt{3}}=${rd(Veff_bw)}\\text{ kN}`));
+  // Detailing: bolt positions on the plate, including the bottom edge distance
+  C.push(...DT.checks);
 
   // structural integrity (tying): end plate T-stub, beam web, welds, supporting column flange - joints engine
   if(fv(g.T)>0){ const nT=fi(g.n); if(nT%2) throw new Error('Tying check: n must be even (two vertical bolt lines)');

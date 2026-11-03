@@ -41,6 +41,23 @@ const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`);
     const xs = [...w.document.querySelectorAll('#diag-svg svg circle')].map(c => +c.getAttribute('cx')).filter(x => x > 600);
     truth(`${id}: view on the end plate shows two bolt columns`, new Set(xs.map(x => Math.round(x))).size >= 2);
   }
+  // end plates: bottom edge distance below the last row (EN 1993-1-8 Table 3.3), rows per bolt line, no holes in the welded beam web
+  {
+    w.switchJt('pdep'); await wait(150);
+    const g = w.eval('readPDEP()'), byId = (r, id) => r.checks.find(c => c.id === id);
+    const r0 = w.calcPDEP(g), r1 = w.calcPDEP({ ...g, hp: '200' });
+    truth('pdep default: bottom edge 240 − 50 − 2×70 = 50 mm ≥ 1.2 d₀ = 26.4 mm', byId(r0, 'D1').pass && Math.abs(byId(r0, 'D1').cap - 50) < 1e-9);
+    truth('pdep h_p 200: bottom edge 10 mm fails, hole breaks out', !byId(r1, 'D1').pass && Math.abs(byId(r1, 'D1').cap - 10) < 1e-9 && /breaks out/.test(byId(r1, 'D1').lines.join(' ')));
+    truth('pdep: net shear cuts n/2 holes per bolt line, (240 − 3×22)×10 = 1740 mm²', /= 1740 mm²/.test(byId(r0, '5').lines[0]));
+    truth('pdep h_p 200: block shear runs to the nearer (bottom) end, A_nv = (10 + 140 − 55)×10 = 950 mm²', /= 950 mm²/.test(byId(r1, '6').lines.join(' ')));
+    w.document.getElementById('pdep-hp').value = '200'; w.drawDiag(); await wait(60);
+    truth('pdep h_p 200: drawing flags the short bottom edge', /Bottom edge distance 10 mm is below 1\.2 d₀/.test(w.document.getElementById('diag-svg').textContent));
+    w.document.getElementById('pdep-hp').value = '240'; w.drawDiag(); await wait(60);
+    let odd = ''; try { w.calcPDEP({ ...g, n: '5' }); } catch (e) { odd = e.message; } truth('pdep: an odd bolt count is rejected (two lines)', /must be even/.test(odd));
+    w.switchJt('fdep'); await wait(150); const rF = w.calcFDEP(w.eval('readFDEP()'));
+    truth('pdep / fdep: no net section or block shear on the welded beam web', ![...r0.checks, ...rF.checks].some(c => /Beam Web - (Net|Block)/.test(c.name)));
+    truth('fdep: bottom edge distance checked', !!byId(rF, 'D1') && byId(rF, 'D1').pass);
+  }
   w.switchJt('fin'); await wait(150);
   const nC = () => w.document.querySelectorAll('#diag-svg svg circle').length, c0 = nC();
   const nIn = w.document.getElementById('fin-n'); nIn.value = '4'; nIn.dispatchEvent(new w.Event('input', { bubbles: true })); await wait(250);
