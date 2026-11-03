@@ -1055,8 +1055,10 @@ const JDraw = (() => {
     o += LA(v.X(tp + Lvis * 0.8), v.Y(0) - 3, 0, 48, `V_Ed = ${num(fv(g.V))} kN`, { ldy: -6 });
     if (fv(g.T) > 0) o += LA(v.X(xr) + 58, v.Y(yb / 2), 42, 0, `T ${num(fv(g.T))} kN`, { ldy: -10, ldx: 44, anchor: 'start' });
     const d0 = d + (d > 24 ? 3 : 2);   // clearance hole
-    if (eb < 0) o += Tx(BOX.L[0], 22, `Bolt rows extend ${num(-eb)} mm beyond the plate: increase h_p or reduce the rows`, { size: 10.5, color: C.load, weight: 600 });
-    else if (eb < 1.2 * d0) o += Tx(BOX.L[0], 22, `Bottom edge distance ${num(eb)} mm is below 1.2 d₀ = ${num(1.2 * d0)} mm: increase h_p or reduce e₁ or p₁`, { size: 10.5, color: C.load, weight: 600 });
+    const bk = !full && S(g.beamSec), warn = eb < 0 ? `Bolt rows extend ${num(-eb)} mm beyond the plate: increase h_p or reduce the rows`
+      : eb < 1.2 * d0 ? `Bottom edge distance ${num(eb)} mm is below 1.2 d₀ = ${num(1.2 * d0)} mm: increase h_p or reduce e₁ or p₁`
+      : bk && hp < 0.6 * bk.h ? `Plate depth ${num(hp)} mm is below 0.6 h_b = ${num(0.6 * bk.h)} mm (P358 torsional restraint): add a bolt row` : '';
+    if (warn) o += Tx(BOX.L[0], 22, warn, { size: 10.5, color: C.load, weight: 600 });
     o += title(v.X((-sp.h + xr) / 2), 462, 'ELEVATION', 'on the beam web');
     // view on the end plate
     const w = view(BOX.Rt, [-Math.max(sp.b, Wp, b.b) / 2 - 35, Math.min(ybot, yb) - 60, Math.max(sp.b, Wp, b.b) / 2 + 30, Math.max(ytop, 0) + 30]);
@@ -1924,7 +1926,7 @@ function formPDEP(){return`
     <div class="field"><label>Bolt Size</label><div class="iw"><select id="pdep-boltSize">
       <option>M16</option><option selected>M20</option><option>M24</option><option>M27</option>
     </select></div></div>
-    <div class="field"><label>No. of Bolts n <em>total, two lines</em></label><div class="iw"><input type="number" id="pdep-n" value="6"></div></div>
+    <div class="field"><label>No. of Bolts n <em>total, two lines</em></label><div class="iw"><input type="number" id="pdep-n" value="8"></div></div>
     <div class="field"><label>Pitch p₁</label><div class="iw"><input type="number" id="pdep-p1" value="70"><span class="unit">mm</span></div></div>
     <div class="field"><label>End dist e₁</label><div class="iw"><input type="number" id="pdep-e1" value="50"><span class="unit">mm</span></div></div>
     <div class="field"><label>Edge dist e₂</label><div class="iw"><input type="number" id="pdep-e2" value="40"><span class="unit">mm</span></div></div>
@@ -1935,7 +1937,7 @@ function formPDEP(){return`
 <div class="card"><div class="card-title">Geometry</div>
   <div class="g2">
     <div class="field"><label>Plate thick t_p</label><div class="iw"><input type="number" id="pdep-tp" value="10"><span class="unit">mm</span></div></div>
-    <div class="field"><label>Plate height h_p</label><div class="iw"><input type="number" id="pdep-hp" value="240"><span class="unit">mm</span></div></div>
+    <div class="field"><label>Plate height h_p</label><div class="iw"><input type="number" id="pdep-hp" value="310"><span class="unit">mm</span></div></div>
     <div class="field"><label>Col. flange t_fc <em>auto</em></label><div class="iw"><input type="number" id="pdep-tfc" value="17.3"><span class="unit">mm</span></div></div>
     <div class="field"><label>Beam web t_w <em>auto</em></label><div class="iw"><input type="number" id="pdep-tw" value="9.9"><span class="unit">mm</span></div></div>
     <div class="field"><label>Weld leg a_w <em>both sides</em></label><div class="iw"><input type="number" id="pdep-aw" value="6"><span class="unit">mm</span></div></div>
@@ -2645,6 +2647,12 @@ function calcPDEP(g){
 
   // Detailing: bolt positions on the plate, including the bottom edge distance
   C.push(...DT.checks);
+  // P358 detailing: end plate depth for nominal torsional restraint of the supported beam (needs the beam section)
+  const bsec=SECTIONS[g.beamSec];
+  if(bsec) C.push(chk('D3','Detailing - End Plate Depth (Torsional Restraint)','P358 partial depth end plate detailing',[
+    `hp ≥ 0.6 hb = 0.6 × ${bsec.d} = ${rd(0.6*bsec.d,1)} mm for nominal torsional restraint (${g.beamSec})`,
+    `hp = ${Hp} mm`,
+  ],Hp,0.6*bsec.d,'mm'));
 
   // structural integrity (tying): end plate T-stub, beam web, welds, supporting column flange - joints engine
   if(fv(g.T)>0){ const nT=fi(g.n); if(nT%2) throw new Error('Tying check: n must be even (two vertical bolt lines)');
