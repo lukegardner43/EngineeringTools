@@ -35,6 +35,12 @@ const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`);
     const sv = w.document.querySelector('#diag-svg svg.jd'), txt = sv ? sv.textContent : '';
     truth(`${id}: drawing with two titled views`, !!sv && (txt.match(/ELEVATION|SECTION|VIEW ON|PLAN/g) || []).length >= 2);
   }
+  // end plates: the view on the plate shows two bolt columns at the gauge, either side of the web (the form names it 'gauge')
+  for (const id of ['pdep', 'fdep']) {
+    w.switchJt(id); await wait(150);
+    const xs = [...w.document.querySelectorAll('#diag-svg svg circle')].map(c => +c.getAttribute('cx')).filter(x => x > 600);
+    truth(`${id}: view on the end plate shows two bolt columns`, new Set(xs.map(x => Math.round(x))).size >= 2);
+  }
   w.switchJt('fin'); await wait(150);
   const nC = () => w.document.querySelectorAll('#diag-svg svg circle').length, c0 = nC();
   const nIn = w.document.getElementById('fin-n'); nIn.value = '4'; nIn.dispatchEvent(new w.Event('input', { bubbles: true })); await wait(250);

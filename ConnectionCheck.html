@@ -956,16 +956,17 @@ const JD = (() => {
   const svg = (body, h = H) => `<svg class="jd" viewBox="0 0 ${W} ${h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;background:${C.paper}" role="img">${DEFS}<rect width="${W}" height="${h}" fill="${C.paper}"/>${body}</svg>`;
   const BOX = { L: [40, 46, 520, 400], Rt: [612, 46, 280, 400] };
   const fv = x => { const n = parseFloat(x); return Number.isFinite(n) ? n : 0; };
+  const secName = x => x && x !== '0' ? x : '';   // a form without that selector reads as '0'
   const BOLTD = { M12: 12, M16: 16, M20: 20, M24: 24, M27: 27, M30: 30, M36: 36 };
   const bd = sz => BOLTD[sz] || 20;
   const range = (n, f) => Array.from({ length: Math.max(0, n) }, (_, i) => f(i));
-  return { C, W, H, BOX, DEFS, view, R, P, Ln, lnP, Tx, tw, DH, DV, LD, LA, moment, BE, BS, WD, WS, BK, BKH, mask, ISec, IEl, IFl, title, svg, num, fv, bd, range, esc, ST };
+  return { C, W, H, BOX, DEFS, view, R, P, Ln, lnP, Tx, tw, DH, DV, LD, LA, moment, BE, BS, WD, WS, BK, BKH, mask, ISec, IEl, IFl, title, svg, num, fv, secName, bd, range, esc, ST };
 })();
 
 /* Joint drawings: each takes the form values g (strings, as read by the page) and S(name) -> { h, b, tf, tw, r } or null. */
 const JDraw = (() => {
   'use strict';
-  const { C, BOX, view, R, P, Ln, Tx, DH, DV, LD, LA, moment, BE, BS, WD, WS, BK, BKH, mask, ISec, IEl, IFl, title, svg, num, fv, bd, range } = JD;
+  const { C, BOX, view, R, P, Ln, Tx, DH, DV, LD, LA, moment, BE, BS, WD, WS, BK, BKH, mask, ISec, IEl, IFl, title, svg, num, fv, secName, bd, range } = JD;
   const nint = (x, d = 1) => Math.max(d, Math.round(fv(x)));
   const sec = (S, name, dflt) => { const s = S(name); return s ? { ...s } : { ...dflt }; };
   const UC = { h: 260.3, b: 256.3, tf: 17.3, tw: 10.3, r: 12.7 }, UB = { h: 457, b: 191, tf: 16, tw: 9.9, r: 10.2 };
@@ -1033,7 +1034,7 @@ const JDraw = (() => {
   function endPlate(g, S, full) {
     const b = full ? { h: fv(g.d), b: fv(g.bf), tf: fv(g.tf), tw: fv(g.tw), r: 10 } : sec(S, g.beamSec, UB); if (!full) b.tw = fv(g.tw) || b.tw;
     const sp = sec(S, g.suppSec, UC); sp.tf = fv(g.tfc) || sp.tf;
-    const n = nint(g.n, 2), rows = Math.max(1, Math.round(n / 2)), p1 = fv(g.p1), e1 = fv(g.e1), e2 = fv(g.e2), gg = fv(g.g), tp = fv(g.tp), d = bd(g.boltSize);
+    const n = nint(g.n, 2), rows = Math.max(1, Math.round(n / 2)), p1 = fv(g.p1), e1 = fv(g.e1), e2 = fv(g.e2), gg = fv(g.gauge ?? g.g), tp = fv(g.tp), d = bd(g.boltSize);   // the form passes the gauge as 'gauge'
     const aw = fv(full ? g.aww : g.aw), af = full ? fv(g.awf) : 0, Wp = gg + 2 * e2;
     const ytop = full ? 10 : -(b.tf + (b.r || 0) + 10), hp = full ? b.h + 20 : fv(g.hp), ybot = ytop - hp, eb = hp - e1 - (rows - 1) * p1;
     const ys = range(rows, i => ytop - e1 - i * p1), Lvis = Math.max(0.9 * b.h, 300), xr = tp + Lvis, yb = -b.h;
@@ -1046,11 +1047,11 @@ const JDraw = (() => {
     o += ys.map(y => BS(v, tp, -sp.tf, y, d, 'x')).join('');
     o += DV(v, [ytop, ...ys, ybot], -sp.h, -22, [num(e1), ...range(rows - 1, () => num(p1)), num(eb)]) + DV(v, [ytop, ybot], -sp.h, -50, [`h_p ${num(hp)}`]);
     o += DH(v, [-sp.tf, 0, tp], yD + 30, -18, [num(sp.tf), num(tp)]);
-    o += LD(v, tp / 2, ybot + hp * 0.15, 60, 40, [`${full ? 'Full' : 'Partial'} depth end plate`, `${num(hp)} × ${num(Wp)} × ${num(tp)} ${g.platGrade || ''}`], { bold: true });
+    o += LD(v, tp / 2, ybot + hp * 0.15, 60, Math.max(40, v.Y(yb) - v.Y(ybot + hp * 0.15) + 34), [`${full ? 'Full' : 'Partial'} depth end plate`, `${num(hp)} × ${num(Wp)} × ${num(tp)} ${g.platGrade || ''}`], { bold: true });   // text clear below the beam
     o += LD(v, tp + aw / 2, ytop - hp * 0.5, 80, -20, [`Web welds ${num(aw)} leg, both sides`].concat(full ? [`Flange welds ${num(af)} leg`] : []));
     o += LD(v, tp + 0.7 * d, ys[0], 24, -(v.Y(ys[0]) - v.Y(0)) - 30, [`${n} × ${g.boltSize || 'M20'} 8.8, ${rows} rows at p₁ ${num(p1)}`]);
-    o += Tx(v.X(-sp.h / 2), v.Y(yU) - 21, 'COLUMN (flange face)', { size: 10, anchor: 'middle', weight: 600, color: C.mute }) + Tx(v.X(-sp.h / 2), v.Y(yU) - 8, g.suppSec || '', { size: 10.5, anchor: 'middle', color: C.mute });
-    o += Tx(v.X(tp + Lvis * 0.78), v.Y(yb) + 16, full ? `Beam ${num(b.h)} deep` : (g.beamSec || ''), { size: 10.5, anchor: 'middle', color: C.mute, weight: 600 });
+    o += Tx(v.X(-sp.h / 2), v.Y(yU) - 21, 'COLUMN (flange face)', { size: 10, anchor: 'middle', weight: 600, color: C.mute }) + Tx(v.X(-sp.h / 2), v.Y(yU) - 8, secName(g.suppSec), { size: 10.5, anchor: 'middle', color: C.mute });
+    o += Tx(v.X(xr) - 2, v.Y(yb) + 16, full ? `Beam ${num(b.h)} deep` : secName(g.beamSec), { size: 10.5, anchor: 'end', color: C.mute, weight: 600 });
     o += LA(v.X(tp + Lvis * 0.8), v.Y(0) - 3, 0, 48, `V_Ed = ${num(fv(g.V))} kN`, { ldy: -6 });
     if (fv(g.T) > 0) o += LA(v.X(xr) + 58, v.Y(yb / 2), 42, 0, `T ${num(fv(g.T))} kN`, { ldy: -10, ldx: 44, anchor: 'start' });
     if (eb < 0) o += Tx(BOX.L[0], 432, `Bolt rows extend ${num(-eb)} mm beyond the plate: increase h_p or reduce the rows`, { size: 10.5, color: C.load, weight: 600 });
@@ -1085,8 +1086,8 @@ const JDraw = (() => {
     o += DH(v, [0, xbw, lw], ybot, -22, [num(xbw), num(e2w)]);
     o += LD(v, lw * 0.4, ytop, 20, -(v.Y(ytop) - v.Y(0)) - 26, [`${double ? '2 cleats' : 'Single cleat'} ${num(lo)} × ${num(lw)} × ${num(tc)}, length ${num(Lc)} ${g.cleatGrade || ''}`], { bold: true });
     o += LD(v, xbw, ys[n - 1], 70, 56, [`${n} × ${g.boltSize || 'M20'} through the beam web`, double ? 'double shear' : 'single shear']);
-    o += Tx(v.X(-sp.h / 2), v.Y(yU) - 21, 'COLUMN (flange face)', { size: 10, anchor: 'middle', weight: 600, color: C.mute }) + Tx(v.X(-sp.h / 2), v.Y(yU) - 8, g.suppSec || '', { size: 10.5, anchor: 'middle', color: C.mute });
-    o += Tx(v.X(gap + Lvis * 0.55), v.Y(yb) + 16, g.beamSec || '', { size: 10.5, anchor: 'middle', color: C.mute, weight: 600 });
+    o += Tx(v.X(-sp.h / 2), v.Y(yU) - 21, 'COLUMN (flange face)', { size: 10, anchor: 'middle', weight: 600, color: C.mute }) + Tx(v.X(-sp.h / 2), v.Y(yU) - 8, secName(g.suppSec), { size: 10.5, anchor: 'middle', color: C.mute });
+    o += Tx(v.X(gap + Lvis * 0.55), v.Y(yb) + 16, secName(g.beamSec), { size: 10.5, anchor: 'middle', color: C.mute, weight: 600 });
     o += LA(v.X(gap + Lvis * 0.75), v.Y(0) - 3, 0, 48, `V_Ed = ${num(fv(g.V))} kN`, { ldy: -6 });
     o += title(v.X((-sp.h + xr) / 2), 462, 'ELEVATION', 'on the beam web');
     // section A-A
@@ -3362,7 +3363,7 @@ function readFin(){return{V:gv('fin-V'),n:gv('fin-n'),p1:gv('fin-p1'),e1:gv('fin
 function readPDEP(){return{V:gv('pdep-V'),n:gv('pdep-n'),p1:gv('pdep-p1'),e1:gv('pdep-e1'),
   e2:gv('pdep-e2'),ep:gv('pdep-ep'),boltSize:gv('pdep-boltSize'),
   tp:gv('pdep-tp'),hp:gv('pdep-hp'),tfc:gv('pdep-tfc'),tw:gv('pdep-tw'),aw:gv('pdep-aw'),
-  platGrade:gv('pdep-platGrade'),colGrade:gv('pdep-colGrade'),beamGrade:gv('pdep-beamGrade'),T:gv('pdep-T'),gauge:gv('pdep-g'),suppSec:gv('pdep-suppSec')};}
+  platGrade:gv('pdep-platGrade'),colGrade:gv('pdep-colGrade'),beamGrade:gv('pdep-beamGrade'),T:gv('pdep-T'),gauge:gv('pdep-g'),suppSec:gv('pdep-suppSec'),beamSec:gv('pdep-beamSec')};}
 function readFDEP(){return{V:gv('fdep-V'),n:gv('fdep-n'),p1:gv('fdep-p1'),e1:gv('fdep-e1'),
   e2:gv('fdep-e2'),ep:gv('fdep-ep'),boltSize:gv('fdep-boltSize'),
   tp:gv('fdep-tp'),d:gv('fdep-d'),tw:gv('fdep-tw'),tf:gv('fdep-tf'),bf:gv('fdep-bf'),
@@ -3372,11 +3373,11 @@ function readFDEP(){return{V:gv('fdep-V'),n:gv('fdep-n'),p1:gv('fdep-p1'),e1:gv(
 function readDCleat(){return{V:gv('dcl-V'),n:gv('dcl-n'),p1:gv('dcl-p1'),e1:gv('dcl-e1'),
   e2s:gv('dcl-e2s'),e2w:gv('dcl-e2w'),boltSize:gv('dcl-boltSize'),
   tc:gv('dcl-tc'),lout:gv('dcl-lout'),lweb:gv('dcl-lweb'),tw:gv('dcl-tw'),tfc:gv('dcl-tfc'),
-  cleatGrade:gv('dcl-cleatGrade'),colGrade:gv('dcl-colGrade'),beamGrade:gv('dcl-beamGrade')};}
+  cleatGrade:gv('dcl-cleatGrade'),colGrade:gv('dcl-colGrade'),beamGrade:gv('dcl-beamGrade'),beamSec:gv('dcl-beamSec'),suppSec:gv('dcl-suppSec')};}
 function readSCleat(){return{V:gv('scl-V'),n:gv('scl-n'),p1:gv('scl-p1'),e1:gv('scl-e1'),
   e2s:gv('scl-e2s'),e2w:gv('scl-e2w'),boltSize:gv('scl-boltSize'),
   tc:gv('scl-tc'),lout:gv('scl-lout'),lweb:gv('scl-lweb'),tw:gv('scl-tw'),tfc:gv('scl-tfc'),
-  cleatGrade:gv('scl-cleatGrade'),colGrade:gv('scl-colGrade'),beamGrade:gv('scl-beamGrade')};}
+  cleatGrade:gv('scl-cleatGrade'),colGrade:gv('scl-colGrade'),beamGrade:gv('scl-beamGrade'),beamSec:gv('scl-beamSec'),suppSec:gv('scl-suppSec')};}
 
 function finSum(g){const a=fv(g.lp)-fv(g.e2p);return[['V_Ed',g.V+' kN'],['Bolts',g.n+'×'+g.boltSize],['Pitch p₁',g.p1+' mm'],['Eccen. a',a+' mm'],['Plate',g.hp+'×'+g.lp+'×'+g.tp+' mm'],['t_w',g.tw+' mm'],['Weld leg',g.aw+' mm'],['Plate',g.platGrade],['Beam',g.beamGrade]];}
 function pdepSum(g){return[['V_Ed',g.V+' kN'],['Bolts',g.n+'×'+g.boltSize],['Pitch p₁',g.p1+' mm'],['Bolt-weld e',g.ep+' mm'],['Plate',g.hp+'×'+g.tp+' mm'],['t_fc',g.tfc+' mm'],['Weld leg',g.aw+' mm'],['Plate',g.platGrade],['Column',g.colGrade],['Beam',g.beamGrade]];}
