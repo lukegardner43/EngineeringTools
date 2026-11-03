@@ -66,6 +66,14 @@ sub,sup{font-size:max(11px,.75em);line-height:0;}
 .btn-sm:hover{border-color:#9aa0a8;background:var(--surf2);}
 .pdf-btn{width:100%;height:40px;background:var(--surf);border:1px solid var(--bdr2);border-radius:var(--r);font-size:14px;font-weight:500;color:var(--txt);cursor:pointer;margin:8px 0 12px;font-family:var(--sans);}
 .pdf-btn:hover{border-color:#9aa0a8;background:var(--surf2);}
+/* save / open a check */
+.file-hdr{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.file-acts{display:flex;gap:8px;}
+.file-btn{height:32px;padding:0 14px;background:var(--surf);border:1px solid var(--bdr2);border-radius:var(--r);font-size:13px;font-weight:500;color:var(--txt);cursor:pointer;font-family:var(--sans);display:inline-flex;align-items:center;gap:6px;}
+.file-btn:hover{border-color:#9aa0a8;background:var(--surf2);}
+.file-btn svg{width:15px;height:15px;flex:none;}
+.file-msg{display:none;font-size:13px;color:var(--mut);margin:-6px 0 12px;line-height:1.4;}
+.file-msg.bad{color:var(--fail-ink,#c4242a);}
 .btn-calc:focus-visible,.btn-sm:focus-visible,.pdf-btn:focus-visible,.jt-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 .err{background:var(--fail-bg);border-radius:var(--r);padding:10px 12px;color:var(--fail-ink);font-size:13px;margin-bottom:12px;}
 
@@ -195,7 +203,14 @@ sub,sup{font-size:max(11px,.75em);line-height:0;}
 <div class="layout">
   <div class="col-l">
     <div class="card">
-      <div class="card-title">Project</div>
+      <div class="card-title file-hdr"><span>Project</span>
+        <span class="file-acts no-print">
+          <button type="button" class="file-btn" id="file-open" onclick="openCheck()" title="Open a saved check (Ctrl+O), or drop the file onto the page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Open</button>
+          <button type="button" class="file-btn" id="file-save" onclick="saveCheck()" title="Save this check to a file (Ctrl+S)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v5h8V3"/><path d="M7 21v-7h10v7"/></svg>Save</button>
+        </span>
+        <input type="file" id="file-in" accept=".json,application/json" hidden>
+      </div>
+      <div id="file-msg" class="file-msg no-print" role="status" aria-live="polite"></div>
       <div class="g2">
         <div class="field"><label>Project</label><div class="iw"><input type="text" id="proj-name" placeholder="e.g. Office Block"></div></div>
         <div class="field"><label>Reference</label><div class="iw"><input type="text" id="proj-ref" placeholder="24-123-ST01"></div></div>
@@ -3275,7 +3290,7 @@ function initSecFill(pfx){
 function switchJt(id){
   const jt=JOINTS.find(j=>j.id===id);
   if(!jt)return;
-  activeId=id;
+  activeId=id; fileMsg('');   // a saved-file message belongs to the check it was about
   document.querySelectorAll('.jt-card').forEach(el=>el.classList.toggle('active',el.dataset.id===id));
   const pan=document.getElementById('input-panel');
   if(id==='fin')   pan.innerHTML=formFin();
@@ -3520,6 +3535,59 @@ THUMBS.scleat = `<svg viewBox="0 0 72 50" xmlns="http://www.w3.org/2000/svg">
   <rect x="24" y="33" width="46" height="7" fill="#d8e4eb" stroke="#333" stroke-width="1"/>
   <text fill="#c47a0a" font-size="6" font-family="Arial,sans-serif" x="28" y="44">×1</text>
 </svg>`;
+
+// ─── SAVE / OPEN A CHECK ──────────────────────────────────────
+// A check file holds the connection type, every input of its form (by element id) and the project details, as JSON.
+const FILE_APP='EngineeringTools Steel Connection Design', FILE_FMT=1, PROJ_IDS=['proj-name','proj-ref','proj-eng','proj-date'];
+function checkData(){
+  const jt=JOINTS.find(j=>j.id===activeId), inputs={}, project={};
+  document.querySelectorAll('#input-panel input[id], #input-panel select[id]').forEach(el=>{inputs[el.id]=el.value;});
+  PROJ_IDS.forEach(id=>{project[id.slice(5)]=document.getElementById(id)?.value||'';});
+  return{app:FILE_APP,format:FILE_FMT,saved:new Date().toISOString(),joint:activeId,jointName:jt?.label||activeId,project,inputs};
+}
+function checkFileName(d){const ref=(d.project?.ref||'').trim();return `${ref?ref+' ':''}${d.jointName}.json`.replace(/[\\/:*?"<>|]+/g,'-');}
+function fileMsg(t,bad){const m=document.getElementById('file-msg');if(!m)return;m.textContent=t;m.classList.toggle('bad',!!bad);m.style.display=t?'block':'none';}
+async function saveCheck(){
+  const d=checkData(), name=checkFileName(d), text=JSON.stringify(d,null,1);
+  if(window.showSaveFilePicker){   // Chrome / Edge: a Save As dialog, so the file can go straight into the job folder
+    try{const h=await window.showSaveFilePicker({suggestedName:name,types:[{description:'Steel connection check',accept:{'application/json':['.json']}}]});
+      const w=await h.createWritable();await w.write(text);await w.close();fileMsg(`Saved ${h.name}`);return;}
+    catch(e){if(e&&e.name==='AbortError')return;}   // cancelled; any other failure falls back to a download
+  }
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'application/json'}));a.download=name;
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  fileMsg(`Saved ${name} to your downloads folder`);
+}
+function openCheck(){const f=document.getElementById('file-in');f.value='';f.click();}
+async function openCheckFile(file){
+  if(!file)return;
+  let d;try{d=JSON.parse(await file.text());}catch(e){fileMsg(`${file.name} is not a saved check: it could not be read`,true);return;}
+  try{const r=await applyCheck(d);
+    fileMsg(`Opened ${file.name}`+(file.name.toLowerCase().includes(r.jointName.toLowerCase())?'':` (${r.jointName})`)+(r.skipped.length?`. ${r.skipped.length} saved value${r.skipped.length>1?'s are':' is'} not used by this version and ${r.skipped.length>1?'were':'was'} left at the default`:''));}
+  catch(e){fileMsg(`${file.name}: ${e.message}`,true);}
+}
+async function applyCheck(d){
+  if(!d||d.app!==FILE_APP||!d.inputs||typeof d.inputs!=='object') throw new Error('this is not a Steel Connection Design check file');
+  if(!(d.format>=1)||d.format>FILE_FMT) throw new Error('this file was saved by a newer version of the tool');
+  const jt=JOINTS.find(j=>j.id===d.joint&&j.ready); if(!jt) throw new Error(`unknown connection type "${d.joint}"`);
+  switchJt(d.joint);
+  await new Promise(r=>setTimeout(r,90));   // let the form's own set-up (section auto-fill, listeners) run first
+  const panel=document.getElementById('input-panel'), skipped=[], entries=Object.entries(d.inputs);
+  const put=(el,v,ev)=>{el.value=v;el.dispatchEvent(new Event(ev,{bubbles:true}));};
+  // dropdowns first: choosing a section auto-fills its dimensions, which the saved values then override
+  for(const [id,v] of entries){const el=document.getElementById(id);
+    if(!el||!panel.contains(el)){skipped.push(id);continue;}
+    if(el.tagName==='SELECT'){if([...el.options].some(o=>o.value===String(v)))put(el,String(v),'change');else skipped.push(id);}}
+  for(const [id,v] of entries){const el=document.getElementById(id);if(el&&panel.contains(el)&&el.tagName==='INPUT')put(el,String(v),'input');}
+  PROJ_IDS.forEach(id=>{const k=id.slice(5),el=document.getElementById(id);if(el&&d.project&&typeof d.project[k]==='string')el.value=d.project[k];});
+  drawDiag();doCalc();
+  return{jointName:jt.label,skipped};
+}
+document.getElementById('file-in').addEventListener('change',e=>openCheckFile(e.target.files[0]));
+document.addEventListener('keydown',e=>{if(!(e.ctrlKey||e.metaKey)||e.altKey||e.shiftKey)return;const k=e.key.toLowerCase();
+  if(k==='s'){e.preventDefault();saveCheck();}else if(k==='o'){e.preventDefault();openCheck();}});
+document.addEventListener('dragover',e=>{if([...(e.dataTransfer?.types||[])].includes('Files'))e.preventDefault();});
+document.addEventListener('drop',e=>{const f=e.dataTransfer?.files?.[0];if(f&&/\.json$/i.test(f.name)){e.preventDefault();openCheckFile(f);}});
 
 // ─── INIT ─────────────────────────────────────────────────────
 document.getElementById('proj-date').value=new Date().toISOString().slice(0,10);
