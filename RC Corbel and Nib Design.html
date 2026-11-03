@@ -738,5 +738,153 @@ $('calc').onclick = run;
 })();
 </script>
 <footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent engineer to check and approve all calculations before they are used.</footer>
+<!-- @@FILEIO: save / open, shared by every tool (scratchpad/common/fileio.*) -->
+<style id="ef-style">
+/* Save / open buttons on the page header, and the status message (source: scratchpad/common/fileio.css) */
+.ef-bar{position:absolute;top:14px;right:16px;z-index:3;display:flex;gap:8px;}
+.ef-bar.ef-float{position:fixed;top:12px;right:12px;}
+.ef-btn{height:32px;padding:0 12px;display:inline-flex;align-items:center;gap:6px;border:0;border-radius:6px;background:rgba(255,255,255,.94);color:#111;font-family:inherit;font-size:13px;font-weight:500;line-height:1;cursor:pointer;}
+.ef-btn:hover{background:#fff;}
+.ef-btn:focus-visible{outline:2px solid #fff;outline-offset:2px;}
+.ef-btn svg{width:15px;height:15px;flex:none;}
+.ef-msg{position:fixed;left:50%;bottom:20px;z-index:1000;width:max-content;max-width:min(560px,calc(100vw - 32px));transform:translate(-50%,8px);opacity:0;pointer-events:none;
+  background:#1d1f20;color:#fff;font-family:inherit;font-size:13px;line-height:1.45;padding:10px 14px;border-radius:6px;transition:opacity .15s,transform .15s;}
+.ef-msg.on{opacity:1;transform:translate(-50%,0);}
+.ef-msg.bad{background:#b3261e;}
+@media(max-width:560px){.ef-bar{position:static;margin-top:12px;align-self:flex-start;}}
+@media print{.ef-bar,.ef-msg{display:none!important;}}
+</style>
+<script id="ef-script">
+/* Save / open: a tool's inputs as a .json file. Shared by every Engineering Tools page (source: scratchpad/common/fileio.js),
+   configured per page with EngFile.init({...}).
+   File: { app: 'EngineeringTools', tool, key, format, saved, state }.
+   Two ways to open:
+   - store: the tool already restores itself from browser storage on load. Open writes the file's state there and reloads,
+     so the tool rebuilds everything (load tables, spans, models) exactly as on a return visit, then recalculates.
+   - set: the page applies the state itself (pages without saved state); EngFile.fields() covers plain forms. */
+const EngFile = (() => {
+  'use strict';
+  const APP = 'EngineeringTools', FMT = 1, FLAG = 'ef-opened';
+  let C = null, input = null, timer = 0;
+  const ICON = {
+    open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+    save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v5h8V3"/><path d="M7 21v-7h10v7"/></svg>',
+  };
+  const sess = {
+    get: k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
+    set: (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } },
+    del: k => { try { sessionStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
+  };
+
+  function msg(t, bad) {
+    let m = document.getElementById('ef-msg');
+    if (!m) { m = document.createElement('div'); m.id = 'ef-msg'; m.className = 'ef-msg no-print'; m.setAttribute('role', 'status'); m.setAttribute('aria-live', 'polite'); document.body.appendChild(m); }
+    m.textContent = t || ''; m.classList.toggle('bad', !!bad); m.classList.toggle('on', !!t);
+    clearTimeout(timer); if (t) timer = setTimeout(() => m.classList.remove('on'), bad ? 9000 : 5000);
+  }
+  function data() { return { app: APP, tool: C.tool, key: C.key, format: FMT, saved: new Date().toISOString(), state: C.get() }; }
+  function fileName() {
+    let ref = '', nm = ''; try { ref = C.ref ? String(C.ref() || '').trim() : ''; nm = C.name ? String(C.name() || '').trim() : ''; } catch (e) { ref = ''; }
+    return `${ref ? ref + ' ' : ''}${nm || C.tool}.json`.replace(/[\\/:*?"<>|]+/g, '-');
+  }
+  async function save() {
+    let d; try { d = data(); } catch (e) { msg(`Could not save: ${e.message}`, true); return; }
+    const name = fileName(), text = JSON.stringify(d, null, 1);
+    if (window.showSaveFilePicker) {   // Chrome / Edge: a Save As dialog, so the file can go straight into the job folder
+      try {
+        const h = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: `${C.tool} file`, accept: { 'application/json': ['.json'] } }] });
+        const w = await h.createWritable(); await w.write(text); await w.close(); msg(`Saved ${h.name}`); return;
+      } catch (e) { if (e && e.name === 'AbortError') return; }   // cancelled; any other failure falls back to a download
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    msg(`Saved ${name} to your downloads folder`);
+  }
+  function open() { input.value = ''; input.click(); }
+  // the saved state, or an error saying what the file is
+  function stateOf(d) {
+    const old = C.legacy ? C.legacy(d) : null; if (old) return old;
+    if (!d || d.app !== APP || !d.state || typeof d.state !== 'object') throw new Error('this is not an Engineering Tools file');
+    if (d.key !== C.key) throw new Error(d.tool ? `it was saved in ${d.tool}, so open it there` : 'it was saved in another tool');
+    if (!(d.format >= 1) || d.format > FMT) throw new Error('this file was saved by a newer version of the tools');
+    return d.state;
+  }
+  async function apply(d, name) {
+    const s = stateOf(d);
+    if (C.store) {
+      try { localStorage.setItem(C.store, JSON.stringify(s)); } catch (e) { throw new Error('this browser is blocking site storage for this page, which Open needs'); }
+      sess.set(FLAG, JSON.stringify({ name, key: C.key }));
+      history.replaceState(null, '', location.href.split('#')[0]);   // a #in= hand-over in the address would otherwise win over the file
+      location.reload(); return { reload: true };
+    }
+    const r = (await C.set(s)) || {};
+    if (C.calc) try { C.calc(); } catch (e) { /* the tool reports its own input errors */ }
+    return r;
+  }
+  function done(name, r) {
+    const k = r && r.skipped ? r.skipped.length : 0;
+    msg(`Opened ${name}` + (k ? `. ${k} saved value${k > 1 ? 's are' : ' is'} not used by this version and ${k > 1 ? 'were' : 'was'} left at the default` : ''));
+  }
+  async function openFile(file) {
+    if (!file) return;
+    let d; try { d = JSON.parse(await file.text()); } catch (e) { msg(`${file.name} could not be read as a saved file`, true); return; }
+    try { const r = await apply(d, file.name); if (!r.reload) done(file.name, r); } catch (e) { msg(`${file.name} was not opened: ${e.message}`, true); }
+  }
+  // plain forms: every input, select and textarea with an id under root; dropdowns are restored first, since choosing a
+  // section often auto-fills its dimensions, which the saved values then override
+  function fields(root) {
+    const els = () => [...(typeof root === 'string' ? document.querySelector(root) : root || document).querySelectorAll('input[id],select[id],textarea[id]')]
+      .filter(el => el.id !== 'ef-file' && !['file', 'button', 'submit', 'reset'].includes(el.type));
+    return {
+      get: () => { const o = {}; els().forEach(el => { o[el.id] = el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value; }); return o; },
+      set: o => {
+        const have = new Map(els().map(el => [el.id, el])), skipped = [], ent = Object.entries(o || {}), fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+        for (const [id, v] of ent) {
+          const el = have.get(id); if (!el) { skipped.push(id); continue; }
+          if (el.tagName === 'SELECT') { if ([...el.options].some(x => x.value === String(v))) { el.value = String(v); fire(el, 'change'); } else skipped.push(id); }
+        }
+        for (const [id, v] of ent) {
+          const el = have.get(id); if (!el || el.tagName === 'SELECT') continue;
+          if (el.type === 'checkbox' || el.type === 'radio') { el.checked = !!v; fire(el, 'change'); } else { el.value = String(v); fire(el, 'input'); fire(el, 'change'); }
+        }
+        return { skipped };
+      },
+    };
+  }
+  // file names lead with the job and member references from the page, e.g. '24-123 Slab S3 RC Slab Design.json'
+  const refOf = ids => () => ids.map(id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; }).filter(Boolean).join(' ');
+  function mount() {
+    const bar = document.createElement('div'); bar.className = 'ef-bar no-print';
+    bar.innerHTML = `<button type="button" class="ef-btn" id="ef-open" title="Open a saved file (Ctrl+O), or drop it onto the page">${ICON.open}Open</button>`
+      + `<button type="button" class="ef-btn" id="ef-save" title="Save the inputs to a file (Ctrl+S)">${ICON.save}Save</button>`;
+    const h = document.querySelector('.page-hdr'); if (h) h.appendChild(bar); else { bar.classList.add('ef-float'); document.body.appendChild(bar); }
+    bar.querySelector('#ef-open').addEventListener('click', open); bar.querySelector('#ef-save').addEventListener('click', save);
+  }
+  function init(c) {
+    C = Object.assign({ tool: (document.querySelector('h1') || {}).textContent || document.title, ref: refOf(['pJob', 'pRef']), calc: () => { const b = document.getElementById('calc'); if (b) b.click(); }, delay: 200 }, c);
+    C.tool = C.tool.trim(); if (!C.key) C.key = C.store;
+    if (C.store && !C.get) C.get = () => collect();   // eslint-disable-line no-undef -- the tool's own serialiser
+    input = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json', id: 'ef-file' }); input.hidden = true;
+    document.body.appendChild(input); input.addEventListener('change', () => openFile(input.files[0]));
+    mount();
+    document.addEventListener('keydown', e => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return; const k = (e.key || '').toLowerCase();
+      if (k === 's') { e.preventDefault(); save(); } else if (k === 'o') { e.preventDefault(); open(); }
+    });
+    document.addEventListener('dragover', e => { if ([...((e.dataTransfer && e.dataTransfer.types) || [])].includes('Files')) e.preventDefault(); });
+    document.addEventListener('drop', e => { const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f && /\.json$/i.test(f.name)) { e.preventDefault(); openFile(f); } });
+    // after an Open that reloaded the page: the tool has restored itself; recalculate and say what was opened
+    const f = sess.get(FLAG);
+    if (f) {
+      sess.del(FLAG); let o = null; try { o = JSON.parse(f); } catch (e) { o = null; }
+      if (o && o.key === C.key) setTimeout(() => { if (C.calc) try { C.calc(); } catch (e) { /* the tool reports its own input errors */ } done(o.name); }, C.delay);
+    }
+  }
+  return { init, save, open, openFile, apply, data, fileName, msg, fields, stateOf, refOf };
+})();
+window.EngFile = EngFile;   // reachable from the page's other scripts and the tests
+EngFile.init({ store: STORE });
+</script>
+<!-- /@@FILEIO -->
 </body>
 </html>

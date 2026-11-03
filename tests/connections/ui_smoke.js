@@ -65,39 +65,40 @@ const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`);
     truth('fdep: bottom edge distance checked', !!byId(rF, 'D1') && byId(rF, 'D1').pass);
     truth('fdep default: every check passes', rF.allPass);
   }
-  // save / open a check: every connection type survives a round trip through the file format
+  // save / open a check (shared EngFile module): every connection type survives a round trip through the file format
   {
     const ids = ['fin', 'pdep', 'fdep', 'dcleat', 'scleat', 'splice', 'base', 'rsplice', 'conc', 'moment', 'brace'];
     for (const id of ids) {
       w.switchJt(id); await wait(120);
       const nums = [...w.document.querySelectorAll('#input-panel input[type=number]')];   // change every number so the defaults cannot pass for a restore
       nums.forEach((el, i) => { el.value = String((parseFloat(el.value) || 0) + 1 + i / 10); el.dispatchEvent(new w.Event('input', { bubbles: true })); });
-      const d = JSON.parse(JSON.stringify(w.checkData()));
+      const d = JSON.parse(JSON.stringify(w.EngFile.data()));
       w.switchJt(id === 'fin' ? 'pdep' : 'fin'); await wait(120);
-      await w.applyCheck(d); const back = w.checkData();
-      truth(`${id}: save then open restores all ${Object.keys(d.inputs).length} inputs (${nums.length} edited)`, w.eval('activeId') === id && nums.length > 3 && Object.entries(d.inputs).every(([k, v]) => back.inputs[k] === v));
+      await w.EngFile.apply(d, 'x.json'); const back = w.EngFile.data().state;
+      truth(`${id}: save then open restores all ${Object.keys(d.state.inputs).length} inputs (${nums.length} edited)`, w.eval('activeId') === id && nums.length > 3 && Object.entries(d.state.inputs).every(([k, v]) => back.inputs[k] === v));
     }
     // an edited check: the saved values win over the section auto-fill, and the project details come back
     w.switchJt('pdep'); await wait(120);
     const $ = id => w.document.getElementById(id), set = (id, v, ev = 'input') => { $(id).value = v; $(id).dispatchEvent(new w.Event(ev, { bubbles: true })); };
     set('pdep-beamSec', '533×210×92 UKB', 'change'); set('pdep-tw', '9.5'); set('pdep-hp', '400'); set('pdep-n', '10'); $('proj-ref').value = 'J-101';
-    const saved = JSON.parse(JSON.stringify(w.checkData()));
-    truth('file name from the reference and the connection type', w.checkFileName(saved) === 'J-101 Partial Depth End Plate.json');
+    const saved = JSON.parse(JSON.stringify(w.EngFile.data()));
+    truth('file: Engineering Tools format with the tool key', saved.app === 'EngineeringTools' && saved.key === 'et-connections-v1' && saved.state.joint === 'pdep');
+    truth('file name from the reference and the connection type', w.EngFile.fileName() === 'J-101 Partial Depth End Plate.json');
     w.switchJt('fin'); await wait(120); $('proj-ref').value = '';
-    const r = await w.applyCheck(saved);
+    const r = await w.EngFile.apply(saved, 'J-101 Partial Depth End Plate.json');
     truth('opened check: section, overridden web thickness, plate and bolts restored', $('pdep-beamSec').value === '533×210×92 UKB' && $('pdep-tw').value === '9.5' && $('pdep-hp').value === '400' && $('pdep-n').value === '10' && r.skipped.length === 0);
     truth('opened check: project reference restored and the check recalculated', $('proj-ref').value === 'J-101' && $('results').style.display !== 'none' && /Partial Depth End Plate/.test($('results').textContent));
-    const rej = async d => { try { await w.applyCheck(d); return ''; } catch (e) { return e.message; } };
-    truth('open rejects a file from another tool', /not a Steel Connection Design check/.test(await rej({ app: 'something else', inputs: {} })));
-    truth('open rejects an unknown connection type', /unknown connection type/.test(await rej({ ...saved, joint: 'gusset' })));
+    const rej = async d => { try { await w.EngFile.apply(d, 'x.json'); return ''; } catch (e) { return e.message; } };
+    truth('open rejects a file that is not from the tools', /not an Engineering Tools file/.test(await rej({ app: 'something else', state: {} })));
+    truth('open rejects a file from another tool, naming it', /saved in Beam Analysis, so open it there/.test(await rej({ ...saved, tool: 'Beam Analysis', key: 'et-beam-analysis-v1' })));
+    truth('open rejects an unknown connection type', /unknown connection type/.test(await rej({ ...saved, state: { ...saved.state, joint: 'gusset' } })));
     truth('open rejects a newer file format', /newer version/.test(await rej({ ...saved, format: 99 })));
-    const extra = { ...saved, inputs: { ...saved.inputs, 'pdep-retired': '1' } };
-    await w.openCheckFile({ name: 'old.json', text: async () => JSON.stringify(extra) });
-    truth('open reports saved values this version does not use', /Opened old\.json \(Partial Depth End Plate\)\. 1 saved value is not used/.test($('file-msg').textContent));
-    await w.openCheckFile({ name: 'notes.json', text: async () => 'not json' });
-    truth('open reports an unreadable file', /notes\.json is not a saved check/.test($('file-msg').textContent) && $('file-msg').classList.contains('bad'));
-    w.switchJt('fin'); await wait(120);
-    truth('switching connection type clears the file message', $('file-msg').textContent === '' && $('file-msg').style.display === 'none');
+    const old = { app: 'EngineeringTools Steel Connection Design', format: 1, joint: 'fdep', project: saved.state.project, inputs: { 'fdep-hp': '1', 'fdep-V': '222' } };
+    await w.EngFile.openFile({ name: 'earlier.json', text: async () => JSON.stringify(old) });
+    truth('opens a file saved before the shared module', w.eval('activeId') === 'fdep' && $('fdep-V').value === '222' && /Opened earlier\.json\. 1 saved value is not used/.test($('ef-msg').textContent));
+    await w.EngFile.openFile({ name: 'notes.json', text: async () => 'not json' });
+    truth('open reports an unreadable file', /notes\.json could not be read/.test($('ef-msg').textContent) && $('ef-msg').classList.contains('bad'));
+    truth('Open and Save sit on the page header', !!w.document.querySelector('.page-hdr #ef-open') && !!w.document.querySelector('.page-hdr #ef-save'));
     $('proj-ref').value = '';
   }
   w.switchJt('fin'); await wait(150);
