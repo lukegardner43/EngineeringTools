@@ -51,7 +51,9 @@ input[type="checkbox"]{width:16px;height:16px;cursor:pointer;accent-color:var(--
 .btn-calc:active{transform:translateY(1px);}
 .pdf-btn{width:100%;padding:9px;background:var(--surf2);border:1px solid var(--bdr2);border-radius:var(--r);font-size:13px;font-weight:500;color:var(--mut);cursor:pointer;transition:border-color .15s,background-color .15s,color .15s;margin-bottom:12px;}
 .pdf-btn:hover{background:var(--surf);border-color:#9aa0a8;color:var(--txt);}
-.results-placeholder{display:flex;align-items:center;justify-content:center;min-height:300px;text-align:center;color:var(--faint);font-size:13px;}
+.dlabel{font-size:14px;font-weight:600;color:var(--txt);margin:16px 0 6px;line-height:1.3;}
+#drawings{margin-bottom:8px;}
+.results-placeholder{display:flex;align-items:center;justify-content:center;min-height:120px;text-align:center;color:var(--faint);font-size:13px;}
 .design-basis{background:var(--surf2);border:1px solid var(--bdr);border-left:1px solid var(--rule);border-radius:var(--r);padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--mut);}
 .req-ties{background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--r);padding:9px 12px;margin-bottom:12px;}
 .req-ties .lbl{font-size:12px;color:var(--mut);font-weight:600;margin-bottom:4px;}
@@ -191,12 +193,340 @@ body{font-variant-numeric:tabular-nums;}
 
     <div>
       <div class="card" id="resultsCard">
-        <div class="results-placeholder"><p>Enter parameters and click Calculate</p></div>
+        <div id="drawings"></div><div class="results-placeholder"><p>Enter parameters and click Calculate</p></div>
       </div>
     </div>
   </div>
 </div>
 
+<script id="drawing-code">
+/* ===== CONNECTION DIAGRAMS (EngineeringTools ConnectionCheck) =====
+   Parametric, to-scale drafting views of each joint, drawn from the current inputs: an elevation and a plan or section,
+   with bolts, welds, dimension chains, labels and the design actions. Pure functions returning SVG strings.
+   Model units mm; each view maps a model box onto a pixel box (x right, y up). */
+const JD = (() => {
+  'use strict';
+  const C = { steel: '#e7ecf1', web: '#eef2f5', edge: '#2f3b47', plate: '#f6d58c', plateEdge: '#94700f', pack: '#e3d3ae', bolt: '#3a424b', boltDark: '#1f252b',
+    weld: '#1a1f24', dim: '#1b67b0', txt: '#222a31', mute: '#7a8590', cl: '#97a2ac', load: '#cc3426', conc: '#f1efea', concEdge: '#8b8478', grout: '#ddd7ca', paper: '#ffffff' };
+  const FS = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"', FM = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"';
+  const W = 920, H = 520;
+  const DEFS = `<defs>
+<pattern id="jdCut" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect width="6" height="6" fill="#c7d0d9"/><line x1="0" y1="0" x2="0" y2="6" stroke="#6f7d8a" stroke-width="0.9"/></pattern>
+<pattern id="jdPlCut" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(-45)"><rect width="5" height="5" fill="#efc560"/><line x1="0" y1="0" x2="0" y2="5" stroke="#94700f" stroke-width="0.8"/></pattern>
+<pattern id="jdConc" patternUnits="userSpaceOnUse" width="26" height="26"><rect width="26" height="26" fill="${C.conc}"/><circle cx="5" cy="6" r="1.3" fill="#b3ab9d"/><circle cx="17" cy="15" r="1.7" fill="#c0b8aa"/><circle cx="9" cy="21" r="1" fill="#a9a091"/><path d="M19 4 l3 2 l-3 2 z" fill="#c5bdaf"/><path d="M2 14 l2.5 -2 l1.5 3 z" fill="#bdb5a7"/></pattern>
+<pattern id="jdGrout" patternUnits="userSpaceOnUse" width="8" height="8"><rect width="8" height="8" fill="${C.grout}"/><circle cx="2" cy="2" r="0.7" fill="#9e9687"/><circle cx="6" cy="6" r="0.7" fill="#9e9687"/></pattern>
+<marker id="jdLd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${C.load}"/></marker>
+</defs>`;
+  const num = v => { const a = Math.abs(v); return a >= 100 || Number.isInteger(+v.toFixed(1)) ? Math.round(v).toString() : v.toFixed(1); };
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // ---------- views ----------
+  function view(box, bb) {
+    const w = bb[2] - bb[0], h = bb[3] - bb[1], k = Math.min(box[2] / w, box[3] / h);
+    const ox = box[0] + (box[2] - w * k) / 2 - bb[0] * k, oy = box[1] + (box[3] - h * k) / 2 + bb[3] * k;
+    return { k, X: x => ox + x * k, Y: y => oy - y * k, box };
+  }
+  const ST = {
+    steel: `fill="${C.steel}" stroke="${C.edge}" stroke-width="1.1"`, web: `fill="${C.web}" stroke="${C.edge}" stroke-width="1.1"`,
+    cut: `fill="url(#jdCut)" stroke="${C.edge}" stroke-width="1.2"`, plate: `fill="${C.plate}" stroke="${C.plateEdge}" stroke-width="1.1"`,
+    plateCut: `fill="url(#jdPlCut)" stroke="${C.plateEdge}" stroke-width="1.1"`, pack: `fill="${C.pack}" stroke="${C.plateEdge}" stroke-width="0.9"`,
+    conc: `fill="url(#jdConc)" stroke="${C.concEdge}" stroke-width="1"`, grout: `fill="url(#jdGrout)" stroke="${C.concEdge}" stroke-width="0.8"`,
+    ghost: `fill="none" stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="6 3"`, outline: `fill="none" stroke="${C.edge}" stroke-width="1.1"`,
+    bg: `fill="${C.paper}" stroke="none"`,
+  };
+  const R = (v, x0, y0, x1, y1, st = 'steel') => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)); return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${(Math.abs(x1 - x0) * v.k).toFixed(1)}" height="${(Math.abs(y1 - y0) * v.k).toFixed(1)}" ${ST[st]}/>`; };
+  const P = (v, pts, st = 'steel') => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + v.X(p[0]).toFixed(1) + ' ' + v.Y(p[1]).toFixed(1)).join(' ')} Z" ${ST[st]}/>`;
+  const LS = { e: `stroke="${C.edge}" stroke-width="1.1"`, t: `stroke="${C.edge}" stroke-width="0.55"`, c: `stroke="${C.cl}" stroke-width="0.7" stroke-dasharray="14 3 2 3"`,
+    h: `stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="5 3"`, d: `stroke="${C.dim}" stroke-width="0.7"` };
+  const Ln = (v, x0, y0, x1, y1, k = 'e') => `<line x1="${v.X(x0).toFixed(1)}" y1="${v.Y(y0).toFixed(1)}" x2="${v.X(x1).toFixed(1)}" y2="${v.Y(y1).toFixed(1)}" ${LS[k]}/>`;
+  const lnP = (x0, y0, x1, y1, k = 'e') => `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" ${LS[k]}/>`;
+  function Tx(x, y, s, o = {}) {
+    const sz = o.size || 11, col = o.color || C.txt, anc = o.anchor || 'start', w = o.weight || 400, rot = o.rot ? ` transform="rotate(${o.rot} ${x.toFixed(1)} ${y.toFixed(1)})"` : '';
+    const body = esc(s).replace(/_\{([^}]*)\}|_([A-Za-z0-9]+)/g, (m, p1, p2) => `<tspan baseline-shift="sub" font-size="78%">${p1 || p2}</tspan>`);
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${sz}" fill="${col}" text-anchor="${anc}" font-weight="${w}" ${o.mono ? FM : FS} paint-order="stroke" stroke="${C.paper}" stroke-width="3" stroke-linejoin="round"${rot}>${body}</text>`;
+  }
+  const tw = (s, sz = 10) => String(s).replace(/_/g, '').length * sz * 0.6;
+  // ---------- dimensions (tick terminators) ----------
+  const tick = (x, y) => `<line x1="${(x - 3.5).toFixed(1)}" y1="${(y + 3.5).toFixed(1)}" x2="${(x + 3.5).toFixed(1)}" y2="${(y - 3.5).toFixed(1)}" stroke="${C.dim}" stroke-width="1.3"/>`;
+  // horizontal chain: xs (model), measured from model level y, dimension line at off px (negative: below)
+  function DH(v, xs, y, off, labels) {
+    const Yf = v.Y(y), Yd = Yf - off, s = Math.sign(off) || 1; let o = '';
+    xs.forEach(x => { o += lnP(v.X(x), Yf - s * 3, v.X(x), Yd - s * 4, 'd'); });
+    o += lnP(v.X(xs[0]) - 4, Yd, v.X(xs[xs.length - 1]) + 4, Yd, 'd');
+    xs.forEach(x => { o += tick(v.X(x), Yd); });
+    for (let i = 0; i < xs.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(xs[i + 1] - xs[i])); if (lab === '') continue;
+      const a = v.X(xs[i]), b = v.X(xs[i + 1]), wpx = Math.abs(b - a), tW = tw(lab);
+      const ty = off > 0 ? Yd - 4 : Yd + 11;
+      if (wpx > tW + 6) o += Tx((a + b) / 2, ty, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true });
+      else o += Tx(Math.max(a, b) + 3 + (i === xs.length - 2 ? 2 : 0), ty + (off > 0 ? -9 : 9) * (i % 2), lab, { size: 10, color: C.dim, mono: true });
+    }
+    return o;
+  }
+  function DV(v, ys, x, off, labels) {
+    const Xf = v.X(x), Xd = Xf + off, s = Math.sign(off) || 1; let o = '';
+    ys.forEach(y => { o += lnP(Xf + s * 3, v.Y(y), Xd + s * 4, v.Y(y), 'd'); });
+    o += lnP(Xd, v.Y(ys[0]) + 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), Xd, v.Y(ys[ys.length - 1]) - 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), 'd');
+    ys.forEach(y => { o += tick(Xd, v.Y(y)); });
+    for (let i = 0; i < ys.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(ys[i + 1] - ys[i])); if (lab === '') continue;
+      const a = v.Y(ys[i]), b = v.Y(ys[i + 1]), hpx = Math.abs(b - a), tW = tw(lab);
+      const tx = off > 0 ? Xd + 11 : Xd - 4;
+      if (hpx > tW + 6) o += Tx(tx, (a + b) / 2, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true, rot: -90 });
+      else o += Tx(off > 0 ? Xd + 5 : Xd - 5, (a + b) / 2 + 3.5, lab, { size: 10, color: C.dim, mono: true, anchor: off > 0 ? 'start' : 'end' });
+    }
+    return o;
+  }
+  // leader with a dot at a model point and text lines at a pixel offset
+  function LD(v, x, y, dx, dy, lines, o = {}) {
+    const px = v.X(x), py = v.Y(y), ex = px + dx, ey = py + dy, s = dx >= 0 ? 1 : -1;
+    let out = `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="1.9" fill="${C.txt}"/>` + lnP(px, py, ex, ey, 't') + lnP(ex, ey, ex + s * 8, ey, 't');
+    [].concat(lines).forEach((t, i) => { out += Tx(ex + s * 11, ey + 4 + i * 13 - ([].concat(lines).length - 1) * 6.5, t, { size: o.size || 10.5, anchor: s > 0 ? 'start' : 'end', weight: i === 0 && o.bold ? 600 : 400, color: i === 0 ? C.txt : '#4b545d' }); });
+    return out;
+  }
+  // load arrow ending at pixel point (px, py); (vx, vy) is the arrow vector in pixels; label near the tail
+  function LA(px, py, vx, vy, label, o = {}) {
+    const x0 = px - vx, y0 = py - vy, lx = x0 + (o.ldx ?? 0), ly = y0 + (o.ldy ?? -6);
+    return `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${px.toFixed(1)}" y2="${py.toFixed(1)}" stroke="${C.load}" stroke-width="2.4" marker-end="url(#jdLd)"/>` +
+      (label ? Tx(lx, ly, label, { size: 11, color: C.load, weight: 600, anchor: o.anchor || 'middle' }) : '');
+  }
+  function moment(px, py, rr, label, cw = true) {
+    const a0 = cw ? 200 : -20, a1 = cw ? 340 : 160, p = a => [px + rr * Math.cos(a * Math.PI / 180), py - rr * Math.sin(a * Math.PI / 180)], [x0, y0] = p(a0), [x1, y1] = p(a1);
+    return `<path d="M${x0.toFixed(1)} ${y0.toFixed(1)} A${rr} ${rr} 0 1 ${cw ? 1 : 0} ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="${C.load}" stroke-width="2.2" marker-end="url(#jdLd)"/>` + Tx(px, py - rr - 7, label, { size: 11, color: C.load, weight: 600, anchor: 'middle' });
+  }
+  // ---------- steel symbols ----------
+  function BE(v, x, y, d) {   // bolt seen end-on: washer ring, head, centre cross
+    const px = v.X(x), py = v.Y(y), r1 = Math.max(0.95 * d * v.k, 3.2), r2 = Math.max(0.55 * d * v.k, 1.9), c = r1 + 3;
+    return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r1.toFixed(1)}" fill="#fff" stroke="${C.boltDark}" stroke-width="1"/><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r2.toFixed(1)}" fill="${C.bolt}"/>` +
+      lnP(px - c, py, px + c, py, 't') + lnP(px, py - c, px, py + c, 't');
+  }
+  // bolt seen side-on with its axis along x (dir 'x') or y: shank a0..a1 at c, head at a0, nut at a1
+  function BS(v, a0, a1, c, d, dir = 'x') {
+    const sg = Math.sign(a1 - a0) || 1, hd = 0.65 * d, nt = 0.8 * d, wh = 0.8 * d, wa = 0.15 * d, pr = 0.45 * d;
+    const seg = (s0, s1, half, fill) => dir === 'x' ? R(v, s0, c - half, s1, c + half, fill) : R(v, c - half, s0, c + half, s1, fill);
+    let o = seg(a0, a1 + sg * (wa + nt + pr), d / 2, 'bolt');
+    o += seg(a0 - sg * wa, a0, d, 'bolt') + seg(a0 - sg * (wa + hd), a0 - sg * wa, wh, 'boltH');
+    o += seg(a1, a1 + sg * wa, d, 'bolt') + seg(a1 + sg * wa, a1 + sg * (wa + nt), wh, 'boltH');
+    o += dir === 'x' ? Ln(v, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), c, 'c') : Ln(v, c, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), 'c');
+    return o;
+  }
+  ST.bolt = `fill="#59626c" stroke="${C.boltDark}" stroke-width="0.6"`; ST.boltH = `fill="${C.bolt}" stroke="${C.boltDark}" stroke-width="0.6"`;
+  // fillet weld at the corner (x, y): legs along sx (x) and sy (y), sized a (mm) but at least 4 px
+  function WD(v, x, y, a, sx, sy) {
+    const L = Math.max(a * v.k, 4.5), px = v.X(x), py = v.Y(y);
+    return `<path d="M${px.toFixed(1)} ${py.toFixed(1)} L${(px + sx * L).toFixed(1)} ${py.toFixed(1)} L${px.toFixed(1)} ${(py - sy * L).toFixed(1)} Z" fill="${C.weld}"/>`;
+  }
+  // weld seen along its length (elevation): narrow strip
+  const WS = (v, x0, y0, x1, y1) => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)), w = Math.max(Math.abs(x1 - x0) * v.k, 2.5), h = Math.max(Math.abs(y1 - y0) * v.k, 2.5);
+    return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${C.weld}" fill-opacity="0.82"/>`; };
+  // zigzag break lines through a member
+  function BK(v, x, y0, y1) {   // vertical break at model x between y0 and y1
+    const px = v.X(x), a = v.Y(Math.max(y0, y1)) - 4, b = v.Y(Math.min(y0, y1)) + 4, m = (a + b) / 2;
+    return `<path d="M${px} ${a} L${px} ${m - 7} L${px - 5} ${m - 3} L${px + 5} ${m + 3} L${px} ${m + 7} L${px} ${b}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  function BKH(v, y, x0, x1) {
+    const py = v.Y(y), a = v.X(Math.min(x0, x1)) - 4, b = v.X(Math.max(x0, x1)) + 4, m = (a + b) / 2;
+    return `<path d="M${a} ${py} L${m - 7} ${py} L${m - 3} ${py - 5} L${m + 3} ${py + 5} L${m + 7} ${py} L${b} ${py}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  // white mask to fade member ends beyond a break
+  const mask = (v, x0, y0, x1, y1) => R(v, x0, y0, x1, y1, 'bg');
+  // I section cross-section (cut), centred at (cx, cy); 'v': web vertical (depth along y), 'h': depth along x
+  function ISec(v, cx, cy, s, o = 'v', st = 'cut') {
+    const b = s.b, h = s.h, tf = s.tf, t = s.tw, r = Math.min(s.r || 0, (b - t) / 2 - 1), pts = [];
+    const arc = (ux, uy, a0, a1) => { for (let i = 0; i <= 6; i++) { const a = (a0 + (a1 - a0) * i / 6) * Math.PI / 180; pts.push([ux + r * Math.cos(a), uy + r * Math.sin(a)]); } };
+    pts.push([-b / 2, h / 2], [b / 2, h / 2], [b / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, h / 2 - tf - r, 90, 180); else pts.push([t / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, -h / 2 + tf + r, 180, 270); else pts.push([t / 2, -h / 2 + tf]);
+    pts.push([b / 2, -h / 2 + tf], [b / 2, -h / 2], [-b / 2, -h / 2], [-b / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, -h / 2 + tf + r, 270, 360); else pts.push([-t / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, h / 2 - tf - r, 0, 90); else pts.push([-t / 2, h / 2 - tf]);
+    pts.push([-b / 2, h / 2 - tf]);
+    return P(v, pts.map(([u, w]) => o === 'v' ? [cx + u, cy + w] : [cx + w, cy + u]), st);
+  }
+  // I member in side elevation: length along 'x' (a0..a1) with the depth c0..c1 across, or along 'y'
+  function IEl(v, a0, a1, c0, c1, s, dir = 'x', o = {}) {
+    const lo = Math.min(c0, c1), hi = Math.max(c0, c1), rr = s.r || 0;
+    const ln = (c, k) => dir === 'x' ? Ln(v, a0, c, a1, c, k) : Ln(v, c, a0, c, a1, k);
+    let out = dir === 'x' ? R(v, a0, lo, a1, hi, 'steel') : R(v, lo, a0, hi, a1, 'steel');
+    out += dir === 'x' ? R(v, a0, lo + s.tf, a1, hi - s.tf, 'web') : R(v, lo + s.tf, a0, hi - s.tf, a1, 'web');
+    out += ln(lo + s.tf, 'e') + ln(hi - s.tf, 'e');
+    if (rr > 0 && !o.noRoot) out += ln(lo + s.tf + rr, 't') + ln(hi - s.tf - rr, 't');
+    return out;
+  }
+  // I member seen on the flange face: width b, length along dir
+  const IFl = (v, a0, a1, cc, s, dir = 'y') => (dir === 'y' ? R(v, cc - s.b / 2, a0, cc + s.b / 2, a1, 'steel') + Ln(v, cc - s.tw / 2 - (s.r || 0), a0, cc - s.tw / 2 - (s.r || 0), a1, 'h') + Ln(v, cc + s.tw / 2 + (s.r || 0), a0, cc + s.tw / 2 + (s.r || 0), a1, 'h')
+    : R(v, a0, cc - s.b / 2, a1, cc + s.b / 2, 'steel'));
+  const title = (x, y, t, sub) => Tx(x, y, t, { size: 11.5, weight: 700, anchor: 'middle', color: C.txt }) + `<line x1="${(x - tw(t, 11.5) / 2).toFixed(1)}" y1="${(y + 3).toFixed(1)}" x2="${(x + tw(t, 11.5) / 2).toFixed(1)}" y2="${(y + 3).toFixed(1)}" stroke="${C.txt}" stroke-width="0.8"/>` + (sub ? Tx(x, y + 16, sub, { size: 10, anchor: 'middle', color: C.mute }) : '');
+  const svg = (body, h = H) => `<svg class="jd" viewBox="0 0 ${W} ${h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;background:${C.paper}" role="img">${DEFS}<rect width="${W}" height="${h}" fill="${C.paper}"/>${body}</svg>`;
+  const BOX = { L: [40, 46, 520, 400], Rt: [612, 46, 280, 400] };
+  const fv = x => { const n = parseFloat(x); return Number.isFinite(n) ? n : 0; };
+  const secName = x => x && x !== '0' ? x : '';   // a form without that selector reads as '0'
+  const BOLTD = { M12: 12, M16: 16, M20: 20, M24: 24, M27: 27, M30: 30, M36: 36 };
+  const bd = sz => BOLTD[sz] || 20;
+  const range = (n, f) => Array.from({ length: Math.max(0, n) }, (_, i) => f(i));
+  return { C, W, H, BOX, DEFS, view, R, P, Ln, lnP, Tx, tw, DH, DV, LD, LA, moment, BE, BS, WD, WS, BK, BKH, mask, ISec, IEl, IFl, title, svg, num, fv, secName, bd, range, esc, ST };
+})();
+
+/* ===== DRAWING KIT EXTRAS (EngineeringTools) =====
+   Additions to the JD drafting kit (joints/diagrams.js) for the member, floor and wall drawings: a page-width SVG wrapper,
+   arrows, supports, distributed loads, result fills, cross-section outlines (I, PFC, RHS, CHS) and SVG to PNG for PDF reports.
+   Source: scratchpad/drawings/kit.js. Pixel helpers take pixel coordinates; JD views map model mm to pixels. */
+const DK = (() => {
+  'use strict';
+  const { Tx, lnP, esc } = JD;
+  const BLUE = '#1d5fbf', FILL = 'rgba(29,95,191,.15)', RED = '#c4242a', REDF = 'rgba(196,36,42,.10)', INK = '#222a31', MUTE = '#6b7680', LINE = '#c9d0d7';
+  const DEFS = `<defs><marker id="dkB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${BLUE}"/></marker>`
+    + `<marker id="dkK" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${INK}"/></marker>`
+    + `<marker id="dkR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${RED}"/></marker>`
+    + `<pattern id="dkHatch" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)"><rect width="7" height="7" fill="#f3f1ec"/><line x1="0" y1="0" x2="0" y2="7" stroke="#8b8478" stroke-width="1"/></pattern></defs>`;
+  const f1 = v => (+v).toFixed(1);
+  // the page-width drawing: viewBox w x h, scales to its container
+  const svg = (body, w, h, label) => `<svg class="jd dk" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" role="img"${label ? ` aria-label="${esc(label)}"` : ''} `
+    + `style="width:100%;height:auto;display:block;background:#fff">${JD.DEFS}${DEFS}<rect width="${w}" height="${h}" fill="#fff"/>${body}</svg>`;
+  const col = c => ({ blue: BLUE, red: RED, ink: INK, mute: MUTE }[c] || c || INK);
+  const mk = c => ({ blue: 'dkB', red: 'dkR' }[c] || 'dkK');
+  // arrow from (x0, y0) to (x1, y1), head at the end (both: heads at both ends)
+  const arrow = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1.6}"`
+    + `${o.dash ? ` stroke-dasharray="${o.dash}"` : ''} marker-end="url(#${mk(o.c)})"${o.both ? ` marker-start="url(#${mk(o.c)})"` : ''}/>`;
+  const line = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.cap ? ` stroke-linecap="${o.cap}"` : ''}/>`;
+  const rect = (x, y, w, h, o = {}) => `<rect x="${f1(Math.min(x, x + w))}" y="${f1(Math.min(y, y + h))}" width="${f1(Math.abs(w))}" height="${f1(Math.abs(h))}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.rx ? ` rx="${o.rx}"` : ''}/>`;
+  const poly = (pts, o = {}) => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + f1(p[0]) + ' ' + f1(p[1])).join(' ')}${o.open ? '' : ' Z'}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+  const text = (x, y, s, o = {}) => Tx(x, y, s, Object.assign({ size: 11 }, o, { color: o.color ? col(o.color) : o.color }));
+  // pinned support under (px, py): triangle and ground line; dir 'down' (default) or 'up' (hanging, above the point)
+  function pin(px, py, dir = 'down') {
+    const s = dir === 'up' ? -1 : 1;
+    return poly([[px, py], [px - 8, py + s * 13], [px + 8, py + s * 13]], { fill: '#fff', stroke: 'ink', w: 1.3 }) + line(px - 12, py + s * 13, px + 12, py + s * 13, { w: 1.3 })
+      + [0, 1, 2, 3].map(k => line(px - 10 + k * 6, py + s * 13, px - 14 + k * 6, py + s * 18, { c: 'mute', w: 0.8 })).join('');
+  }
+  // hatched ground or wall strip: rectangle with the hatch fill and an edge line on the restrained side ('t', 'b', 'l', 'r')
+  function ground(x, y, w, h, edge = 't') {
+    const e = { t: [x, y, x + w, y], b: [x, y + h, x + w, y + h], l: [x, y, x, y + h], r: [x + w, y, x + w, y + h] }[edge];
+    return rect(x, y, w, h, { fill: 'url(#dkHatch)' }) + line(e[0], e[1], e[2], e[3], { w: 1.4 });
+  }
+  // a row of load arrows pointing from yTop to yBase between x0 and x1, with the bar along the tails and a label above
+  function udl(x0, x1, yTop, yBase, label, o = {}) {
+    const n = Math.max(2, Math.round((x1 - x0) / (o.pitch || 28)) + 1), c = o.c || 'red';
+    let g = line(x0, yTop, x1, yTop, { c, w: 1.3 });
+    for (let i = 0; i < n; i++) { const x = x0 + (x1 - x0) * i / (n - 1); g += arrow(x, yTop, x, yBase, { c, w: 1.2 }); }
+    return g + (label ? text((x0 + x1) / 2, yTop - 6, label, { anchor: 'middle', color: c === 'red' ? RED : col(c), weight: 600 }) : '');
+  }
+  // a result diagram: polyline pts (pixels) closed to the base line through the first and last points' base, filled blue
+  function fillDiagram(pts, base, o = {}) {
+    const vert = o.vertical;   // base is an x (diagram plotted sideways) when vertical
+    const close = vert ? [[base, pts[pts.length - 1][1]], [base, pts[0][1]]] : [[pts[pts.length - 1][0], base], [pts[0][0], base]];
+    return poly(pts.concat(close), { fill: o.fill || FILL, stroke: 'none' }) + poly(pts, { open: true, stroke: o.stroke || 'ink', w: 1.1 });
+  }
+  // cross-section outline, cut, centred at pixel (cx, cy) at scale k (px/mm); web vertical; returns svg
+  function section(s, cx, cy, k, o = {}) {
+    const st = o.style || 'cut', fill = st === 'cut' ? 'url(#jdCut)' : '#e7ecf1', edge = '#2f3b47';
+    if (s.shape === 'CHS') {
+      const ro = s.d / 2 * k, ri = (s.d / 2 - s.t) * k;
+      return `<path d="M${f1(cx - ro)} ${f1(cy)} a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(2 * ro)} 0 a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(-2 * ro)} 0 Z M${f1(cx - ri)} ${f1(cy)} a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(2 * ri)} 0 a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(-2 * ri)} 0 Z" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'RHS') {
+      const w = s.b * k, h = s.h * k, t = Math.max(s.t * k, 1.2), ro = Math.min((s.ro || 1.5 * s.t) * k, w / 2), ri = Math.max(0, ro - t);
+      const rr = (x, y, W, H, r) => `M${f1(x + r)} ${f1(y)} H${f1(x + W - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W)} ${f1(y + r)} V${f1(y + H - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W - r)} ${f1(y + H)} H${f1(x + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x)} ${f1(y + H - r)} V${f1(y + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + r)} ${f1(y)} Z`;
+      return `<path d="${rr(cx - w / 2, cy - h / 2, w, h, ro)} ${rr(cx - w / 2 + t, cy - h / 2 + t, w - 2 * t, h - 2 * t, ri)}" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'PFC') {   // channel, toes to the right, web on the left
+      const b = s.b * k, h = s.h * k, tf = Math.max(s.tf * k, 1.2), tw = Math.max(s.tw * k, 1.2), x0 = cx - b / 2, y0 = cy - h / 2;
+      return poly([[x0, y0], [x0 + b, y0], [x0 + b, y0 + tf], [x0 + tw, y0 + tf], [x0 + tw, y0 + h - tf], [x0 + b, y0 + h - tf], [x0 + b, y0 + h], [x0, y0 + h]], { fill, stroke: edge, w: 1.1 });
+    }
+    const v = { k, X: x => cx + x * k, Y: y => cy - y * k };   // I sections: JD's outline with root radii
+    return JD.ISec(v, 0, 0, s, 'v', st === 'cut' ? 'cut' : 'steel');
+  }
+  // SVG markup to a PNG data URL (for the jsPDF reports); resolves { url, w, h } with w, h the viewBox size
+  function toPNG(markup, wpx = 1800) {
+    return new Promise((resolve, reject) => {
+      const m = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(markup); if (!m) { reject(new Error('no viewBox')); return; }
+      const w = +m[1], h = +m[2], k = wpx / w, img = new Image();
+      const src = markup.replace(/style="[^"]*"/, `width="${f1(w * k)}" height="${f1(h * k)}"`);
+      img.onload = () => { const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k); const g = c.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height); resolve({ url: c.toDataURL('image/png'), w, h }); };
+      img.onerror = () => reject(new Error('drawing could not be rendered'));
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
+    });
+  }
+  // drawings for the page (heading + drawing) and for the A4 sheet (each kept whole on a page)
+  const page = blocks => blocks.map(([t, s]) => `<div class="dlabel">${t}</div>${s}`).join('');
+  const sheet = blocks => blocks.map(([t, s]) => `<div class="rfig" style="break-inside:avoid;page-break-inside:avoid;margin:1mm 0 3mm"><h3>${t}</h3><div class="rsvg">${s}</div></div>`).join('');
+  const fmt = (v, d = 0) => Number.isFinite(v) ? (+v).toFixed(d) : '–';
+  return { page, sheet, BLUE, FILL, RED, REDF, INK, MUTE, LINE, svg, arrow, line, rect, poly, text, pin, ground, udl, fillDiagram, section, toPNG, fmt, lnP };
+})();
+
+/* ===== TIE FORCE DRAWINGS (EngineeringTools) =====
+   From the inputs and the tie forces: a typical floor plan to scale with the column grid, the peripheral tie within 1.2 m of
+   the edge, internal ties both ways (on the column lines, with extra ties where a bay exceeds 1.5 l_r), and the horizontal
+   ties at the edge and corner columns; and, where the class needs them, a section with the vertical ties continuous from the
+   foundation to the roof. X runs along the floor length, Y along the width. Source: scratchpad/drawings/ties.js. Needs JD, DK. */
+const DrawTies = (() => {
+  'use strict';
+  const { view, DH, DV, num } = JD;
+  const { svg, arrow, line, rect, text, ground, BLUE, FILL, RED, MUTE } = DK;
+  const grid = (len, sp) => { const xs = [0]; if (sp > 0) for (let x = sp; x < len - 1e-6; x += sp) xs.push(x); xs.push(len); return xs; };
+  const m = v => (Math.round(v * 100) / 100).toString();
+  // extra internal tie positions so that no gap between ties exceeds smax
+  function ties(xs, smax) { const out = []; for (let i = 0; i < xs.length - 1; i++) { const a = xs[i], b = xs[i + 1], n = Math.ceil((b - a) / smax - 1e-9) - 1; for (let j = 1; j <= n; j++) out.push(a + (b - a) * j / (n + 1)); } return out; }
+
+  function plan(d) {
+    const W = 700, L = d.L, B = d.W, xs = grid(L, d.csX), ys = grid(B, d.csY);
+    const v = view([84, 64, 470, 280], [0, 0, L, B]), tied = d.cls !== '1';
+    let bottom = v.Y(0) + 8;   // the notes go under the plan or the labels, whichever ends lower
+    let g = rect(v.X(0), v.Y(B), L * v.k, B * v.k, { fill: '#f6f5f2', stroke: '#8b8478', w: 1.4 });
+    if (tied) {
+      const e = Math.min(1.2, B / 4, L / 4), t = e / 2;
+      g += `<path d="M${v.X(0)} ${v.Y(B)} H${v.X(L)} V${v.Y(0)} H${v.X(0)} Z M${v.X(e)} ${v.Y(B - e)} V${v.Y(e)} H${v.X(L - e)} V${v.Y(B - e)} Z" fill="${FILL}" fill-rule="evenodd"/>`;
+      // internal ties on the internal column lines, plus extra ties where a bay is wider than 1.5 l_r
+      const ix = xs.slice(1, -1), iy = ys.slice(1, -1), ex = ties(xs, d.maxSp), ey = ties(ys, d.maxSp);
+      ix.forEach(x => { g += line(v.X(x), v.Y(B - t), v.X(x), v.Y(t), { c: BLUE, w: 2 }); });
+      iy.forEach(y => { g += line(v.X(t), v.Y(y), v.X(L - t), v.Y(y), { c: BLUE, w: 2 }); });
+      ex.forEach(x => { g += line(v.X(x), v.Y(B - t), v.X(x), v.Y(t), { c: BLUE, w: 1.6, dash: '7 4' }); });
+      ey.forEach(y => { g += line(v.X(t), v.Y(y), v.X(L - t), v.Y(y), { c: BLUE, w: 1.6, dash: '7 4' }); });
+      g += rect(v.X(t), v.Y(B - t), (L - 2 * t) * v.k, (B - 2 * t) * v.k, { stroke: BLUE, w: 3.2 });
+      // horizontal ties at the perimeter columns: inward, one way at an edge column, two ways at a corner
+      const s = Math.min(1.6 * v.k, 34), push = [];
+      xs.forEach(x => ys.forEach(y => { const ex0 = x === 0, ex1 = x === L, ey0 = y === 0, ey1 = y === B; if (!(ex0 || ex1 || ey0 || ey1)) return;
+        if (ex0 || ex1) push.push([v.X(x), v.Y(y), ex0 ? s : -s, 0]); if (ey0 || ey1) push.push([v.X(x), v.Y(y), 0, ey0 ? -s : s]); }));
+      push.forEach(([px, py, dx, dy]) => { g += arrow(px, py, px + dx, py + dy, { c: 'ink', w: 1.8 }); });
+      // labels stacked beside the plan, each with a leader to what it names
+      const lx = v.X(L) + 18, yP = v.Y(B) + 12, yI = yP + 66, yC = yI + 66, ld = (x, y, ty, c) => line(x, y, lx - 4, ty - 4, { c, w: 0.8 });
+      g += ld(v.X(L - t), v.Y(B - t) + 6, yP, BLUE) + text(lx, yP, 'Peripheral tie', { size: 10.5, weight: 600, color: BLUE }) + text(lx, yP + 13, `${num(d.Fper)} kN/m`, { size: 10.5, color: BLUE }) + text(lx, yP + 26, 'within 1.2 m of the edge', { size: 10, color: MUTE });
+      const iyL = iy.length ? iy[0] : ey.length ? ey[0] : null;
+      if (iyL != null) g += ld(v.X(L - t) - 6, v.Y(iyL), yI, BLUE);
+      g += text(lx, yI, 'Internal ties, both ways', { size: 10.5, weight: 600, color: BLUE }) + text(lx, yI + 13, `${num(d.Fint)} kN at ≤ ${m(d.maxSp)} m`, { size: 10.5, color: BLUE }) + text(lx, yI + 26, ex.length || ey.length ? 'dashed: extra ties for 1.5 l_r' : 'on the column lines', { size: 10, color: MUTE });
+      const cy = ys.length > 2 ? ys[1] : 0;
+      g += ld(v.X(L) - s * 0.6, v.Y(cy) - 3, yC, 'ink') + text(lx, yC, 'Column ties', { size: 10.5, weight: 600 }) + text(lx, yC + 13, `${num(d.Fcol)} kN`, { size: 10.5 }) + text(lx, yC + 26, 'edge: one way, corner: two', { size: 10, color: MUTE });
+      bottom = Math.max(bottom, yC + 30);
+    }
+    // columns, grid bubbles, dimensions
+    const cs = Math.max(7, 0.4 * v.k);   // 400 mm columns (this drawing is in metres)
+    xs.forEach(x => ys.forEach(y => { g += rect(v.X(x) - cs / 2, v.Y(y) - cs / 2, cs, cs, { fill: '#2f3b47' }); }));
+    xs.forEach((x, i) => { g += `<circle cx="${v.X(x).toFixed(1)}" cy="${(v.Y(B) - 44).toFixed(1)}" r="8" fill="#fff" stroke="#2f3b47"/>` + text(v.X(x), v.Y(B) - 40, String.fromCharCode(65 + i), { size: 10, anchor: 'middle', weight: 600 }); });
+    ys.forEach((y, j) => { g += `<circle cx="${(v.X(0) - 48).toFixed(1)}" cy="${v.Y(y).toFixed(1)}" r="8" fill="#fff" stroke="#2f3b47"/>` + text(v.X(0) - 48, v.Y(y) + 3.5, String(j + 1), { size: 10, anchor: 'middle', weight: 600 }); });
+    g += DH(v, xs, B, 16, xs.slice(1).map((x, i) => `${m(x - xs[i])} m`)) + DV(v, ys, 0, -18, ys.slice(1).map((y, i) => `${m(y - ys[i])} m`));
+    const yN = bottom + 16;
+    g += text(v.X(0), yN, `Typical floor ${m(L)} × ${m(B)} m (X along the length), columns at ${m(d.csX)} × ${m(d.csY)} m; ${d.n0} storeys at ${m(d.ls)} m`, { size: 10.5 });
+    g += text(v.X(0), yN + 15, tied ? `Class ${d.cls}: peripheral, internal and column ties at every floor and the roof${d.cls === '2B' || d.cls === '3' ? ', with vertical ties' : ''}` : 'Class 1: no tying required (AD A Table 1)', { size: 10.5, weight: 600, color: tied ? undefined : MUTE });
+    return svg(g, W, Math.ceil(yN + 26), 'Typical floor plan with the peripheral, internal and column ties');
+  }
+
+  function section(d) {
+    const W = 700, L = d.L, Ht = d.n0 * d.ls, xs = grid(L, d.csX), v = view([84, 24, 450, 230], [0, -0.6, L, Ht]), H = Math.ceil(v.Y(-0.6) + 44);
+    let g = ground(v.X(0) - 14, v.Y(0), L * v.k + 28, 10, 't');
+    for (let i = 1; i <= d.n0; i++) g += line(v.X(0) - 6, v.Y(i * d.ls), v.X(L) + 6, v.Y(i * d.ls), { w: 2.4, c: '#2f3b47' });
+    xs.forEach(x => { g += rect(v.X(x) - 4, v.Y(Ht), 8, Ht * v.k, { fill: '#e7ecf1', stroke: '#2f3b47', w: 1 }) + line(v.X(x), v.Y(Ht) + 2, v.X(x), v.Y(0) + 6, { c: BLUE, w: 2.4 }); });
+    g += DV(v, [0, d.ls], 0, -22, [`${m(d.ls)} m`]);
+    const lx = v.X(L) + 16, yl = v.Y(Ht * 0.6);
+    g += line(v.X(L) + 2, yl, lx - 3, yl, { c: BLUE, w: 0.8 }) + text(lx, yl - 2, 'Vertical ties', { size: 10.5, weight: 600, color: BLUE })
+      + text(lx, yl + 11, `${num(d.Fvert)} kN per storey`, { size: 10.5, color: BLUE }) + text(lx, yl + 24, 'every column and wall,', { size: 10, color: MUTE }) + text(lx, yl + 37, 'continuous base to roof', { size: 10, color: MUTE });
+    g += text(v.X(0), v.Y(-0.6) + 28, `Section along X: ${d.n0} storeys at ${m(d.ls)} m; laps in the vertical bars must carry the full tie force`, { size: 10.5 });
+    return svg(g, W, H, 'Section with the vertical ties');
+  }
+
+  const html = d => DK.page([['Tie layout, typical floor', plan(d)]].concat(d.cls === '2B' || d.cls === '3' ? [['Vertical ties', section(d)]] : []));
+  return { html, plan, section };
+})();
+
+</script>
 <script>
 function V(id){return document.getElementById(id).value;}
 
@@ -254,7 +584,7 @@ function updateClass(){
 
 var lastCalc=null;
 
-function calculate(){
+function tieCalc(){
   var c=classify(),cls=c.cls;
   var n0=+V('nStoreys'),W=+V('floorW'),L=+V('floorL');
   var lr=Math.max(+V('csX'),+V('csY')),ls=+V('ls');
@@ -265,7 +595,10 @@ function calculate(){
   var Fint_calc=((avgLoad*(lr/5))/7.5)*Ft,Fint=Math.max(Fint_calc,Ft),maxSp=1.5*lr;
   var h1=2*Ft,h2=(ls*Ft)/2.5,h3=0.03*NEd,Fcol=Math.max(Math.min(h1,h2),h3);
   var Fvert=(gk+gsk+psi1*qk)*floorArea;
-  lastCalc={c,cls,n0,W,L,lr,ls,gk,gsk,qk,NEd,psi1,floorArea,avgLoad,Ft,Fper,Fint,Fint_calc,Fint_min:Ft,maxSp,h1,h2,h3,Fcol,Fvert};
+  return {c,cls,n0,W,L,lr,csX:+V('csX'),csY:+V('csY'),ls,gk,gsk,qk,NEd,psi1,floorArea,avgLoad,Ft,Fper,Fint,Fint_calc,Fint_min:Ft,maxSp,h1,h2,h3,Fcol,Fvert};
+}
+function calculate(){
+  lastCalc=tieCalc();
   renderResults();
   document.getElementById('reportBtn').style.display='block';
 }
@@ -286,6 +619,7 @@ function renderResults(){
     if(d.cls==='2B'||d.cls==='3') reqs.push('Vertical');
     h+='<div class="req-ties"><div class="lbl">Required Ties</div><div class="val">'+reqs.join(' &nbsp;&middot;&nbsp; ')+'</div></div>';
   }
+  h+='<div id="drawings"></div>';
   if(d.cls==='2A'||d.cls==='2B'||d.cls==='3'){
     h+=tc('Peripheral Ties','NA to 9.10.2.1',d.Fper.toFixed(2)+' kN/m',
       'F_tie,per = (20 + 4n₀) ≤ 60\n        = (20 + 4×'+d.n0+') = '+d.Fper.toFixed(2)+' kN/m',
@@ -308,7 +642,22 @@ function renderResults(){
   }
   h+='</div>';
   document.getElementById('resultsCard').innerHTML=h;
+  redraw();
 }
+
+// drawings: redrawn from the inputs as they change (the tie cards update on Calculate)
+let drawT=0;
+function redraw(){
+  const el=document.getElementById('drawings'); if(!el) return;
+  try{
+    const d=tieCalc();
+    if(!(d.L>0&&d.W>0)) throw new Error('enter the floor width and length');
+    el.innerHTML=DrawTies.html(d);
+  }catch(e){ el.innerHTML='<div class="info">The drawing will appear when the inputs are complete: '+String(e.message).replace(/[&<>]/g,'')+'</div>'; }
+}
+function queueDraw(e){ if(e&&e.target&&e.target.closest&&e.target.closest('#resultsCard')) return; clearTimeout(drawT); drawT=setTimeout(redraw,150); }
+document.addEventListener('input',queueDraw); document.addEventListener('change',queueDraw);
+window.addEventListener('DOMContentLoaded',redraw);
 
 function tc(type,clause,force,formula,note,loc){
   var id='tc_'+(Math.random().toString(36).slice(2,7));
@@ -360,6 +709,10 @@ async function exportPDF(){
     doc.text(val,M+TW*0.56,y,{maxWidth:TW*0.26});
     if(ref){doc.setFont('helvetica','italic');doc.setFontSize(7);doc.setTextColor(130,130,130);doc.text(ref,W-M,y,{align:'right',maxWidth:TW*0.18});}
     y+=4.5;
+  }
+  async function figure(markup,maxH){   // a drawing as an image, full text width or maxH mm tall
+    const im=await DK.toPNG(markup), hh=Math.min(maxH||125,TW*im.h/im.w), ww=hh*im.w/im.h;
+    pageCheck(hh+4); doc.addImage(im.url,'PNG',M,y,ww,hh,undefined,'FAST'); y+=hh+4;
   }
   function rowResult(lbl,val,ok){
     pageCheck(6);
@@ -449,19 +802,23 @@ async function exportPDF(){
   await frow('Formula', `F_t = \\min(20 + 4n_0,\\; 60) = \\min(20 + 4 \\times ${d.n0},\\; 60)`, 'NA to 9.10.2.1');
   rowResult('Ft', d.Ft.toFixed(2)+' kN', true);
 
+  // §3 Tie layout
+  h1('3. Tie layout, typical floor');
+  try{ await figure(DrawTies.plan(d),120); }catch(e){ row('Drawing','could not be rendered in this browser',''); }
+
   if(d.cls==='1'){
-    h1('3. Outcome');
+    h1('4. Outcome');
     rowResult('No additional disproportionate collapse measures required','AD A Table 1 Class 1',true);
   } else {
-    // §3 Peripheral Ties
-    h1('3. Peripheral Ties');
+    // §4 Peripheral Ties
+    h1('4. Peripheral Ties');
     row('Clause','NA to EN 1992-1-1 §9.10.2.1','');
     row('Location','Within 1.2 m of external slab edge at every floor and roof level','');
     row('Formula','Ftie,per = Ft','');
     rowResult('Peripheral tie force',d.Fper.toFixed(2)+' kN/m',true);
 
-    // §4 Internal Ties
-    h1('4. Internal Ties');
+    // §5 Internal Ties
+    h1('5. Internal Ties');
     row('Clause','NA to EN 1992-1-1 §9.10.2.2','');
     await frow('Formula',
       `F_{tie,int} = \\max\\!\\left[\\frac{1}{7.5}(G_k+G_{sk}+Q_k)\\frac{l_r}{5}F_t,\\; F_t\\right]`,
@@ -473,8 +830,8 @@ async function exportPDF(){
     rowResult('Internal tie force  (governing)', d.Fint.toFixed(2)+' kN', true);
     row('Maximum tie spacing', '= 1.5 × lr = 1.5 × '+d.lr.toFixed(2)+' = '+d.maxSp.toFixed(2)+' m', '');
 
-    // §5 Horizontal Ties to Columns/Walls
-    h1('5. Horizontal Ties to Columns & Walls');
+    // §6 Horizontal Ties to Columns/Walls
+    h1('6. Horizontal Ties to Columns & Walls');
     row('Clause','NA to EN 1992-1-1 §9.10.2.3','');
     await frow('Formula',
       `F_{tie,col} = \\max\\!\\left[\\min\\!\\left(2F_t,\\;\\frac{l_s F_t}{2.5}\\right),\\; 0.03N_{Ed}\\right]`,
@@ -487,13 +844,14 @@ async function exportPDF(){
   }
 
   if(d.cls==='2B'||d.cls==='3'){
-    // §6 Vertical Ties
-    h1('6. Vertical Ties');
+    // §7 Vertical Ties
+    h1('7. Vertical Ties');
     row('Clause','NA to EN 1992-1-1 §9.10.2.5 & Table NA.1.3(A)','');
     row('Accidental combination Ed/m²','= Gk + Gsk + ψ₁·Qk = '+d.gk.toFixed(2)+' + '+d.gsk.toFixed(2)+' + '+d.psi1+'×'+d.qk.toFixed(2)+' = '+(d.gk+d.gsk+d.psi1*d.qk).toFixed(2)+' kN/m²','');
     row('Formula','Fv = Ed × Afloor','');
     rowResult('Vertical tie force per storey',d.Fvert.toFixed(2)+' kN',true);
     row('Application','Continuous reinforcement from lowest to highest storey','');
+    try{ await figure(DrawTies.section(d),80); }catch(e){ /* the drawing is optional in the report */ }
   }
 
   if(d.cls==='3'){
