@@ -1,5 +1,6 @@
-// Drawings on Composite Beam, Floor Vibration, Steel Member, Concrete Tie Force and RC Crack Width: present on load, redrawn
-// as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
+// Drawings on Composite Beam, Floor Vibration, Steel Member, Concrete Tie Force and RC Crack Width (group 1) and on Steel Beam
+// Torsion, Beam Web Openings, Steel Frame Design, Sheet Pile Wall, the RC Section Toolkit tabs, RC Column, Hollowcore Support
+// Beam, Steel Masonry Support and Steel Member Fire Design (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
 //   NODE_PATH=<jsdom>/node_modules node tests/drawings/test_drawings.js
 const fs = require('fs'), path = require('path'), { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '../..');
@@ -57,5 +58,55 @@ async function sweep(f, cases, expect) {
     const { w, errs } = await load('Steel Beam Analysis and Design.html');
     truth('Steel Beam Analysis & Design: unchanged, no member drawing code', typeof w.DrawMember === 'undefined' && w.document.getElementById('drawings').innerHTML === '' && errs.length === 0); w.close();
   }
+  // ---------- group 2 ----------
+  const click = (w, sel) => w.document.querySelector(sel).click();
+  await sweep('Steel Beam Torsion.html', [
+    ['span 8 m', w => set(w, 'L', '8')], ['warping restrained left end', w => set(w, 'endL', 'fixed', 'change')],
+    ['lateral restraint at 2 m', w => set(w, 'restr', '2')], ['PFC', w => set(w, 'series', 'PFC', 'change')], ['cantilever (root built in)', w => { set(w, 'endL', 'fork', 'change'); set(w, 'sys', 'cant', 'change'); }],
+  ], 1);
+  await sweep('Beam Web Openings.html', [
+    ['span 10 m', w => set(w, 'L', '10')], ['composite', w => click(w, '#modeSeg button[data-m="comp"]')], ['imposed 7.5 kN/m²', w => set(w, 'q', '7.5')],
+  ], 1);
+  await sweep('Steel Frame Design.html', [
+    ['span 24 m', w => set(w, 'span', '24')], ['rise 2 m', w => set(w, 'rise', '2')], ['pinned bases', w => set(w, 'base', 'pinned', 'change')], ['grid frame', w => set(w, 'kind', 'grid', 'change')],
+  ], 1);
+  await sweep('Sheet Pile Wall.html', [
+    ['retained height 5 m', w => set(w, 'H', '5')], ['propped', w => set(w, 'type', 'prop', 'change')], ['toe provided 5 m', w => set(w, 'toe', '5')],
+    ['no water', w => { set(w, 'zwR', ''); set(w, 'zwE', ''); }], ['no unplanned excavation', w => { const c = w.document.getElementById('unpl'); c.checked = false; c.dispatchEvent(new w.Event('change', { bubbles: true })); }],
+  ], 1);
+  {   // the toe provided is measured below the formation: the requirement adds the unplanned excavation
+    const { w } = await load('Sheet Pile Wall.html'); const inp = w.input(w.collect()); inp.toeProvided = 6; const R = w.eval('Piling').design(inp);
+    const need = R.toeLevel - inp.H, ck = R.checks.find(c => c.k === 'd');
+    truth('Sheet Pile Wall: embedment check uses the toe below the formation', Math.abs(ck.util - need / 6) < 1e-9 && need > R.dReq); w.close();
+  }
+  await sweep('RC Section Design Toolkit.html', [
+    ['torsion tab', w => click(w, '#modes button[data-m="tor"]')], ['torsion T_Ed 60', w => set(w, 'TEd', '60')],
+    ['crack width tab', w => click(w, '#modes button[data-m="crk"]')], ['axial tension, slab', w => { set(w, 'ckind', 'tension', 'change'); set(w, 'cel', 'slab', 'change'); }],
+    ['anchorage tab', w => click(w, '#modes button[data-m="anc"]')], ['bent bar, 12 mm', w => { set(w, 'abent', '1', 'change'); set(w, 'aphi', '12', 'change'); }], ['compression', w => set(w, 'aten', '0', 'change')],
+  ], 0);
+  await sweep('RC Column Design.html', [
+    ['N_Ed 1500 kN, 7 m', w => { set(w, 'ned', '1500'); set(w, 'clen', '7000'); }], ['unbraced', w => w.setBraced(false)], ['pinned', w => w.setPinned(true)], ['circular', w => w.setTab('circ')],
+  ], 2);
+  await sweep('Hollowcore Support Beam.html', [
+    ['span 7.2 m', w => set(w, 'L', '7.2')], ['edge beam', w => set(w, 'LB', '0')], ['bottom flange', w => set(w, 'bearOn', 'bottom', 'change')],
+    ['Slimflor', w => { set(w, 'series', 'SF', 'change'); set(w, 'gap', '10'); }], ['ASB', w => set(w, 'series', 'ASB', 'change')],
+  ], 2);
+  {   // after a Check on the same inputs the construction stages and the moments are drawn
+    const { w } = await load('Hollowcore Support Beam.html'); click(w, '#calc'); await wait(50);
+    const h = w.document.getElementById('drawings').innerHTML;
+    truth('Hollowcore Support Beam: Check adds the construction stages', (h.match(/<svg class="jd dk"/g) || []).length === 3 && />2AB</.test(h) && !bad(h)); w.close();
+  }
+  await sweep('Steel Masonry Support.html', [
+    ['leaf 50 mm off the face', w => set(w, 'lc', '60')], ['toe load', w => set(w, 'loadAt', 'toe', 'change')], ['plate under a beam', w => set(w, 'type', 'plate', 'change')],
+    ['spanning angle, S275', w => { set(w, 'grade', 'S275', 'change'); set(w, 'cold', '0', 'change'); set(w, 'at', '12'); set(w, 'type', 'span', 'change'); }],
+  ], 1);
+  {   // a stainless plate weld has a resistance (beta_w = 1.0, BS EN 1993-1-4 4.3(4)), so the verdict is never NaN
+    const { w } = await load('Steel Masonry Support.html'); set(w, 'type', 'plate', 'change'); const R = w.eval('Masonry').design(w.input(w.collect()));
+    truth('Steel Masonry Support: stainless plate weld resistance is finite', Number.isFinite(R.plate.FwRd) && Number.isFinite(R.utilMax)); w.close();
+  }
+  await sweep('Steel Member Fire Design.html', [
+    ['spray, 4 sides', w => { set(w, 'prot', 'spray', 'change'); set(w, 'sides', '4', 'change'); }], ['unprotected', w => set(w, 'prot', 'none', 'change')],
+    ['R120', w => set(w, 'period', '120', 'change')], ['SHS column', w => { set(w, 'series', 'SHS-H', 'change'); set(w, 'type', 'column', 'change'); set(w, 'N', '500'); }], ['CHS', w => set(w, 'series', 'CHS-H', 'change')],
+  ], 3);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();

@@ -231,7 +231,7 @@ svg.fr{width:100%;display:block;margin:4px 0 10px;background:var(--surf2);border
       </div>
       <button class="btn" id="calc">Analyse and check</button>
     </div>
-    <div><div class="card" id="results"><div class="placeholder">Set out the frame, sections and loads, then Analyse and check.</div></div></div>
+    <div><div class="card" id="results"><div id="drawings"></div><div class="placeholder">Set out the frame, sections and loads, then Analyse and check.</div></div></div>
   </div>
 </div>
 <div id="report"></div>
@@ -2156,6 +2156,326 @@ const Frame2D = (() => {
 if (typeof module !== 'undefined') module.exports = { Frame2D };
 
 </script>
+<script id="drawing-code">
+/* ===== CONNECTION DIAGRAMS (EngineeringTools ConnectionCheck) =====
+   Parametric, to-scale drafting views of each joint, drawn from the current inputs: an elevation and a plan or section,
+   with bolts, welds, dimension chains, labels and the design actions. Pure functions returning SVG strings.
+   Model units mm; each view maps a model box onto a pixel box (x right, y up). */
+const JD = (() => {
+  'use strict';
+  const C = { steel: '#e7ecf1', web: '#eef2f5', edge: '#2f3b47', plate: '#f6d58c', plateEdge: '#94700f', pack: '#e3d3ae', bolt: '#3a424b', boltDark: '#1f252b',
+    weld: '#1a1f24', dim: '#1b67b0', txt: '#222a31', mute: '#7a8590', cl: '#97a2ac', load: '#cc3426', conc: '#f1efea', concEdge: '#8b8478', grout: '#ddd7ca', paper: '#ffffff' };
+  const FS = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"', FM = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"';
+  const W = 920, H = 520;
+  const DEFS = `<defs>
+<pattern id="jdCut" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect width="6" height="6" fill="#c7d0d9"/><line x1="0" y1="0" x2="0" y2="6" stroke="#6f7d8a" stroke-width="0.9"/></pattern>
+<pattern id="jdPlCut" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(-45)"><rect width="5" height="5" fill="#efc560"/><line x1="0" y1="0" x2="0" y2="5" stroke="#94700f" stroke-width="0.8"/></pattern>
+<pattern id="jdConc" patternUnits="userSpaceOnUse" width="26" height="26"><rect width="26" height="26" fill="${C.conc}"/><circle cx="5" cy="6" r="1.3" fill="#b3ab9d"/><circle cx="17" cy="15" r="1.7" fill="#c0b8aa"/><circle cx="9" cy="21" r="1" fill="#a9a091"/><path d="M19 4 l3 2 l-3 2 z" fill="#c5bdaf"/><path d="M2 14 l2.5 -2 l1.5 3 z" fill="#bdb5a7"/></pattern>
+<pattern id="jdGrout" patternUnits="userSpaceOnUse" width="8" height="8"><rect width="8" height="8" fill="${C.grout}"/><circle cx="2" cy="2" r="0.7" fill="#9e9687"/><circle cx="6" cy="6" r="0.7" fill="#9e9687"/></pattern>
+<marker id="jdLd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${C.load}"/></marker>
+</defs>`;
+  const num = v => { const a = Math.abs(v); return a >= 100 || Number.isInteger(+v.toFixed(1)) ? Math.round(v).toString() : v.toFixed(1); };
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // ---------- views ----------
+  function view(box, bb) {
+    const w = bb[2] - bb[0], h = bb[3] - bb[1], k = Math.min(box[2] / w, box[3] / h);
+    const ox = box[0] + (box[2] - w * k) / 2 - bb[0] * k, oy = box[1] + (box[3] - h * k) / 2 + bb[3] * k;
+    return { k, X: x => ox + x * k, Y: y => oy - y * k, box };
+  }
+  const ST = {
+    steel: `fill="${C.steel}" stroke="${C.edge}" stroke-width="1.1"`, web: `fill="${C.web}" stroke="${C.edge}" stroke-width="1.1"`,
+    cut: `fill="url(#jdCut)" stroke="${C.edge}" stroke-width="1.2"`, plate: `fill="${C.plate}" stroke="${C.plateEdge}" stroke-width="1.1"`,
+    plateCut: `fill="url(#jdPlCut)" stroke="${C.plateEdge}" stroke-width="1.1"`, pack: `fill="${C.pack}" stroke="${C.plateEdge}" stroke-width="0.9"`,
+    conc: `fill="url(#jdConc)" stroke="${C.concEdge}" stroke-width="1"`, grout: `fill="url(#jdGrout)" stroke="${C.concEdge}" stroke-width="0.8"`,
+    ghost: `fill="none" stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="6 3"`, outline: `fill="none" stroke="${C.edge}" stroke-width="1.1"`,
+    bg: `fill="${C.paper}" stroke="none"`,
+  };
+  const R = (v, x0, y0, x1, y1, st = 'steel') => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)); return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${(Math.abs(x1 - x0) * v.k).toFixed(1)}" height="${(Math.abs(y1 - y0) * v.k).toFixed(1)}" ${ST[st]}/>`; };
+  const P = (v, pts, st = 'steel') => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + v.X(p[0]).toFixed(1) + ' ' + v.Y(p[1]).toFixed(1)).join(' ')} Z" ${ST[st]}/>`;
+  const LS = { e: `stroke="${C.edge}" stroke-width="1.1"`, t: `stroke="${C.edge}" stroke-width="0.55"`, c: `stroke="${C.cl}" stroke-width="0.7" stroke-dasharray="14 3 2 3"`,
+    h: `stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="5 3"`, d: `stroke="${C.dim}" stroke-width="0.7"` };
+  const Ln = (v, x0, y0, x1, y1, k = 'e') => `<line x1="${v.X(x0).toFixed(1)}" y1="${v.Y(y0).toFixed(1)}" x2="${v.X(x1).toFixed(1)}" y2="${v.Y(y1).toFixed(1)}" ${LS[k]}/>`;
+  const lnP = (x0, y0, x1, y1, k = 'e') => `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" ${LS[k]}/>`;
+  function Tx(x, y, s, o = {}) {
+    const sz = o.size || 11, col = o.color || C.txt, anc = o.anchor || 'start', w = o.weight || 400, rot = o.rot ? ` transform="rotate(${o.rot} ${x.toFixed(1)} ${y.toFixed(1)})"` : '';
+    const body = esc(s).replace(/_\{([^}]*)\}|_([A-Za-z0-9]+)/g, (m, p1, p2) => `<tspan baseline-shift="sub" font-size="78%">${p1 || p2}</tspan>`);
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${sz}" fill="${col}" text-anchor="${anc}" font-weight="${w}" ${o.mono ? FM : FS} paint-order="stroke" stroke="${C.paper}" stroke-width="3" stroke-linejoin="round"${rot}>${body}</text>`;
+  }
+  const tw = (s, sz = 10) => String(s).replace(/_/g, '').length * sz * 0.6;
+  // ---------- dimensions (tick terminators) ----------
+  const tick = (x, y) => `<line x1="${(x - 3.5).toFixed(1)}" y1="${(y + 3.5).toFixed(1)}" x2="${(x + 3.5).toFixed(1)}" y2="${(y - 3.5).toFixed(1)}" stroke="${C.dim}" stroke-width="1.3"/>`;
+  // horizontal chain: xs (model), measured from model level y, dimension line at off px (negative: below)
+  function DH(v, xs, y, off, labels) {
+    const Yf = v.Y(y), Yd = Yf - off, s = Math.sign(off) || 1; let o = '';
+    xs.forEach(x => { o += lnP(v.X(x), Yf - s * 3, v.X(x), Yd - s * 4, 'd'); });
+    o += lnP(v.X(xs[0]) - 4, Yd, v.X(xs[xs.length - 1]) + 4, Yd, 'd');
+    xs.forEach(x => { o += tick(v.X(x), Yd); });
+    for (let i = 0; i < xs.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(xs[i + 1] - xs[i])); if (lab === '') continue;
+      const a = v.X(xs[i]), b = v.X(xs[i + 1]), wpx = Math.abs(b - a), tW = tw(lab);
+      const ty = off > 0 ? Yd - 4 : Yd + 11;
+      if (wpx > tW + 6) o += Tx((a + b) / 2, ty, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true });
+      else o += Tx(Math.max(a, b) + 3 + (i === xs.length - 2 ? 2 : 0), ty + (off > 0 ? -9 : 9) * (i % 2), lab, { size: 10, color: C.dim, mono: true });
+    }
+    return o;
+  }
+  function DV(v, ys, x, off, labels) {
+    const Xf = v.X(x), Xd = Xf + off, s = Math.sign(off) || 1; let o = '';
+    ys.forEach(y => { o += lnP(Xf + s * 3, v.Y(y), Xd + s * 4, v.Y(y), 'd'); });
+    o += lnP(Xd, v.Y(ys[0]) + 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), Xd, v.Y(ys[ys.length - 1]) - 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), 'd');
+    ys.forEach(y => { o += tick(Xd, v.Y(y)); });
+    for (let i = 0; i < ys.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(ys[i + 1] - ys[i])); if (lab === '') continue;
+      const a = v.Y(ys[i]), b = v.Y(ys[i + 1]), hpx = Math.abs(b - a), tW = tw(lab);
+      const tx = off > 0 ? Xd + 11 : Xd - 4;
+      if (hpx > tW + 6) o += Tx(tx, (a + b) / 2, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true, rot: -90 });
+      else o += Tx(off > 0 ? Xd + 5 : Xd - 5, (a + b) / 2 + 3.5, lab, { size: 10, color: C.dim, mono: true, anchor: off > 0 ? 'start' : 'end' });
+    }
+    return o;
+  }
+  // leader with a dot at a model point and text lines at a pixel offset
+  function LD(v, x, y, dx, dy, lines, o = {}) {
+    const px = v.X(x), py = v.Y(y), ex = px + dx, ey = py + dy, s = dx >= 0 ? 1 : -1;
+    let out = `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="1.9" fill="${C.txt}"/>` + lnP(px, py, ex, ey, 't') + lnP(ex, ey, ex + s * 8, ey, 't');
+    [].concat(lines).forEach((t, i) => { out += Tx(ex + s * 11, ey + 4 + i * 13 - ([].concat(lines).length - 1) * 6.5, t, { size: o.size || 10.5, anchor: s > 0 ? 'start' : 'end', weight: i === 0 && o.bold ? 600 : 400, color: i === 0 ? C.txt : '#4b545d' }); });
+    return out;
+  }
+  // load arrow ending at pixel point (px, py); (vx, vy) is the arrow vector in pixels; label near the tail
+  function LA(px, py, vx, vy, label, o = {}) {
+    const x0 = px - vx, y0 = py - vy, lx = x0 + (o.ldx ?? 0), ly = y0 + (o.ldy ?? -6);
+    return `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${px.toFixed(1)}" y2="${py.toFixed(1)}" stroke="${C.load}" stroke-width="2.4" marker-end="url(#jdLd)"/>` +
+      (label ? Tx(lx, ly, label, { size: 11, color: C.load, weight: 600, anchor: o.anchor || 'middle' }) : '');
+  }
+  function moment(px, py, rr, label, cw = true) {
+    const a0 = cw ? 200 : -20, a1 = cw ? 340 : 160, p = a => [px + rr * Math.cos(a * Math.PI / 180), py - rr * Math.sin(a * Math.PI / 180)], [x0, y0] = p(a0), [x1, y1] = p(a1);
+    return `<path d="M${x0.toFixed(1)} ${y0.toFixed(1)} A${rr} ${rr} 0 1 ${cw ? 1 : 0} ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="${C.load}" stroke-width="2.2" marker-end="url(#jdLd)"/>` + Tx(px, py - rr - 7, label, { size: 11, color: C.load, weight: 600, anchor: 'middle' });
+  }
+  // ---------- steel symbols ----------
+  function BE(v, x, y, d) {   // bolt seen end-on: washer ring, head, centre cross
+    const px = v.X(x), py = v.Y(y), r1 = Math.max(0.95 * d * v.k, 3.2), r2 = Math.max(0.55 * d * v.k, 1.9), c = r1 + 3;
+    return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r1.toFixed(1)}" fill="#fff" stroke="${C.boltDark}" stroke-width="1"/><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r2.toFixed(1)}" fill="${C.bolt}"/>` +
+      lnP(px - c, py, px + c, py, 't') + lnP(px, py - c, px, py + c, 't');
+  }
+  // bolt seen side-on with its axis along x (dir 'x') or y: shank a0..a1 at c, head at a0, nut at a1
+  function BS(v, a0, a1, c, d, dir = 'x') {
+    const sg = Math.sign(a1 - a0) || 1, hd = 0.65 * d, nt = 0.8 * d, wh = 0.8 * d, wa = 0.15 * d, pr = 0.45 * d;
+    const seg = (s0, s1, half, fill) => dir === 'x' ? R(v, s0, c - half, s1, c + half, fill) : R(v, c - half, s0, c + half, s1, fill);
+    let o = seg(a0, a1 + sg * (wa + nt + pr), d / 2, 'bolt');
+    o += seg(a0 - sg * wa, a0, d, 'bolt') + seg(a0 - sg * (wa + hd), a0 - sg * wa, wh, 'boltH');
+    o += seg(a1, a1 + sg * wa, d, 'bolt') + seg(a1 + sg * wa, a1 + sg * (wa + nt), wh, 'boltH');
+    o += dir === 'x' ? Ln(v, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), c, 'c') : Ln(v, c, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), 'c');
+    return o;
+  }
+  ST.bolt = `fill="#59626c" stroke="${C.boltDark}" stroke-width="0.6"`; ST.boltH = `fill="${C.bolt}" stroke="${C.boltDark}" stroke-width="0.6"`;
+  // fillet weld at the corner (x, y): legs along sx (x) and sy (y), sized a (mm) but at least 4 px
+  function WD(v, x, y, a, sx, sy) {
+    const L = Math.max(a * v.k, 4.5), px = v.X(x), py = v.Y(y);
+    return `<path d="M${px.toFixed(1)} ${py.toFixed(1)} L${(px + sx * L).toFixed(1)} ${py.toFixed(1)} L${px.toFixed(1)} ${(py - sy * L).toFixed(1)} Z" fill="${C.weld}"/>`;
+  }
+  // weld seen along its length (elevation): narrow strip
+  const WS = (v, x0, y0, x1, y1) => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)), w = Math.max(Math.abs(x1 - x0) * v.k, 2.5), h = Math.max(Math.abs(y1 - y0) * v.k, 2.5);
+    return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${C.weld}" fill-opacity="0.82"/>`; };
+  // zigzag break lines through a member
+  function BK(v, x, y0, y1) {   // vertical break at model x between y0 and y1
+    const px = v.X(x), a = v.Y(Math.max(y0, y1)) - 4, b = v.Y(Math.min(y0, y1)) + 4, m = (a + b) / 2;
+    return `<path d="M${px} ${a} L${px} ${m - 7} L${px - 5} ${m - 3} L${px + 5} ${m + 3} L${px} ${m + 7} L${px} ${b}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  function BKH(v, y, x0, x1) {
+    const py = v.Y(y), a = v.X(Math.min(x0, x1)) - 4, b = v.X(Math.max(x0, x1)) + 4, m = (a + b) / 2;
+    return `<path d="M${a} ${py} L${m - 7} ${py} L${m - 3} ${py - 5} L${m + 3} ${py + 5} L${m + 7} ${py} L${b} ${py}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  // white mask to fade member ends beyond a break
+  const mask = (v, x0, y0, x1, y1) => R(v, x0, y0, x1, y1, 'bg');
+  // I section cross-section (cut), centred at (cx, cy); 'v': web vertical (depth along y), 'h': depth along x
+  function ISec(v, cx, cy, s, o = 'v', st = 'cut') {
+    const b = s.b, h = s.h, tf = s.tf, t = s.tw, r = Math.min(s.r || 0, (b - t) / 2 - 1), pts = [];
+    const arc = (ux, uy, a0, a1) => { for (let i = 0; i <= 6; i++) { const a = (a0 + (a1 - a0) * i / 6) * Math.PI / 180; pts.push([ux + r * Math.cos(a), uy + r * Math.sin(a)]); } };
+    pts.push([-b / 2, h / 2], [b / 2, h / 2], [b / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, h / 2 - tf - r, 90, 180); else pts.push([t / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, -h / 2 + tf + r, 180, 270); else pts.push([t / 2, -h / 2 + tf]);
+    pts.push([b / 2, -h / 2 + tf], [b / 2, -h / 2], [-b / 2, -h / 2], [-b / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, -h / 2 + tf + r, 270, 360); else pts.push([-t / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, h / 2 - tf - r, 0, 90); else pts.push([-t / 2, h / 2 - tf]);
+    pts.push([-b / 2, h / 2 - tf]);
+    return P(v, pts.map(([u, w]) => o === 'v' ? [cx + u, cy + w] : [cx + w, cy + u]), st);
+  }
+  // I member in side elevation: length along 'x' (a0..a1) with the depth c0..c1 across, or along 'y'
+  function IEl(v, a0, a1, c0, c1, s, dir = 'x', o = {}) {
+    const lo = Math.min(c0, c1), hi = Math.max(c0, c1), rr = s.r || 0;
+    const ln = (c, k) => dir === 'x' ? Ln(v, a0, c, a1, c, k) : Ln(v, c, a0, c, a1, k);
+    let out = dir === 'x' ? R(v, a0, lo, a1, hi, 'steel') : R(v, lo, a0, hi, a1, 'steel');
+    out += dir === 'x' ? R(v, a0, lo + s.tf, a1, hi - s.tf, 'web') : R(v, lo + s.tf, a0, hi - s.tf, a1, 'web');
+    out += ln(lo + s.tf, 'e') + ln(hi - s.tf, 'e');
+    if (rr > 0 && !o.noRoot) out += ln(lo + s.tf + rr, 't') + ln(hi - s.tf - rr, 't');
+    return out;
+  }
+  // I member seen on the flange face: width b, length along dir
+  const IFl = (v, a0, a1, cc, s, dir = 'y') => (dir === 'y' ? R(v, cc - s.b / 2, a0, cc + s.b / 2, a1, 'steel') + Ln(v, cc - s.tw / 2 - (s.r || 0), a0, cc - s.tw / 2 - (s.r || 0), a1, 'h') + Ln(v, cc + s.tw / 2 + (s.r || 0), a0, cc + s.tw / 2 + (s.r || 0), a1, 'h')
+    : R(v, a0, cc - s.b / 2, a1, cc + s.b / 2, 'steel'));
+  const title = (x, y, t, sub) => Tx(x, y, t, { size: 11.5, weight: 700, anchor: 'middle', color: C.txt }) + `<line x1="${(x - tw(t, 11.5) / 2).toFixed(1)}" y1="${(y + 3).toFixed(1)}" x2="${(x + tw(t, 11.5) / 2).toFixed(1)}" y2="${(y + 3).toFixed(1)}" stroke="${C.txt}" stroke-width="0.8"/>` + (sub ? Tx(x, y + 16, sub, { size: 10, anchor: 'middle', color: C.mute }) : '');
+  const svg = (body, h = H) => `<svg class="jd" viewBox="0 0 ${W} ${h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;background:${C.paper}" role="img">${DEFS}<rect width="${W}" height="${h}" fill="${C.paper}"/>${body}</svg>`;
+  const BOX = { L: [40, 46, 520, 400], Rt: [612, 46, 280, 400] };
+  const fv = x => { const n = parseFloat(x); return Number.isFinite(n) ? n : 0; };
+  const secName = x => x && x !== '0' ? x : '';   // a form without that selector reads as '0'
+  const BOLTD = { M12: 12, M16: 16, M20: 20, M24: 24, M27: 27, M30: 30, M36: 36 };
+  const bd = sz => BOLTD[sz] || 20;
+  const range = (n, f) => Array.from({ length: Math.max(0, n) }, (_, i) => f(i));
+  return { C, W, H, BOX, DEFS, view, R, P, Ln, lnP, Tx, tw, DH, DV, LD, LA, moment, BE, BS, WD, WS, BK, BKH, mask, ISec, IEl, IFl, title, svg, num, fv, secName, bd, range, esc, ST };
+})();
+
+/* ===== DRAWING KIT EXTRAS (EngineeringTools) =====
+   Additions to the JD drafting kit (joints/diagrams.js) for the member, floor and wall drawings: a page-width SVG wrapper,
+   arrows, supports, distributed loads, result fills, cross-section outlines (I, PFC, RHS, CHS) and SVG to PNG for PDF reports.
+   Source: scratchpad/drawings/kit.js. Pixel helpers take pixel coordinates; JD views map model mm to pixels. */
+const DK = (() => {
+  'use strict';
+  const { Tx, lnP, esc } = JD;
+  const BLUE = '#1d5fbf', FILL = 'rgba(29,95,191,.15)', RED = '#c4242a', REDF = 'rgba(196,36,42,.10)', INK = '#222a31', MUTE = '#6b7680', LINE = '#c9d0d7';
+  const DEFS = `<defs><marker id="dkB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${BLUE}"/></marker>`
+    + `<marker id="dkK" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${INK}"/></marker>`
+    + `<marker id="dkR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${RED}"/></marker>`
+    + `<pattern id="dkHatch" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)"><rect width="7" height="7" fill="#f3f1ec"/><line x1="0" y1="0" x2="0" y2="7" stroke="#8b8478" stroke-width="1"/></pattern></defs>`;
+  const f1 = v => (+v).toFixed(1);
+  // the page-width drawing: viewBox w x h, scales to its container
+  const svg = (body, w, h, label) => `<svg class="jd dk" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" role="img"${label ? ` aria-label="${esc(label)}"` : ''} `
+    + `style="width:100%;height:auto;display:block;background:#fff">${JD.DEFS}${DEFS}<rect width="${w}" height="${h}" fill="#fff"/>${body}</svg>`;
+  const col = c => ({ blue: BLUE, red: RED, ink: INK, mute: MUTE }[c] || c || INK);
+  const mk = c => ({ blue: 'dkB', red: 'dkR' }[c] || 'dkK');
+  // arrow from (x0, y0) to (x1, y1), head at the end (both: heads at both ends)
+  const arrow = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1.6}"`
+    + `${o.dash ? ` stroke-dasharray="${o.dash}"` : ''} marker-end="url(#${mk(o.c)})"${o.both ? ` marker-start="url(#${mk(o.c)})"` : ''}/>`;
+  const line = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.cap ? ` stroke-linecap="${o.cap}"` : ''}/>`;
+  const rect = (x, y, w, h, o = {}) => `<rect x="${f1(Math.min(x, x + w))}" y="${f1(Math.min(y, y + h))}" width="${f1(Math.abs(w))}" height="${f1(Math.abs(h))}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.rx ? ` rx="${o.rx}"` : ''}/>`;
+  const poly = (pts, o = {}) => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + f1(p[0]) + ' ' + f1(p[1])).join(' ')}${o.open ? '' : ' Z'}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+  const text = (x, y, s, o = {}) => Tx(x, y, s, Object.assign({ size: 11 }, o, { color: o.color ? col(o.color) : o.color }));
+  // pinned support under (px, py): triangle and ground line; dir 'down' (default) or 'up' (hanging, above the point)
+  function pin(px, py, dir = 'down') {
+    const s = dir === 'up' ? -1 : 1;
+    return poly([[px, py], [px - 8, py + s * 13], [px + 8, py + s * 13]], { fill: '#fff', stroke: 'ink', w: 1.3 }) + line(px - 12, py + s * 13, px + 12, py + s * 13, { w: 1.3 })
+      + [0, 1, 2, 3].map(k => line(px - 10 + k * 6, py + s * 13, px - 14 + k * 6, py + s * 18, { c: 'mute', w: 0.8 })).join('');
+  }
+  // hatched ground or wall strip: rectangle with the hatch fill and an edge line on the restrained side ('t', 'b', 'l', 'r')
+  function ground(x, y, w, h, edge = 't') {
+    const e = { t: [x, y, x + w, y], b: [x, y + h, x + w, y + h], l: [x, y, x, y + h], r: [x + w, y, x + w, y + h] }[edge];
+    return rect(x, y, w, h, { fill: 'url(#dkHatch)' }) + line(e[0], e[1], e[2], e[3], { w: 1.4 });
+  }
+  // a row of load arrows pointing from yTop to yBase between x0 and x1, with the bar along the tails and a label above
+  function udl(x0, x1, yTop, yBase, label, o = {}) {
+    const n = Math.max(2, Math.round((x1 - x0) / (o.pitch || 28)) + 1), c = o.c || 'red';
+    let g = line(x0, yTop, x1, yTop, { c, w: 1.3 });
+    for (let i = 0; i < n; i++) { const x = x0 + (x1 - x0) * i / (n - 1); g += arrow(x, yTop, x, yBase, { c, w: 1.2 }); }
+    return g + (label ? text((x0 + x1) / 2, yTop - 6, label, { anchor: 'middle', color: c === 'red' ? RED : col(c), weight: 600 }) : '');
+  }
+  // a result diagram: polyline pts (pixels) closed to the base line through the first and last points' base, filled blue
+  function fillDiagram(pts, base, o = {}) {
+    const vert = o.vertical;   // base is an x (diagram plotted sideways) when vertical
+    const close = vert ? [[base, pts[pts.length - 1][1]], [base, pts[0][1]]] : [[pts[pts.length - 1][0], base], [pts[0][0], base]];
+    return poly(pts.concat(close), { fill: o.fill || FILL, stroke: 'none' }) + poly(pts, { open: true, stroke: o.stroke || 'ink', w: 1.1 });
+  }
+  // cross-section outline, cut, centred at pixel (cx, cy) at scale k (px/mm); web vertical; returns svg
+  function section(s, cx, cy, k, o = {}) {
+    const st = o.style || 'cut', fill = st === 'cut' ? 'url(#jdCut)' : '#e7ecf1', edge = '#2f3b47';
+    if (s.shape === 'CHS') {
+      const ro = s.d / 2 * k, ri = (s.d / 2 - s.t) * k;
+      return `<path d="M${f1(cx - ro)} ${f1(cy)} a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(2 * ro)} 0 a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(-2 * ro)} 0 Z M${f1(cx - ri)} ${f1(cy)} a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(2 * ri)} 0 a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(-2 * ri)} 0 Z" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'RHS') {
+      const w = s.b * k, h = s.h * k, t = Math.max(s.t * k, 1.2), ro = Math.min((s.ro || 1.5 * s.t) * k, w / 2), ri = Math.max(0, ro - t);
+      const rr = (x, y, W, H, r) => `M${f1(x + r)} ${f1(y)} H${f1(x + W - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W)} ${f1(y + r)} V${f1(y + H - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W - r)} ${f1(y + H)} H${f1(x + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x)} ${f1(y + H - r)} V${f1(y + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + r)} ${f1(y)} Z`;
+      return `<path d="${rr(cx - w / 2, cy - h / 2, w, h, ro)} ${rr(cx - w / 2 + t, cy - h / 2 + t, w - 2 * t, h - 2 * t, ri)}" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'PFC') {   // channel, toes to the right, web on the left
+      const b = s.b * k, h = s.h * k, tf = Math.max(s.tf * k, 1.2), tw = Math.max(s.tw * k, 1.2), x0 = cx - b / 2, y0 = cy - h / 2;
+      return poly([[x0, y0], [x0 + b, y0], [x0 + b, y0 + tf], [x0 + tw, y0 + tf], [x0 + tw, y0 + h - tf], [x0 + b, y0 + h - tf], [x0 + b, y0 + h], [x0, y0 + h]], { fill, stroke: edge, w: 1.1 });
+    }
+    const v = { k, X: x => cx + x * k, Y: y => cy - y * k };   // I sections: JD's outline with root radii
+    return JD.ISec(v, 0, 0, s, 'v', st === 'cut' ? 'cut' : 'steel');
+  }
+  // SVG markup to a PNG data URL (for the jsPDF reports); resolves { url, w, h } with w, h the viewBox size
+  function toPNG(markup, wpx = 1800) {
+    return new Promise((resolve, reject) => {
+      const m = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(markup); if (!m) { reject(new Error('no viewBox')); return; }
+      const w = +m[1], h = +m[2], k = wpx / w, img = new Image();
+      const src = markup.replace(/style="[^"]*"/, `width="${f1(w * k)}" height="${f1(h * k)}"`);
+      img.onload = () => { const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k); const g = c.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height); resolve({ url: c.toDataURL('image/png'), w, h }); };
+      img.onerror = () => reject(new Error('drawing could not be rendered'));
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
+    });
+  }
+  // drawings for the page (heading + drawing) and for the A4 sheet (each kept whole on a page)
+  const page = blocks => blocks.map(([t, s]) => `<div class="dlabel">${t}</div>${s}`).join('');
+  const sheet = blocks => blocks.map(([t, s]) => `<div class="rfig" style="break-inside:avoid;page-break-inside:avoid;margin:1mm 0 3mm"><h3>${t}</h3><div class="rsvg">${s}</div></div>`).join('');
+  const fmt = (v, d = 0) => Number.isFinite(v) ? (+v).toFixed(d) : '–';
+  return { page, sheet, BLUE, FILL, RED, REDF, INK, MUTE, LINE, svg, arrow, line, rect, poly, text, pin, ground, udl, fillDiagram, section, toPNG, fmt, lnP };
+})();
+
+/* ===== STEEL FRAME DRAWINGS (EngineeringTools) =====
+   The frame as modelled: geometry to scale with its dimensions (span, eaves, rise and pitch for a portal; bays and storeys for a
+   grid), supports (fixed or pinned), pinned beam ends, member numbers and sections, the lateral-torsional restraint positions
+   (segments) on every member, and the loads (g_k and q_k on the beams or rafters, wind on the external columns). After a Check
+   on the same inputs each member is coloured by its utilisation (red over 1.0, amber over 0.9) with its value; the analysis is
+   not rerun while typing. Source: scratchpad/drawings/frame.js. Needs JD, DK. */
+const DrawFrame = (() => {
+  'use strict';
+  const { view, DH, DV, num } = JD;
+  const { svg, arrow, line, rect, text, pin, ground, page, sheet, BLUE, RED, MUTE } = DK;
+  const AMBER = '#a15c07', m2 = v => (v / 1000).toFixed(2).replace(/\.?0+$/, '');
+  const list = t => String(t || '').split(/[,;\s]+/).filter(Boolean).map(Number);
+
+  function arrangement(inp, s, Rr) {
+    const W = 700, xs = inp.nodes.map(n => n.x), ys = inp.nodes.map(n => n.y), X1 = Math.max(...xs), Y1 = Math.max(...ys);
+    const v = view([92, 70, 470, 270], [0, 0, X1, Y1]), P = n => [v.X(n.x), v.Y(n.y)];
+    const uOf = mi => Rr ? (Rr.members.find(m => m.mi === mi) || {}).util : null, colOf = u => u == null ? '#2f3b47' : u > 1 ? RED : u > 0.9 ? AMBER : '#2f3b47';
+    let g = '';
+    // loads first (under the members): g_k + q_k on every beam, wind on the external columns
+    const gk = +s.gk, qk = +s.qk, ww = +s.ww, wl = +s.wl;
+    inp.members.forEach(m => { if (m.role !== 'beam') return; const [ax, ay] = P(inp.nodes[m.i]), [bx, by] = P(inp.nodes[m.j]), n = Math.max(3, Math.round(Math.abs(bx - ax) / 22));
+      for (let i = 0; i <= n; i++) { const t = i / n, x = ax + (bx - ax) * t, y = ay + (by - ay) * t; g += arrow(x, y - 26, x, y - 4, { c: 'red', w: 1 }); }
+      g += line(ax, ay - 26, bx, by - 26, { c: RED, w: 1.1 }); });
+    const firstBeam = inp.members.filter(m => m.role === 'beam').reduce((a, m) => !a || Math.max(inp.nodes[m.i].y, inp.nodes[m.j].y) > Math.max(inp.nodes[a.i].y, inp.nodes[a.j].y) ? m : a, null);
+    if (firstBeam && (gk || qk)) { const [ax, ay] = P(inp.nodes[firstBeam.i]), [bx, by] = P(inp.nodes[firstBeam.j]); g += text((ax + bx) / 2, Math.min(ay, by) - 32, `g_k ${num(gk)} + q_k ${num(qk)} kN/m`, { size: 10.5, color: RED, anchor: 'middle', weight: 600 }); }
+    const labelled = {};
+    inp.members.forEach(m => { if (m.role !== 'column' || !(m.side === 'L' ? ww : m.side === 'R' ? wl : 0)) return;
+      const w = m.side === 'L' ? ww : wl, [ax, ay] = P(inp.nodes[m.i]), [bx, by] = P(inp.nodes[m.j]), off = m.side === 'L' ? -1 : 1, n = Math.max(3, Math.round(Math.abs(by - ay) / 24));
+      // arrows outside the column, pointing the way the load acts (+ = left to right)
+      const xa = ax + off * 4, xb = ax + off * 30, lo = Math.min(xa, xb), hi = Math.max(xa, xb);
+      for (let i = 0; i <= n; i++) { const y = ay + (by - ay) * i / n; g += w > 0 ? arrow(lo, y, hi, y, { c: 'blue', w: 1 }) : arrow(hi, y, lo, y, { c: 'blue', w: 1 }); }
+      if (!labelled[m.side]) { labelled[m.side] = 1; g += text(ax + off * 8, v.Y(0) + 22, `w ${num(w)} kN/m`, { size: 10, color: BLUE, anchor: m.side === 'L' ? 'end' : 'start', weight: 600 }); } });
+    // members coloured by utilisation (after a Check on the same inputs), releases, LT restraints, numbers
+    inp.members.forEach((m, mi) => {
+      const [ax, ay] = P(inp.nodes[m.i]), [bx, by] = P(inp.nodes[m.j]), u = uOf(mi), c = colOf(u), len = Math.hypot(bx - ax, by - ay), ux = (bx - ax) / len, uy = (by - ay) / len;
+      g += line(ax, ay, bx, by, { c, w: m.role === 'column' ? 4 : 3.4, cap: 'round' });
+      if (m.relI) g += `<circle cx="${(ax + ux * 9).toFixed(1)}" cy="${(ay + uy * 9).toFixed(1)}" r="4" fill="#fff" stroke="${c}" stroke-width="1.4"/>`;
+      if (m.relJ) g += `<circle cx="${(bx - ux * 9).toFixed(1)}" cy="${(by - uy * 9).toFixed(1)}" r="4" fill="#fff" stroke="${c}" stroke-width="1.4"/>`;
+      for (let k = 1; k < (m.nLT || 1); k++) { const x = ax + (bx - ax) * k / m.nLT, y = ay + (by - ay) * k / m.nLT; g += line(x - uy * 7, y + ux * 7, x + uy * 7, y - ux * 7, { c: BLUE, w: 2 }); }
+      const t3 = m.role === 'beam' ? 0.3 : 0.5, mx = ax + (bx - ax) * t3 - uy * 16, my = ay + (by - ay) * t3 + ux * 16;
+      g += `<circle cx="${mx.toFixed(1)}" cy="${my.toFixed(1)}" r="8" fill="#fff" stroke="${c}"/>` + text(mx, my + 3.5, String(mi + 1), { size: 9.5, anchor: 'middle', weight: 700, color: c });
+      if (u != null) g += text(mx + (m.role === 'column' ? (m.side === 'R' ? 12 : -12) : 0), my + (m.role === 'column' ? 3.5 : 21), u.toFixed(2), { size: 10, weight: 600, color: c, anchor: m.role === 'column' ? (m.side === 'R' ? 'start' : 'end') : 'middle' });
+    });
+    // supports
+    inp.nodes.forEach(n => { if (!n.sup) return; const [x, y] = P(n); g += n.sup.rz ? ground(x - 14, y, 28, 8, 't') : pin(x, y); });
+    // dimensions
+    if (s.kind === 'portal') {
+      const L = +s.span * 1000, h = +s.eaves * 1000, r = +s.rise * 1000;
+      g += DH(v, [0, L], 0, -30, [`span ${m2(L)} m`]) + DV(v, [0, h], 0, -58, [`eaves ${m2(h)} m`]);
+      if (r > 0) g += DV(v, [h, h + r], X1, 40, [`${m2(r)}`]) + text(v.X(L * 0.72), v.Y(h + r * 0.56) + 40, `pitch ${(Math.atan(r / (L / 2)) * 180 / Math.PI).toFixed(1)}°`, { size: 10.5, anchor: 'middle' });
+    } else {
+      const bx = [0]; list(s.bays).forEach(b => bx.push(bx[bx.length - 1] + b * 1000)); const hy = [0]; list(s.storeys).forEach(h => hy.push(hy[hy.length - 1] + h * 1000));
+      g += DH(v, bx, 0, -30, bx.slice(1).map((x, i) => `${m2(x - bx[i])} m`)) + DV(v, hy, 0, -58, hy.slice(1).map((y, i) => `${m2(y - hy[i])} m`));
+    }
+    const yN = v.Y(0) + 54, beams = s.kind === 'portal' ? 'rafters' : 'beams';
+    g += text(v.X(0) - 40, yN, `Columns ${s.colSec}, ${beams} ${s.beamSec}, ${s.grade}; ${s.base === 'fixed' ? 'fixed' : 'pinned'} bases${s.kind === 'grid' ? `, ${s.joints === 'pinned' ? 'pinned' : 'rigid'} beam-column joints` : ''}`, { size: 10.5 });
+    g += text(v.X(0) - 40, yN + 15, `blue ticks: lateral-torsional restraints (columns in ${s.colSeg || 1}, ${beams} in ${s.beamSeg || 1} segment${(+s.beamSeg || 1) > 1 ? 's' : ''})${inp.members.some(m => m.relI) ? '; open circles: pinned beam ends' : ''}`, { size: 10, color: MUTE });
+    g += text(v.X(0) - 40, yN + 30, Rr ? `member colour and value: utilisation (red over 1.0, amber over 0.9); α_{cr,min} = ${Rr.acrMin.toFixed(2)} (${Rr.acrMin >= 10 ? 'first-order' : 'second-order P-Δ'})` : 'Check to colour the members by utilisation', { size: 10, color: Rr ? undefined : MUTE });
+    return svg(g, W, Math.ceil(yN + 40), 'Frame geometry, supports, member sections, restraints and loads');
+  }
+  const html = (inp, s, Rr) => page([['Frame, loads and member utilisation', arrangement(inp, s, Rr)]]);
+  const report = (inp, s, Rr) => sheet([['Frame, loads and member utilisation', arrangement(inp, s, Rr)]]);
+  return { html, report, arrangement };
+})();
+
+</script>
 <script id="ui">
 'use strict';
 const $ = id => document.getElementById(id);
@@ -2241,7 +2561,7 @@ const govName = D => { const g = D.gov; const k = Object.keys(g).reduce((a, b) =
 function render(R, inp) {
   const cb = R.combos.reduce((a, c) => c.acr < a.acr ? c : a, R.combos[0]);
   let h = `<div class="verdict ${R.utilMax > 1 ? 'fail' : ''}"><div><div class="big">${R.utilMax > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(R.utilMax)}</div><div class="sub">α<sub>cr,min</sub> = ${fmt(R.acrMin, 2)} (${R.acrMin >= 10 ? 'first-order analysis' : 'second-order P-Δ analysis'}) &nbsp;·&nbsp; φ = 1/${fmt(1 / R.phi, 0)} &nbsp;·&nbsp; ${R.combos.length} ULS cases</div></div></div>`;
-  h += `<div class="checks">` + R.members.map(m => bar(`${inp.members[m.mi].role === 'column' ? 'Column' : 'Beam'} ${m.mi + 1}: ${govName(m.D)}`, esc(m.combo), m.util)).join('') +
+  h += `<div id="drawings"></div><div class="checks">` + R.members.map(m => bar(`${inp.members[m.mi].role === 'column' ? 'Column' : 'Beam'} ${m.mi + 1}: ${govName(m.D)}`, esc(m.combo), m.util)).join('') +
     R.sls.beams.map(b => bar(`Beam ${b.mi + 1}: deflection under Q (${fmt(b.d, 1)} mm)`, 'SLS', b.util)).join('') + R.sls.drift.map(d => bar(`Column ${d.mi + 1}: drift under W (${fmt(d.d, 1)} mm)`, 'SLS', d.util)).join('') + `</div>`;
   if (R.acrMin < 3) h += `<div class="wrn">α<sub>cr</sub> &lt; 3: second-order analysis has been used; check member imperfections (5.3.2(6)) and frame sensitivity.</div>`;
   h += `<div class="dlabel">Bending moments, ${esc(cb.name)} (kNm)</div><div id="diagM">${draw(inp, R, cb, 'M', false)}</div>`;
@@ -2251,11 +2571,20 @@ function render(R, inp) {
   h += `<table class="t"><tr><th>Member</th><th>section</th><th>N<sub>c</sub> kN</th><th>M kNm</th><th>V kN</th><th>governing</th><th>util.</th></tr>` + R.members.map(m => `<tr><td>${m.mi + 1} ${inp.members[m.mi].role}</td><td>${esc(inp.members[m.mi].sec.name)}</td><td>${fmt(m.Nc / 1e3)}</td><td>${fmt(m.Mmax / 1e6)}</td><td>${fmt(m.Vmax / 1e3)}</td><td>${govName(m.D)}</td><td>${ufmt(m.util)}</td></tr>`).join('') + `</table>`;
   h += `<table class="t"><tr><th>Support node</th><th>R<sub>x</sub> kN</th><th>R<sub>y</sub> kN</th><th>M kNm</th></tr>` + R.reactions.map(r => `<tr><td>${r.node + 1}</td><td>${fmt(r.Rx[0] / 1e3)} / ${fmt(r.Rx[1] / 1e3)}</td><td>${fmt(r.Ry[0] / 1e3)} / ${fmt(r.Ry[1] / 1e3)}</td><td>${fmt(r.M[0] / 1e6)} / ${fmt(r.M[1] / 1e6)}</td></tr>`).join('') + `</table>`;
   h += `<div class="note">${notes(R).join('<br>')}</div><button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
-  $('results').innerHTML = h;
-  const redraw = () => { const c = R.combos[+$('cbSel').value]; $('diagM').innerHTML = draw(inp, R, c, $('whatSel').value, false); };
-  $('cbSel').onchange = redraw; $('whatSel').onchange = redraw;
+  $('results').innerHTML = h; lastFrame = R; redraw();
+  const reDiag = () => { const c = R.combos[+$('cbSel').value]; $('diagM').innerHTML = draw(inp, R, c, $('whatSel').value, false); };
+  $('cbSel').onchange = reDiag; $('whatSel').onchange = reDiag;
   $('printBtn').onclick = () => { $('report').innerHTML = report(R, inp); window.print(); };
 }
+// arrangement drawing: redrawn from the inputs as they change; the utilisation colours come from the last Check on the same inputs
+let drawT = 0, lastFrame = null;
+function redraw() {
+  const el = $('drawings'); if (!el) return;
+  try { const s = collect(), inp = frameModel(s), R = lastFrame && JSON.stringify(lastFrame.state) === JSON.stringify(s) ? lastFrame : null; el.innerHTML = DrawFrame.html(inp, s, R); }
+  catch (e) { el.innerHTML = `<div class="note">The drawing will appear when the inputs are complete: ${esc(e.message)}</div>`; }
+}
+const queueDraw = () => { clearTimeout(drawT); drawT = setTimeout(redraw, 150); };
+$('inputs').addEventListener('input', queueDraw); $('inputs').addEventListener('change', queueDraw);
 function notes(R) {
   return [`Linear elastic analysis by the stiffness method, each member divided into ${Frame2D.NSUB} elements; α<sub>cr</sub> from the elastic critical buckling eigenvalue of the frame (5.2.1); where α<sub>cr</sub> &lt; 10 the analysis is second order (P-Δ by geometric stiffness, iterated), so in-plane buckling lengths are the member lengths (5.2.2(3)a, (7)).`,
     `Sway imperfection φ = φ<sub>0</sub>α<sub>h</sub>α<sub>m</sub> = (1/200) × ${fmt(R.ah, 3)} × ${fmt(R.am, 3)} = 1/${fmt(1 / R.phi, 0)} (h = ${fmt(R.H, 2)} m, m = ${R.ncol} columns), applied as equivalent horizontal forces φ V at the nodes in the direction of the wind (both directions without wind).`,
@@ -2268,7 +2597,7 @@ function report(R, inp) {
   const st = R.state, today = new Date().toLocaleDateString('en-GB'), cb = R.combos.reduce((a, c) => c.acr < a.acr ? c : a, R.combos[0]);
   const head = `<div class="rh"><div><b>Project</b>${esc(st.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(st.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(st.pBy) || '&nbsp;'} ${today}</div><div><b>Frame</b>${esc(st.pRef) || '&nbsp;'}</div>
     <div class="ttl">Steel frame &mdash; ${st.kind === 'portal' ? 'portal' : 'multi-storey'} frame, ${inp.members.length} members</div></div>`;
-  let b = `<div class="rs"><h2>1 Frame and loads</h2>${draw(inp, R, cb, 'M', true)}` + rl(`Columns ${esc(st.colSec)}, ${st.kind === 'portal' ? 'rafters' : 'beams'} ${esc(st.beamSec)}, ${st.grade}; bases ${st.base}`, '', '') +
+  let b = `<div class="rs"><h2>1 Frame and loads</h2>${DrawFrame.report(inp, R.state, R)}<h3>Bending moments, ${esc(cb.name)}</h3>${draw(inp, R, cb, 'M', true)}` + rl(`Columns ${esc(st.colSec)}, ${st.kind === 'portal' ? 'rafters' : 'beams'} ${esc(st.beamSec)}, ${st.grade}; bases ${st.base}`, '', '') +
     rl(`G<sub>k</sub> = ${st.gk}, Q<sub>k</sub> = ${st.qk} kN/m on beams; wind ${st.ww} / ${st.wl} kN/m on the windward / leeward columns`, '', '') + `</div>`;
   b += `<div class="rs"><h2>2 Frame stability</h2>` + R.combos.map(c => rl(`${esc(c.name)}: α<sub>cr</sub> = ${fmt(c.acr, 2)}, EHF ${fmt(c.ehf / 1e3, 2)} kN`, '5.2.1', c.second ? '2nd order' : '1st order')).join('') + `</div>`;
   b += `<div class="rs"><h2>3 Members</h2>` + R.members.map(m => rl(`${m.mi + 1} ${inp.members[m.mi].role} ${esc(inp.members[m.mi].sec.name)}: N<sub>c</sub> ${fmt(m.Nc / 1e3)} kN, M ${fmt(m.Mmax / 1e6)} kNm, V ${fmt(m.Vmax / 1e3)} kN (${esc(m.combo)}); ${govName(m.D)}`, '6.2, 6.3', okng(m.util))).join('') + `</div>`;
@@ -2284,8 +2613,9 @@ $('calc').onclick = () => {
 };
 (function init() {
   let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
-  if (s && s.v === 1) { restore(s); return; }
-  fillSec('colSec', null, '254×254×73 UKC'); fillSec('beamSec', null, '406×178×54 UKB'); ui();
+  if (s && s.v === 1) restore(s);
+  else { fillSec('colSec', null, '254×254×73 UKC'); fillSec('beamSec', null, '406×178×54 UKB'); ui(); }
+  redraw();
 })();
 </script>
 <footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent engineer to check and approve all calculations before they are used.</footer>

@@ -211,7 +211,7 @@ sub,sup{font-size:max(11px,.75em);line-height:0;}
       </div>
       <button class="btn" id="calc">Check</button>
     </div>
-    <div><div class="card" id="results"><div class="placeholder">Choose the section and loads, then Check.</div></div></div>
+    <div><div class="card" id="results"><div id="drawings"></div><div class="placeholder">Choose the section and loads, then Check.</div></div></div>
   </div>
 </div>
 <div id="report"></div>
@@ -1374,6 +1374,343 @@ const Torsion = (() => {
 if (typeof module !== 'undefined') module.exports = { Torsion };
 
 </script>
+<script id="drawing-code">
+/* ===== CONNECTION DIAGRAMS (EngineeringTools ConnectionCheck) =====
+   Parametric, to-scale drafting views of each joint, drawn from the current inputs: an elevation and a plan or section,
+   with bolts, welds, dimension chains, labels and the design actions. Pure functions returning SVG strings.
+   Model units mm; each view maps a model box onto a pixel box (x right, y up). */
+const JD = (() => {
+  'use strict';
+  const C = { steel: '#e7ecf1', web: '#eef2f5', edge: '#2f3b47', plate: '#f6d58c', plateEdge: '#94700f', pack: '#e3d3ae', bolt: '#3a424b', boltDark: '#1f252b',
+    weld: '#1a1f24', dim: '#1b67b0', txt: '#222a31', mute: '#7a8590', cl: '#97a2ac', load: '#cc3426', conc: '#f1efea', concEdge: '#8b8478', grout: '#ddd7ca', paper: '#ffffff' };
+  const FS = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"', FM = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"';
+  const W = 920, H = 520;
+  const DEFS = `<defs>
+<pattern id="jdCut" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect width="6" height="6" fill="#c7d0d9"/><line x1="0" y1="0" x2="0" y2="6" stroke="#6f7d8a" stroke-width="0.9"/></pattern>
+<pattern id="jdPlCut" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(-45)"><rect width="5" height="5" fill="#efc560"/><line x1="0" y1="0" x2="0" y2="5" stroke="#94700f" stroke-width="0.8"/></pattern>
+<pattern id="jdConc" patternUnits="userSpaceOnUse" width="26" height="26"><rect width="26" height="26" fill="${C.conc}"/><circle cx="5" cy="6" r="1.3" fill="#b3ab9d"/><circle cx="17" cy="15" r="1.7" fill="#c0b8aa"/><circle cx="9" cy="21" r="1" fill="#a9a091"/><path d="M19 4 l3 2 l-3 2 z" fill="#c5bdaf"/><path d="M2 14 l2.5 -2 l1.5 3 z" fill="#bdb5a7"/></pattern>
+<pattern id="jdGrout" patternUnits="userSpaceOnUse" width="8" height="8"><rect width="8" height="8" fill="${C.grout}"/><circle cx="2" cy="2" r="0.7" fill="#9e9687"/><circle cx="6" cy="6" r="0.7" fill="#9e9687"/></pattern>
+<marker id="jdLd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${C.load}"/></marker>
+</defs>`;
+  const num = v => { const a = Math.abs(v); return a >= 100 || Number.isInteger(+v.toFixed(1)) ? Math.round(v).toString() : v.toFixed(1); };
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // ---------- views ----------
+  function view(box, bb) {
+    const w = bb[2] - bb[0], h = bb[3] - bb[1], k = Math.min(box[2] / w, box[3] / h);
+    const ox = box[0] + (box[2] - w * k) / 2 - bb[0] * k, oy = box[1] + (box[3] - h * k) / 2 + bb[3] * k;
+    return { k, X: x => ox + x * k, Y: y => oy - y * k, box };
+  }
+  const ST = {
+    steel: `fill="${C.steel}" stroke="${C.edge}" stroke-width="1.1"`, web: `fill="${C.web}" stroke="${C.edge}" stroke-width="1.1"`,
+    cut: `fill="url(#jdCut)" stroke="${C.edge}" stroke-width="1.2"`, plate: `fill="${C.plate}" stroke="${C.plateEdge}" stroke-width="1.1"`,
+    plateCut: `fill="url(#jdPlCut)" stroke="${C.plateEdge}" stroke-width="1.1"`, pack: `fill="${C.pack}" stroke="${C.plateEdge}" stroke-width="0.9"`,
+    conc: `fill="url(#jdConc)" stroke="${C.concEdge}" stroke-width="1"`, grout: `fill="url(#jdGrout)" stroke="${C.concEdge}" stroke-width="0.8"`,
+    ghost: `fill="none" stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="6 3"`, outline: `fill="none" stroke="${C.edge}" stroke-width="1.1"`,
+    bg: `fill="${C.paper}" stroke="none"`,
+  };
+  const R = (v, x0, y0, x1, y1, st = 'steel') => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)); return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${(Math.abs(x1 - x0) * v.k).toFixed(1)}" height="${(Math.abs(y1 - y0) * v.k).toFixed(1)}" ${ST[st]}/>`; };
+  const P = (v, pts, st = 'steel') => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + v.X(p[0]).toFixed(1) + ' ' + v.Y(p[1]).toFixed(1)).join(' ')} Z" ${ST[st]}/>`;
+  const LS = { e: `stroke="${C.edge}" stroke-width="1.1"`, t: `stroke="${C.edge}" stroke-width="0.55"`, c: `stroke="${C.cl}" stroke-width="0.7" stroke-dasharray="14 3 2 3"`,
+    h: `stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="5 3"`, d: `stroke="${C.dim}" stroke-width="0.7"` };
+  const Ln = (v, x0, y0, x1, y1, k = 'e') => `<line x1="${v.X(x0).toFixed(1)}" y1="${v.Y(y0).toFixed(1)}" x2="${v.X(x1).toFixed(1)}" y2="${v.Y(y1).toFixed(1)}" ${LS[k]}/>`;
+  const lnP = (x0, y0, x1, y1, k = 'e') => `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" ${LS[k]}/>`;
+  function Tx(x, y, s, o = {}) {
+    const sz = o.size || 11, col = o.color || C.txt, anc = o.anchor || 'start', w = o.weight || 400, rot = o.rot ? ` transform="rotate(${o.rot} ${x.toFixed(1)} ${y.toFixed(1)})"` : '';
+    const body = esc(s).replace(/_\{([^}]*)\}|_([A-Za-z0-9]+)/g, (m, p1, p2) => `<tspan baseline-shift="sub" font-size="78%">${p1 || p2}</tspan>`);
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${sz}" fill="${col}" text-anchor="${anc}" font-weight="${w}" ${o.mono ? FM : FS} paint-order="stroke" stroke="${C.paper}" stroke-width="3" stroke-linejoin="round"${rot}>${body}</text>`;
+  }
+  const tw = (s, sz = 10) => String(s).replace(/_/g, '').length * sz * 0.6;
+  // ---------- dimensions (tick terminators) ----------
+  const tick = (x, y) => `<line x1="${(x - 3.5).toFixed(1)}" y1="${(y + 3.5).toFixed(1)}" x2="${(x + 3.5).toFixed(1)}" y2="${(y - 3.5).toFixed(1)}" stroke="${C.dim}" stroke-width="1.3"/>`;
+  // horizontal chain: xs (model), measured from model level y, dimension line at off px (negative: below)
+  function DH(v, xs, y, off, labels) {
+    const Yf = v.Y(y), Yd = Yf - off, s = Math.sign(off) || 1; let o = '';
+    xs.forEach(x => { o += lnP(v.X(x), Yf - s * 3, v.X(x), Yd - s * 4, 'd'); });
+    o += lnP(v.X(xs[0]) - 4, Yd, v.X(xs[xs.length - 1]) + 4, Yd, 'd');
+    xs.forEach(x => { o += tick(v.X(x), Yd); });
+    for (let i = 0; i < xs.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(xs[i + 1] - xs[i])); if (lab === '') continue;
+      const a = v.X(xs[i]), b = v.X(xs[i + 1]), wpx = Math.abs(b - a), tW = tw(lab);
+      const ty = off > 0 ? Yd - 4 : Yd + 11;
+      if (wpx > tW + 6) o += Tx((a + b) / 2, ty, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true });
+      else o += Tx(Math.max(a, b) + 3 + (i === xs.length - 2 ? 2 : 0), ty + (off > 0 ? -9 : 9) * (i % 2), lab, { size: 10, color: C.dim, mono: true });
+    }
+    return o;
+  }
+  function DV(v, ys, x, off, labels) {
+    const Xf = v.X(x), Xd = Xf + off, s = Math.sign(off) || 1; let o = '';
+    ys.forEach(y => { o += lnP(Xf + s * 3, v.Y(y), Xd + s * 4, v.Y(y), 'd'); });
+    o += lnP(Xd, v.Y(ys[0]) + 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), Xd, v.Y(ys[ys.length - 1]) - 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), 'd');
+    ys.forEach(y => { o += tick(Xd, v.Y(y)); });
+    for (let i = 0; i < ys.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(ys[i + 1] - ys[i])); if (lab === '') continue;
+      const a = v.Y(ys[i]), b = v.Y(ys[i + 1]), hpx = Math.abs(b - a), tW = tw(lab);
+      const tx = off > 0 ? Xd + 11 : Xd - 4;
+      if (hpx > tW + 6) o += Tx(tx, (a + b) / 2, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true, rot: -90 });
+      else o += Tx(off > 0 ? Xd + 5 : Xd - 5, (a + b) / 2 + 3.5, lab, { size: 10, color: C.dim, mono: true, anchor: off > 0 ? 'start' : 'end' });
+    }
+    return o;
+  }
+  // leader with a dot at a model point and text lines at a pixel offset
+  function LD(v, x, y, dx, dy, lines, o = {}) {
+    const px = v.X(x), py = v.Y(y), ex = px + dx, ey = py + dy, s = dx >= 0 ? 1 : -1;
+    let out = `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="1.9" fill="${C.txt}"/>` + lnP(px, py, ex, ey, 't') + lnP(ex, ey, ex + s * 8, ey, 't');
+    [].concat(lines).forEach((t, i) => { out += Tx(ex + s * 11, ey + 4 + i * 13 - ([].concat(lines).length - 1) * 6.5, t, { size: o.size || 10.5, anchor: s > 0 ? 'start' : 'end', weight: i === 0 && o.bold ? 600 : 400, color: i === 0 ? C.txt : '#4b545d' }); });
+    return out;
+  }
+  // load arrow ending at pixel point (px, py); (vx, vy) is the arrow vector in pixels; label near the tail
+  function LA(px, py, vx, vy, label, o = {}) {
+    const x0 = px - vx, y0 = py - vy, lx = x0 + (o.ldx ?? 0), ly = y0 + (o.ldy ?? -6);
+    return `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${px.toFixed(1)}" y2="${py.toFixed(1)}" stroke="${C.load}" stroke-width="2.4" marker-end="url(#jdLd)"/>` +
+      (label ? Tx(lx, ly, label, { size: 11, color: C.load, weight: 600, anchor: o.anchor || 'middle' }) : '');
+  }
+  function moment(px, py, rr, label, cw = true) {
+    const a0 = cw ? 200 : -20, a1 = cw ? 340 : 160, p = a => [px + rr * Math.cos(a * Math.PI / 180), py - rr * Math.sin(a * Math.PI / 180)], [x0, y0] = p(a0), [x1, y1] = p(a1);
+    return `<path d="M${x0.toFixed(1)} ${y0.toFixed(1)} A${rr} ${rr} 0 1 ${cw ? 1 : 0} ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="${C.load}" stroke-width="2.2" marker-end="url(#jdLd)"/>` + Tx(px, py - rr - 7, label, { size: 11, color: C.load, weight: 600, anchor: 'middle' });
+  }
+  // ---------- steel symbols ----------
+  function BE(v, x, y, d) {   // bolt seen end-on: washer ring, head, centre cross
+    const px = v.X(x), py = v.Y(y), r1 = Math.max(0.95 * d * v.k, 3.2), r2 = Math.max(0.55 * d * v.k, 1.9), c = r1 + 3;
+    return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r1.toFixed(1)}" fill="#fff" stroke="${C.boltDark}" stroke-width="1"/><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r2.toFixed(1)}" fill="${C.bolt}"/>` +
+      lnP(px - c, py, px + c, py, 't') + lnP(px, py - c, px, py + c, 't');
+  }
+  // bolt seen side-on with its axis along x (dir 'x') or y: shank a0..a1 at c, head at a0, nut at a1
+  function BS(v, a0, a1, c, d, dir = 'x') {
+    const sg = Math.sign(a1 - a0) || 1, hd = 0.65 * d, nt = 0.8 * d, wh = 0.8 * d, wa = 0.15 * d, pr = 0.45 * d;
+    const seg = (s0, s1, half, fill) => dir === 'x' ? R(v, s0, c - half, s1, c + half, fill) : R(v, c - half, s0, c + half, s1, fill);
+    let o = seg(a0, a1 + sg * (wa + nt + pr), d / 2, 'bolt');
+    o += seg(a0 - sg * wa, a0, d, 'bolt') + seg(a0 - sg * (wa + hd), a0 - sg * wa, wh, 'boltH');
+    o += seg(a1, a1 + sg * wa, d, 'bolt') + seg(a1 + sg * wa, a1 + sg * (wa + nt), wh, 'boltH');
+    o += dir === 'x' ? Ln(v, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), c, 'c') : Ln(v, c, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), 'c');
+    return o;
+  }
+  ST.bolt = `fill="#59626c" stroke="${C.boltDark}" stroke-width="0.6"`; ST.boltH = `fill="${C.bolt}" stroke="${C.boltDark}" stroke-width="0.6"`;
+  // fillet weld at the corner (x, y): legs along sx (x) and sy (y), sized a (mm) but at least 4 px
+  function WD(v, x, y, a, sx, sy) {
+    const L = Math.max(a * v.k, 4.5), px = v.X(x), py = v.Y(y);
+    return `<path d="M${px.toFixed(1)} ${py.toFixed(1)} L${(px + sx * L).toFixed(1)} ${py.toFixed(1)} L${px.toFixed(1)} ${(py - sy * L).toFixed(1)} Z" fill="${C.weld}"/>`;
+  }
+  // weld seen along its length (elevation): narrow strip
+  const WS = (v, x0, y0, x1, y1) => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)), w = Math.max(Math.abs(x1 - x0) * v.k, 2.5), h = Math.max(Math.abs(y1 - y0) * v.k, 2.5);
+    return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${C.weld}" fill-opacity="0.82"/>`; };
+  // zigzag break lines through a member
+  function BK(v, x, y0, y1) {   // vertical break at model x between y0 and y1
+    const px = v.X(x), a = v.Y(Math.max(y0, y1)) - 4, b = v.Y(Math.min(y0, y1)) + 4, m = (a + b) / 2;
+    return `<path d="M${px} ${a} L${px} ${m - 7} L${px - 5} ${m - 3} L${px + 5} ${m + 3} L${px} ${m + 7} L${px} ${b}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  function BKH(v, y, x0, x1) {
+    const py = v.Y(y), a = v.X(Math.min(x0, x1)) - 4, b = v.X(Math.max(x0, x1)) + 4, m = (a + b) / 2;
+    return `<path d="M${a} ${py} L${m - 7} ${py} L${m - 3} ${py - 5} L${m + 3} ${py + 5} L${m + 7} ${py} L${b} ${py}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  // white mask to fade member ends beyond a break
+  const mask = (v, x0, y0, x1, y1) => R(v, x0, y0, x1, y1, 'bg');
+  // I section cross-section (cut), centred at (cx, cy); 'v': web vertical (depth along y), 'h': depth along x
+  function ISec(v, cx, cy, s, o = 'v', st = 'cut') {
+    const b = s.b, h = s.h, tf = s.tf, t = s.tw, r = Math.min(s.r || 0, (b - t) / 2 - 1), pts = [];
+    const arc = (ux, uy, a0, a1) => { for (let i = 0; i <= 6; i++) { const a = (a0 + (a1 - a0) * i / 6) * Math.PI / 180; pts.push([ux + r * Math.cos(a), uy + r * Math.sin(a)]); } };
+    pts.push([-b / 2, h / 2], [b / 2, h / 2], [b / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, h / 2 - tf - r, 90, 180); else pts.push([t / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, -h / 2 + tf + r, 180, 270); else pts.push([t / 2, -h / 2 + tf]);
+    pts.push([b / 2, -h / 2 + tf], [b / 2, -h / 2], [-b / 2, -h / 2], [-b / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, -h / 2 + tf + r, 270, 360); else pts.push([-t / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, h / 2 - tf - r, 0, 90); else pts.push([-t / 2, h / 2 - tf]);
+    pts.push([-b / 2, h / 2 - tf]);
+    return P(v, pts.map(([u, w]) => o === 'v' ? [cx + u, cy + w] : [cx + w, cy + u]), st);
+  }
+  // I member in side elevation: length along 'x' (a0..a1) with the depth c0..c1 across, or along 'y'
+  function IEl(v, a0, a1, c0, c1, s, dir = 'x', o = {}) {
+    const lo = Math.min(c0, c1), hi = Math.max(c0, c1), rr = s.r || 0;
+    const ln = (c, k) => dir === 'x' ? Ln(v, a0, c, a1, c, k) : Ln(v, c, a0, c, a1, k);
+    let out = dir === 'x' ? R(v, a0, lo, a1, hi, 'steel') : R(v, lo, a0, hi, a1, 'steel');
+    out += dir === 'x' ? R(v, a0, lo + s.tf, a1, hi - s.tf, 'web') : R(v, lo + s.tf, a0, hi - s.tf, a1, 'web');
+    out += ln(lo + s.tf, 'e') + ln(hi - s.tf, 'e');
+    if (rr > 0 && !o.noRoot) out += ln(lo + s.tf + rr, 't') + ln(hi - s.tf - rr, 't');
+    return out;
+  }
+  // I member seen on the flange face: width b, length along dir
+  const IFl = (v, a0, a1, cc, s, dir = 'y') => (dir === 'y' ? R(v, cc - s.b / 2, a0, cc + s.b / 2, a1, 'steel') + Ln(v, cc - s.tw / 2 - (s.r || 0), a0, cc - s.tw / 2 - (s.r || 0), a1, 'h') + Ln(v, cc + s.tw / 2 + (s.r || 0), a0, cc + s.tw / 2 + (s.r || 0), a1, 'h')
+    : R(v, a0, cc - s.b / 2, a1, cc + s.b / 2, 'steel'));
+  const title = (x, y, t, sub) => Tx(x, y, t, { size: 11.5, weight: 700, anchor: 'middle', color: C.txt }) + `<line x1="${(x - tw(t, 11.5) / 2).toFixed(1)}" y1="${(y + 3).toFixed(1)}" x2="${(x + tw(t, 11.5) / 2).toFixed(1)}" y2="${(y + 3).toFixed(1)}" stroke="${C.txt}" stroke-width="0.8"/>` + (sub ? Tx(x, y + 16, sub, { size: 10, anchor: 'middle', color: C.mute }) : '');
+  const svg = (body, h = H) => `<svg class="jd" viewBox="0 0 ${W} ${h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;background:${C.paper}" role="img">${DEFS}<rect width="${W}" height="${h}" fill="${C.paper}"/>${body}</svg>`;
+  const BOX = { L: [40, 46, 520, 400], Rt: [612, 46, 280, 400] };
+  const fv = x => { const n = parseFloat(x); return Number.isFinite(n) ? n : 0; };
+  const secName = x => x && x !== '0' ? x : '';   // a form without that selector reads as '0'
+  const BOLTD = { M12: 12, M16: 16, M20: 20, M24: 24, M27: 27, M30: 30, M36: 36 };
+  const bd = sz => BOLTD[sz] || 20;
+  const range = (n, f) => Array.from({ length: Math.max(0, n) }, (_, i) => f(i));
+  return { C, W, H, BOX, DEFS, view, R, P, Ln, lnP, Tx, tw, DH, DV, LD, LA, moment, BE, BS, WD, WS, BK, BKH, mask, ISec, IEl, IFl, title, svg, num, fv, secName, bd, range, esc, ST };
+})();
+
+/* ===== DRAWING KIT EXTRAS (EngineeringTools) =====
+   Additions to the JD drafting kit (joints/diagrams.js) for the member, floor and wall drawings: a page-width SVG wrapper,
+   arrows, supports, distributed loads, result fills, cross-section outlines (I, PFC, RHS, CHS) and SVG to PNG for PDF reports.
+   Source: scratchpad/drawings/kit.js. Pixel helpers take pixel coordinates; JD views map model mm to pixels. */
+const DK = (() => {
+  'use strict';
+  const { Tx, lnP, esc } = JD;
+  const BLUE = '#1d5fbf', FILL = 'rgba(29,95,191,.15)', RED = '#c4242a', REDF = 'rgba(196,36,42,.10)', INK = '#222a31', MUTE = '#6b7680', LINE = '#c9d0d7';
+  const DEFS = `<defs><marker id="dkB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${BLUE}"/></marker>`
+    + `<marker id="dkK" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${INK}"/></marker>`
+    + `<marker id="dkR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${RED}"/></marker>`
+    + `<pattern id="dkHatch" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)"><rect width="7" height="7" fill="#f3f1ec"/><line x1="0" y1="0" x2="0" y2="7" stroke="#8b8478" stroke-width="1"/></pattern></defs>`;
+  const f1 = v => (+v).toFixed(1);
+  // the page-width drawing: viewBox w x h, scales to its container
+  const svg = (body, w, h, label) => `<svg class="jd dk" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" role="img"${label ? ` aria-label="${esc(label)}"` : ''} `
+    + `style="width:100%;height:auto;display:block;background:#fff">${JD.DEFS}${DEFS}<rect width="${w}" height="${h}" fill="#fff"/>${body}</svg>`;
+  const col = c => ({ blue: BLUE, red: RED, ink: INK, mute: MUTE }[c] || c || INK);
+  const mk = c => ({ blue: 'dkB', red: 'dkR' }[c] || 'dkK');
+  // arrow from (x0, y0) to (x1, y1), head at the end (both: heads at both ends)
+  const arrow = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1.6}"`
+    + `${o.dash ? ` stroke-dasharray="${o.dash}"` : ''} marker-end="url(#${mk(o.c)})"${o.both ? ` marker-start="url(#${mk(o.c)})"` : ''}/>`;
+  const line = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.cap ? ` stroke-linecap="${o.cap}"` : ''}/>`;
+  const rect = (x, y, w, h, o = {}) => `<rect x="${f1(Math.min(x, x + w))}" y="${f1(Math.min(y, y + h))}" width="${f1(Math.abs(w))}" height="${f1(Math.abs(h))}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.rx ? ` rx="${o.rx}"` : ''}/>`;
+  const poly = (pts, o = {}) => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + f1(p[0]) + ' ' + f1(p[1])).join(' ')}${o.open ? '' : ' Z'}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+  const text = (x, y, s, o = {}) => Tx(x, y, s, Object.assign({ size: 11 }, o, { color: o.color ? col(o.color) : o.color }));
+  // pinned support under (px, py): triangle and ground line; dir 'down' (default) or 'up' (hanging, above the point)
+  function pin(px, py, dir = 'down') {
+    const s = dir === 'up' ? -1 : 1;
+    return poly([[px, py], [px - 8, py + s * 13], [px + 8, py + s * 13]], { fill: '#fff', stroke: 'ink', w: 1.3 }) + line(px - 12, py + s * 13, px + 12, py + s * 13, { w: 1.3 })
+      + [0, 1, 2, 3].map(k => line(px - 10 + k * 6, py + s * 13, px - 14 + k * 6, py + s * 18, { c: 'mute', w: 0.8 })).join('');
+  }
+  // hatched ground or wall strip: rectangle with the hatch fill and an edge line on the restrained side ('t', 'b', 'l', 'r')
+  function ground(x, y, w, h, edge = 't') {
+    const e = { t: [x, y, x + w, y], b: [x, y + h, x + w, y + h], l: [x, y, x, y + h], r: [x + w, y, x + w, y + h] }[edge];
+    return rect(x, y, w, h, { fill: 'url(#dkHatch)' }) + line(e[0], e[1], e[2], e[3], { w: 1.4 });
+  }
+  // a row of load arrows pointing from yTop to yBase between x0 and x1, with the bar along the tails and a label above
+  function udl(x0, x1, yTop, yBase, label, o = {}) {
+    const n = Math.max(2, Math.round((x1 - x0) / (o.pitch || 28)) + 1), c = o.c || 'red';
+    let g = line(x0, yTop, x1, yTop, { c, w: 1.3 });
+    for (let i = 0; i < n; i++) { const x = x0 + (x1 - x0) * i / (n - 1); g += arrow(x, yTop, x, yBase, { c, w: 1.2 }); }
+    return g + (label ? text((x0 + x1) / 2, yTop - 6, label, { anchor: 'middle', color: c === 'red' ? RED : col(c), weight: 600 }) : '');
+  }
+  // a result diagram: polyline pts (pixels) closed to the base line through the first and last points' base, filled blue
+  function fillDiagram(pts, base, o = {}) {
+    const vert = o.vertical;   // base is an x (diagram plotted sideways) when vertical
+    const close = vert ? [[base, pts[pts.length - 1][1]], [base, pts[0][1]]] : [[pts[pts.length - 1][0], base], [pts[0][0], base]];
+    return poly(pts.concat(close), { fill: o.fill || FILL, stroke: 'none' }) + poly(pts, { open: true, stroke: o.stroke || 'ink', w: 1.1 });
+  }
+  // cross-section outline, cut, centred at pixel (cx, cy) at scale k (px/mm); web vertical; returns svg
+  function section(s, cx, cy, k, o = {}) {
+    const st = o.style || 'cut', fill = st === 'cut' ? 'url(#jdCut)' : '#e7ecf1', edge = '#2f3b47';
+    if (s.shape === 'CHS') {
+      const ro = s.d / 2 * k, ri = (s.d / 2 - s.t) * k;
+      return `<path d="M${f1(cx - ro)} ${f1(cy)} a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(2 * ro)} 0 a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(-2 * ro)} 0 Z M${f1(cx - ri)} ${f1(cy)} a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(2 * ri)} 0 a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(-2 * ri)} 0 Z" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'RHS') {
+      const w = s.b * k, h = s.h * k, t = Math.max(s.t * k, 1.2), ro = Math.min((s.ro || 1.5 * s.t) * k, w / 2), ri = Math.max(0, ro - t);
+      const rr = (x, y, W, H, r) => `M${f1(x + r)} ${f1(y)} H${f1(x + W - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W)} ${f1(y + r)} V${f1(y + H - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W - r)} ${f1(y + H)} H${f1(x + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x)} ${f1(y + H - r)} V${f1(y + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + r)} ${f1(y)} Z`;
+      return `<path d="${rr(cx - w / 2, cy - h / 2, w, h, ro)} ${rr(cx - w / 2 + t, cy - h / 2 + t, w - 2 * t, h - 2 * t, ri)}" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'PFC') {   // channel, toes to the right, web on the left
+      const b = s.b * k, h = s.h * k, tf = Math.max(s.tf * k, 1.2), tw = Math.max(s.tw * k, 1.2), x0 = cx - b / 2, y0 = cy - h / 2;
+      return poly([[x0, y0], [x0 + b, y0], [x0 + b, y0 + tf], [x0 + tw, y0 + tf], [x0 + tw, y0 + h - tf], [x0 + b, y0 + h - tf], [x0 + b, y0 + h], [x0, y0 + h]], { fill, stroke: edge, w: 1.1 });
+    }
+    const v = { k, X: x => cx + x * k, Y: y => cy - y * k };   // I sections: JD's outline with root radii
+    return JD.ISec(v, 0, 0, s, 'v', st === 'cut' ? 'cut' : 'steel');
+  }
+  // SVG markup to a PNG data URL (for the jsPDF reports); resolves { url, w, h } with w, h the viewBox size
+  function toPNG(markup, wpx = 1800) {
+    return new Promise((resolve, reject) => {
+      const m = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(markup); if (!m) { reject(new Error('no viewBox')); return; }
+      const w = +m[1], h = +m[2], k = wpx / w, img = new Image();
+      const src = markup.replace(/style="[^"]*"/, `width="${f1(w * k)}" height="${f1(h * k)}"`);
+      img.onload = () => { const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k); const g = c.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height); resolve({ url: c.toDataURL('image/png'), w, h }); };
+      img.onerror = () => reject(new Error('drawing could not be rendered'));
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
+    });
+  }
+  // drawings for the page (heading + drawing) and for the A4 sheet (each kept whole on a page)
+  const page = blocks => blocks.map(([t, s]) => `<div class="dlabel">${t}</div>${s}`).join('');
+  const sheet = blocks => blocks.map(([t, s]) => `<div class="rfig" style="break-inside:avoid;page-break-inside:avoid;margin:1mm 0 3mm"><h3>${t}</h3><div class="rsvg">${s}</div></div>`).join('');
+  const fmt = (v, d = 0) => Number.isFinite(v) ? (+v).toFixed(d) : '–';
+  return { page, sheet, BLUE, FILL, RED, REDF, INK, MUTE, LINE, svg, arrow, line, rect, poly, text, pin, ground, udl, fillDiagram, section, toPNG, fmt, lnP };
+})();
+
+/* ===== STEEL BEAM TORSION DRAWINGS (EngineeringTools) =====
+   The model: the beam in elevation with its bending supports, the torsion end conditions (fork: twist restrained, warping free;
+   or twist and warping restrained), intermediate lateral restraints and the loads with their eccentricities; the cross-section
+   with the shear centre (behind the web on a channel) and the load line at e from it, which is what makes the torque. And the
+   stresses at the critical section across the flange: bending + warping, giving the tip value in the yield check.
+   Source: scratchpad/drawings/torsion.js. Needs JD, DK. */
+const DrawTorsion = (() => {
+  'use strict';
+  const { num } = JD;
+  const { svg, arrow, line, rect, poly, text, pin, ground, section, page, sheet, BLUE, FILL, RED, MUTE } = DK;
+  const kN = v => num(v / 1e3), m2 = v => (v / 1000).toFixed(2).replace(/\.?0+$/, '');
+  // torque about the beam axis: a curved arrow round (cx, cy), clockwise when cw
+  const torque = (cx, cy, r, cw, c = 'red') => {
+    const a0 = cw ? -150 : -30, a1 = cw ? 110 : 250, P = a => [cx + r * Math.cos(a * Math.PI / 180), cy + r * Math.sin(a * Math.PI / 180)], [x0, y0] = P(a0), [x1, y1] = P(a1);
+    return `<path d="M${x0.toFixed(1)} ${y0.toFixed(1)} A${r} ${r} 0 1 ${cw ? 1 : 0} ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="${c === 'red' ? RED : BLUE}" stroke-width="1.6" marker-end="url(#${c === 'red' ? 'dkR' : 'dkB'})"/>`;
+  };
+
+  function model(inp, Rr) {
+    const W = 700, s = inp.sec, L = inp.L, x0 = 46, x1 = 430, k = (x1 - x0) / L, X = x => x0 + x * k, yc = 142, dp = Math.max(10, Math.min(30, s.h * k)), yt = yc - dp / 2, yb = yc + dp / 2;
+    const cant = inp.sys === 'cant', loads = [...inp.loadsG.map(l => ({ ...l, c: 'G' })), ...inp.loadsQ.map(l => ({ ...l, c: 'Q' }))], tq = [...inp.torquesG.map(t => ({ ...t, c: 'G' })), ...inp.torquesQ.map(t => ({ ...t, c: 'Q' }))];
+    let g = '';
+    // loads: one UDL row for all distributed loads, then point loads and torques at their positions
+    const udls = loads.filter(l => l.type === 'udl');
+    if (udls.length) g += DK.udl(X(0), X(L), 70, yt - 3, '', { c: 'red', pitch: 24 }) + text(X(0), 62, udls.map(l => `${l.c} ${num(l.w)} kN/m (e ${num(l.e)})`).join(', '), { size: 10.5, color: RED, weight: 600 });
+    loads.filter(l => l.type === 'point').forEach((l, i) => { const x = X(l.a); g += arrow(x, 30 + (i % 2) * 12, x, yt - 2, { c: 'red', w: 2 }) + text(x + 5, 30 + (i % 2) * 12 + 4, `${l.c} ${kN(l.P)} kN, e ${num(l.e)}`, { size: 10, color: RED }); });
+    tq.forEach(t => { g += torque(X(t.x), yc, 16, t.T > 0) + text(X(t.x), yb + 34, `${t.c} T ${num(Math.abs(t.T) / 1e6)} kNm`, { size: 10, color: RED, anchor: 'middle' }); });
+    // the beam (to scale)
+    g += rect(X(0), yt, L * k, dp, { fill: '#e7ecf1', stroke: '#2f3b47', w: 1.1 }) + line(X(0), yt + Math.max(1.4, s.tf * k), X(L), yt + Math.max(1.4, s.tf * k), { w: 0.6 }) + line(X(0), yb - Math.max(1.4, s.tf * k), X(L), yb - Math.max(1.4, s.tf * k), { w: 0.6 });
+    // bending supports, and the torsion condition at each end
+    const ends = inp.ends, tor = (x, kind, side) => kind === 'fixed'
+      ? rect(side < 0 ? x - 7 : x, yt - 6, 7, dp + 12, { fill: 'url(#dkHatch)', stroke: 'ink' })
+      : kind === 'fork' ? line(x - 5 * side, yt - 9, x - 5 * side, yb + 9, { w: 1.8 }) + line(x + 3 * side, yt - 9, x + 3 * side, yb + 9, { w: 1.8, c: 'mute' }) : '';
+    if (cant) g += ground(X(0) - 18, yt - 22, 14, dp + 44, 'r') + tor(X(0), ends[0], 1);
+    else g += pin(X(0), yb) + pin(X(L), yb) + tor(X(0), ends[0], 1) + tor(X(L), ends[1], -1);
+    const tname = t => t === 'fixed' ? 'twist and warping restrained' : t === 'fork' ? 'fork: twist restrained, warping free' : 'free';
+    g += text(X(0), yb + 50, `${cant ? 'Root' : 'Left'}: ${tname(ends[0])}`, { size: 10 }) + text(X(L), yb + 50 + (cant ? 0 : 13), `${cant ? 'Tip' : 'Right'}: ${tname(ends[1])}`, { size: 10, anchor: 'end' });
+    (inp.lateral.restraints || []).forEach(x => { g += line(X(x), yt - 10, X(x), yb + 10, { c: BLUE, w: 2 }) + text(X(x), yt - 13, 'LR', { size: 9.5, color: BLUE, anchor: 'middle', weight: 600 }); });
+    g += arrow(X(0), yb + 22, X(L), yb + 22, { c: 'ink', w: 1, both: true }) + text(X(L / 2), yb + 18, `L = ${m2(L)} m`, { size: 10.5, anchor: 'middle' });
+    if (inp.lateral.destab) g += text(X(0), yb + 79, 'loads on the top flange, free to move laterally (destabilising)', { size: 10, color: MUTE });
+    // the section: shear centre, and the load line at e from it
+    const bw = s.b, hh = s.h, ks = Math.min(118 / bw, 150 / hh), cx = 590, cy = 150, xL = cx - bw * ks / 2;
+    g += section(s, cx, cy, ks);
+    const sx = s.shape === 'PFC' ? xL + (s.tw / 2 - s.eSC) * ks : cx;
+    const eRep = loads.reduce((m, l) => Math.abs(l.e) > Math.abs(m) ? l.e : m, 0), lx = sx + eRep * ks;
+    g += `<circle cx="${sx.toFixed(1)}" cy="${cy}" r="3.2" fill="${RED}"/>` + text(sx + (s.shape === 'PFC' ? -8 : 26), cy + 4, 'SC', { size: 10, color: RED, weight: 600, anchor: s.shape === 'PFC' ? 'end' : 'start' });
+    if (loads.length) {
+      g += arrow(lx, cy - hh * ks / 2 - 44, lx, cy - hh * ks / 2 - 2, { c: 'red', w: 2.2 });
+      g += line(sx, cy - hh * ks / 2 - 22, sx, cy, { c: RED, dash: '2 2' }) + line(sx, cy - hh * ks / 2 - 18, lx, cy - hh * ks / 2 - 18, { c: RED, w: 1 }) + text((sx + lx) / 2, cy - hh * ks / 2 - 22, `e ${num(eRep)}`, { size: 10.5, color: RED, anchor: 'middle', weight: 600 });
+      if (eRep) g += torque(sx, cy, Math.min(18, hh * ks / 2 - 6), eRep > 0);
+    }
+    g += text(cx, cy + hh * ks / 2 + 22, s.name, { size: 10.5, anchor: 'middle' }) + text(cx, cy + hh * ks / 2 + 36, `${inp.grade}${s.shape === 'PFC' ? `; SC ${s.eSC.toFixed(1)} mm behind the web centreline` : ''}`, { size: 9.5, anchor: 'middle', color: MUTE });
+    g += text(cx, 24, 'section, larger scale: torque = load × e', { size: 10, anchor: 'middle', color: MUTE });
+    return svg(g, W, inp.lateral.destab ? 238 : 226, 'Beam with its supports, torsion end conditions and eccentric loads, and the section with the shear centre');
+  }
+
+  // stresses across the flange at the critical section: bending (uniform) plus warping (linear, opposite at the two tips)
+  function stresses(Rr, inp) {
+    const a = Rr.gov.section.at, s = Rr.s, ch = s.shape === 'PFC', sb = a.sb, sw = a.sw_tip, fy = Rr.fy, W = 700, H = 186;
+    const x0 = 120, wpx = 300, y0 = 40, base = 112, sc = 54 / Math.max(1, sb + sw, Math.abs(sb - sw));
+    // flange outline (web at the left for a channel, in the middle for an I)
+    let g = rect(x0, y0, wpx, 9, { fill: 'url(#jdCut)', stroke: '#2f3b47' }) + rect(ch ? x0 : x0 + wpx / 2 - 4, y0 + 9, 8, 16, { fill: 'url(#jdCut)', stroke: '#2f3b47' });
+    g += text(x0 + wpx / 2, y0 - 8, `${ch ? 'channel' : 'compression'} flange at x = ${(a.x / 1000).toFixed(2)} m`, { size: 10.5, anchor: 'middle', color: MUTE });
+    // warping stress along the flange: I: +sw at one tip, -sw at the other, zero at the web; channel: tip +sw, junction -sw*w_j/w_tip
+    const swj = ch ? -sw * (Rr.sc.w_junction / Rr.sc.w_tip) : 0;
+    const pts = ch ? [[x0, sb + swj], [x0 + wpx, sb + sw]] : [[x0, sb - sw], [x0 + wpx, sb + sw]];
+    g += line(x0, base, x0 + wpx, base, { c: 'mute' }) + rect(x0, base, wpx, -sb * sc, { fill: FILL, stroke: 'none' });
+    g += poly([[x0, base], ...pts.map(([x, v]) => [x, base - v * sc]), [x0 + wpx, base]], { fill: 'none', stroke: 'ink', w: 1.4 });
+    g += line(x0, base - sb * sc, x0 + wpx, base - sb * sc, { c: BLUE, dash: '4 3' });
+    g += text(x0 + wpx + 8, base - (sb + sw) * sc + 4, `${num(sb + sw)} = σ_b + σ_w`, { size: 10.5, weight: 700, color: a.tip.s > fy ? RED : undefined });
+    g += text(x0 - 8, base - pts[0][1] * sc + 4, `${num(pts[0][1])}`, { size: 10.5, anchor: 'end' });
+    g += text(x0 + 6, base - sb * sc - 5, `σ_b ${num(sb)}`, { size: 10, color: BLUE });
+    g += text(x0 + wpx + 8, base + 4, 'N/mm²', { size: 10, color: MUTE });
+    const u = Math.sqrt((a.tip.s / fy) ** 2 + 3 * (a.tip.t / fy) ** 2);
+    g += text(x0, base + 30, `Tip: σ = ${num(a.tip.s)}, τ = ${num(a.tip.t)} N/mm²; √((σ/f_y)² + 3(τ/f_y)²) = ${u.toFixed(3)} with f_y = ${fy}`, { size: 10.5, weight: 600, color: u > 1 ? RED : undefined });
+    g += text(x0, base + 46, ch ? 'Channel: warping stress changes sign along the flange (zero where ω = 0)' : 'Warping adds at one tip and subtracts at the other; the other flange is opposite', { size: 10, color: MUTE });
+    return svg(g, W, H, 'Stresses across the flange at the critical section');
+  }
+  const html = (inp, Rr) => page([['Beam, end conditions and eccentric loads', model(inp, Rr)]]);
+  const report = (inp, Rr) => sheet([['Beam, end conditions and eccentric loads', model(inp, Rr)]]);
+  return { html, report, model, stresses };
+})();
+
+</script>
 <script id="ui">
 'use strict';
 const $ = id => document.getElementById(id);
@@ -1388,7 +1725,7 @@ function fillSections(keep) {
 }
 $('series').onchange = () => fillSections();
 const sysUpd = () => { const c = $('sys').value === 'cant'; $('endLlab').textContent = c ? 'Root, torsion' : 'Left end, torsion'; $('endR').disabled = c; $('endRlab').textContent = c ? 'Tip: free' : 'Right end, torsion'; $('tipBox').classList.toggle('hidden', !c); };
-$('sys').onchange = sysUpd;
+$('sys').onchange = () => { if ($('sys').value === 'cant') $('endL').value = 'fixed'; sysUpd(); };   // a cantilever is built in at the root
 function loadRow(l = { case: 'G', type: 'udl', v: 10, a: 0, e: 50 }) {
   const d = document.createElement('div'); d.className = 'row tl';
   d.innerHTML = `<div><label>Case</label><select class="cs"><option>G</option><option>Q</option></select></div>
@@ -1441,20 +1778,30 @@ function plot(R, arr, unit, scale, light, dec = 1, label = '') {
 function render(R, inp) {
   const g = R.gov, CH = [['section', 'Cross-section, yield criterion', '6.2.1(5)'], ['member', 'Member: LTB + warping', 'EN 1993-6 A'], ['rotation', 'Twist at SLS', 'limit']];
   let h = `<div class="verdict ${R.utilMax > 1 ? 'fail' : ''}"><div><div class="big">${R.utilMax > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(R.utilMax)}</div><div class="sub">${R.s.name} ${inp.grade} &nbsp;·&nbsp; f<sub>y</sub> = ${R.fy} N/mm² &nbsp;·&nbsp; ${inp.sys === 'cant' ? 'cantilever' : 'simple span'}</div></div></div>`;
+  h += `<div id="drawings"></div>`;
   h += `<div class="checks">${CH.filter(([k]) => g[k]).map(([k, nm, cl]) => { const u = g[k].util, w = Math.min(100, u * 100 / 1.2); return `<div class="ck"><div class="nm">${nm}<small>${cl}</small></div><div class="bar"><i class="${u > 1 ? 'over' : u > 0.9 ? 'hi' : ''}" style="width:${w}%"></i></div><div class="u ${u > 1 ? 'over' : ''}">${ufmt(u)}</div></div>`; }).join('')}</div>`;
   h += `<div class="dlabel">Twist &phi; at ULS (&deg;)</div>${plot(R, R.pts.map(p => p.phi * 180 / Math.PI), '&deg;', 1, false, 2)}`;
   h += `<div class="dlabel">Bimoment B (kNm²)</div>${plot(R, R.pts.map(p => p.B), 'kNm²', 1e9, false, 2)}`;
   h += `<div class="dlabel">St Venant T<sub>t</sub> and warping T<sub>w</sub> torque (kNm)</div>${plot(R, R.pts.map(p => p.Tt), 'T_t kNm', 1e6, false, 2)}${plot(R, R.pts.map(p => p.Tw), 'T_w kNm', 1e6, false, 2)}`;
   h += `<div class="dlabel">Bending moment M<sub>y</sub> (kNm)</div>${plot(R, R.pts.map(p => p.M), 'kNm', 1e6, false, 1)}`;
   const a = g.section.at;
-  h += `<div class="dlabel">Stresses at the critical section x = ${(a.x / 1000).toFixed(2)} m (N/mm²)</div><table class="t"><tr><th>Point</th><th>&sigma;<sub>bending</sub></th><th>&sigma;<sub>w</sub></th><th>&tau;<sub>t</sub></th><th>&tau;<sub>w</sub></th><th>&tau;<sub>V</sub></th><th>yield criterion</th></tr>` +
+  h += `<div class="dlabel">Stresses at the critical section x = ${(a.x / 1000).toFixed(2)} m (N/mm²)</div>${DrawTorsion.stresses(R, inp)}<table class="t"><tr><th>Point</th><th>&sigma;<sub>bending</sub></th><th>&sigma;<sub>w</sub></th><th>&tau;<sub>t</sub></th><th>&tau;<sub>w</sub></th><th>&tau;<sub>V</sub></th><th>yield criterion</th></tr>` +
     [['Flange tip', a.sb, a.sw_tip, a.tt_f, 0, 0, a.tip], ['Flange at the web', a.sb, 0, a.tt_f, a.tw_f, 0, a.cen], ['Web at the flange', a.web.s, 0, a.web.t - a.tv, 0, a.tv, a.web]]
       .map(([nm, sb, sw, tt, tw, tv, p]) => `<tr><td>${nm}</td><td>${fmt(sb)}</td><td>${fmt(sw)}</td><td>${fmt(tt)}</td><td>${fmt(tw)}</td><td>${fmt(tv)}</td><td>${ufmt(Math.sqrt((p.s / R.fy) ** 2 + 3 * (p.t / R.fy) ** 2))}</td></tr>`).join('') + `</table>`;
   if (g.member) { const m = g.member.seg; h += `<div class="dlabel">Member interaction (segment ${(m.xa / 1000).toFixed(2)}&ndash;${(m.xb / 1000).toFixed(2)} m)</div><table class="t"><tr><th>M<sub>Ed</sub></th><th>M<sub>cr</sub></th><th>&chi;<sub>LT</sub></th><th>B<sub>Ed</sub></th><th>B<sub>Rk</sub></th><th>k<sub>w</sub></th><th>k<sub>&alpha;</sub></th><th>util.</th></tr><tr><td>${fmt(m.MEd / 1e6)}</td><td>${fmt(m.Mcr / 1e6, 0)}</td><td>${m.chi.toFixed(3)}</td><td>${fmt(m.BEd / 1e9, 3)}</td><td>${fmt(m.BRk / 1e9, 2)}</td><td>${m.kw.toFixed(3)}</td><td>${m.ka.toFixed(3)}</td><td>${ufmt(m.u)}</td></tr></table>`; }
   h += `<div class="note">${notes(R, inp).join('<br>')}</div><button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
-  $('results').innerHTML = h;
+  $('results').innerHTML = h; redraw();
   $('printBtn').onclick = () => { $('report').innerHTML = report(R, inp); window.print(); };
 }
+// drawings: the model is redrawn from the inputs as they change (the checks update on Check)
+let drawT = 0;
+function redraw() {
+  const el = $('drawings'); if (!el) return;
+  try { const inp = input(collect()); el.innerHTML = DrawTorsion.html(inp, Torsion.design(inp)); }
+  catch (e) { el.innerHTML = `<div class="note">The drawing will appear when the inputs are complete: ${esc(e.message)}</div>`; }
+}
+const queueDraw = () => { clearTimeout(drawT); drawT = setTimeout(redraw, 150); };
+$('inputs').addEventListener('input', queueDraw); $('inputs').addEventListener('change', queueDraw); $('inputs').addEventListener('click', e => { if (e.target.closest('.xbtn, #addLoad')) queueDraw(); });
 function notes(R, inp) {
   return ['Torsional analysis by finite elements on EI<sub>w</sub>&phi;&prime;&prime;&prime;&prime; &minus; GI<sub>t</sub>&phi;&prime;&prime; = m<sub>t</sub> (SCI P385 section 3); warping torque from statics, T<sub>w</sub> = T &minus; GI<sub>t</sub>&phi;&prime;; bimoment B = &minus;EI<sub>w</sub>&phi;&prime;&prime;.',
     `Stresses (elastic): &sigma;<sub>w</sub> = B&omega;<sub>n</sub>/I<sub>w</sub>, &tau;<sub>t</sub> = T<sub>t</sub>t/I<sub>t</sub>, &tau;<sub>w</sub> = T<sub>w</sub>S<sub>w</sub>/(I<sub>w</sub>t) with thin-walled sectorial properties (${R.sc.kind === 'channel' ? 'channel: shear centre e<sub>0</sub> = ' + R.s.eSC.toFixed(1) + ' mm from the web centreline' : 'I section'}); combined by the yield criterion (&sigma;/f<sub>y</sub>)² + 3(&tau;/f<sub>y</sub>)² &le; 1, &gamma;<sub>M0</sub> = 1.0.`,
@@ -1474,7 +1821,7 @@ function report(R, inp) {
     rl(`f<sub>y</sub> for t = ${Math.max(s.tf, s.tw)} mm`, 'NA.2.4', `${R.fy} N/mm²`) + `</div>`;
   b += `<div class="rs"><h2>2 Loads</h2><table class="rt lft"><tr><th>Case</th><th>Type</th><th>Value</th><th>x (m)</th><th>e (mm)</th><th>Torque</th></tr>` +
     st.loads.map(l => `<tr><td>${l.case}</td><td>${l.type}</td><td>${l.v} ${l.type === 'udl' ? 'kN/m' : l.type === 'point' ? 'kN' : 'kNm'}</td><td>${l.type === 'udl' ? 'full' : l.a}</td><td>${l.type === 'torque' ? '&ndash;' : l.e}</td><td>${l.type === 'udl' ? (l.v * l.e / 1e3).toFixed(3) + ' kNm/m' : l.type === 'point' ? (l.v * l.e / 1e3).toFixed(2) + ' kNm' : l.v + ' kNm'}</td></tr>`).join('') + `</table>` +
-    rl(`ULS: ${inp.gG} G + ${inp.gQ} Q; SLS: G + Q`, 'BS EN 1990', '') + `</div>`;
+    rl(`ULS: ${inp.gG} G + ${inp.gQ} Q; SLS: G + Q`, 'BS EN 1990', '') + DrawTorsion.report(inp, R) + `</div>`;
   b += `<div class="rs"><h2>3 Torsional analysis (ULS)</h2><h3>Twist &phi; (&deg;)</h3>${plot(R, R.pts.map(p => p.phi * 180 / Math.PI), '&deg;', 1, true, 2)}<h3>Bimoment (kNm²)</h3>${plot(R, R.pts.map(p => p.B), 'kNm²', 1e9, true, 2)}` +
     `<h3>St Venant and warping torque (kNm)</h3>${plot(R, R.pts.map(p => p.Tt), 'T_t', 1e6, true, 2)}${plot(R, R.pts.map(p => p.Tw), 'T_w', 1e6, true, 2)}<h3>Bending moment (kNm)</h3>${plot(R, R.pts.map(p => p.M), 'kNm', 1e6, true, 1)}</div>`;
   b += `<div class="rs"><h2>4 Cross-section at x = ${(a.x / 1000).toFixed(2)} m</h2>` +
@@ -1482,7 +1829,7 @@ function report(R, inp) {
     rl(`Flange tip: &sigma; = ${fmt(a.sb)} + ${fmt(a.sw_tip)} = ${fmt(a.tip.s)} N/mm², &tau; = ${fmt(a.tip.t)} N/mm²`, '(6.1)', ufmt(Math.sqrt((a.tip.s / R.fy) ** 2 + 3 * (a.tip.t / R.fy) ** 2))) +
     rl(`Flange at the web: &sigma; = ${fmt(a.cen.s)} N/mm², &tau; = &tau;<sub>t</sub> + &tau;<sub>w</sub> = ${fmt(a.cen.t)} N/mm²`, '(6.1)', ufmt(Math.sqrt((a.cen.s / R.fy) ** 2 + 3 * (a.cen.t / R.fy) ** 2))) +
     rl(`Web at the flange: &sigma; = ${fmt(a.web.s)} N/mm², &tau; = &tau;<sub>V</sub> + &tau;<sub>t</sub> = ${fmt(a.web.t)} N/mm²`, '(6.1)', ufmt(Math.sqrt((a.web.s / R.fy) ** 2 + 3 * (a.web.t / R.fy) ** 2))) +
-    rl('Governing cross-section utilisation (along the member)', '6.2.1(5)', okng(g.section.util)) + `</div>`;
+    rl('Governing cross-section utilisation (along the member)', '6.2.1(5)', okng(g.section.util)) + `<div class="rsvg" style="break-inside:avoid">${DrawTorsion.stresses(R, inp)}</div></div>`;
   if (g.member) { const m = g.member.seg;
     b += `<div class="rs"><h2>5 Member: lateral-torsional buckling with warping</h2>` +
       rl(`Segment ${(m.xa / 1000).toFixed(2)}&ndash;${(m.xb / 1000).toFixed(2)} m: M<sub>Ed</sub> = ${fmt(m.MEd / 1e6)} kNm, M<sub>cr</sub> = ${fmt(m.Mcr / 1e6, 0)} kNm, &lambda;&#772;<sub>LT</sub> = ${m.lamLT.toFixed(3)}`, '6.3.2', `&chi;<sub>LT</sub> = ${m.chi.toFixed(3)}`) +
@@ -1498,8 +1845,9 @@ $('calc').onclick = () => {
 };
 (function init() {
   let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
-  if (s && s.v === 1) { restore(s); return; }
-  fillSections(); loadRow({ case: 'G', type: 'udl', v: 8, a: 0, e: 100 }); loadRow({ case: 'Q', type: 'udl', v: 6, a: 0, e: 100 }); sysUpd();
+  if (s && s.v === 1) restore(s);
+  else { fillSections(); loadRow({ case: 'G', type: 'udl', v: 8, a: 0, e: 100 }); loadRow({ case: 'Q', type: 'udl', v: 6, a: 0, e: 100 }); sysUpd(); }
+  redraw();
 })();
 </script>
 <footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent engineer to check and approve all calculations before they are used.</footer>

@@ -13,7 +13,7 @@ const w = page(), d = w.document, $ = id => d.getElementById(id), calc = () => $
 truth('page loads without script errors', w.errs.length === 0);
 truth('three default openings, steel mode', $('ops').children.length === 3 && !$('gk').closest('.card').classList.contains('hidden') && $('hs').closest('.card').classList.contains('hidden'));
 calc(); truth('steel: verdict, opening and web-post checks', /PASS|FAIL/.test(res()) && /Vierendeel bending/.test(res()) && /Web-post 1–2/.test(res()) && !err());
-truth('steel: elevation drawn with three openings', $('results').querySelectorAll('svg rect[rx]').length === 3);
+truth('steel: span drawn with three openings', $('results').querySelectorAll('#drawings svg.dk').length === 2 && /3 openings at true scale/.test($('drawings').textContent));
 $('pts').value = '6.5, 10, 15'; calc(); truth('steel: point load accepted', !err() && /Total deflection incl. openings/.test(res()));
 $('addOp').click(); truth('opening added', $('ops').children.length === 4);
 const r4 = $('ops').children[3]; r4.querySelector('.o-sh').value = 'elong'; r4.querySelector('.o-sh').onchange(); r4.querySelector('.o-x').value = '7.6'; r4.querySelector('.o-l').value = '500'; r4.querySelector('.o-h').value = '200';
