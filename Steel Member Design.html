@@ -2587,7 +2587,7 @@ function renderA(R, inp, ms) {
   const fail = R.utilMax > 1;
   let h = `<div class="verdict ${fail ? 'fail' : ''}"><div><div class="big">${fail ? 'FAIL' : 'PASS'} &nbsp;${ufmt(R.utilMax)}</div><div class="sub">${R.sec.name} ${inp.grade} &nbsp;·&nbsp; f<sub>y</sub> = ${R.fy} N/mm² &nbsp;·&nbsp; ${R.combos.length} ULS combinations</div></div></div>`;
   h += checksHTML(gov);
-  h += `<div class="dlabel">Member &amp; characteristic loads</div>` + svgBeam(lay, inp);
+  h += typeof DrawSteelBeam !== 'undefined' ? '<div id="drawings"></div>' : `<div class="dlabel">Member &amp; characteristic loads</div>` + svgBeam(lay, inp);
   h += `<div class="dlabel">ULS bending moment envelope (kNm, sagging plotted below)</div>` + svgEnv(lay, st, R.envelope.Mmax, R.envelope.Mmin, 'kNm', 1e6, false, true);
   h += `<div class="dlabel">ULS shear force envelope (kN)</div>` + svgEnv(lay, st, R.envelope.Vmax, R.envelope.Vmin, 'kN', 1e3, false, false);
   if (R.hasH) h += `<div class="dlabel">ULS minor-axis moment envelope M<sub>z</sub> (kNm, horizontal loads)</div>` + svgEnv(lay, st, R.envelopeH.Mmax, R.envelopeH.Mmin, 'kNm', 1e6, false, false);
@@ -2663,7 +2663,7 @@ function reportHTML(R, inp, s) {
 
   if (mode === 'A') {
     const mem = members();
-    b += `<div class="rs"><h2>3 Analysis</h2>${svgBeam(R.lay, inp, true)}<table class="rt lft"><tr><th>Load</th><th>Case</th><th>Dir.</th><th>Member</th><th>Type</th><th>Value</th><th>Position (m)</th></tr>` +
+    b += `<div class="rs"><h2>3 Analysis</h2>${typeof DrawSteelBeam !== 'undefined' ? DrawSteelBeam.report(inp, R) : svgBeam(R.lay, inp, true)}<table class="rt lft"><tr><th>Load</th><th>Case</th><th>Dir.</th><th>Member</th><th>Type</th><th>Value</th><th>Position (m)</th></tr>` +
       s.loads.map((l, i) => `<tr><td>${i + 1}</td><td>${l.case}</td><td>${l.dir === 'h' ? 'horiz.' : 'vert.'}</td><td>${mem[l.member].name}</td><td>${LOAD_TYPES[l.type]}</td><td>${l.type === 'point' ? l.P + ' kN' : l.type === 'moment' ? l.M + ' kNm' : l.type === 'vdl' ? l.w1 + ' &rarr; ' + l.w2 + ' kN/m' : l.w + ' kN/m'}</td><td>${l.type === 'udl' ? 'full' : l.type === 'pudl' || l.type === 'vdl' ? l.a + ' &ndash; ' + l.b : l.a}</td></tr>`).join('') +
       (s.sw ? `<tr><td>&ndash;</td><td>G</td><td>vert.</td><td>all</td><td>Self-weight</td><td>${(sec.mass * 9.80665e-3).toFixed(3)} kN/m</td><td>full</td></tr>` : '') + `</table>`;
     const rule = s.rule === '6.10' ? '6.10: 1.35 G<sub>k</sub> + 1.5 Q<sub>k</sub>' : `6.10a: 1.35 G<sub>k</sub> + 1.5 &psi;<sub>0</sub> Q<sub>k</sub> (&psi;<sub>0</sub> = ${s.psi0}); 6.10b: &xi;&middot;1.35 G<sub>k</sub> + 1.5 Q<sub>k</sub> (&xi; = 0.925)`;
@@ -2798,8 +2798,8 @@ function run() {
         R = Design.designMember(inp);
         html = renderB(R, inp, Math.round(performance.now() - t0));
       }
-      $('results').innerHTML = html; redraw();
       lastRun = { R, inp, s };
+      $('results').innerHTML = html; redraw();
       $('printBtn').onclick = () => { $('report').innerHTML = reportHTML(R, inp, s); window.print(); };
     } catch (e) {
       $('results').innerHTML = `<div class="err">${esc(e.message)}</div>`;
@@ -2813,12 +2813,16 @@ function memberInput(s, sec) {
   if (!(B.L > 0)) throw new Error('Length must be positive');
   return { sec, grade: s.grade, annex: s.annex || 'B', L: B.L * 1000, N: B.N * 1e3, MyT: B.MyT * 1e6, MyB: B.MyB * 1e6, MzT: B.MzT * 1e6, MzB: B.MzB * 1e6, ky: B.ky, kz: B.kz, nLT: Math.max(1, Math.round(B.nLT)) };
 }
-// drawings (member page): redrawn from the inputs as they change; the checks update on Calculate
+// drawings, redrawn from the inputs as they change; the checks update on Calculate. Member page: the member with its actions.
+// Beam page: the beam, loads and restraints as typed, with the LTB utilisations, governing location and deflected shape from
+// the last Calculate when the inputs are unchanged (a continuous beam's full design is too slow to rerun on every key).
 let drawT = 0;
 function redraw() {
-  const el = $('drawings'); if (!el || mode !== 'B' || typeof DrawMember === 'undefined') return;
-  try { const inp = memberInput(collect(), currentSection()); el.innerHTML = DrawMember.html(inp, Design.designMember(inp)); }
-  catch (e) { el.innerHTML = `<div class="note">The drawing will appear when the inputs are complete: ${esc(e.message)}</div>`; }
+  const el = $('drawings'); if (!el) return;
+  try {
+    if (mode === 'B' && typeof DrawMember !== 'undefined') { const inp = memberInput(collect(), currentSection()); el.innerHTML = DrawMember.html(inp, Design.designMember(inp)); }
+    else if (mode === 'A' && typeof DrawSteelBeam !== 'undefined') { const s = collect(), same = lastRun && JSON.stringify(lastRun.s) === JSON.stringify(s); el.innerHTML = DrawSteelBeam.html(same ? lastRun.inp : buildBeamInput(s, currentSection()), same ? lastRun.R : null); }
+  } catch (e) { el.innerHTML = `<div class="note">The drawing will appear when the inputs are complete: ${esc(e.message)}</div>`; }
 }
 const queueDraw = () => { clearTimeout(drawT); drawT = setTimeout(redraw, 150); };
 $('inputs').addEventListener('input', queueDraw); $('inputs').addEventListener('change', queueDraw);

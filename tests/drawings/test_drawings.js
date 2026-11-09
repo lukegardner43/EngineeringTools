@@ -54,9 +54,24 @@ async function sweep(f, cases, expect) {
     ['base only', w => { set(w, 'restraint_config', 'base_only', 'change'); }], ['base and one end', w => set(w, 'restraint_config', 'base_one_end', 'change')],
     ['ends only', w => set(w, 'restraint_config', 'ends_only', 'change')], ['thick wall, long', w => { set(w, 'h', '600'); set(w, 'L', '20'); }],
   ], 2);
-  {   // the steel beam page shares the template but carries no member drawings
+  {   // the steel beam page shares the template: its own beam drawings, not the member page's
     const { w, errs } = await load('Steel Beam Analysis and Design.html');
-    truth('Steel Beam Analysis & Design: unchanged, no member drawing code', typeof w.DrawMember === 'undefined' && w.document.getElementById('drawings').innerHTML === '' && errs.length === 0); w.close();
+    const h = w.document.getElementById('drawings').innerHTML;
+    truth('Steel Beam Analysis & Design: beam drawing on load, no member drawing code', w.eval('typeof DrawMember') === 'undefined' && w.eval('typeof DrawSteelBeam') === 'object' && /G 10 kN\/m/.test(h) && /Q 15 kN\/m/.test(h) && errs.length === 0);
+    w.document.getElementById('calc').click(); await wait(400);
+    const h2 = w.document.getElementById('drawings').innerHTML;
+    truth('Steel Beam Analysis & Design: Calculate adds the LTB utilisation, governing location and deflected shape', /LTB 0\.690/.test(h2) && /Deflected shape/.test(h2) && /L\/360 = 16\.7/.test(h2) && !bad(h2)); w.close();
+  }
+  await sweep('Steel Beam Analysis and Design.html', [
+    ['span 8 m', w => { const e = w.document.querySelector('#spanRows .L'); e.value = '8'; e.dispatchEvent(new w.Event('input', { bubbles: true })); }],
+    ['restraint at mid-span', w => { const r = w.document.querySelector('#restrRows .row'); r.querySelector('.rm').value = 'points'; r.querySelector('.rm').onchange(); r.querySelector('.rp').value = '4'; r.querySelector('.rp').dispatchEvent(new w.Event('input', { bubbles: true })); }],
+    ['a second span and a point load', w => { w.spanRow(5); w.refreshMembers(); w.loadRow({ case: 'Q', member: 1, type: 'point', P: 30, a: 2 }); w.refreshMembers(); w.document.getElementById('sw').dispatchEvent(new w.Event('change', { bubbles: true })); }],
+    ['destabilising loads', w => { const c = w.document.getElementById('destab'); c.checked = true; c.dispatchEvent(new w.Event('change', { bubbles: true })); }],
+  ], 2);
+  {   // RC beam: the design sections after a Calculate
+    const { w, errs } = await load('RC Beam Analysis and Design.html'); w.document.getElementById('calc').click(); await wait(300);
+    const all = w.document.getElementById('results').innerHTML, i = all.indexOf('Sections at the supports and mid-spans'), h = all.slice(i, all.indexOf('</svg>', i));
+    truth('RC Beam Analysis & Design: sections at the four supports and three spans', (h.match(/>Support \d/g) || []).length === 4 && (h.match(/>Span \d</g) || []).length >= 3 && /4H25 top, 3H12 comp\./.test(h) && /l\/d 18\.9/.test(h) && !bad(h) && errs.length === 0); w.close();
   }
   // ---------- group 2 ----------
   const click = (w, sel) => w.document.querySelector(sel).click();
