@@ -1,4 +1,4 @@
-// Steel Column and Base Plate Design: node test_column_base.js
+// Steel Column Design (and its base option, now designed in Base Plate Design): node test_column_base.js
 // Combinations, design actions, flexural / torsional buckling, LTB (uniform moment), SN048b and the base plate against the
 // independent reference (reference/ref_column_base.py), plus wiring checks against the member design and joints engines.
 const { EC3, Design, Joints, ColumnBase, JDraw, SECTION_DATA } = require('./load.js');

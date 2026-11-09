@@ -108,5 +108,27 @@ async function sweep(f, cases, expect) {
     ['spray, 4 sides', w => { set(w, 'prot', 'spray', 'change'); set(w, 'sides', '4', 'change'); }], ['unprotected', w => set(w, 'prot', 'none', 'change')],
     ['R120', w => set(w, 'period', '120', 'change')], ['SHS column', w => { set(w, 'series', 'SHS-H', 'change'); set(w, 'type', 'column', 'change'); set(w, 'N', '500'); }], ['CHS', w => set(w, 'series', 'CHS-H', 'change')],
   ], 3);
+  // ---------- bolt group, and the two halves of the former column and base plate tool ----------
+  await sweep('Bolt Group Analysis.html', [
+    ['force offset 250 mm', w => set(w, 'ya', '250')], ['horizontal force', w => set(w, 'Fy', '60')], ['moment out of plane, about the bottom edge', w => { set(w, 'My', '40'); set(w, 'pivot', 'bottom', 'change'); }],
+    ['three columns of bolts', w => set(w, 'cols', '3')], ['coordinates', w => click(w, '#lgCustom')],
+  ], 1);
+  {
+    const { w } = await load('Bolt Group Analysis.html'); set(w, 'My', '40'); await wait(260);
+    truth('Bolt Group Analysis: out-of-plane moment adds the tension view', (w.document.getElementById('drawings').innerHTML.match(/<svg class="jd dk"/g) || []).length === 2); w.close();
+  }
+  await sweep('Steel Column Design.html', [
+    ['height 6 m', w => set(w, 'H', '6')], ['two lateral restraints', w => set(w, 'nR', '2')], ['L_cr,z / L = 0.7', w => set(w, 'kz', '0.7')],
+    ['UDL up the column', w => set(w, 'a-w-G', '2')], ['UKB', w => set(w, 'series', 'UKB', 'change')],
+  ], 2);
+  await sweep('Base Plate Design.html', [
+    ['thicker plate', w => set(w, 'tp', '40')], ['larger moment', w => { const r = w.document.querySelector('#cases tr:nth-child(2) .c-M'); r.value = '80'; r.dispatchEvent(new w.Event('input', { bubbles: true })); }],
+    ['uplift only', w => { const rows = w.document.querySelectorAll('#cases tr'); rows.forEach(tr => { tr.querySelector('.c-N').value = '-200'; tr.querySelector('.c-M').value = '0'; }); rows[0].querySelector('.c-N').dispatchEvent(new w.Event('input', { bubbles: true })); }],
+    ['UKB on a deeper plate', w => { set(w, 'D', '560'); set(w, 'series', 'UKB', 'change'); }],
+  ], 1);   // the mechanism view in the drawing kit; the joints kit's base view is counted separately below
+  {
+    const { w } = await load('Base Plate Design.html'); const h = w.document.getElementById('drawings').innerHTML;
+    truth('Base Plate Design: the joints kit base view (elevation and plan) with the mechanism', /ELEVATION/.test(h) && /PLAN/.test(h) && /How the base works/.test(h)); w.close();
+  }
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();

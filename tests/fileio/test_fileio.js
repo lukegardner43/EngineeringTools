@@ -3,7 +3,8 @@
 // The full round trip through a real browser reload is checked separately with Playwright; this covers the wiring.
 const fs = require('fs'), path = require('path'), { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '../..');
-const pages = fs.readdirSync(ROOT).filter(f => f.endsWith('.html') && f !== 'index.html').sort();
+// pages kept at an old address after a tool moved (data-moved) carry no tool, so no Save / Open
+const pages = fs.readdirSync(ROOT).filter(f => f.endsWith('.html') && f !== 'index.html' && !/<html[^>]*data-moved/.test(fs.readFileSync(path.join(ROOT, f), 'utf8'))).sort();
 let pass = 0, fail = 0; const truth = (n, ok) => { ok ? pass++ : fail++; console.log((ok ? 'ok   ' : 'FAIL ') + n); };
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const load = f => {
@@ -32,6 +33,13 @@ const load = f => {
     const job = w.document.getElementById('pJob'), ref = w.document.getElementById('pRef');
     if (job && ref) { job.value = '24-123'; ref.value = 'B1/3'; truth(`${f}: file name from job no. and member ref.`, E.fileName() === `24-123 B1-3 ${d.tool}.json`); job.value = ''; ref.value = ''; }
     w.close();
+  }
+  { // files saved in Steel Column and Base Plate Design open in both of the tools it was split into
+    const old = { app: 'EngineeringTools', tool: 'Steel Column and Base Plate Design', key: 'et-column-base-v1', format: 1, saved: '2026-10-30T10:00:00Z', state: { v: 1, series: 'UKC', section: '305×305×97 UKC', grade: 'S355', H: '6.1', D: '500', tp: '35', A: {} } };
+    for (const f of ['Steel Column Design.html', 'Base Plate Design.html']) {
+      const w = load(f); await wait(250); let s = null, m = ''; try { s = w.EngFile.stateOf(old); } catch (e) { m = e.message; }
+      truth(`${f}: opens a Steel Column and Base Plate Design file`, !!s && s.section === '305×305×97 UKC' && (f.startsWith('Base') ? s.cases === null && s.tp === '35' : s.H === '6.1') || (console.log(m), false)); w.close();
+    }
   }
   // the plain-form tools restore their fields directly
   for (const [f, id] of [['Concrete Tie Force.html', 'nStoreys'], ['RC Crack Width.html', 'h'], ['RC Column Design.html', 'rb']]) {

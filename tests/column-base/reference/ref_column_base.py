@@ -9,7 +9,7 @@ Re-implements from BS EN 1990 + UK NA, BS EN 1993-1-1 + UK NA and BS EN 1993-1-8
 Section data are read from the section table shipped with the pages (sections/sections.js inside the HTML)."""
 import json, math, pathlib, re, itertools
 HERE = pathlib.Path(__file__).resolve().parent
-html = (HERE.parents[2] / 'Steel Column and Base Plate Design.html').read_text()
+html = (HERE.parents[2] / 'Steel Column Design.html').read_text()   # the section table (the column page since the split)
 block = re.search(r'<script id="sections">([\s\S]*?)</script>', html).group(1)
 rows = re.search(r'const SECTION_DATA=(\[[\s\S]*?\]);', block).group(1)
 DATA = {r[0]: r for r in json.loads(rows.replace("'", '"'))}
