@@ -684,24 +684,62 @@ function model(s) {
   return s.dims;
 }
 // ---------- drawing ----------
+// the section to scale with its overall size and the centroid dimensioned from the left and the bottom; the elastic axes
+// through the centroid, the plastic neutral axes (equal areas) where they differ, the shear centre with its offset, the
+// principal axes at alpha; beside it, the values that place them
 function svgSection(R, light) {
-  const bb = R.bbox, w = bb.ymax - bb.ymin, h = bb.zmax - bb.zmin, S = 300, pad = 34, k = (S - 2 * pad) / Math.max(w, h);
-  const X = y => pad + (y - bb.ymin) * k + ((S - 2 * pad) - w * k) / 2, Y = z => S - pad - (z - bb.zmin) * k - ((S - 2 * pad) - h * k) / 2;
-  const col = light ? '#000' : 'var(--txt)', acc = light ? '#b06000' : 'var(--accent)', mut = light ? '#777' : 'var(--faint)', fill = light ? '#d9d9d9' : '#d9d9d9', bg = light ? '#fff' : 'var(--surf)';
+  const bb = R.bbox, w = bb.ymax - bb.ymin, h = bb.zmax - bb.zmin, Wd = 700, box = 270, k = box / Math.max(w, h), x0 = 96, y0 = 24;
+  const X = y => x0 + (y - bb.ymin) * k + (box - w * k) / 2, Y = z => y0 + box - (z - bb.zmin) * k - (box - h * k) / 2;
+  const ink = '#222a31', mut = '#6b7680', blue = '#1d5fbf', red = '#c4242a', fill = '#d9dee4';
+  const T = (x, y, t, o = {}) => `<text x="${(+x).toFixed(1)}" y="${(+y).toFixed(1)}" font-size="${o.size || 10.5}" text-anchor="${o.a || 'start'}" fill="${o.c || ink}"${o.w ? ` font-weight="${o.w}"` : ''}${o.rot ? ` transform="rotate(${o.rot} ${(+x).toFixed(1)} ${(+y).toFixed(1)})"` : ''} paint-order="stroke" stroke="#fff" stroke-width="3">${t}</text>`;
+  const L = (a, b, c, d, col = ink, sw = 0.8, dash) => `<line x1="${(+a).toFixed(1)}" y1="${(+b).toFixed(1)}" x2="${(+c).toFixed(1)}" y2="${(+d).toFixed(1)}" stroke="${col}" stroke-width="${sw}"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`;
+  const dimH = (a, b, y, lab) => L(a, y, b, y) + L(a, y - 4, a, y + 4) + L(b, y - 4, b, y + 4) + (Math.abs(b - a) > 30 ? T((a + b) / 2, y + 13, lab, { a: 'middle', size: 10 }) : T(Math.max(a, b) + 5, y + 4, lab, { size: 10 }));
+  const dimV = (x, a, b, lab) => L(x, a, x, b) + L(x - 4, a, x + 4, a) + L(x - 4, b, x + 4, b) + (Math.abs(b - a) > 30 ? T(x - 5, (a + b) / 2, lab, { a: 'middle', size: 10, rot: -90 }) : T(x - 6, Math.max(a, b) + 12, lab, { size: 10, a: 'end' }));
+  const nz = v => (Math.abs(v) < 0.05 ? 0 : v).toFixed(1);
+  const sub = (b, s) => `${b}<tspan font-size="8" dy="2">${s}</tspan><tspan dy="-2">`;
   let g = '';
   const path = p => p.map((q, i) => `${i ? 'L' : 'M'}${X(q[0]).toFixed(1)} ${Y(q[1]).toFixed(1)}`).join(' ') + 'Z';
-  g += `<path d="${R.parts.filter(p => p.sign > 0).map(p => path(p.poly)).join(' ')}" fill="${fill}" stroke="${col}" stroke-width="1"/>`;
-  g += R.parts.filter(p => p.sign < 0).map(p => `<path d="${path(p.poly)}" fill="${bg}" stroke="${col}" stroke-width="1"/>`).join('');
-  const cx = X(R.yc), cz = Y(R.zc), L = (S - 2 * pad) / 2 + 14;
-  g += `<line x1="${cx - L}" y1="${cz}" x2="${cx + L}" y2="${cz}" stroke="${mut}" stroke-dasharray="4 3"/><line x1="${cx}" y1="${cz - L}" x2="${cx}" y2="${cz + L}" stroke="${mut}" stroke-dasharray="4 3"/>`;
-  g += `<text x="${cx + L - 2}" y="${cz - 4}" font-size="11" fill="${mut}" text-anchor="end">y</text><text x="${cx + 4}" y="${cz - L + 10}" font-size="11" fill="${mut}">z</text>`;
-  if (Math.abs(R.alpha) > 1e-6) { const ca = Math.cos(R.alpha), sa = Math.sin(R.alpha);
-    g += `<line x1="${cx - L * ca}" y1="${cz + L * sa}" x2="${cx + L * ca}" y2="${cz - L * sa}" stroke="${acc}" stroke-dasharray="6 3"/><line x1="${cx + L * sa}" y1="${cz + L * ca}" x2="${cx - L * sa}" y2="${cz - L * ca}" stroke="${acc}" stroke-dasharray="6 3"/>`;
-    g += `<text x="${cx + L * ca + 3}" y="${cz - L * sa}" font-size="11" fill="${acc}">u</text><text x="${cx - L * sa + 3}" y="${cz - L * ca}" font-size="11" fill="${acc}">v</text>`; }
-  g += `<circle cx="${cx}" cy="${cz}" r="4" fill="none" stroke="${col}" stroke-width="1.5"/><path d="M${cx - 4} ${cz} h8 M${cx} ${cz - 4} v8" stroke="${col}"/>`;
-  if (R.ys !== null && (Math.abs(R.ys - R.yc) > 0.5 || Math.abs(R.zs - R.zc) > 0.5)) g += `<path d="M${X(R.ys) - 5} ${Y(R.zs)} l5 -5 l5 5 l-5 5 z" fill="${acc}"/><text x="${X(R.ys) + 7}" y="${Y(R.zs) + 4}" font-size="10" fill="${acc}">S</text>`;
-  g += `<text x="${X(bb.ymin)}" y="${S - 8}" font-size="10" fill="${mut}">${w.toFixed(1)} × ${h.toFixed(1)} mm</text>`;
-  return `<svg class="${light ? 'rsvg' : 'diag'}" viewBox="0 0 ${S} ${S}" style="max-width:${light ? 260 : 360}px;margin:0 auto">${g}</svg>`;
+  g += `<path d="${R.parts.filter(p => p.sign > 0).map(p => path(p.poly)).join(' ')}" fill="${fill}" stroke="${ink}" stroke-width="1"/>`;
+  g += R.parts.filter(p => p.sign < 0).map(p => `<path d="${path(p.poly)}" fill="#fff" stroke="${ink}" stroke-width="1"/>`).join('');
+  // elastic axes through the centroid, and the plastic neutral axes where they differ
+  const cx = X(R.yc), cz = Y(R.zc), ext = 20;
+  g += L(X(bb.ymin) - ext, cz, X(bb.ymax) + ext, cz, mut, 0.9, '6 3 2 3') + L(cx, Y(bb.zmax) - ext, cx, Y(bb.zmin) + ext, mut, 0.9, '6 3 2 3');
+  g += T(X(bb.ymax) + ext + 3, cz + 4, 'y', { c: mut }) + T(cx + 4, Y(bb.zmax) - ext + 2, 'z', { c: mut });
+  if (Math.abs(R.zpna - R.zc) > 0.5) g += L(X(bb.ymin) - 10, Y(R.zpna), X(bb.ymax) + 10, Y(R.zpna), red, 1, '4 3') + T(X(bb.ymax) + 12, Y(R.zpna) + (R.zpna > R.zc ? -3 : 11), 'PNA', { c: red, size: 9.5 });
+  if (Math.abs(R.ypna - R.yc) > 0.5) g += L(X(R.ypna), Y(bb.zmax) - 10, X(R.ypna), Y(bb.zmin) + 10, red, 1, '4 3') + T(X(R.ypna) + 3, Y(bb.zmin) + 18, 'PNA', { c: red, size: 9.5 });
+  // principal axes
+  const deg = R.alpha * 180 / Math.PI;
+  if (Math.abs(R.alpha) > 1e-6) { const Lp = box / 2 + 10, ca = Math.cos(R.alpha), sa = Math.sin(R.alpha);
+    g += L(cx - Lp * ca, cz + Lp * sa, cx + Lp * ca, cz - Lp * sa, blue, 1, '7 3') + L(cx + Lp * sa, cz + Lp * ca, cx - Lp * sa, cz - Lp * ca, blue, 1, '7 3');
+    g += T(cx + Lp * ca + 3, cz - Lp * sa, 'u', { c: blue, w: 600 }) + T(cx - Lp * sa + 3, cz - Lp * ca, 'v', { c: blue, w: 600 });
+    const ra = 30, ex = cx + ra * ca, ey = cz - ra * sa; g += `<path d="M${cx + ra} ${cz} A${ra} ${ra} 0 0 ${R.alpha > 0 ? 0 : 1} ${ex.toFixed(1)} ${ey.toFixed(1)}" fill="none" stroke="${blue}" stroke-width="0.9"/>` + T(cx + ra + 4, cz - (R.alpha > 0 ? 6 : -14), `α ${deg.toFixed(1)}°`, { c: blue, size: 10 }); }
+  // centroid and shear centre
+  g += `<circle cx="${cx}" cy="${cz}" r="4.5" fill="#fff" stroke="${ink}" stroke-width="1.5"/><path d="M${cx - 4.5} ${cz} h9 M${cx} ${cz - 4.5} v9" stroke="${ink}"/>` + T(cx - 7, cz - 7, 'C', { a: 'end', w: 600 });
+  const sOff = R.ys !== null && (Math.abs(R.ys - R.yc) > 0.5 || Math.abs(R.zs - R.zc) > 0.5);
+  if (sOff) g += L(cx, cz, X(R.ys), Y(R.zs), blue, 0.8, '2 2') + `<path d="M${X(R.ys) - 5} ${Y(R.zs)} l5 -5 l5 5 l-5 5 z" fill="${blue}"/>` + T(X(R.ys) - 8, Y(R.zs) + 4, 'S', { c: blue, w: 600, a: 'end' });
+  // overall size, and the centroid from the left and the bottom
+  const sy = R.ys !== null ? X(R.ys) : 1e9, sz = R.ys !== null ? Y(R.zs) : -1e9, yb = Math.max(Y(bb.zmin), sz) + 26, xl = Math.min(X(bb.ymin), sy) - 26;
+  g += dimH(X(bb.ymin), X(bb.ymax), yb, w.toFixed(1)) + dimV(xl, Y(bb.zmax), Y(bb.zmin), h.toFixed(1));
+  if (R.yc - bb.ymin > 0.5) g += dimH(X(bb.ymin), cx, yb + 24, (R.yc - bb.ymin).toFixed(1));
+  if (R.zc - bb.zmin > 0.5) g += dimV(xl - 24, cz, Y(bb.zmin), (R.zc - bb.zmin).toFixed(1));
+  // the values that place them
+  const tx = 430, rows = [
+    [`Centroid C`, { w: 600 }],
+    [`${(R.yc - bb.ymin).toFixed(1)} from the left, ${(R.zc - bb.zmin).toFixed(1)} from the bottom;`, {}],
+    [`the elastic axes y and z pass through it`, { c: mut }],
+    [`${sub('I', 'y')} ${(R.Iy / 1e4).toFixed(1)}</tspan>, ${sub('I', 'z')} ${(R.Iz / 1e4).toFixed(1)}</tspan> cm⁴`, {}],
+    ['', {}],
+    [Math.abs(R.zpna - R.zc) > 0.5 || Math.abs(R.ypna - R.yc) > 0.5 ? `PNA ${(R.zpna - bb.zmin).toFixed(1)} from the bottom, ${(R.ypna - bb.ymin).toFixed(1)} from the left` : 'PNA on the elastic axes (symmetric)', { c: red }],
+    [`${sub('W', 'pl,y')} ${(R.Wply / 1e3).toFixed(1)}</tspan>, ${sub('W', 'pl,z')} ${(R.Wplz / 1e3).toFixed(1)}</tspan> cm³`, {}],
+    ['', {}],
+    [R.ys === null ? 'shear centre not computed for this shape' : sOff ? `Shear centre S: ${nz(R.ys - R.yc)} along y, ${nz(R.zs - R.zc)} along z from C` : 'Shear centre S at the centroid', { c: blue, w: 600 }],
+    [Math.abs(R.alpha) > 1e-6 ? `principal axis u at α ${deg.toFixed(2)}° from y` : 'principal axes on y and z (α = 0)', { c: blue }],
+    [Math.abs(R.alpha) > 1e-6 ? `${sub('I', 'u')} ${(R.Iu / 1e4).toFixed(1)}</tspan>, ${sub('I', 'v')} ${(R.Iv / 1e4).toFixed(1)}</tspan> cm⁴` : '', {}],
+    ['', {}],
+    [`overall ${w.toFixed(1)} × ${h.toFixed(1)} mm; dimensions in mm`, { c: mut, size: 10 }],
+  ];
+  rows.forEach(([t, o], i) => { if (t) g += T(tx, 36 + i * 19, t, Object.assign({ size: 10.5 }, o)); });
+  return `<svg class="${light ? 'rsvg' : 'diag'}" viewBox="0 0 ${Wd} ${y0 + box + 76}" style="width:100%;height:auto;display:block">${g}</svg>`;
 }
 // ---------- results ----------
 const f = (v, d = 1) => v === null || v === undefined || !Number.isFinite(v) ? '&ndash;' : Math.abs(v) >= 1e5 ? v.toFixed(0) : v.toFixed(d);

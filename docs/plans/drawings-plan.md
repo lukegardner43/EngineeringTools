@@ -18,10 +18,10 @@ where the engine is fast, and goes on the A4 sheet. `tests/drawings/test_drawing
 | 6 (done) | Snow Loading | Shape coefficients over the roof outline | Snow loads in kN/m² for each case with the drift lengths l_s and the slopes dimensioned; the undrifted and drifted cases side by side; for drifts, the obstruction or step height and h |
 | 7 (done) | Beam Analysis | The model with loads as empty boxes | The loads with their type and values (G, Q, S, W), points and couples, springs and hinges, and the reactions after a run |
 | 8 (done) | Wind Loading | Zone letters on the plan; one q_p on the windward face | c_pe and the net pressures in each zone (walls A to E, roof F to I), the zone widths dimensioned from e, the reference heights with q_p at each strip, and the overall force with its lever |
-| 9 | RC Wall Design | Section strip and the N–M chart | An elevation of the wall with its height, the restraints top and bottom, l_0, the loads and eccentricities, and the slenderness; for core walls, the plan with each wall's share of the wind and the centre of stiffness |
-| 10 | Section Properties | The shape and its axes | Dimensions on the shape, the centroid and shear centre with their offsets, the principal axes at α, and the elastic and plastic neutral axes |
+| 9 (done) | RC Wall Design | Section strip and the N–M chart | An elevation of the wall with its height, the restraints top and bottom, l_0, the loads and eccentricities, and the slenderness; for core walls, the plan with each wall's share of the wind and the centre of stiffness |
+| 10 (done) | Section Properties | The shape and its axes | Dimensions on the shape, the centroid and shear centre with their offsets, the principal axes at α, and the elastic and plastic neutral axes |
 
 Done when each tool's drawing answers what governs and why, the sweeps pass, and the ROADMAP records it.
 
-Notes on what was built: the windpost section has no cavity or leaf thickness (the tool has no input for them), and the
+All ten are done (November 2026). Notes on what was built: the windpost section has no cavity or leaf thickness (the tool has no input for them), and the
 stair shows the main bars only (the tool has no input for distribution bars).

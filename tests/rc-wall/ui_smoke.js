@@ -47,7 +47,7 @@ truth('an opening outside the core is reported', /not inside the core outline/.t
 const st = (() => { const s = $('results').querySelectorAll('button.lnk')[0]; return +/(\d+) kN\/m/.exec(s.textContent)[1]; })();
 $('results').querySelectorAll('button.lnk')[0].click();
 truth('location to panel: mode, thickness and NEd handed over', shown($('pane-panel')) && $('wh').value === '250' && Math.abs(+$('wN').value - st) <= 1 && /From core 1, location 1/.test(res()) && /PASS|FAIL/.test(res()));
-$('printBtn').click(); truth('print: panel sheet', w.printed && /Slenderness \(5\.8\)/.test($('report').textContent) && $('report').querySelectorAll('svg').length === 2);
+$('printBtn').click(); truth('print: panel sheet with the elevation', w.printed && /Slenderness \(5\.8\)/.test($('report').textContent) && $('report').querySelectorAll('svg').length === 3 && /Wall in elevation/.test($('report').textContent));
 d.querySelector('#modes button[data-m=core]').click(); $('calc').click(); w.printed = false; $('printBtn').click();
 truth('print: core sheet', w.printed && /Building and wind/.test($('report').textContent) && /Stresses and vertical steel/.test($('report').textContent) && $('report').querySelectorAll('svg').length === 2);
 const w2 = page(w.localStorage.getItem('et-rc-wall-v1')), $2 = id => w2.document.getElementById(id);

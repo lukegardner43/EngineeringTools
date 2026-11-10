@@ -210,5 +210,25 @@ async function sweep(f, cases, expect) {
     w.document.getElementById('printBtn').click();
     truth(`Wind Loading (${rt} roof): every direction's plan gives c_pe and w_e by zone, the face the overall force; all on the A4 sheet`, ok && w.document.getElementById('report').querySelectorAll('svg.plan').length === 4 && errs.length === 0); w.close();
   }
+  await sweep('RC Wall Design.html', [
+    ['pinned ends', w => set(w, 'wend', 'pinned', 'change')], ['plain wall', w => set(w, 'wtype', 'plain', 'change')],
+    ['reinforced, unbraced and slender', w => { set(w, 'wtype', 'rc', 'change'); set(w, 'wend', 'framed', 'change'); set(w, 'wbr', 'unbraced', 'change'); set(w, 'wl', '5000'); set(w, 'wN', '1500'); }], ['braced, slender', w => { set(w, 'wl', '6000'); set(w, 'wN', '1500'); }], ['thicker wall, bigger moments', w => { set(w, 'wh', '300'); set(w, 'wMt', '40'); set(w, 'wMb', '-20'); }],
+  ], 1);
+  {
+    const { w } = await load('RC Wall Design.html'); const h = w.document.getElementById('drawings').textContent;
+    w.document.querySelector('#modes button[data-m="core"]').click(); await wait(260);
+    truth('RC Wall Design: the panel elevation carries l₀, λ and M_Ed against M_Rd; none in core mode', /l₀ 2,671/.test(h) && /λ = l₀\/i = 46\.3/.test(h) && /M.*Ed.* = 18\.0 kNm\/m/.test(h) && /93\.4 kNm\/m/.test(h) && w.document.getElementById('drawings').innerHTML === ''); w.close();
+  }
+  {
+    const { w, errs } = await load('Section Properties.html'); let ok = true, chan = '';
+    for (const sh of ['isec', 'channel', 'tee', 'angle', 'rhs', 'chs', 'rect', 'circle', 'plates', 'polygon']) {
+      w.eval(`document.getElementById('shape').value = '${sh}'; renderDims(); document.getElementById('calc').click();`);
+      const r = w.document.getElementById('results'), sv = r.querySelector('svg.diag');
+      const good = !!sv && /Centroid C/.test(sv.textContent) && /from the left/.test(sv.textContent) && !bad(r.innerHTML) && !r.querySelector('.err');
+      if (!good) { ok = false; console.log('  section properties drawing failed for', sh); }
+      if (sh === 'channel') chan = sv.textContent;
+    }
+    truth('Section Properties: every shape draws its dimensions, centroid, axes and shear centre; the channel S 53.9 from C', ok && /-53\.9 along y/.test(chan) && /PNA 150\.0 from the bottom/.test(chan) && errs.length === 0); w.close();
+  }
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
