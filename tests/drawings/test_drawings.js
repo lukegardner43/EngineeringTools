@@ -230,5 +230,14 @@ async function sweep(f, cases, expect) {
     }
     truth('Section Properties: every shape draws its dimensions, centroid, axes and shear centre; the channel S 53.9 from C', ok && /-53\.9 along y/.test(chan) && /PNA 150\.0 from the bottom/.test(chan) && errs.length === 0); w.close();
   }
+  await sweep('RC Lintel Design.html', [
+    ['no arching', w => set(w, 'mode', 'full', 'change')], ['a point load', w => w.document.getElementById('addPoint').click()], ['wide opening, deeper lintel', w => { set(w, 'L', '3600'); set(w, 'h', '300'); }],
+    ['no links', w => set(w, 'phil', '0', 'change')], ['low wall', w => { set(w, 'mode', 'tri', 'change'); set(w, 'Hm', '500'); }], ['a second floor, direct load', w => { w.document.getElementById('addFloor').click(); set(w, 'dG', '3'); }],
+    ['6.10a and b, short bearings', w => { set(w, 'comb', '6.10ab', 'change'); set(w, 't1', '100'); }],
+  ], 5);
+  {
+    const { w } = await load('RC Lintel Design.html'); const h = w.document.getElementById('drawings').textContent;
+    truth('RC Lintel Design: spans, the triangle height and M_Ed carry the engine values', /clear span 1,800/.test(h) && /1,950/.test(h) && /990/.test(h) && /2\.26 at 898/.test(h) && /in the interaction zone: halved/.test(h)); w.close();
+  }
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
