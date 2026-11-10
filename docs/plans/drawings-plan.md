@@ -2,7 +2,7 @@
 
 Rebuilt on 10 November 2026 from an audit of every live tool: each was opened, run with its default inputs, and its
 drawings were looked at. The first two groups (and Bolt Group, Steel Column, Base Plate, Steel Beam and RC Beam) are
-done; see the ROADMAP. Crane Gantry Girder is deferred.
+done; see the ROADMAP. Crane Gantry Girder has since been removed from the suite.
 
 Each drawing is to scale from the inputs, uses the JD drafting kit (`joints/diagrams.js`), `drawings/kit.js` and one
 module per tool, marks the governing check or location in red, sits under the verdict, redraws as the inputs change
