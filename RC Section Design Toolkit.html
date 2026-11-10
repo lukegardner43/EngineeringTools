@@ -164,7 +164,6 @@ sub,sup{font-size:max(11px,.75em);line-height:0;}
 .steps{font-size:12px;color:var(--mut);line-height:1.5;}
 .steps .st{display:grid;grid-template-columns:96px 1fr;gap:8px;padding:3px 0;border-bottom:1px solid var(--bdr);}
 .steps .st span:first-child{font-size:12px;color:var(--faint);}
-svg.sec{width:100%;max-width:340px;height:auto;display:block;margin:4px auto 6px;}
 .two{display:grid;grid-template-columns:minmax(0,0.8fr) minmax(0,1.2fr);gap:14px;align-items:start;}
 @media (max-width:900px){.two{grid-template-columns:1fr;}}
 .mode .seg{margin-bottom:12px;}
@@ -1179,10 +1178,125 @@ const DrawRCKit = (() => {
     return svg(g, W, Math.ceil(yn + 46), 'Anchorage length beyond the section and the lap with its transverse reinforcement zones');
   }
 
+  // ---------- section design: the section at M_Rd with its strains and forces; the shear truss; span/depth ----------
+  const AREA = phi => Math.PI * phi * phi / 4, pm = v => (Math.abs(v) * 1000).toFixed(2) + '‰';
+  // forces at M_Rd from the engine's strains and stresses: tension layers, compression steel (net of the concrete it
+  // displaces when inside the block) and the concrete by equilibrium, with the centroid of the compressed area
+  function secForces(o, R) {
+    const c = R.c, fl = o.shape === 'flanged', sag = o.moment !== 'hogging', blk = Math.min(o.h, c.lambda * R.res.x);
+    let A, yc;
+    if (fl && sag && blk > o.hf) { const A1 = o.b * o.hf, A2 = o.bw * (blk - o.hf); A = A1 + A2; yc = (A1 * o.hf / 2 + A2 * (o.hf + (blk - o.hf) / 2)) / A; }
+    else { A = (fl ? (sag ? o.b : o.bw) : o.b) * blk; yc = blk / 2; }
+    const nT = R.arr.layers.length, sig = R.res.sig;
+    let Fs = 0, m = 0; R.arr.layers.forEach((L, i) => { const f = L.As * Math.abs(sig[i]); Fs += f; m += f * L.d; });
+    const dT = m / Math.max(Fs, 1e-9), As2 = o.comp ? o.comp.n * AREA(o.comp.phi) : 0;
+    const Fs2 = As2 ? As2 * (Math.abs(sig[nT]) - (R.d2 < blk ? c.eta * c.fcd : 0)) : 0, Fc = Fs - Fs2;
+    return { blk, A, yc, Fs, dT, Fs2, Fc, nT, z: dT - yc };
+  }
+  function secView(o, R) {
+    const W = 700, slab = o.kind === 'slab', fl = o.shape === 'flanged', sag = o.moment !== 'hogging', h = o.h, F = secForces(o, R), c = R.c, x = R.res.x;
+    const bw = fl ? o.bw : o.b, bD = slab ? 1000 : fl ? Math.min(o.b, 2.6 * bw) : o.b, k = Math.min(190 / bD, 230 / h), cx = 140, y0 = 44;
+    const X = v => cx + v * k, Y = v => y0 + v * k, D = dep => Y(sag ? dep : h - dep);   // D: depth from the compression face
+    let g = '';
+    // concrete (flange at the top), broken where wide
+    if (fl) g += poly([[X(-bD / 2), Y(0)], [X(bD / 2), Y(0)], [X(bD / 2), Y(o.hf)], [X(bw / 2), Y(o.hf)], [X(bw / 2), Y(h)], [X(-bw / 2), Y(h)], [X(-bw / 2), Y(o.hf)], [X(-bD / 2), Y(o.hf)]], { fill: CON, stroke: 'ink', w: 1.1 });
+    else g += rect(X(-bD / 2), Y(0), bD * k, h * k, { fill: CON, stroke: 'ink', w: 1.1 });
+    if (fl && o.b > bD + 1) { g += text(cx, y0 - 6, `b_eff ${r0(o.b)} (flange broken)`, { size: 9.5, anchor: 'middle', color: MUTE });
+      [-1, 1].forEach(sx => { const xx = X(sx * bD / 2), zz = [[xx - 3, Y(0) - 3], [xx + 3, Y(o.hf / 2) - 2], [xx - 3, Y(o.hf / 2) + 2], [xx + 3, Y(o.hf) + 3]]; g += poly(zz, { open: true, stroke: '#fff', w: 3 }) + poly(zz, { open: true, stroke: 'ink', w: 0.9 }); }); }
+    // compression block and neutral axis
+    const bB = fl && sag && F.blk <= o.hf ? bD : bw;
+    if (fl && sag && F.blk > o.hf) g += rect(X(-bD / 2), Y(0), bD * k, o.hf * k, { fill: 'rgba(196,36,42,.16)' }) + rect(X(-bw / 2), Y(o.hf), bw * k, (F.blk - o.hf) * k, { fill: 'rgba(196,36,42,.16)' });
+    else g += rect(X(-bB / 2), sag ? Y(0) : Y(h - F.blk), bB * k, F.blk * k, { fill: 'rgba(196,36,42,.16)' });
+    g += line(X(-bD / 2) - 8, D(x), X(bD / 2) + 8, D(x), { c: RED, dash: '5 3', w: 0.9 }) + text(X(bD / 2) + 10, D(x) + 4, `x ${r1(x)}`, { size: 9.5, color: RED });
+    // links, bars (tension filled, compression open)
+    if (!slab && o.phiLink) { const cv = o.cover + o.phiLink / 2; g += `<rect x="${X(-bw / 2 + cv).toFixed(1)}" y="${Y(cv).toFixed(1)}" width="${((bw - 2 * cv) * k).toFixed(1)}" height="${((h - 2 * cv) * k).toFixed(1)}" rx="${Math.max(1.5, 2 * o.phiLink * k).toFixed(1)}" fill="none" stroke="#56606b" stroke-width="${Math.max(1, o.phiLink * k).toFixed(1)}"/>`; }
+    const dot = (xx, dep, phi, fill) => `<circle cx="${X(xx).toFixed(1)}" cy="${D(dep).toFixed(1)}" r="${Math.max(1.8, phi / 2 * k).toFixed(1)}" fill="${fill ? STEEL : '#fff'}" stroke="${STEEL}" stroke-width="1.1"/>`;
+    if (slab) { const n = Math.floor(1000 / o.bar.s); for (let i = 0; i < n; i++) g += dot(-500 + o.bar.s / 2 + i * o.bar.s, R.arr.d, o.bar.phi, true); }
+    else R.arr.layers.forEach(L => { const nb = Math.max(1, Math.round(L.As / AREA(o.bar.phi))), ce = o.cover + o.phiLink + o.bar.phi / 2, sp = bw - 2 * ce; for (let i = 0; i < nb; i++) g += dot(-sp / 2 + (nb > 1 ? sp * i / (nb - 1) : sp / 2), L.d, o.bar.phi, true); });
+    if (o.comp) { const ce = (o.coverComp ?? o.cover) + o.phiLink + o.comp.phi / 2, sp = bw - 2 * ce; for (let i = 0; i < o.comp.n; i++) g += dot(-sp / 2 + (o.comp.n > 1 ? sp * i / (o.comp.n - 1) : sp / 2), R.d2, o.comp.phi, false); }
+    // dimensions
+    g += dimV(X(-bD / 2) - 16, Y(0), Y(h), `h ${r0(h)}`);
+    g += dimV(X(bD / 2) + 52, D(0), D(F.dT), `d ${r1(F.dT)}`, { right: true });
+    g += dimH(X(-bD / 2), X(bD / 2), Y(h) + 18, slab ? '1000 mm strip' : fl ? `b_w ${r0(bw)}` : `b ${r0(o.b)}`, { below: true });
+    g += text(cx, Y(h) + 46, `${slab ? `H${o.bar.phi} @ ${o.bar.s}` : `${o.bar.n}H${o.bar.phi}${o.bar.layers > 1 ? ' in 2 layers' : ''}`} ${sag ? 'bottom' : 'top'}${o.comp ? `, ${o.comp.n}H${o.comp.phi} comp.` : ''}`, { size: 10, anchor: 'middle', color: BLUE, weight: 600 });
+
+    // strains: compression to the left of the axis, tension to the right; aligned with the section
+    const xs = 372, eT = Math.abs(R.res.eps[0]), sE = 58 / Math.max(eT, c.ecu2);
+    g += text(xs, 22, 'Strain', { size: 10.5, weight: 600, anchor: 'middle' });
+    g += line(xs, D(0), xs, D(h), { c: 'mute', w: 0.8 });
+    g += poly([[xs, D(0)], [xs - c.ecu2 * sE, D(0)], [xs, D(x)]], { fill: 'rgba(196,36,42,.14)', stroke: RED, w: 1 });
+    const eAt = dep => c.ecu2 * (dep - x) / x;   // tension positive
+    g += poly([[xs, D(x)], [xs + eAt(F.dT) * sE, D(F.dT)], [xs, D(F.dT)]], { fill: 'rgba(29,95,191,.14)', stroke: BLUE, w: 1 });
+    g += text(xs - c.ecu2 * sE - 4, D(0) + (sag ? 4 : -2), `ε_cu2 ${pm(c.ecu2)}`, { size: 9.5, anchor: 'end', color: RED });
+    g += text(xs + eAt(F.dT) * sE + 4, D(F.dT) + 4, `ε_s ${pm(R.res.eps[0])}`, { size: 9.5, color: BLUE });
+    g += text(xs + eAt(F.dT) * sE + 4, D(F.dT) + 17, R.res.yielded[0] ? `yielded (ε_yd ${pm(R.res.sig[0] / ES)})` : `σ_s ${r0(Math.abs(R.res.sig[0]))} N/mm²`, { size: 9, color: MUTE });
+    if (o.comp) { const e2 = R.res.eps[F.nT]; g += `<circle cx="${(xs - Math.abs(e2) * sE).toFixed(1)}" cy="${D(R.d2).toFixed(1)}" r="2.6" fill="#fff" stroke="${STEEL}" stroke-width="1.2"/>` + text(xs - Math.abs(e2) * sE - 6, D(R.d2) + (sag ? 14 : -6), `ε_s2 ${pm(e2)}`, { size: 9, anchor: 'end', color: BLUE }); }
+
+    // stresses and forces: the stress block η f_cd over λx, the forces and the lever arm
+    const xf = 478, bwid = 30;
+    g += text(xf + 60, 22, 'Stresses and forces', { size: 10.5, weight: 600, anchor: 'middle' });
+    g += line(xf, D(0), xf, D(h), { c: 'mute', w: 0.8 }) + rect(xf, sag ? D(0) : D(F.blk), bwid, F.blk * k, { fill: 'rgba(196,36,42,.16)', stroke: RED, w: 0.9 });
+    g += text(xf + bwid / 2, D(0) + (sag ? -5 : 13), `ηf_cd ${r1(c.eta * c.fcd)}`, { size: 9.5, color: RED, anchor: 'middle' });
+    const fArrow = (dep, toLeft, lab, col) => (toLeft ? arrow(xf + 120, D(dep), xf + bwid + 4, D(dep), { c: col, w: 1.6 }) : arrow(xf + bwid + 4, D(dep), xf + 120, D(dep), { c: col, w: 1.6 })) + text(xf + 126, D(dep) + 4, lab, { size: 10, color: col === 'red' ? RED : BLUE, weight: 600 });
+    g += fArrow(F.yc, true, `F_c ${r0(F.Fc / 1e3)} kN`, 'red') + fArrow(F.dT, false, `F_s ${r0(F.Fs / 1e3)} kN`, 'blue');
+    if (o.comp && F.Fs2 > 0) g += arrow(xf + 120, D(R.d2), xf + bwid + 4, D(R.d2), { c: 'blue', w: 1.4 }) + text(xf - 6, D(R.d2) + (Math.abs(D(R.d2) - D(F.yc)) < 14 ? (sag ? -6 : 14) : 4), `F_s2 ${r0(F.Fs2 / 1e3)} kN`, { size: 10, color: BLUE, weight: 600, anchor: 'end' });
+    g += dimV(xf + 72, D(F.yc), D(F.dT), `z ${r0(F.z)}`, { right: true });
+    // the result
+    const gB = R.checks.find(q => q.id === 'bend'), yR = Y(h) + 70, bad = gB && gB.util > 1;
+    g += text(20, yR, `M_Rd = F_c z${o.comp && F.Fs2 > 0 ? ' + F_s2 (d − d_2)' : ''} = ${r1(R.res.MRd / 1e6)} kNm${slab ? '/m' : ''} against M_Ed ${r1(o.MEd / 1e6)}: ${gB ? r3(gB.util) : '–'}`, { size: 10.5, weight: 700, color: bad ? RED : undefined });
+    g += text(20, yR + 16, `x/d ${r3(R.res.x / R.d)}${o.xdMax ? ` (limit ${o.xdMax})` : ''}; the strains are those at M_Rd with the bars provided; f_cd = α_cc f_ck / γ_c = ${r1(c.fcd)} N/mm².`, { size: 9.5, color: MUTE });
+    return svg(g, W, yR + 26, 'The section to scale with its strains and forces at the bending resistance');
+  }
+
+  function shearView(o, R) {
+    const W = 700, S = R.shear, h = o.h, slab = o.kind === 'slab', des = S.des, rv = S.resV, links = !!(rv && o.shear && o.shear.link);
+    const ck = id => R.checks.find(q => q.id === id), red = id => { const q = ck(id); return q && q.util > 1; };
+    let g = '', yEnd = 60;
+    if (links) {
+      const z = rv.z, cot = rv.cot, th = Math.atan(1 / cot), Lt = Math.max(2.2 * z * cot, 6 * o.shear.link.s), k = Math.min(300 / Lt, 150 / h);
+      const x0 = 30, y0 = 40, X = v => x0 + v * k, Y = v => y0 + v * k, dT = R.d, dC = dT - z;
+      g += rect(X(0), Y(0), Lt * k, h * k, { fill: CON, stroke: 'ink', w: 1 });
+      g += line(X(0), Y(dC), X(Lt), Y(dC), { c: RED, w: 1.4 }) + line(X(0), Y(dT), X(Lt), Y(dT), { c: BLUE, w: 1.6 });
+      const sp = o.shear.link.s, cv = o.cover + o.phiLink / 2;
+      for (let xx = sp / 2; xx < Lt; xx += sp) g += line(X(xx), Y(cv), X(xx), Y(h - cv), { c: STEEL, w: 1.3 });
+      const pitch = z * cot; for (let xx = 0; xx + pitch <= Lt + 1; xx += pitch) g += line(X(xx), Y(dT), X(xx + pitch), Y(dC), { c: RED, w: 1, dash: '5 3' });
+      g += text(X(pitch) - 26, Y(dT) - 6, `θ ${r1(th * 180 / Math.PI)}°`, { size: 9.5, color: RED });
+      g += dimV(X(Lt) + 14, Y(dC), Y(dT), `z ${r0(z)}`, { right: true }) + dimH(X(0), X(pitch), Y(h) + 16, `z cot θ ${r0(pitch)} (cot θ ${r1(cot)})`, { below: true });
+      g += dimH(X(sp / 2), X(sp * 1.5), Y(0) - 10, `s ${sp}`);
+      g += text(X(0), Y(h) + 46, `H${o.shear.link.phi} links, ${o.shear.link.legs} legs @ ${sp}: A_sw/s ${(S.AswS).toFixed(3)} (required ${des ? des.AswSreq.toFixed(3) : '–'}) mm²/mm`, { size: 10, color: red('links') ? RED : BLUE, weight: 600 });
+      yEnd = Y(h) + 60;
+    } else {
+      g += text(30, 46, slab ? 'No shear reinforcement (slab): V_Ed must not exceed V_{Rd,c} (6.2.2).' : 'No links given: the concrete alone, V_{Rd,c} (6.2.2).', { size: 10.5, color: MUTE });
+      yEnd = 70;
+    }
+    // the resistances against the shear force
+    const rows = [['V_Ed at the face', o.shear.VEd, 'ink'], ...(S.VEd_d ? [['V_Ed at d from the face', S.VEd_d, 'ink']] : []), ['V_{Rd,c} (no links)', S.vc.VRdc, red('shear') ? 'red' : 'mute'],
+      ...(rv ? [['V_{Rd,s} (links)', rv.VRds, red('links') ? 'red' : 'blue'], ['V_{Rd,max} (strut)', rv.VRdmax, red('vmax') ? 'red' : 'blue']] : [])];
+    const vmax = Math.max(...rows.map(r => r[1])), xb = links ? 500 : 200, wb = links ? 150 : 300, yb = links ? 44 : 64;
+    rows.forEach(([lab, v, col], i) => { const y = yb + i * 24; g += text(xb - 6, y + 10, lab, { size: 9.5, anchor: 'end' }) + rect(xb, y, Math.max(1, v / vmax * wb), 14, { fill: col === 'ink' ? '#56606b' : col === 'mute' ? '#b9c2cb' : col === 'red' ? RED : BLUE })
+      + text(xb + v / vmax * wb + 4, y + 11, `${r1(v / 1e3)}`, { size: 9.5 }); });
+    const yr = yb + rows.length * 24 + 6;
+    return svg(g, W, Math.max(yEnd, yr + 8), 'Shear: the truss model with the links and struts, and the resistances against the shear force');
+  }
+
+  function deflView(o, R) {
+    const W = 700, d = R.defl, bad = d.actual > d.allowed, sc = 250 / Math.max(d.actual, d.allowed), x0 = 110;
+    let g = '';
+    const row = (y, lab, v, col, note) => text(x0 - 8, y + 11, lab, { size: 10, anchor: 'end' }) + rect(x0, y, v * sc, 14, { fill: col }) + text(x0 + v * sc + 6, y + 11, `${v.toFixed(2)}${note ? '  ' + note : ''}`, { size: 10 });
+    g += row(14, 'allowed l/d', d.allowed, '#b9c2cb', `= ${d.base.toFixed(2)} × F1 ${d.F1.toFixed(2)} × F2 ${d.F2.toFixed(2)} × F3 ${d.F3.toFixed(2)}`);
+    g += row(40, 'actual l/d', d.actual, bad ? RED : BLUE, `= ${r0(o.defl.span)} / ${r1(R.d)}`);
+    g += line(x0 + d.allowed * sc, 8, x0 + d.allowed * sc, 62, { w: 1.2, dash: '3 2' });
+    g += text(20, 82, `Basic l/d from K ${d.K} and ρ ${(d.rho * 100).toFixed(2)}%${d.rho2 ? `, ρ' ${(d.rho2 * 100).toFixed(2)}%` : ''} (7.16); F1 flanges, F2 brittle finishes on spans over 7 m, F3 = 310/σ_s ≤ 1.5 (UK NA).`, { size: 9.5, color: MUTE });
+    return svg(g, W, 92, 'Span/depth: the allowed against the actual ratio');
+  }
+
   const T = { tor: ['Torsion: thin-walled section (6.3.2)', torsion], crk: ['Section, strains and crack spacing (7.3.4)', crack], anc: ['Anchorage and lap (8.4, 8.7)', anchorage] };
-  const html = (mode, o, R) => T[mode] ? page([[T[mode][0], T[mode][1](o, R)]]) : '';
-  const report = (mode, o, R) => T[mode] ? sheet([[T[mode][0], T[mode][1](o, R)]]) : '';
-  return { html, report, torsion, crack, anchorage };
+  // the section design tab: the section with its strains and forces, then shear and span/depth when they are checked
+  const secBlocks = (o, R) => [['Section, strains and forces at M<sub>Rd</sub> (6.1)', secView(o, R)], ...(R.shear && o.shear ? [['Shear: truss model and resistances (6.2)', shearView(o, R)]] : []), ...(R.defl ? [['Span/depth (7.4.2)', deflView(o, R)]] : [])];
+  const blocks = (mode, o, R) => mode === 'sec' ? secBlocks(o, R) : T[mode] ? [[T[mode][0], T[mode][1](o, R)]] : [];
+  const html = (mode, o, R) => page(blocks(mode, o, R));
+  const report = (mode, o, R) => sheet(blocks(mode, o, R));
+  return { html, report, torsion, crack, anchorage, secView, shearView, deflView };
 })();
 
 </script>
@@ -1249,34 +1363,6 @@ function suggest() {
   } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }
 $('suggest').onclick = suggest;
-// ---------- section sketch ----------
-function sketch(o, R, light) {
-  const ln = light ? '#000' : 'var(--txt)', mu = light ? '#888' : 'var(--faint)', con = light ? '#eee' : '#eee', ac = light ? '#b03a20' : '#b03a20', st = light ? '#1b67b0' : '#1b67b0';
-  const slab = o.kind === 'slab', fl = o.shape === 'flanged', W = slab ? 1000 : Math.max(o.b, 1), H = o.h, sag = !fl ? o.moment !== 'hogging' : o.moment !== 'hogging';
-  const sc = Math.min(260 / W, 220 / H), ox = 40 + (260 - W * sc) / 2, oy = 20, X = x => ox + x * sc, Y = y => oy + y * sc;
-  let g = '';
-  if (fl) {   // flange at the top, web centred
-    const bw = o.bw, xw = (W - bw) / 2;
-    g += `<path d="M${X(0)} ${Y(0)} H${X(W)} V${Y(o.hf)} H${X(xw + bw)} V${Y(H)} H${X(xw)} V${Y(o.hf)} H${X(0)} Z" fill="${con}" stroke="${ln}" stroke-width="1.2"/>`;
-  } else g += `<rect x="${X(0)}" y="${Y(0)}" width="${W * sc}" height="${H * sc}" fill="${con}" stroke="${ln}" stroke-width="1.2"/>`;
-  const bwid = fl ? o.bw : W, x0 = fl ? (W - o.bw) / 2 : 0;
-  // compression block and neutral axis from the provided-bar resistance
-  const xN = R.res.x, blk = R.c.lambda * xN, top = sag;
-  const yB = top ? 0 : H - blk, yN = top ? xN : H - xN;
-  g += `<rect x="${X(fl && !top ? x0 : 0)}" y="${Y(yB)}" width="${(fl && !top ? bwid : (fl ? W : W)) * sc}" height="${Math.min(blk, H) * sc}" fill="${ac}" fill-opacity="0.16"/>`;
-  g += `<line x1="${X(0) - 8}" y1="${Y(yN)}" x2="${X(W) + 8}" y2="${Y(yN)}" stroke="${ac}" stroke-dasharray="5 3" stroke-width="0.9"/><text x="${X(W) + 10}" y="${Y(yN) + 3}" font-size="9" fill="${ac}">x ${f1(xN)}</text>`;
-  if (!slab && o.phiLink) { const cv = o.cover + o.phiLink / 2; g += `<rect x="${X(x0 + cv)}" y="${Y(cv)}" width="${(bwid - 2 * cv) * sc}" height="${(H - 2 * cv) * sc}" rx="${o.phiLink * sc}" fill="none" stroke="${mu}" stroke-width="${Math.max(1, o.phiLink * sc * 0.7)}"/>`; }
-  // tension bars
-  const lay = R.arr.layers, phi = o.bar.phi, rr = Math.max(2.2, phi / 2 * sc);
-  if (slab) { const n = Math.floor(1000 / o.bar.s); for (let k = 0; k < n; k++) { const x = o.bar.s / 2 + k * o.bar.s, y = top ? R.arr.d : H - R.arr.d; g += `<circle cx="${X(x)}" cy="${Y(y)}" r="${rr}" fill="${st}"/>`; } }
-  else lay.forEach((L, i) => { const nb = Math.round(L.As / (Math.PI * phi * phi / 4)), cvi = o.cover + o.phiLink + phi / 2, span = bwid - 2 * cvi;
-    for (let k = 0; k < nb; k++) { const x = x0 + cvi + (nb > 1 ? span * k / (nb - 1) : span / 2), y = top ? L.d : H - L.d; g += `<circle cx="${X(x)}" cy="${Y(y)}" r="${rr}" fill="${st}"/>`; } });
-  if (o.comp) { const cvi = (o.coverComp ?? o.cover) + o.phiLink + o.comp.phi / 2, span = bwid - 2 * cvi, rc = Math.max(2, o.comp.phi / 2 * sc), y = top ? R.d2 : H - R.d2;
-    for (let k = 0; k < o.comp.n; k++) { const x = x0 + cvi + (o.comp.n > 1 ? span * k / (o.comp.n - 1) : span / 2); g += `<circle cx="${X(x)}" cy="${Y(y)}" r="${rc}" fill="none" stroke="${st}" stroke-width="1.4"/>`; } }
-  g += `<text x="${X(W / 2)}" y="${Y(H) + 16}" font-size="10" fill="${mu}" text-anchor="middle">${slab ? '1000 mm strip' : `b = ${W}`}${fl ? `, b_w = ${o.bw}, h_f = ${o.hf}` : ''}</text><text x="${X(0) - 8}" y="${Y(H / 2)}" font-size="10" fill="${mu}" text-anchor="end">h ${H}</text>`;
-  g += `<text x="${X(W / 2)}" y="${Y(H) + 30}" font-size="10" fill="${st}" text-anchor="middle">${slab ? `H${o.bar.phi} @ ${o.bar.s}` : `${o.bar.n}H${o.bar.phi}`}${o.comp ? ` + ${o.comp.n}H${o.comp.phi} comp.` : ''}, d = ${f1(R.d)}</text>`;
-  return `<svg class="sec" viewBox="0 0 360 ${Y(H) + 40}">${g}</svg>`;
-}
 // ---------- results ----------
 const bar = c => `<div class="ck"><div class="nm">${esc(c.name)}<small>${esc(c.ref)} &nbsp;${esc(c.note || '')}</small></div><div class="bar"><i class="${c.util > 1 ? 'over' : c.util > 0.9 ? 'hi' : ''}" style="width:${Math.min(100, c.util * 100 / 1.2)}%"></i></div><div class="u ${c.util > 1 ? 'over' : ''}">${ufmt(c.util)}</div></div>`;
 const stepsHTML = S => `<div class="steps">${S.map(s => `<div class="st"><span>${esc(s.ref)}</span><span>${esc(s.text)}</span></div>`).join('')}</div>`;
@@ -1289,12 +1375,12 @@ function render(R, o, title, extra = '') {
 function runSec() {
   const o = secInput(), R = EC2Section.design(o), slab = o.kind === 'slab';
   const title = `${slab ? 'Slab' : o.shape === 'flanged' ? 'Flanged beam' : 'Rectangular beam'} ${slab ? `h = ${o.h}` : `${o.b} × ${o.h}`}, C${o.fck}/${R.c.fckCube}, ${o.moment}`;
-  const sum = `<div class="two"><div><div class="dlabel">Section</div>${sketch(o, R, false)}</div><div><table class="t"><tr><th>Quantity</th><th>Value</th></tr>
+  const sum = `<div class="dlabel">Values</div><table class="t"><tr><th>Quantity</th><th>Value</th></tr>
     <tr><td>A<sub>s,req</sub> (bending)</td><td>${Math.round(R.bd.As)} mm²${slab ? '/m' : ''}</td></tr>${R.bd.As2 ? `<tr><td>A<sub>s2,req</sub></td><td>${Math.round(R.bd.As2)} mm²</td></tr>` : ''}
     <tr><td>A<sub>s,min</sub> / crack minimum</td><td>${Math.round(R.AsMin)} / ${Math.round(R.AsCrack)} mm²</td></tr>${R.defl && R.defl.AsDef ? `<tr><td>A<sub>s</sub> for deflection</td><td>${R.defl.AsDef === Infinity ? 'deepen the section' : Math.round(R.defl.AsDef) + ' mm²'}</td></tr>` : ''}
     <tr><td>A<sub>s,prov</sub></td><td>${Math.round(R.arr.As)} mm²${slab ? '/m' : ''}</td></tr><tr><td>M<sub>Rd</sub></td><td>${f1(R.res.MRd / 1e6)} kNm${slab ? '/m' : ''}</td></tr>
     <tr><td>σ<sub>s</sub> char. / quasi-perm.</td><td>${f1(R.ssK)} / ${f1(R.ssQP)} N/mm²</td></tr>${R.defl ? `<tr><td>l/d actual / allowed</td><td>${R.defl.actual.toFixed(2)} / ${R.defl.allowed.toFixed(2)}</td></tr>` : ''}
-    ${R.shear ? `<tr><td>V<sub>Rd,c</sub></td><td>${f1(R.shear.vc.VRdc / 1e3)} kN${slab ? '/m' : ''}</td></tr>` : ''}${R.shear && R.shear.des ? `<tr><td>A<sub>sw</sub>/s req. / prov.</td><td>${R.shear.des.AswSreq.toFixed(3)} / ${R.shear.AswS.toFixed(3)} mm</td></tr>` : ''}</table></div></div>`;
+    ${R.shear ? `<tr><td>V<sub>Rd,c</sub></td><td>${f1(R.shear.vc.VRdc / 1e3)} kN${slab ? '/m' : ''}</td></tr>` : ''}${R.shear && R.shear.des ? `<tr><td>A<sub>sw</sub>/s req. / prov.</td><td>${R.shear.des.AswSreq.toFixed(3)} / ${R.shear.AswS.toFixed(3)} mm</td></tr>` : ''}</table>`;
   last = { R, o }; render(R, o, title, sum);
 }
 function torIn() {
@@ -1314,8 +1400,8 @@ function runCrk() {
 function ancIn() {
   return { phi: +$('aphi').value, fck: +$('fck').value, fyk: num('fyk', 'f_yk'), good: $('agood').value === '1', tension: $('aten').value === '1', bent: $('abent').value === '1', cd: num('acd', 'c_d'), lappedPct: +$('alap').value, ss: $('asd').value ? num('asd', 'σ_sd') : null };
 }
-const IN = { tor: torIn, crk: crkIn, anc: ancIn }, CALC = { tor: o => EC2Toolkit.torsion(o), crk: o => EC2Toolkit.crackWidth(o), anc: o => Object.assign(EC2Toolkit.anchorage(o), { utilMax: 0 }) };
-// the drawing for the torsion, crack width and anchorage tabs follows the inputs as they change
+const IN = { sec: secInput, tor: torIn, crk: crkIn, anc: ancIn }, CALC = { sec: o => EC2Section.design(o), tor: o => EC2Toolkit.torsion(o), crk: o => EC2Toolkit.crackWidth(o), anc: o => Object.assign(EC2Toolkit.anchorage(o), { utilMax: 0 }) };
+// the drawing for every tab follows the inputs as they change
 let drawT = 0;
 function redraw() {
   const el = $('drawings'); if (!el) return;
@@ -1336,7 +1422,7 @@ const okng = u => u <= 1 ? `<span class="ok">${ufmt(u)} OK</span>` : `<span clas
 function report(R, o, title) {
   const s = collect(), today = new Date().toLocaleDateString('en-GB');
   const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.pRef) || '&nbsp;'}</div><div class="ttl">${esc(title)}</div></div>`;
-  let b = `<div class="rs"><h2>Calculation</h2>${DrawRCKit.report(mode, o, R)}${mode === 'sec' && last ? `<div class="rsk">${sketch(last.o, last.R, true)}<div>` : '<div><div>'}` + R.steps.map(x => rl(esc(x.text), esc(x.ref), '')).join('') + '</div></div></div>';
+  let b = `<div class="rs"><h2>Calculation</h2>${DrawRCKit.report(mode, o, R)}<div><div>` + R.steps.map(x => rl(esc(x.text), esc(x.ref), '')).join('') + '</div></div></div>';
   if (R.checks.length) b += `<div class="rs"><h2>Summary</h2>` + R.checks.map(c => rl(esc(c.name) + ` <span style="color:#666">${esc(c.note || '')}</span>`, esc(c.ref), okng(c.util))).join('') + '</div>';
   b += `<p class="rp" style="color:#555">BS EN 1992-1-1:2004+A1:2014 with the UK National Annex. Generated by EngineeringTools — RC Section Design Toolkit.</p>`;
   return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;

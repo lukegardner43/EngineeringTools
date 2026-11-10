@@ -14,7 +14,8 @@ truth('page loads without script errors', w.errs.length === 0);
 truth('usage categories A–H, office (ψ₂ 0.3) by default', $('usage').options.length === 8 && $('usage').value === 'B');
 calc();
 truth('section: verdict, bending, deflection and shear checks', /PASS|FAIL/.test(res()) && /Bending/i.test(res()) && /deflection|span/i.test(res()) && /shear/i.test(res()) && !$('results').querySelector('.err'));
-truth('section sketch drawn with bars and neutral axis', !!$('results').querySelector('svg.sec') && $('results').querySelectorAll('svg.sec circle').length >= 6 && /x \d/.test($('results').querySelector('svg.sec').textContent));
+{ const sv = $('results').querySelector('#drawings svg.dk');
+  truth('section drawn with bars, neutral axis, strains and forces', !!sv && sv.querySelectorAll('circle').length >= 6 && /x 1\d\d/.test(sv.textContent) && /Strain/.test(sv.textContent) && /854 kN/.test(sv.textContent) && $('results').querySelectorAll('#drawings svg.dk').length === 3); }
 $('suggest').click();
 truth('suggest bars: a beam arrangement with Ø ≤ 32 and no error', +$('phi').value <= 32 && +$('n').value >= 2 && !$('results').querySelector('.err') && /PASS/.test(res()));
 $('shape').value = 'flanged'; change('shape'); $('b').value = '1200'; calc();
@@ -34,7 +35,7 @@ truth('axial tension per metre: N_qp label, k₂ = 1.0', /N/.test($('cMLab').tex
 mode('anc'); calc(); truth('anchorage: l_bd and l₀ for H20', /l\s*bd\s*\d+/.test(res().replace(/ /g, ' ')) && /8\.7\.3/.test(res()));
 $('printBtn').click(); truth('print: A4 sheet with the calculation', w.printed && /Anchorage and laps/.test($('report').textContent) && /UK National Annex/.test($('report').textContent));
 mode('sec'); $('kind').value = 'beam'; change('kind'); $('shape').value = 'rect'; change('shape'); $('h').value = '600'; $('MEd').value = '300'; $('gk').value = '25'; $('qk').value = '20'; $('VEd').value = '250'; calc();
-$('printBtn').click(); truth('section print: sketch and summary on the sheet', !!$('report').querySelector('svg.sec') && /Summary/.test($('report').textContent));
+$('printBtn').click(); truth('section print: drawings and summary on the sheet', $('report').querySelectorAll('svg.dk').length === 3 && /Summary/.test($('report').textContent));
 const w2 = page(w.localStorage.getItem('et-rc-section-v1')), $2 = id => w2.document.getElementById(id);
 truth('inputs restored', $2('h').value === '600' && $2('kind').value === 'beam' && $2('ckind').value === 'tension' && $2('cel').value === 'slab');
 truth('no script errors', w.errs.length === 0 && w2.errs.length === 0);

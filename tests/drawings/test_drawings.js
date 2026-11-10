@@ -145,5 +145,32 @@ async function sweep(f, cases, expect) {
     const { w } = await load('Base Plate Design.html'); const h = w.document.getElementById('drawings').innerHTML;
     truth('Base Plate Design: the joints kit base view (elevation and plan) with the mechanism', /ELEVATION/.test(h) && /PLAN/.test(h) && /How the base works/.test(h)); w.close();
   }
+  // ---------- group 3 ----------
+  await sweep('Windpost Design.html', [
+    ['cantilever (parapet)', w => set(w, 'sys', 'cant', 'change')], ['restrained at the ties', w => set(w, 'restr', 'ties', 'change')], ['6 m wide panel', w => set(w, 'b', '6')],
+    ['RHS, short side to the wind', w => { set(w, 'series', 'RHS-H', 'change'); set(w, 'ori', 'minor', 'change'); }], ['CHS', w => set(w, 'series', 'CHS-H', 'change')], ['UKB, 5 m', w => { set(w, 'series', 'UKB', 'change'); set(w, 'H', '5'); }],
+  ], 2);
+  {
+    const { w } = await load('Windpost Design.html'); const h = w.document.getElementById('drawings').innerHTML;
+    truth('Windpost Design: the wind, moment, deflection and tie force carry the engine values', /5\.40 kN\/m/.test(h) && /8\.27 kNm/.test(h) && /2\.88 mm/.test(h) && /1\.21 kN/.test(h) && /9\.45 kN/.test(h)); w.close();
+  }
+  await sweep('RC Stair Design.html', [
+    ['projection beyond support A', w => set(w, 'pA', '900')], ['built into beams (top bars)', w => set(w, 'supports', 'monolithic', 'change')], ['no landings', w => { set(w, 'a', '0'); set(w, 'c', '0'); }],
+    ['steep flight', w => { set(w, 'rise', '200'); set(w, 'going', '225'); }], ['6.10a and b', w => set(w, 'comb', '6.10ab', 'change')],
+    ['half landing', w => w.document.querySelector('#modes button[data-m="landing"]').click()],
+  ], 1);
+  {
+    const { w } = await load('RC Stair Design.html'); const h = w.document.getElementById('drawings').innerHTML;
+    truth('RC Stair Design: flight moments, bars and span/depth carry the engine values', />40\.6</.test(h) && /H12 @ 150 bottom/.test(h) && /actual 29\.9 against allowed 23\.2/.test(h) && /10 × 250 = 2500/.test(h)); w.close();
+  }
+  await sweep('RC Section Design Toolkit.html', [
+    ['flanged, b_eff 1200', w => { set(w, 'shape', 'flanged', 'change'); set(w, 'b', '1200'); }], ['hogging', w => set(w, 'moment', 'hogging', 'change')],
+    ['two layers', w => { set(w, 'layers', '2', 'change'); set(w, 'n', '6'); }], ['no compression bars', w => set(w, 'nc', '0')], ['no shear check', w => set(w, 'VEd', '0')],
+    ['slab per metre', w => set(w, 'kind', 'slab', 'change')],
+  ], 3);
+  {
+    const { w } = await load('RC Section Design Toolkit.html'); const h = w.document.getElementById('drawings').innerHTML;
+    truth('RC Section Design Toolkit: M_Rd, the forces, x and the shear resistances carry the engine values', /328\.9 kNm/.test(h) && /F<tspan[^>]*>c<\/tspan> 686 kN/.test(h) && /x 145\.5/.test(h) && />340</.test(h) && />498\.2</.test(h) && /16\.95/.test(h)); w.close();
+  }
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
