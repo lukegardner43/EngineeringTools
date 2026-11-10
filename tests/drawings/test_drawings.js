@@ -274,5 +274,11 @@ async function sweep(f, cases, expect) {
     ['5 piles', w => w.document.querySelector('#ns [data-n="5"]').click()], ['6 piles, truss', w => { w.document.querySelector('#ns [data-n="6"]').click(); set(w, 'method', 'truss', 'change'); }],
     ['6 piles, tension piles', w => { set(w, 'W_Mx', '2500'); set(w, 'G_N', '300'); set(w, 'Q_N', '0'); }], ['shallow cap, wide piles', w => { set(w, 'H', '450'); set(w, 's', '2400'); set(w, 'W_Mx', '0'); set(w, 'G_N', '1500'); }],
   ], 2);
+  await sweep('Retaining Wall.html', [
+    ['sloping ground', w => set(w, 'beta', '20')], ['water both sides', w => { set(w, 'hw', '2000'); set(w, 'hwf', '600'); }], ['line and strip loads', w => { set(w, 'lineG', '10'); set(w, 'lineQ', '15'); set(w, 'stripQ', '20'); }],
+    ['key and passive', w => { w.document.getElementById('passive').checked = true; set(w, 'hk', '400'); }], ['no toe', w => { set(w, 'bt', '0'); set(w, 'hk', '0'); }], ['tall wall, short base: fails', w => { set(w, 'H', '5000'); set(w, 'B', '1500'); }],
+    ['propped', w => { w.document.querySelector('#types [data-t="propped"]').click(); set(w, 'H', '3200'); set(w, 'B', '2600'); set(w, 'bt', '600'); }], ['propped low', w => set(w, 'hProp', '1500')],
+    ['gravity', w => w.document.querySelector('#types [data-t="gravity"]').click()], ['gravity, slope and water', w => { set(w, 'beta', '10'); set(w, 'hw', '800'); }],
+  ], 2);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
