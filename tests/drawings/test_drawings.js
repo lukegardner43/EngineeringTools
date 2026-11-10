@@ -280,5 +280,9 @@ async function sweep(f, cases, expect) {
     ['propped', w => { w.document.querySelector('#types [data-t="propped"]').click(); set(w, 'H', '3200'); set(w, 'B', '2600'); set(w, 'bt', '600'); }], ['propped low', w => set(w, 'hProp', '1500')],
     ['gravity', w => w.document.querySelector('#types [data-t="gravity"]').click()], ['gravity, slope and water', w => { set(w, 'beta', '10'); set(w, 'hw', '800'); }],
   ], 2);
+  await sweep('Basement Wall.html', [
+    ['pinned at the slab', w => set(w, 'fixBase', 'pinned', 'change')], ['water to the ground', w => set(w, 'hw', '3300')], ['no water, active', w => { set(w, 'hw', '0'); set(w, 'K', 'active', 'change'); }],
+    ['tall wall, low prop', w => { set(w, 'H', '4500'); set(w, 'hProp', '3000'); }], ['big wall loads', w => { set(w, 'wallG', '300'); set(w, 'wallQ', '150'); }], ['no toe', w => set(w, 'bt', '0')],
+  ], 2);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();

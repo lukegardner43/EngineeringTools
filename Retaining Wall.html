@@ -575,7 +575,9 @@ const RetWall = (() => {
     const xb = bt + ts, bh = B - xb;   // back face of the stem, heel length
     if (bh < -1e-9) throw new Error('The base must reach the back of the stem: B ≥ toe + stem');
     if (type !== 'gravity' && !(tb > 0)) throw new Error('Give the base a thickness');
-    const hs = H - tb; if (!(hs > 0)) throw new Error('The wall must stand above its base');
+    const hs0 = H - tb; if (!(hs0 > 0)) throw new Error('The wall must stand above its base');
+    const hUp = type === 'gravity' ? 0 : nonneg(inp.hUp || 0, 'Wall above the ground') / 1000, Htop = H + hUp, hs = hs0 + hUp;   // the stem may rise above the retained ground (a basement wall to its prop)
+    const wallG = nonneg(inp.wallG || 0, 'Wall load G'), wallQ = nonneg(inp.wallQ || 0, 'Wall load Q'), fixBase = inp.fixBase !== false;
     const hk = nonneg(inp.hk || 0, 'Key depth') / 1000, tk = hk > 0 ? pos(inp.tk, 'Key width') / 1000 : 0, xk = hk > 0 ? fin(inp.xk ?? (bt * 1000), 'Key position') / 1000 : 0;
     const hg = nonneg(inp.hg || 0, 'Soil over the toe') / 1000;
     const beta = rad(fin(inp.beta || 0, 'Slope β')), gc = pos(inp.gc ?? 25, 'Concrete density');
@@ -591,6 +593,7 @@ const RetWall = (() => {
     const dA = inp.dA != null ? nonneg(inp.dA, 'Δa') / 1000 : Math.min(0.1 * retained, 0.5);
     const passive = !!inp.passive, submerged = inp.fWater != null ? !!inp.fWater : hw > 0;
     const propped = type === 'propped', yProp = propped ? tb + Math.min(hs, pos(inp.hProp ?? hs * 1000, 'Prop height') / 1000) : null, baseHeld = !!inp.baseHeld;
+    if (!propped && !fixBase) throw new Error('Only a propped wall can be pinned at its base');
     const warnings = [];
 
     // ---- the soil behind: forces on a vertical plane from its top yTop (the ground there) down to yBot ----
@@ -629,10 +632,11 @@ const RetWall = (() => {
       const A = (ts + tTop) / 2 * hs, xc = xb - (ts * ts + ts * tTop + tTop * tTop) / (3 * (ts + tTop));
       W.push({ id: 'stem', W: gc * A, x: xc });
     } else W.push({ id: 'stem', W: gc * ts * hs, x: bt + ts / 2 });
+    if (wallG > 0) W.push({ id: 'wallG', W: wallG, x: bt + ts / 2 });
     if (tb > 0) W.push({ id: 'base', W: gc * B * tb, x: B / 2 });
     if (hk > 0) W.push({ id: 'key', W: gc * tk * hk, x: xk + tk / 2 });
     if (bh > 0) {
-      const ywH = Math.min(hw, H), wetH = Math.max(0, ywH - tb), dry = hs - wetH;
+      const ywH = Math.min(hw, H), wetH = Math.max(0, ywH - tb), dry = hs0 - wetH;
       W.push({ id: 'heelSoil', W: bh * (soil.g * dry + soil.gs * wetH), x: xb + bh / 2 });
       if (beta > 0) W.push({ id: 'slope', W: soil.g * bh * bh * Math.tan(beta) / 2, x: xb + 2 * bh / 3 });
     }
@@ -652,8 +656,9 @@ const RetWall = (() => {
       const front = lin(0, hwf, gw * hwf, 0, 0);   // water in front, resisting
       // loads on the heel are weights: permanent at the weights' factor (favourable for sliding and EQU), variable only where unfavourable
       const qOnHeel = bh > 0 ? (c.gW * qG + c.gQh * qQ) * bh : 0, lineV = lineOnHeel ? c.gW * line.G + c.gQh * line.Q : 0, stripV = c.gQh * strip.q * stripOnHeel;
-      const V = c.gW * sumW + c.gT * Pv + qOnHeel + lineV + stripV - c.gWt * U.F;
-      const Mstb = c.gW * momW + c.gT * Pv * B + qOnHeel * (xb + bh / 2) + lineV * (xb + line.x) + stripV * (xb + strip.a + stripOnHeel / 2) - c.gWt * U.F * U.x;   // about the toe
+      const wQ = c.gQh * wallQ;   // the variable wall load, where unfavourable
+      const V = c.gW * sumW + c.gT * Pv + qOnHeel + lineV + stripV + wQ - c.gWt * U.F;
+      const Mstb = c.gW * momW + c.gT * Pv * B + qOnHeel * (xb + bh / 2) + lineV * (xb + line.x) + stripV * (xb + strip.a + stripOnHeel / 2) + wQ * (bt + ts / 2) - c.gWt * U.F * U.x;   // about the toe
       const Mdst = Ms - c.gWt * front.M;   // horizontal forces about the underside at the toe
       const Hnet = Hs - c.gWt * front.F;
       return { ...c, phi, back, el, Pv, rankineFits, H: Hnet, Hgross: Hs, V, Mstb, Mdst, xR: V > 0 ? (Mstb - Mdst) / V : NaN };
@@ -675,27 +680,31 @@ const RetWall = (() => {
       const phi = phiD(soil.phi, c.gphi), K = soil.K === 'rest' ? K0(phi, beta) : Ka(phi, beta), Kh = soil.K === 'rest' ? K : K * Math.cos(beta);
       const yw = Math.min(hw, H), sv = y >= yw ? soil.g * (H - y) : soil.g * (H - yw) + (soil.gs - gw) * (yw - y);
       let p = c.gT * Kh * sv + c.gWt * (y < yw ? gw * (yw - y) : 0) + Kh * (c.gT * qG + c.gQ * qQ);
-      const z = H - y, Hp = hs;
+      const z = H - y, Hp = hs0;
       if (line.G + line.Q > 0) { const m = line.x / Hp, n = z / Hp, s = m <= 0.4 ? 0.203 * n / (0.16 + n * n) ** 2 / Hp : 4 / (Math.PI * Hp) * m * m * n / (m * m + n * n) ** 2; p += s * (c.gT * line.G + c.gQ * line.Q); }
       if (strip.q > 0 && strip.b > 0 && z > 0) { const t1 = Math.atan(strip.a / z), t2 = Math.atan((strip.a + strip.b) / z), th = t2 - t1, al = t1 + th / 2; p += c.gQ * 2 * strip.q / Math.PI * (th - Math.sin(th) * Math.cos(2 * al)); }
       return p;
     }
     // the stem's shear and moment at height y above the underside (cantilever from the top, less the prop)
     function stemActions(c) {
-      const N = 240, ys = Array.from({ length: N + 1 }, (_, i) => tb + hs * i / N), p = ys.map(y => stemLoads(c, y));
-      const V = y => simpson(t => stemLoads(c, t), y, H, 120), M = y => simpson(t => stemLoads(c, t) * (t - y), y, H, 120);
+      const N = 240, ys = Array.from({ length: N + 1 }, (_, i) => tb + hs * i / N);
+      const V = y => y >= H ? 0 : simpson(t => stemLoads(c, t), y, H, 120), M = y => y >= H ? 0 : simpson(t => stemLoads(c, t) * (t - y), y, H, 120);   // no load above the ground
       let Rp = 0;
       if (propped) {   // compatibility: the cantilever deflection at the prop equals the prop's, R L³/3EI; load at height t above the base: δ(Lp) = P a²(3Lp − a)/6EI for a ≤ Lp
         const Lp = yProp - tb, defl = simpson(t => { const a = t - tb; const P = stemLoads(c, t); return a <= Lp ? P * a * a * (3 * Lp - a) / 6 : P * Lp * Lp * (3 * a - Lp) / 6; }, tb, H, 240);
-        Rp = 3 * defl / Lp ** 3;
+        Rp = fixBase ? 3 * defl / Lp ** 3 : simpson(t => stemLoads(c, t) * (t - tb), tb, H, 240) / Lp;   // pinned at the base: moments about it
       }
       const Vy = y => V(y) - (propped && y < yProp ? Rp : 0), My = y => M(y) - (propped && y < yProp ? Rp * (yProp - y) : 0);
-      const diag = ys.map(y => ({ y, p: stemLoads(c, y), V: Vy(y), M: My(y) }));
+      const diag = ys.map(y => ({ y, p: y > H ? 0 : stemLoads(c, y), V: Vy(y), M: My(y) }));
       return { Rp, diag, Vbase: Vy(tb), Mbase: My(tb), Mmin: Math.min(...diag.map(d => d.M)), Mmax: Math.max(...diag.map(d => d.M)) };
     }
     const stem = { C1: stemActions(SETS.C1a), C2: stemActions(SETS.C2b), SLS: stemActions(SETS.SLS), QP: stemActions(SETS.QP) };
     // the prop reaction acts on the wall: the GEO checks see it as a horizontal restraint at yProp
-    if (propped) for (const k in R) { const c = R[k], Rp = stemActions(SETS[k]).Rp; c.Rp = Rp; c.H -= Rp; c.Mdst -= Rp * yProp; c.xR = c.V > 0 ? (c.Mstb - c.Mdst) / c.V : NaN; }
+    // a slab holding the base takes what the prop leaves, at the top of the footing: the footing then sees no horizontal load
+    const ySlab = tb;
+    if (propped) for (const k in R) { const c = R[k], Rp = stemActions(SETS[k]).Rp; c.Rp = Rp; c.H -= Rp; c.Mdst -= Rp * yProp;
+      if (baseHeld) { c.Hslab = c.H; c.Mdst -= c.H * ySlab; c.H = 0; }
+      c.xR = c.V > 0 ? (c.Mstb - c.Mdst) / c.V : NaN; }
 
     // ---- GEO checks ----
     const checks = [], add = (id, name, ref, util, note, o = {}) => checks.push({ id, name, ref, util, note, ...o });
@@ -774,6 +783,7 @@ const RetWall = (() => {
         const Mspan = -Math.min(stem.C1.Mmin, stem.C2.Mmin);
         if (Mspan > 0.05) member('stemF', 'Stem, front face in the span', ts * 1000, covS, pos(inp.phiSF, 'Front bar size'), pos(inp.sSF, 'Front bar spacing'), Mspan, 0, Math.max(0, -stem.QP.Mmin), 'front face');
         add('prop', 'Prop force', 'per metre', 0, `R ${Math.max(stem.C1.Rp, stem.C2.Rp).toFixed(1)} kN/m at ${((yProp - tb) * 1000).toFixed(0)} mm above the base (ULS); ${stem.SLS.Rp.toFixed(1)} kN/m characteristic`, { req: true });
+        if (baseHeld) add('slab', 'Reaction into the slab at the base', 'per metre', 0, `H ${Math.max(...['C1a', 'C1b', 'C2a', 'C2b'].map(k => R[k].Hslab)).toFixed(1)} kN/m (ULS) at the top of the footing; ${R.SLS.Hslab.toFixed(1)} kN/m characteristic`, { req: true });
       }
       // toe and heel: the uniform pressure on B′ of the bearing combinations
       const baseAct = k => {
@@ -823,13 +833,24 @@ const RetWall = (() => {
       add('plainV', 'Wall in plain concrete: shear', '12.6.3', gV.uV, `τ_cp = 1.5V/A_cc ${gV.tau.toFixed(3)} ≤ f_cvd ${gV.fcvd.toFixed(3)} N/mm²`);
       gravity = { secs, fcdpl, fctdpl, slim };
     }
+    // early-age restraint: the horizontal bars on each face against EC2 7.3.2 with f_ct,eff at first cracking
+    let restraint = null;
+    if (type !== 'gravity' && inp.phiHz > 0 && inp.sHz > 0) {
+      const h = ts * 1000, phi = inp.phiHz, s = inp.sHz, t = pos(inp.tCrack ?? 3, 'Age at first cracking'), sc = { R: 0.2, N: 0.25, S: 0.38 }[inp.cement || 'N'] ?? 0.25;
+      const fct = Math.exp(sc * (1 - Math.sqrt(28 / Math.min(28, t)))) * cc.fctm, k = h <= 300 ? 1 : h >= 800 ? 0.65 : 1 - 0.35 * (h - 300) / 500, d = h - covS - phi / 2;
+      // each face's surface zone in tension (BS EN 1992-3 7.3.2): A_c,eff = min(2.5(h − d), h/2) per metre; k_c 1.0, σ_s = f_yk
+      const hef = Math.min(2.5 * (h - d), h / 2), AsMin = 1.0 * k * fct * hef * 1000 / fyk, face = AREA(phi) * 1000 / s;
+      restraint = { fct, k, hef, AsMin, face, t };
+      add('restraint', `Horizontal bars, early-age restraint (${phi} @ ${s} each face)`, '7.3.2(2), BS EN 1992-3 7.3.2', AsMin / face,
+        `A_s,min = k_c k f_ct,eff A_c,eff/f_yk = 1.0 × ${k.toFixed(2)} × ${fct.toFixed(2)} × ${hef.toFixed(0)} × 1000/${fyk} = ${AsMin.toFixed(0)} ≤ ${face.toFixed(0)} mm²/m each face (f_ct,eff at ${t} days)`);
+    }
     if (soil.K === 'active' && R.C1a.back.Kv > 0 && !R.C2b.rankineFits) warnings.push('The heel is too short for the Rankine zone: the vertical part of the thrust is left out (conservative).');
     if (type === 'propped' && soil.K === 'active') warnings.push('A propped wall barely moves: at-rest pressure (K₀) is usually the better choice.');
     if (hw > 0) warnings.push(`Water ${(hw * 1000).toFixed(0)} mm above the underside behind the wall${hwf > 0 ? `, ${(hwf * 1000).toFixed(0)} mm in front` : ''}; uplift varies linearly across the base.`);
     warnings.push(`The ground in front is lowered by Δa = ${(dA * 1000).toFixed(0)} mm for the passive resistance and the bearing overburden (EC7 9.3.2.2).`);
     warnings.push('Overall stability (a slip surface beneath the wall) and settlement are not checked here.');
     const util = Math.max(...checks.filter(c => !c.req).map(k => k.util));
-    return { inp, type, H, tb, B, bt, ts, tTop, xb, bh, hs, hk, tk, xk, hg, beta, gc, soil, fnd, gw, hw, hwf, qG, qQ, line, strip, retained, dA, passive, submerged, propped, yProp, baseHeld,
+    return { inp, type, H, Htop, hUp, hs0, wallG, wallQ, fixBase, restraint, tb, B, bt, ts, tTop, xb, bh, hs, hk, tk, xk, hg, beta, gc, soil, fnd, gw, hw, hwf, qG, qQ, line, strip, retained, dA, passive, submerged, propped, yProp, baseHeld,
       yV, W, sumW, momW, U, R, SETS, geo, stem, members, gravity, fck, cc, fyk, checks, util, warnings, Ka, K0, Kp };
   }
   return { design, Ka, K0, Kp };
@@ -1105,7 +1126,7 @@ const DrawRetWall = (() => {
   const bad = (R, id) => { const c = R.checks.find(k => k.id === id); return !!c && c.util > 1; };
 
   function section(R) {
-    const W = 700, ext = 1.0, xmin = -0.8, xmax = R.B + ext, ytop = R.yV + 0.7, ybot = -(R.hk > 0 ? R.hk : 0) - 0.15;
+    const W = 700, ext = 1.0, xmin = -0.8, xmax = R.B + ext, ytop = Math.max(R.yV, R.Htop) + 0.7, ybot = -(R.hk > 0 ? R.hk : 0) - 0.15;
     const k = Math.min(500 / (xmax - xmin), 420 / (ytop - ybot)), x0 = 60 + (500 - (xmax - xmin) * k) / 2, y0 = 30;
     const X = x => x0 + (x - xmin) * k, Y = y => y0 + (ytop - y) * k;
     let g = '';
@@ -1122,7 +1143,8 @@ const DrawRetWall = (() => {
     // the wall
     if (R.tb > 0) g += rect(X(0), Y(R.tb), R.B * k, R.tb * k, { fill: CON, stroke: 'ink', w: 1.3 });
     if (R.hk > 0) g += rect(X(R.xk), Y(0), R.tk * k, R.hk * k, { fill: CON, stroke: 'ink', w: 1.3 });
-    g += poly([[X(R.bt), Y(R.tb)], [X(R.xb), Y(R.tb)], [X(R.xb), Y(R.H)], [X(R.xb - R.tTop), Y(R.H)]], { fill: CON, stroke: 'ink', w: 1.3 });
+    g += poly([[X(R.bt), Y(R.tb)], [X(R.xb), Y(R.tb)], [X(R.xb), Y(R.Htop)], [X(R.xb - R.tTop), Y(R.Htop)]], { fill: CON, stroke: 'ink', w: 1.3 });
+    if (R.wallG + R.wallQ > 0) { const xc = R.xb - R.tTop / 2; g += arrow(X(xc), Y(R.Htop) - 44, X(xc), Y(R.Htop) - 3, { c: 'red', w: 2 }) + text(X(xc) - 6, Y(R.Htop) - 36, `${f1(R.wallG)} + ${f1(R.wallQ)} kN/m`, { size: 9, anchor: 'end', color: RED }); }
     // water
     if (R.hw > 0) { g += line(X(R.xb), Y(R.hw), X(xmax), Y(R.hw), { c: 'blue', w: 1.2, dash: '7 4' }) + poly([[X(xmax) - 16, Y(R.hw) - 8], [X(xmax) - 8, Y(R.hw) - 8], [X(xmax) - 12, Y(R.hw) - 1]], { fill: BLUE }); }
     if (R.hwf > 0) g += line(X(xmin), Y(R.hwf), X(0), Y(R.hwf), { c: 'blue', w: 1.2, dash: '7 4' });
@@ -1157,7 +1179,7 @@ const DrawRetWall = (() => {
     g += dimH(X(0), X(R.B), foot + 6, `B ${r0(R.B * 1000)}`);
     if (R.bt > 0) g += dimH(X(0), X(R.bt), foot + 30, `toe ${r0(R.bt * 1000)}`);
     if (R.bh > 0) g += dimH(X(R.xb), X(R.B), foot + 30, `heel ${r0(R.bh * 1000)}`);
-    g += text(X(R.xb - R.tTop / 2), Y(R.H) - 6, `${r0(R.tTop * 1000)}`, { size: 9, anchor: 'middle' });
+    if (!(R.wallG + R.wallQ > 0)) g += text(X(R.xb - R.tTop / 2), Y(R.Htop) - 6, `${r0(R.tTop * 1000)}`, { size: 9, anchor: 'middle' });
     let gy2 = foot + 56;
     [[`Dashed: the virtual back through the heel; red: the horizontal earth${R.hw > 0 ? ' and water' : ''} pressure on it, characteristic (K at φ′k).`, MUTE],
       [`Wall ${r0(R.sumW)} kN/m${R.U.F > 0 ? `, uplift ${f1(R.U.F)} kN/m` : ''}; base ${r0(R.tb * 1000)} thick${R.hk > 0 ? `, key ${r0(R.tk * 1000)} × ${r0(R.hk * 1000)}` : ''}.`, MUTE]]
@@ -1166,16 +1188,16 @@ const DrawRetWall = (() => {
   }
 
   function stemPlots(R) {
-    const d = R.stem.C1.diag, W = 700, Hh = 220, top = 30, k = Hh / R.hs, Y = y => top + (R.H - y) * k;
+    const d = R.stem.C1.diag, W = 700, Hh = 220, top = 30, k = Hh / R.hs, Y = y => top + (R.Htop - y) * k;
     const panel = (x0, w, key, lab, unit, col) => {
       const vals = d.map(p => p[key]), mx = Math.max(1e-9, ...vals.map(Math.abs)), s = (w / 2 - 10) / mx, xa = x0 + w / 2;
-      let g = line(xa, Y(R.H), xa, Y(R.tb), { c: 'mute', w: 0.8 }) + DK.fillDiagram(d.map(p => [xa + p[key] * s, Y(p.y)]), xa, { vertical: true, fill: col === 'red' ? 'rgba(196,36,42,.12)' : FILL, stroke: col });
+      let g = line(xa, Y(R.Htop), xa, Y(R.tb), { c: 'mute', w: 0.8 }) + DK.fillDiagram(d.map(p => [xa + p[key] * s, Y(p.y)]), xa, { vertical: true, fill: col === 'red' ? 'rgba(196,36,42,.12)' : FILL, stroke: col });
       const iM = vals.reduce((a, v, i) => Math.abs(v) > Math.abs(vals[a]) ? i : a, 0);
       g += text(xa + vals[iM] * s + (vals[iM] >= 0 ? 4 : -4), Y(d[iM].y) + 4, `${f1(vals[iM])}`, { size: 9.5, anchor: vals[iM] >= 0 ? 'start' : 'end', weight: 600 });
       return g + text(xa, Y(R.tb) + 18, `${lab} (${unit})`, { size: 10, anchor: 'middle', weight: 600 });
     };
     let g = panel(20, 210, 'p', 'Pressure', 'kPa', 'red') + panel(245, 210, 'V', 'Shear', 'kN/m', 'ink') + panel(470, 210, 'M', 'Moment', 'kNm/m', 'ink');
-    if (R.propped) g += text(20, top - 12, `Prop at ${r0((R.yProp - R.tb) * 1000)} mm: R = ${f1(R.stem.C1.Rp)} kN/m (DA1-1)`, { size: 9.5, color: MUTE });
+    if (R.propped) g += text(20, top - 12, `Prop at ${r0((R.yProp - R.tb) * 1000)} mm: R = ${f1(R.stem.C1.Rp)} kN/m (DA1-1); base ${R.fixBase ? 'fixed' : 'pinned'}`, { size: 9.5, color: MUTE });
     g += text(20, Y(R.tb) + 40, `Stem from the top of the base to the top of the wall, DA1-1 (γ_G 1.35, γ_Q 1.5); positive moment: tension on the back face.`, { size: 9.5, color: MUTE });
     return svg(g, W, Y(R.tb) + 48, 'Pressure, shear and moment down the stem');
   }
