@@ -250,5 +250,15 @@ async function sweep(f, cases, expect) {
     const t = w.document.getElementById('drawings').textContent;
     truth('RC Lintel Design, Naylor: w_eq 3.43, the allowable 31.18 and M_k 1.63 from the engine', /eq3\.43/.test(t.replace(/\s/g, '')) && /31\.18/.test(t) && /1\.63 kNm/.test(t) && /Naylor R8/.test(t)); w.close();
   }
+  await sweep('Precast Connections.html', [
+    ['bearing dry, a floor on steel', w => { set(w, 'b_conn', 'dry', 'change'); set(w, 'b_row', 'line', 'change'); set(w, 'b_support', 'steel', 'change'); set(w, 'b_b1', '1000'); set(w, 'b_FEd', '60'); }],
+    ['bearing on a pad, isolated, vertical loops', w => { set(w, 'b_conn', 'pad', 'change'); set(w, 'b_lpad', '120'); set(w, 'b_detail', 'vloop', 'change'); const c = w.document.getElementById('b_isolated'); c.checked = true; c.dispatchEvent(new w.Event('change', { bubbles: true })); }],
+    ['brickwork, short seating', w => { set(w, 'b_support', 'brick', 'change'); set(w, 'b_aProv', '90'); }],
+    ['half-joint', w => w.document.querySelector('#modes [data-m=half]').click()], ['half-joint, half on inclined bars', w => { set(w, 'j_alpha', '50'); set(w, 'j_nInc', '2'); }],
+    ['half-joint, all inclined, plate end, straight bottom bars', w => { set(w, 'j_alpha', '100'); set(w, 'j_nibEnd', 'plate', 'change'); set(w, 'j_botEnd', 'straight', 'change'); }],
+    ['half-joint, deep nib far bearing', w => { set(w, 'j_alpha', '0'); set(w, 'j_hn', '450'); set(w, 'j_av', '160'); set(w, 'j_lend', '300'); }],
+    ['splice', w => w.document.querySelector('#modes [data-m=splice]').click()], ['splice, biaxial, 5 by 4 bars', w => { set(w, 's_Mb', '80'); set(w, 's_nb', '5'); set(w, 's_nh', '4'); set(w, 's_phi', '20', 'change'); }],
+    ['splice in tension, rated below the bar', w => { set(w, 's_NEd', '-300'); set(w, 's_capMode', 'value', 'change'); set(w, 's_Fk', '120'); }],
+  ], 1);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();

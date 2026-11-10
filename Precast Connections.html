@@ -1,0 +1,1581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Precast Connections</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* Engineering Tools: shared light style (tasteskill app sheet "Achromatic ledger", seed 959138263).
+   Ink chrome on a blue-grey drawing-office ground; the one hue (#1d5fbf) goes on the main data element
+   (envelopes, utilisation bars); status colour only on the verdict and on a check that is over. */
+:root{
+  --bg:#f2f4f7; --surf:#ffffff; --surf2:#f7f8fa; --bdr:#e3e5e8; --bdr2:#d1d5db; --rule:#eceef1;
+  --txt:#111111; --lbl:#33363a; --mut:#5f6368; --faint:#6b6b6b;
+  --accent:#1d5fbf; --accent-dim:#e3ebf8;
+  --primary:#1d1f20;
+  --pass:#247b50; --warn:#b45309; --fail:#c4242a;
+  --pass-bg:#dcfae5; --pass-ink:#04250e; --fail-bg:#ffedea; --fail-ink:#831c1e;
+  --r:6px; --rc:8px;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:var(--sans);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5;min-height:100svh;padding:28px 32px 40px;
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;}
+.container{max-width:1376px;margin:0 auto;}
+/* title row: a photograph of the member's material (img/<material>.jpg beside the page, set by <body data-material>)
+   under a neutral scrim, with the breadcrumb, the tool's name and one line of scope. Without the photo it is a plain ink band. */
+.page-hdr{position:relative;isolation:isolate;overflow:hidden;border-radius:var(--rc);min-height:164px;padding:18px 24px 20px;margin-bottom:12px;
+  display:flex;flex-direction:column;justify-content:flex-end;color:#fff;background:#2c3036 var(--photo,none) center/cover no-repeat;}
+.page-hdr::before{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.55) 45%,rgba(0,0,0,.18) 100%);} /* taste-skill-ignore: neutral scrim under text on a photograph */
+.page-hdr::after{content:var(--credit,'');position:absolute;right:10px;bottom:8px;font-size:11px;color:rgba(255,255,255,.9);background:rgba(0,0,0,.4);padding:1px 6px;border-radius:4px;}
+.home-lnk{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:rgba(255,255,255,.88);text-decoration:none;font-weight:500;margin-bottom:auto;align-self:flex-start;padding-bottom:12px;}
+.home-lnk:hover{color:#fff;text-decoration:underline;}
+.home-lnk svg{width:14px;height:14px;}
+.page-hdr h1{font-size:26px;font-weight:600;line-height:1.25;letter-spacing:-0.01em;margin-bottom:4px;color:#fff;}
+.page-hdr p{font-size:14px;color:rgba(255,255,255,.92);max-width:900px;}
+body[data-material="steel"]{--photo:url(img/steel.jpg);--credit:'Photo: Chevsapher, CC0';}
+body[data-material="concrete"]{--photo:url(img/concrete.jpg);--credit:'Photo: MassDOT, public domain';}
+body[data-material="masonry"]{--photo:url(img/masonry.jpg);--credit:'Photo: Håkan Svensson, CC BY 2.5';}
+body[data-material="timber"]{--photo:url(img/timber.jpg);--credit:'Photo: Sebastian Wallroth, public domain';}
+body[data-material="frame"]{--photo:url(img/frame.jpg);--credit:'Photo: Wikideas1, CC0';}
+body[data-material="ground"]{--photo:url(img/ground.jpg);--credit:'Photo: Fons Heijnsbroek, CC0';}
+@media print{.page-hdr{display:none;}}
+/* inputs on the left, the answer on the right: (1376 - 12) x 6/13 = 630 | 734 */
+.main-grid{display:grid;grid-template-columns:minmax(380px,6fr) 7fr;gap:12px;align-items:start;}
+@media(max-width:1100px){.main-grid{grid-template-columns:1fr;}}
+.main-grid > div{min-width:0;}
+#results table.t{display:block;overflow-x:auto;white-space:nowrap;}
+.card{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rc);padding:20px 24px;margin-bottom:12px;}
+.section-title{font-size:16px;font-weight:600;color:var(--txt);margin:0 0 14px;display:flex;justify-content:space-between;align-items:baseline;gap:12px;line-height:1.3;}
+.section-title .aux{color:var(--mut);font-size:13px;font-weight:400;text-align:right;}
+.form-group{margin-bottom:14px;}
+.form-group label,.lbl{display:block;font-size:13px;margin-bottom:5px;color:var(--lbl);font-weight:500;line-height:1.35;}
+input[type="number"],input[type="text"],select{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);padding:0 10px;height:36px;border-radius:var(--r);font-family:var(--sans);font-size:14px;width:100%;font-variant-numeric:tabular-nums;transition:border-color .12s;}
+input::placeholder{color:var(--faint);}
+input:hover,select:hover{border-color:#b9bec6;}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);}
+input:disabled,select:disabled{background:var(--surf2);color:var(--mut);}
+select option{background:var(--surf);color:var(--txt);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.grid2 > .form-group,.grid3 > .form-group{display:flex;flex-direction:column;justify-content:flex-end;}
+.chk{display:block;position:relative;padding-left:26px;font-size:13px;color:var(--lbl);margin:8px 0;cursor:pointer;line-height:1.45;}
+.chk input{position:absolute;left:0;top:1px;width:16px;height:16px;accent-color:var(--primary);}
+.help{font-size:13px;color:var(--mut);margin-top:4px;line-height:1.45;}
+/* segmented control: grey track, white pill on the chosen option */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#e9ecf0;border-radius:var(--rc);margin-bottom:14px;}
+.seg button{background:transparent;color:var(--mut);border:1px solid transparent;border-radius:var(--r);height:32px;padding:0 10px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;}
+.seg button:hover{color:var(--txt);}
+.seg button.on{background:var(--surf);color:var(--txt);border-color:var(--bdr);}
+/* repeating rows: spans, supports, loads */
+.rows{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+.row{display:grid;gap:8px;align-items:end;background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--r);padding:10px;}
+.row label{font-size:12px;color:var(--mut);margin-bottom:3px;display:block;font-weight:500;line-height:1.3;}
+.row input,.row select{height:32px;font-size:13px;padding:0 8px;}
+.row.span{grid-template-columns:1fr 1.6fr 1fr 32px;}
+.row.load{grid-template-columns:52px 64px 1.1fr 1.1fr 32px;}
+.row.load .vals{grid-column:1 / span 3;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.xbtn{height:32px;width:32px;background:var(--surf);border:1px solid var(--bdr2);color:var(--mut);border-radius:var(--r);cursor:pointer;font-size:16px;line-height:1;}
+.xbtn:hover{color:var(--fail);border-color:var(--fail);}
+.addbtn{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);border-radius:var(--r);height:36px;padding:0 12px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;width:100%;}
+.addbtn:hover{border-color:#9aa0a8;background:var(--surf2);}
+/* the one primary action, near-black; secondary actions white and outlined */
+.btn{height:44px;padding:0 16px;border:none;border-radius:var(--r);font-weight:600;cursor:pointer;font-family:var(--sans);font-size:15px;width:100%;background:var(--primary);color:#fff;}
+.btn:hover{background:#000;}
+.btn:focus-visible,.btn2:focus-visible,.addbtn:focus-visible,.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.btn2{width:100%;height:38px;padding:0 12px;background:var(--surf);border:1px solid var(--bdr2);border-radius:var(--r);font-size:14px;font-weight:500;color:var(--txt);cursor:pointer;font-family:var(--sans);margin-top:8px;}
+.btn2:hover{border-color:#9aa0a8;background:var(--surf2);}
+.hidden{display:none!important;}
+/* results */
+.placeholder{display:flex;align-items:center;justify-content:center;min-height:160px;color:var(--mut);font-size:14px;text-align:center;padding:0 24px;}
+.verdict{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--bdr);border-radius:var(--rc);background:var(--surf2);margin-bottom:16px;}
+.verdict .big{font-size:24px;font-weight:600;line-height:1.2;color:var(--pass);letter-spacing:-0.01em;}
+.verdict.fail .big{color:var(--fail);}
+.verdict .sub{font-size:13px;color:var(--mut);margin-top:2px;}
+/* the utilisation ledger: check, clause, bar to scale (full track = 1.2, ink tick at the 1.0 limit), figure */
+.checks{display:flex;flex-direction:column;margin-bottom:8px;}
+.ck{display:grid;grid-template-columns:1.25fr 2fr 56px;gap:14px;align-items:center;font-size:13px;padding:7px 0;border-bottom:1px solid var(--rule);}
+.ck:last-child{border-bottom:none;}
+.ck .nm{color:var(--txt);line-height:1.35;} .ck .nm small{display:block;color:var(--mut);font-size:12px;}
+.bar{height:8px;background:#e8ebef;border-radius:4px;position:relative;}
+.bar::after{content:'';position:absolute;left:83.333%;top:-4px;bottom:-4px;width:1.5px;background:var(--txt);border-radius:1px;}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:4px;}
+.bar i.over{background:var(--fail);} /* 0.9-1.0 stays blue: a well-used member is not a warning; the tick shows how close it is */
+.ck .u{text-align:right;font-weight:600;font-size:14px;}
+.ck .u.over{color:var(--fail);}
+.diag{width:100%;height:auto;display:block;margin-bottom:6px;}
+/* screen drawings: the smallest labels lifted to the 11px floor (the print sheet keeps its own sizes) */
+.container svg text[font-size="8"],.container svg text[font-size="8.5"],.container svg text[font-size="9"],.container svg text[font-size="9.5"],
+.container svg text[font-size="10"],.container svg text[font-size="10.5"]{font-size:11px;}
+.dlabel{font-size:14px;font-weight:600;color:var(--txt);margin:20px 0 6px;line-height:1.3;}
+table.t{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px;font-variant-numeric:tabular-nums;}
+table.t th{color:var(--mut);font-weight:500;text-align:right;padding:6px 8px;border-bottom:1px solid var(--bdr);font-size:12px;}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--rule);text-align:right;}
+table.t th:first-child,table.t td:first-child{text-align:left;}
+.note{font-size:13px;color:var(--mut);background:var(--surf2);border:1px solid var(--rule);border-radius:var(--r);padding:10px 12px;margin-top:10px;line-height:1.5;}
+.err{color:var(--fail-ink);background:var(--fail-bg);font-size:13px;padding:10px 12px;border-radius:var(--r);margin-bottom:12px;}
+.busy{opacity:.55;pointer-events:none;}
+a{color:var(--txt);}
+sub,sup{font-size:max(11px,.75em);line-height:0;}
+@media(max-width:560px){body{padding:16px 16px 32px;} .card{padding:16px;} .ck{grid-template-columns:1fr 1fr 48px;gap:10px;} .grid3{grid-template-columns:1fr 1fr;}
+  .row.span{grid-template-columns:1fr 32px;} .row.span > div:nth-child(2),.row.span > div:nth-child(3){display:none;} .row.load .vals{grid-template-columns:1fr 1fr;}
+  .page-hdr{min-height:150px;padding:14px 16px 16px;} .page-hdr h1{font-size:22px;} .page-hdr::after{top:10px;bottom:auto;} .page-hdr::before{background:rgba(0,0,0,.6);} .verdict .big{font-size:22px;}}
+/* disclaimer: on screen at the foot of the page, and printed at the end of the calculation sheet */
+.disclaimer{max-width:1376px;margin:24px auto 0;padding-top:14px;border-top:1px solid var(--bdr,#e3e5e8);font-size:13px;line-height:1.55;color:var(--mut,#5f6368);}
+.disclaimer b{color:var(--txt,#111);font-weight:600;}
+@media print{.disclaimer{display:block!important;max-width:none;margin:4mm 0 0;padding-top:1.5mm;border-top:0.4pt solid #888;font-family:Arial,Helvetica,sans-serif;font-size:7.5pt;color:#000;break-inside:avoid;} .disclaimer b{color:#000;}}
+/* ---------- print: A4 calculation sheet ---------- */
+#report{display:none;}
+@media print{
+  @page{size:A4;margin:12mm 12mm 14mm;}
+  body{background:#fff;color:#000;padding:0;background-image:none;font-size:9.5pt;}
+  .container{display:none;}
+  #report{display:block;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  #report table.wrap{width:100%;border-collapse:collapse;}
+  #report thead td{padding:0 0 3mm;}
+  .rh{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;border:0.6pt solid #000;font-size:8pt;}
+  .rh div{padding:1.2mm 2mm;border-right:0.6pt solid #000;}
+  .rh div:last-child{border-right:none;}
+  .rh b{display:block;font-size:6.5pt;color:#444;font-weight:normal;text-transform:uppercase;letter-spacing:.3pt;}
+  .rh .ttl{grid-column:1 / -1;border-top:0.6pt solid #000;border-right:none;font-weight:bold;font-size:10pt;}
+  .rs{margin:0 0 3.5mm;}
+  .rs h2,.rs h3{break-after:avoid;}
+  .rl,.rt,.rsvg,.rp,.rt tr{break-inside:avoid;}
+  .rs h2{font-size:10pt;margin:3mm 0 1.5mm;padding-bottom:0.8mm;border-bottom:0.8pt solid #000;}
+  .rs h3{font-size:9pt;margin:2mm 0 1mm;}
+  .rl{display:grid;grid-template-columns:1fr 92px 132px;gap:2mm;padding:0.5mm 0;font-size:8.6pt;}
+  .rl .cl{text-align:right;color:#444;font-size:7.5pt;}
+  .rl .rv{text-align:right;font-weight:bold;}
+  .ok{color:#0a7a3e;} .ng{color:#c00;}
+  .rt{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;}
+  .rt th,.rt td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;}
+  .rt th{background:#eee;font-weight:bold;}
+  .rt td:first-child,.rt th:first-child,.rt.lft td,.rt.lft th{text-align:left;}
+  .rp{font-size:8.3pt;line-height:1.45;margin:1mm 0;}
+  .rsvg{width:100%;height:auto;}
+  .rsvg *{vector-effect:non-scaling-stroke;}
+}
+
+[hidden]{display:none!important;}
+.seg.three{grid-template-columns:1fr 1fr 1fr;}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 20px;background:var(--surf2);border:1px solid var(--rule);border-radius:var(--rc);padding:12px 16px;margin-bottom:12px;}
+.kv div{min-width:0;} .kv b{display:block;font-size:12px;font-weight:400;color:var(--mut);} .kv span{font-size:15px;font-weight:600;}
+.chk{display:flex;gap:8px;align-items:center;font-size:13px;margin:4px 0 8px;} .chk input{width:auto;height:auto;}
+</style>
+</head>
+<body data-material="concrete" style="--photo:url(img/precast-frame.jpg);--credit:'Photo: z22, CC BY-SA 3.0'">
+<div class="container">
+  <div class="page-hdr">
+    <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
+    <h1>Precast Connections</h1>
+    <p>Precast concrete connections to BS EN 1992-1-1 + UK NA &nbsp;·&nbsp; bearings: the nominal bearing length and bearing stress (10.9.5) &nbsp;·&nbsp; half-joints by strut-and-tie (10.9.4.6) &nbsp;·&nbsp; grouted sleeve splices: the joint under axial load and bending, shear across the grout bed, and the maker's requirements</p>
+  </div>
+  <div class="main-grid">
+    <div id="inputs">
+      <div class="card">
+        <div class="section-title">Connection</div>
+        <div class="seg three" id="modes" style="margin-bottom:6px"><button type="button" data-m="bearing" class="on">Bearing</button><button type="button" data-m="half">Half-joint</button><button type="button" data-m="splice">Grouted sleeve</button></div>
+        <div class="help" id="modeHelp"></div>
+      </div>
+      <div class="card">
+        <div class="section-title">Project</div>
+        <div class="form-group"><label>Project</label><input type="text" id="pName" placeholder="Project name"></div>
+        <div class="grid3"><div class="form-group"><label>Job no.</label><input type="text" id="pJob"></div><div class="form-group"><label>By</label><input type="text" id="pBy"></div><div class="form-group"><label>Member ref.</label><input type="text" id="pRef" placeholder="e.g. Beam B4 end"></div></div>
+      </div>
+
+      <!-- ===== bearing ===== -->
+      <div class="m-bearing">
+        <div class="card">
+          <div class="section-title">Reaction and support</div>
+          <div class="grid3">
+            <div class="form-group"><label>F<sub>Ed</sub> (kN, ULS)</label><input type="number" id="b_FEd" value="300" step="5"></div>
+            <div class="form-group"><label>Kind of support</label><select id="b_row"><option value="beam">Concentrated (a beam)</option><option value="ribbed">Ribbed floor or purlin</option><option value="line">Line (floor or roof)</option></select></div>
+            <div class="form-group"><label>Support made of</label><select id="b_support"><option value="rc30">RC, C30/37 or stronger</option><option value="plain">Plain concrete, or RC below C30/37</option><option value="steel">Steel</option><option value="brick">Brickwork</option></select></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>f<sub>ck</sub> supported member</label><select id="b_fckA"></select></div>
+            <div class="form-group" id="b_fckBGrp"><label>f<sub>ck</sub> supporting member</label><select id="b_fckB"></select></div>
+          </div>
+          <div class="help">For a line support (a floor or roof) give F<sub>Ed</sub> per metre and b<sub>1</sub> = 1000 mm.</div>
+        </div>
+        <div class="card">
+          <div class="section-title">Bearing <span class="aux">mm</span></div>
+          <div class="grid3">
+            <div class="form-group"><label>Connection</label><select id="b_conn"><option value="bedded">Bedded on mortar or concrete</option><option value="pad">On a pad (elastomeric etc.)</option><option value="dry">Dry (no bedding)</option></select></div>
+            <div class="form-group" id="b_fckBedGrp"><label>Bedding f<sub>ck</sub> (N/mm²)</label><input type="number" id="b_fckBed" value="30" step="5"></div>
+            <div class="form-group b-pad"><label>Pad design strength (N/mm²)</label><input type="number" id="b_fbedPad" value="10" step="0.5"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Net bearing width b<sub>1</sub></label><input type="number" id="b_b1" value="300" step="10"></div>
+            <div class="form-group"><label>Nominal bearing length provided a</label><input type="number" id="b_aProv" value="250" step="5"></div>
+            <div class="form-group"><label>Pad or bedding length</label><input type="number" id="b_lpad" placeholder="all of it" step="5"></div>
+          </div>
+          <div class="grid3 b-pad">
+            <div class="form-group"><label>Pad thickness t</label><input type="number" id="b_tPad" value="10" step="1"></div>
+            <div class="form-group"><label>Steel at each face (mm²)</label><input type="number" id="b_AsPad" placeholder="to check" step="10"></div>
+          </div>
+          <div class="help">a is the overlap of the supported member on its support, from its end to the edge of the support. Bedding f<sub>bed</sub> = 0.85 f<sub>ck</sub>/1.5 and f<sub>Rd</sub> = f<sub>bed</sub> ≤ 0.85 f<sub>cd</sub>; dry f<sub>Rd</sub> = 0.4 f<sub>cd</sub> (10.9.5.2(2)).</div>
+        </div>
+        <div class="card">
+          <div class="section-title">Ends, deviations and movement <span class="aux">mm</span></div>
+          <div class="grid3">
+            <div class="form-group"><label>Bars at the end of the member</label><select id="b_detail"><option value="straight">Straight bars or horizontal loops</option><option value="cont">Continuous over the support</option><option value="exposed">Tendons or bars exposed at the end</option><option value="vloop">Vertical loops</option></select></div>
+            <div class="form-group"><label>End cover</label><input type="number" id="b_cEnd" value="25" step="5"></div>
+            <div class="form-group b-vloop"><label>Inner radius of the loop</label><input type="number" id="b_rBend" value="40" step="5"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Span l (support to support)</label><input type="number" id="b_span" value="8000" step="100"></div>
+            <div class="form-group"><label>Length of the member l<sub>n</sub></label><input type="number" id="b_ln" value="8000" step="100"></div>
+            <div class="form-group"><label>Supports set out in</label><select id="b_sup2"><option value="precast">Steel or precast concrete</option><option value="insitu">Brickwork or in-situ concrete</option></select></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Movement allowance</label><input type="number" id="b_movement" value="0" step="5"></div>
+          </div>
+          <label class="chk"><input type="checkbox" id="b_isolated"> Isolated member (no tie or continuity): +20 mm (10.9.5.3)</label>
+        </div>
+      </div>
+
+      <!-- ===== half-joint ===== -->
+      <div class="m-half" hidden>
+        <div class="card">
+          <div class="section-title">Reaction <span class="aux">ULS</span></div>
+          <div class="grid3">
+            <div class="form-group"><label>V<sub>Ed</sub> (kN)</label><input type="number" id="j_VEd" value="200" step="5"></div>
+            <div class="form-group"><label>Horizontal force</label><select id="j_hRule"><option value="0.2">0.2V<sub>Ed</sub></option><option value="value">As given</option></select></div>
+            <div class="form-group j-hval"><label>H<sub>Ed</sub> (kN)</label><input type="number" id="j_HEd" value="0" step="5"></div>
+          </div>
+          <div class="help">Allow 0.2V<sub>Ed</sub> horizontally unless the bearing lets the member slide; it adds to the nib tie and the bottom tie.</div>
+        </div>
+        <div class="card">
+          <div class="section-title">Geometry <span class="aux">mm</span></div>
+          <div class="grid3">
+            <div class="form-group"><label>Beam depth h</label><input type="number" id="j_h" value="600" step="25"></div>
+            <div class="form-group"><label>Nib depth h<sub>nib</sub></label><input type="number" id="j_hn" value="300" step="25"></div>
+            <div class="form-group"><label>Width b</label><input type="number" id="j_b" value="300" step="25"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Nib length (end to face)</label><input type="number" id="j_lend" value="250" step="5"></div>
+            <div class="form-group"><label>a<sub>v</sub>, face to the bearing centre</label><input type="number" id="j_av" value="100" step="5"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Bearing length (along the beam)</label><input type="number" id="j_lp" value="100" step="5"></div>
+            <div class="form-group"><label>Bearing width (across)</label><input type="number" id="j_bp" value="250" step="5"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="section-title">Concrete and reinforcement</div>
+          <div class="grid3">
+            <div class="form-group"><label>Concrete</label><select id="j_fck"></select></div>
+            <div class="form-group"><label>Cover to links (mm)</label><input type="number" id="j_cover" value="30" step="5"></div>
+            <div class="form-group"><label>Link size φ</label><select id="j_phiL"><option>8</option><option selected>10</option><option>12</option></select></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Nib tie bars</label><input type="number" id="j_nTie" value="4" step="1"></div>
+            <div class="form-group"><label>Nib tie φ</label><select id="j_phiTie"><option>12</option><option selected>16</option><option>20</option><option>25</option></select></div>
+            <div class="form-group"><label>Anchored at the end by</label><select id="j_nibEnd"><option value="loop">Loops</option><option value="plate">Welding to an end plate</option><option value="straight">Straight bars</option></select></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group j-loop"><label>Loop mandrel φ<sub>m</sub> (mm)</label><input type="number" id="j_phimTie" value="128" step="8"></div>
+            <div class="form-group"><label>Nib tie past the face (mm)</label><input type="number" id="j_lin" value="700" step="25"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Hanger links</label><input type="number" id="j_nHang" value="3" step="1"></div>
+            <div class="form-group"><label>Legs × φ</label><div class="grid3" style="margin:0;gap:6px"><input type="number" id="j_legsHang" value="2" step="2"><select id="j_phiHang"><option>8</option><option>10</option><option selected>12</option><option>16</option></select></div></div>
+            <div class="form-group"><label>Spacing (mm)</label><input type="number" id="j_sHang" value="50" step="5"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Bottom bars</label><input type="number" id="j_nBot" value="3" step="1"></div>
+            <div class="form-group"><label>Bottom bar φ</label><select id="j_phiBot"><option>16</option><option>20</option><option selected>25</option><option>32</option></select></div>
+            <div class="form-group"><label>At the face</label><select id="j_botEnd"><option value="bent">U-bars</option><option value="straight">Straight</option></select></div>
+          </div>
+          <div class="help">The hangers stand at the re-entrant corner, the first at the cover from the face. For loops and U-bars, UK NA Table NA.6a gives mandrels of at least 4φ up to 16 mm and 7φ above.</div>
+        </div>
+        <div class="card">
+          <div class="section-title">Inclined bars <span class="aux">model (b), optional</span></div>
+          <div class="grid3">
+            <div class="form-group"><label>Share of V<sub>Ed</sub> (%)</label><input type="number" id="j_alpha" value="0" step="10"></div>
+            <div class="form-group j-inc"><label>Inclined bars</label><input type="number" id="j_nInc" value="2" step="1"></div>
+            <div class="form-group j-inc"><label>φ</label><select id="j_phiInc"><option>12</option><option selected>16</option><option>20</option><option>25</option></select></div>
+          </div>
+          <div class="grid3 j-inc">
+            <div class="form-group"><label>Angle β (°)</label><input type="number" id="j_beta" value="45" step="5"></div>
+            <div class="form-group"><label>Nib links</label><input type="number" id="j_nNibL" value="2" step="1"></div>
+            <div class="form-group"><label>Legs × φ</label><div class="grid3" style="margin:0;gap:6px"><input type="number" id="j_legsNibL" value="2" step="2"><select id="j_phiNibL"><option>8</option><option selected>10</option><option>12</option></select></div></div>
+          </div>
+          <div class="help">EN 1992-1-1 Figure 10.4: vertical hangers (a) or inclined bars (b), and the two may be combined. The share here goes to the inclined bars, the rest to the hangers.</div>
+        </div>
+      </div>
+
+      <!-- ===== splice ===== -->
+      <div class="m-splice" hidden>
+        <div class="card">
+          <div class="section-title">Forces at the joint <span class="aux">ULS</span></div>
+          <div class="grid3">
+            <div class="form-group"><label>N<sub>Ed</sub> (kN, compression +)</label><input type="number" id="s_NEd" value="1500" step="50"></div>
+            <div class="form-group"><label>M<sub>Ed</sub> across h (kNm)</label><input type="number" id="s_Mh" value="150" step="10"></div>
+            <div class="form-group"><label>M<sub>Ed</sub> across b (kNm)</label><input type="number" id="s_Mb" value="0" step="10"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>V<sub>Ed</sub> (kN)</label><input type="number" id="s_VEd" value="60" step="5"></div>
+          </div>
+          <div class="help">Take the least N<sub>Ed</sub> with its moments as well as the greatest: tension in the bars governs the splices.</div>
+        </div>
+        <div class="card">
+          <div class="section-title">Column and bars <span class="aux">mm</span></div>
+          <div class="grid3">
+            <div class="form-group"><label>Width b</label><input type="number" id="s_b" value="400" step="25"></div>
+            <div class="form-group"><label>Depth h</label><input type="number" id="s_h" value="400" step="25"></div>
+            <div class="form-group"><label>Bar φ</label><select id="s_phi"><option>16</option><option>20</option><option selected>25</option><option>32</option><option>40</option></select></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Bars along each b face</label><input type="number" id="s_nb" value="3" step="1"></div>
+            <div class="form-group"><label>Bars along each h face</label><input type="number" id="s_nh" value="3" step="1"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Cover to the links</label><input type="number" id="s_cover" value="35" step="5"></div>
+            <div class="form-group"><label>Link φ</label><select id="s_phiL"><option>8</option><option selected>10</option><option>12</option></select></div>
+            <div class="form-group"><label>Cover needed to the sleeve</label><input type="number" id="s_cReq" value="40" step="5"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Column f<sub>ck</sub></label><select id="s_fckCol"></select></div>
+            <div class="form-group"><label>Element below f<sub>ck</sub></label><select id="s_fckLow"></select></div>
+            <div class="form-group"><label>Aggregate d<sub>g</sub></label><input type="number" id="s_dg" value="20" step="1"></div>
+          </div>
+          <div class="help">The bars sit round the perimeter, the corners counted in both faces. The links pass outside the sleeves.</div>
+        </div>
+        <div class="card">
+          <div class="section-title">Splice and grout <span class="aux">from the maker</span></div>
+          <div class="grid3">
+            <div class="form-group"><label>Sleeve outside diameter</label><input type="number" id="s_Ds" value="45" step="1"></div>
+            <div class="form-group"><label>Rated capacity</label><select id="s_capMode"><option value="full">Full strength (≥ f<sub>yk</sub>A<sub>s</sub>)</option><option value="value">As given</option></select></div>
+            <div class="form-group s-cap"><label>F<sub>k</sub> per splice (kN)</label><input type="number" id="s_Fk" value="200" step="5"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Embedment needed (mm)</label><input type="number" id="s_leMin" value="200" step="5"></div>
+            <div class="form-group"><label>Embedment provided (mm)</label><input type="number" id="s_leProv" value="220" step="5"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Grout f<sub>ck</sub> (N/mm²)</label><input type="number" id="s_fckGrout" value="60" step="5"></div>
+            <div class="form-group"><label>Grout needed (N/mm²)</label><input type="number" id="s_fgMin" value="50" step="5"></div>
+            <div class="form-group"><label>Grout bed (mm)</label><input type="number" id="s_tBed" value="20" step="5"></div>
+          </div>
+          <div class="grid3">
+            <div class="form-group"><label>Surface under the bed</label><select id="s_surface"><option value="smooth">Smooth</option><option value="rough">Rough</option><option value="indented">Indented</option><option value="vsmooth">Very smooth</option></select></div>
+          </div>
+          <div class="help">Enter the maker's certified figures: no maker's data is built in. The bar's tension at the joint is limited to f<sub>yd</sub>, or to F<sub>k</sub>/(1.15 A<sub>s</sub>) for a splice rated below the bar.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">Steel</div>
+        <div class="grid3"><div class="form-group"><label>f<sub>yk</sub> (N/mm²)</label><input type="number" id="fyk" value="500" step="10"></div></div>
+      </div>
+      <button class="btn" id="calc">Check connection</button>
+    </div>
+    <div><div class="card" id="results"><div class="placeholder">Choose the connection, set it out, then Check.</div><div id="drawings"></div></div></div>
+  </div>
+</div>
+<div id="report"></div>
+<script id="engine">
+/* ===== EC2 DESIGN CORE (EngineeringTools) =====
+   Clean-room implementation from BS EN 1992-1-1:2004 + A1:2014 and the UK National Annex (NA to BS EN 1992-1-1:2004+A1:2014),
+   cross-read with The Concrete Centre "How to design concrete structures using Eurocode 2". Units: N, mm (stresses N/mm2).
+   - materials (Table 3.1, 3.1.7(3), UK NA alpha_cc = 0.85 flexure / 1.0 shear and torsion, gamma_c 1.5, gamma_s 1.15);
+   - bending of rectangular and flanged sections by the rectangular stress block: required steel (singly or doubly
+     reinforced, x/d limit from ductility or redistribution, 5.5(4) with the UK NA) and the resistance of a given
+     arrangement by strain compatibility;
+   - shear 6.2.2 / 6.2.3 (vertical links, variable strut, fck limited to 50 N/mm2 in shear as the UK NA);
+   - torsion 6.3 (thin-walled closed section, interaction 6.29 / 6.31);
+   - SLS: cracked elastic section, crack control by Tables 7.2N / 7.3N or the calculated crack width 7.3.4, minimum
+     steel 7.3.2, span / effective depth 7.4.2 with the UK NA modifiers;
+   - detailing: 9.2.1.1 min / max steel, bar spacing 8.2, anchorage 8.4 and laps 8.7 (simplified alpha = 1), flange
+     width 5.3.2.1. */
+const EC2 = (() => {
+  'use strict';
+  const GC = 1.5, GS = 1.15, ES = 200000, ACC = 0.85, ACC_V = 1.0;
+  const CUBE = { 12: 15, 16: 20, 20: 25, 25: 30, 28: 35, 30: 37, 32: 40, 35: 45, 40: 50, 45: 55, 50: 60, 55: 67, 60: 75, 70: 85, 80: 95, 90: 105 };
+  const area = (n, phi) => n * Math.PI * phi * phi / 4;
+  // ---------- materials ----------
+  function concrete(fck) {
+    if (!(fck >= 12 && fck <= 90)) throw new Error('f_ck must be between 12 and 90 N/mm²');
+    const fcm = fck + 8, hi = fck > 50;
+    const fctm = hi ? 2.12 * Math.log(1 + fcm / 10) : 0.30 * fck ** (2 / 3);
+    const ec2 = hi ? (2.0 + 0.085 * (fck - 50) ** 0.53) * 1e-3 : 2.0e-3, ecu2 = hi ? (2.6 + 35 * ((90 - fck) / 100) ** 4) * 1e-3 : 3.5e-3;
+    const ec3 = hi ? (1.75 + 0.55 * (fck - 50) / 40) * 1e-3 : 1.75e-3, n = hi ? 1.4 + 23.4 * ((90 - fck) / 100) ** 4 : 2;
+    const lambda = hi ? 0.8 - (fck - 50) / 400 : 0.8, eta = hi ? 1 - (fck - 50) / 200 : 1;
+    const fv = Math.min(fck, 50);                                  // UK NA: shear and torsion with f_ck not above C50/60
+    return { fck, fckCube: CUBE[fck] ?? null, fcm, fctm, fctk05: 0.7 * fctm, fctk95: 1.3 * fctm, Ecm: 22000 * (fcm / 10) ** 0.3,
+      ec2, ecu2, ec3, ecu3: ecu2, n, lambda, eta, fcd: ACC * fck / GC, fcdV: ACC_V * fv / GC, fv, fctd: 1.0 * 0.7 * fctm / GC,
+      nu: 0.6 * (1 - fv / 250) };
+  }
+  const steel = (fyk = 500) => ({ fyk, fyd: fyk / GS, Es: ES, eyd: fyk / GS / ES });
+  // ---------- flexure: rectangular stress block (3.1.7(3)) ----------
+  // section: { b (width of the compression flange or rectangle), bw (web), hf (flange depth; 0 = rectangular), h }
+  // compression-zone force and its depth to the centroid for a block depth s = lambda x
+  function block(sec, s) {
+    const bw = sec.bw ?? sec.b, hf = sec.hf > 0 ? sec.hf : Infinity;
+    if (s <= hf || sec.b === bw) return { A: sec.b * s, y: s / 2 };
+    const Af = (sec.b - bw) * hf, Aw = bw * s;
+    return { A: Af + Aw, y: (Af * hf / 2 + Aw * s / 2) / (Af + Aw) };
+  }
+  // x/d limit: 5.5(4) with the UK NA (k1 = 0.4, k2 = 0.6 + 0.0014/eps_cu2; fck > 50: k3 = 0.4, k4 = 0.6 + 0.0014/eps_cu2)
+  // and an optional practical ductility limit (0.45 for fck <= 50 is the usual UK choice)
+  function xdLimit(c, delta = 1, practical = 0.45) {
+    const k2 = 0.6 + 0.0014 / c.ecu2, red = c.fck <= 50 ? (delta - 0.4) / k2 : (delta - 0.4) / k2;
+    return Math.min(red, practical ?? Infinity);
+  }
+  // required reinforcement for M (>= 0) on effective depth d; d2 to the compression steel
+  function bendingDesign({ sec, d, d2 = 50, M, c, s: st, delta = 1, xdMax = 0.45, zMax = 0.95 }) {
+    const a = c.eta * c.fcd, L = c.lambda, xlim = xdLimit(c, delta, xdMax) * d;
+    const Mx = x => { const bl = block(sec, L * x); return a * bl.A * (d - bl.y); };
+    const out = { M, d, xlim, K: M / (sec.b * d * d * c.fck) };
+    if (!(M > 0)) return { ...out, As: 0, As2: 0, x: 0, z: zMax * d, Kp: null };
+    const Mlim = Mx(xlim);
+    out.Kp = Mlim / (sec.b * d * d * c.fck); out.Mlim = Mlim;
+    if (M <= Mlim) {
+      let lo = 0, hi = xlim; for (let i = 0; i < 100; i++) { const m = (lo + hi) / 2; if (Mx(m) < M) lo = m; else hi = m; }
+      const x = (lo + hi) / 2, bl = block(sec, L * x), z = Math.min(d - bl.y, zMax * d);
+      return { ...out, x, z, zCap: d - bl.y > zMax * d, As: M / (st.fyd * z), As2: 0, inFlange: !(sec.hf > 0) || L * x <= sec.hf };
+    }
+    // compression steel at the x/d limit
+    const bl = block(sec, L * xlim), z = Math.min(d - bl.y, zMax * d), esc = c.ecu2 * (xlim - d2) / xlim;
+    // compression steel stress from the strain diagram, net of the concrete it displaces (inside the stress block)
+    const fscG = Math.min(st.fyd, st.Es * esc), fsc = fscG - (d2 < L * xlim ? a : 0);
+    if (!(fsc > 0)) throw new Error('Compression steel would be in tension at the limiting neutral axis (d2 too large)');
+    const As2 = (M - Mlim) / (fsc * (d - d2));
+    return { ...out, x: xlim, z, As2, fsc, fscGross: fscG, As: Mlim / (st.fyd * z) + As2 * fsc / st.fyd, doubly: true, inFlange: !(sec.hf > 0) || L * xlim <= sec.hf };
+  }
+  // resistance of a given arrangement by strain compatibility (eps_cu2 at the top, rectangular block; bilinear steel
+  // with a horizontal top branch). layers: [{ As, d }] measured from the compression face (any layer may be in compression)
+  function bendingResistance({ sec, layers, c, s: st, N = 0 }) {
+    const a = c.eta * c.fcd, L = c.lambda, h = sec.h, ecu = c.ecu2;
+    const sig = (x, di) => { const e = ecu * (x - di) / x; return Math.max(-st.fyd, Math.min(st.fyd, st.Es * e)); };   // compression +
+    const F = x => { const bl = block(sec, Math.min(L * x, h)); return a * bl.A + layers.reduce((t, l) => t + l.As * (sig(x, l.d) - (L * x > l.d ? a : 0)), 0) - N; };
+    let lo = 1e-6, hi = 2 * h;
+    if (F(lo) > 0) lo = 1e-9;
+    for (let i = 0; i < 200; i++) { const m = (lo + hi) / 2; if (F(m) > 0) hi = m; else lo = m; }
+    const x = (lo + hi) / 2, bl = block(sec, Math.min(L * x, h));
+    // moment about the compression face, then shifted to the section's mid-depth reference (N acts at h/2)
+    let Mtop = 0; Mtop += -a * bl.A * bl.y;
+    for (const l of layers) Mtop += -l.As * (sig(x, l.d) - (L * x > l.d ? a : 0)) * l.d;
+    // M about mid-depth (where N acts) = moment of the internal forces about the top + N h/2; N = 0 gives pure bending
+    const MRd = Mtop + N * h / 2;
+    const dt = Math.max(...layers.map(l => l.d));
+    return { x, xd: x / dt, MRd, eps: layers.map(l => ecu * (x - l.d) / x), sig: layers.map(l => sig(x, l.d)),
+      yielded: layers.map(l => ecu * (l.d - x) / x >= st.eyd) };
+  }
+  // ---------- shear, 6.2.2 / 6.2.3 (vertical links) ----------
+  function shearConcrete({ bw, d, Asl, c, NEd = 0, Ac = null }) {
+    const k = Math.min(2, 1 + Math.sqrt(200 / d)), rho = Math.min(0.02, Asl / (bw * d));
+    const scp = Ac ? Math.min(Math.max(NEd, 0) / Ac, 0.2 * c.fcd) : 0;
+    const vmin = 0.035 * k ** 1.5 * Math.sqrt(c.fv);
+    const v = 0.18 / GC * k * (100 * rho * c.fv) ** (1 / 3);
+    const VRdc = Math.max(v + 0.15 * scp, vmin + 0.15 * scp) * bw * d;
+    return { k, rho, scp, vmin, v, VRdc, governs: v >= vmin ? 'formula' : 'vmin' };
+  }
+  const acw = (scp, fcd) => scp <= 0 ? 1 : scp <= 0.25 * fcd ? 1 + scp / fcd : scp <= 0.5 * fcd ? 1.25 : 2.5 * (1 - scp / fcd);
+  function vrdMax(bw, z, c, cot, scp = 0) { const t = 1 / cot; return acw(scp, c.fcdV) * bw * z * c.nu * c.fcdV / (cot + t); }
+  // design of vertical links for V_Ed: strut angle (cot theta 1..2.5), Asw/s, minimum, maximum spacing
+  // VEdStrut (default VEd): the shear that sets the strut angle, normally V_Ed at the support face, so that one truss
+  // angle serves both the V_Rd,max check at the face and the links designed for V_Ed at d from the face
+  function shearDesign({ bw, d, VEd, VEdStrut = null, c, fywk = 500, z = null, scp = 0 }) {
+    z = z ?? 0.9 * d; const fywd = fywk / GS, Vs = Math.max(VEd, VEdStrut ?? 0);
+    const Vmax25 = vrdMax(bw, z, c, 2.5, scp), Vmax45 = vrdMax(bw, z, c, 1, scp);
+    let cot = 2.5, ok = true;
+    if (Vs > Vmax25) {
+      const s2 = 2 * Vs / (acw(scp, c.fcdV) * bw * z * c.nu * c.fcdV);
+      if (s2 > 1) { ok = false; cot = 1; } else { const th = 0.5 * Math.asin(s2); cot = 1 / Math.tan(th); }
+    }
+    const AswS = VEd / (z * fywd * cot), AswSmin = 0.08 * Math.sqrt(c.fck) / fywk * bw;
+    return { z, fywd, cot, theta: Math.atan(1 / cot) * 180 / Math.PI, VRdmax: vrdMax(bw, z, c, cot, scp), Vmax25, Vmax45, ok, AswS, AswSmin, AswSreq: Math.max(AswS, AswSmin),
+      slMax: 0.75 * d, stMax: Math.min(0.75 * d, 600), dFtd: 0.5 * VEd * cot };
+  }
+  // resistance of provided links: the best strut angle in 1 <= cot <= 2.5 (V_Rd,s = V_Rd,max where possible)
+  function shearResistance({ bw, d, AswS, c, fywk = 500, z = null, scp = 0 }) {
+    z = z ?? 0.9 * d; const fywd = fywk / GS, Vs = cot => AswS * z * fywd * cot;
+    let cot;
+    if (Vs(2.5) <= vrdMax(bw, z, c, 2.5, scp)) cot = 2.5;
+    else if (Vs(1) >= vrdMax(bw, z, c, 1, scp)) cot = 1;
+    else { let lo = 1, hi = 2.5; for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; if (Vs(m) > vrdMax(bw, z, c, m, scp)) hi = m; else lo = m; } cot = (lo + hi) / 2; }
+    const VRds = Vs(cot), VRdmax = vrdMax(bw, z, c, cot, scp);
+    return { cot, VRds, VRdmax, VRd: Math.min(VRds, VRdmax), z, fywd };
+  }
+  // ---------- torsion, 6.3 (rectangular solid section treated as thin-walled closed) ----------
+  function torsion({ b, h, cEdge, c, TEd, VEd = 0, bw = b, d, cot = null, VRdc = null, VRdmax = null, fywk = 500, fyk = 500 }) {
+    const A = b * h, u = 2 * (b + h), tef = Math.max(A / u, 2 * cEdge);
+    if (!(tef < Math.min(b, h) / 2)) throw new Error('Torsion: the effective wall thickness exceeds half the section');
+    const Ak = (b - tef) * (h - tef), uk = 2 * ((b - tef) + (h - tef));
+    const TRdc = 2 * Ak * tef * c.fctd;
+    cot = cot ?? 2.5; const sn = 1 / Math.sqrt(1 + cot * cot), cs = cot * sn;
+    const TRdmax = 2 * c.nu * 1.0 * c.fcdV * Ak * tef * sn * cs;
+    const AswS1 = TEd / (2 * Ak * (fywk / GS) * cot), Asl = TEd * uk * cot / (2 * Ak * (fyk / GS));
+    const crackFree = VRdc ? TEd / TRdc + VEd / VRdc <= 1 : null;
+    const inter = VRdmax ? TEd / TRdmax + VEd / VRdmax : TEd / TRdmax;
+    return { A, u, tef, Ak, uk, TRdc, TRdmax, cot, AswS1, Asl, crackFree, inter, sMax: Math.min(uk / 8, b, h) };
+  }
+  // ---------- SLS sections ----------
+  // cracked elastic section (no concrete in tension): neutral axis and stresses for moment M, modular ratio ae
+  function cracked({ sec, As, d, As2 = 0, d2 = 50, ae, M = 0 }) {
+    const bw = sec.bw ?? sec.b, hf = sec.hf > 0 ? sec.hf : Infinity;
+    const Q = x => {   // first moment of the transformed area about the neutral axis (compression +)
+      const xc = Math.min(x, hf), q1 = sec.b * xc * (x - xc / 2), q2 = x > hf ? bw * (x - hf) * (x - hf) / 2 : 0;
+      return q1 + q2 + (ae - 1) * As2 * (x - d2) - ae * As * (d - x);
+    };
+    let lo = 0, hi = d; for (let i = 0; i < 100; i++) { const m = (lo + hi) / 2; if (Q(m) > 0) hi = m; else lo = m; }
+    const x = (lo + hi) / 2, xc = Math.min(x, hf);
+    // second moment about the neutral axis: flange part [0, xc], web part [hf, x], transformed steel
+    const Icr = sec.b * (x ** 3 - (x - xc) ** 3) / 3 + (x > hf ? bw * (x - hf) ** 3 / 3 : 0) + (ae - 1) * As2 * (x - d2) ** 2 + ae * As * (d - x) ** 2;
+    return { x, Icr, sc: M * x / Icr, ss: ae * M * (d - x) / Icr, ss2: ae * M * (x - d2) / Icr };
+  }
+  function uncracked({ sec, h, As = 0, d = 0, As2 = 0, d2 = 0, ae = 0 }) {
+    const bw = sec.bw ?? sec.b, hf = sec.hf > 0 ? Math.min(sec.hf, h) : 0;
+    const parts = [[bw * h, h / 2, bw * h ** 3 / 12], [(sec.b - bw) * hf, hf / 2, (sec.b - bw) * hf ** 3 / 12], [(ae - 1) * As, d, 0], [(ae - 1) * As2, d2, 0]];
+    const A = parts.reduce((t, p) => t + p[0], 0), y = parts.reduce((t, p) => t + p[0] * p[1], 0) / A;
+    const I = parts.reduce((t, p) => t + p[2] + p[0] * (p[1] - y) ** 2, 0);
+    return { A, y, I };
+  }
+  // ---------- crack control, 7.3 ----------
+  const T72 = { s: [160, 200, 240, 280, 320, 360, 400, 450], 0.4: [40, 32, 20, 16, 12, 10, 8, 6], 0.3: [32, 25, 16, 12, 10, 8, 6, 5], 0.2: [25, 16, 12, 8, 6, 5, 4, null] };
+  const T73 = { s: [160, 200, 240, 280, 320, 360], 0.4: [300, 300, 250, 200, 150, 100], 0.3: [300, 250, 200, 150, 100, 50], 0.2: [200, 150, 100, 50, null, null] };
+  function tableLookup(T, wk, ss) {
+    const col = T[wk]; if (!col) throw new Error('w_k must be 0.2, 0.3 or 0.4 mm for Tables 7.2N / 7.3N');
+    const s = T.s;
+    if (ss <= s[0]) return col[0];
+    for (let i = 1; i < s.length; i++) if (ss <= s[i]) { const a = col[i - 1], b = col[i]; if (a == null || b == null) return null; return a + (b - a) * (ss - s[i - 1]) / (s[i] - s[i - 1]); }
+    return null;   // stress beyond the table
+  }
+  // quasi-permanent steel stress by the ratio method (How to guide): fyd x (M_qp/M_Ed) x (As,req/As,prov) / delta
+  const sigmaQP = ({ fyd, Mqp, MEd, AsReq, AsProv, delta = 1 }) => fyd * (Mqp / MEd) * (AsReq / AsProv) / delta;
+  function crackTables({ ss, wk = 0.3, h, d, fctEff, kc = 0.4, hcr = null, tension = false }) {
+    const phiStar = tableLookup(T72, wk, ss), sMax = tableLookup(T73, wk, ss);
+    hcr = hcr ?? h / 2;
+    const mod = tension ? (fctEff / 2.9) * hcr / (8 * (h - d)) : (fctEff / 2.9) * kc * hcr / (2 * (h - d));
+    return { phiStar, phiMax: phiStar == null ? null : phiStar * mod, mod, sMax };
+  }
+  function crackWidth({ sec, h, As, d, phi, cover, spacing, ss, x, c, fctEff = null, kt = 0.4, k2 = 0.5 }) {
+    fctEff = fctEff ?? c.fctm; const ae = ES / c.Ecm, bw = sec.bw ?? sec.b;
+    const hcef = Math.min(2.5 * (h - d), (h - x) / 3, h / 2), Aceff = bw * hcef, rho = As / Aceff;
+    const de = Math.max((ss - kt * fctEff / rho * (1 + ae * rho)) / ES, 0.6 * ss / ES);
+    const close = spacing <= 5 * (cover + phi / 2);
+    const sr = close ? 3.4 * cover + 0.8 * k2 * 0.425 * phi / rho : 1.3 * (h - x);
+    return { hcef, Aceff, rho, ae, de, sr, close, wk: sr * de };
+  }
+  function asMinCrack({ kc = 0.4, k = 1.0, fctEff, Act, ss }) { return kc * k * fctEff * Act / ss; }
+  // k for 7.3.2: 1.0 for h <= 300, 0.65 for h >= 800, linear between
+  const kSize = h => h <= 300 ? 1.0 : h >= 800 ? 0.65 : 1.0 - 0.35 * (h - 300) / 500;
+  // ---------- deflection: span / effective depth, 7.4.2 with the UK NA ----------
+  const KSYS = { ss: 1.0, end: 1.3, interior: 1.5, flat: 1.2, cantilever: 0.4 };
+  function spanDepth({ fck, rho, rho2 = 0, system = 'ss', fyk = 500, AsReq, AsProv, flangeRatio = 1, span, brittle = true, flat = false }) {
+    const K = KSYS[system], r0 = 1e-3 * Math.sqrt(fck), sf = Math.sqrt(fck);
+    const base = rho <= r0 ? K * (11 + 1.5 * sf * r0 / rho + 3.2 * sf * (r0 / rho - 1) ** 1.5)
+      : K * (11 + 1.5 * sf * r0 / (rho - rho2) + sf / 12 * Math.sqrt(rho2 / r0));
+    const fs = Math.min(1.5, (500 / fyk) * (AsProv / AsReq));                         // 310/sigma_s ~ 500/(fyk As,req/As,prov), UK NA limit 1.5
+    const ff = flangeRatio > 3 ? 0.8 : 1;
+    const lim = flat ? 8500 : 7000, fl = brittle && span > lim && system !== 'cantilever' ? lim / span : 1;
+    return { K, rho0: r0, rho, base, fs, ff, fl, allowed: base * fs * ff * fl };
+  }
+  // ---------- detailing ----------
+  function asMin({ fctm, fyk = 500, bt, d }) { return Math.max(0.26 * fctm / fyk * bt * d, 0.0013 * bt * d); }
+  const clearMin = (phi, dg = 20) => Math.max(phi, dg + 5, 20);
+  // anchorage and laps, 8.4 / 8.7: straight or bent bars in tension, compression bars; alpha1 (shape), alpha2 (cover cd),
+  // alpha3 = alpha4 = alpha5 = 1 (conservative), alpha2 alpha3 alpha5 >= 0.7; alpha6 from the proportion lapped (Table 8.3)
+  function anchorage({ phi, c, ss = null, good = true, fyk = 500, tension = true, bent = false, cd = null, lappedPct = 100 }) {
+    const fbd = 2.25 * (good ? 1 : 0.7) * (phi <= 32 ? 1 : (132 - phi) / 100) * c.fctd;
+    const sd = ss ?? fyk / GS, lbrqd = phi / 4 * sd / fbd;
+    let a1 = 1, a2 = 1;
+    if (tension) {
+      cd = cd ?? 3 * phi;
+      if (bent) { a1 = cd > 3 * phi ? 0.7 : 1; a2 = Math.min(1, Math.max(0.7, 1 - 0.15 * (cd - 3 * phi) / phi)); }
+      else a2 = Math.min(1, Math.max(0.7, 1 - 0.15 * (cd - phi) / phi));
+    }
+    const a235 = Math.max(0.7, a2), lbmin = tension ? Math.max(0.3 * lbrqd, 10 * phi, 100) : Math.max(0.6 * lbrqd, 10 * phi, 100);
+    const lbd = Math.max(a1 * a235 * lbrqd, lbmin);
+    const a6 = tension ? Math.min(1.5, Math.max(1, Math.sqrt(lappedPct / 25))) : 1;
+    const l0min = Math.max(0.3 * a6 * lbrqd, 15 * phi, 200), l0 = Math.max(a1 * a235 * a6 * lbrqd, l0min);
+    return { fbd, sd, lbrqd, a1, a2, a6, lbmin, lbd, l0min, l0 };
+  }
+  // effective flange width, 5.3.2.1: bi = half clear distance to the next web (each side), l0 distance between zero moments
+  function flangeWidth({ bw, b1, b2, l0, bMax = Infinity }) {
+    const bi = b => Math.max(0, Math.min(0.2 * b + 0.1 * l0, 0.2 * l0, b));
+    return Math.min(bw + bi(b1) + bi(b2), bMax, bw + b1 + b2);
+  }
+  // l0 for 5.3.2.1 Figure 5.2: 0.85 L end span, 0.7 L interior span, 0.15 (L1 + L2) over an internal support, 0.15 L2 + L3 at a cantilever root
+  return { GC, GS, ES, CUBE, area, concrete, steel, block, xdLimit, bendingDesign, bendingResistance, shearConcrete, shearDesign, shearResistance, vrdMax, acw,
+    torsion, cracked, uncracked, T72, T73, tableLookup, sigmaQP, crackTables, crackWidth, asMinCrack, kSize, KSYS, spanDepth, asMin, clearMin, anchorage, flangeWidth };
+})();
+if (typeof module !== 'undefined') module.exports = { EC2 };
+
+/* ===== PRECAST CONNECTIONS ENGINE (EngineeringTools) =====
+   BS EN 1992-1-1:2004 + A1:2014 and the UK National Annex. Clean-room, from the standard's text. Units: N, mm inside;
+   the inputs give forces in kN and moments in kNm.
+   - Bearings (10.9.5): the nominal bearing length a = a1 + a2 + a3 + √(Δa2² + Δa3²) (10.6), a1 from the bearing strength
+     f_Rd (10.9.5.2(2)) and Table 10.2, a2 Table 10.3, a3 Table 10.4, Δa2 Table 10.5, Δa3 = l_n/2500; the relative bearing
+     stress σ_Ed/f_cd over the net bearing length chooses the column of the tables. Isolated members +20 mm and any movement
+     (10.9.5.3); b1 ≤ 600 mm without a uniform bedding (10.9.5.2(3)); dry connections also ≤ 0.3 f_cd (10.9.4.3(3)); the
+     transverse steel for soft padding (10.5).
+   - Half-joints (10.9.4.6): the two strut-and-tie models of Figure 10.4, combined in any share: (a) vertical hangers at the
+     re-entrant corner, the nib as a corbel hanging from them (the compression node at the hangers sized at k2ν'f_cd and kept
+     hydrostatic, as CCIP-057 lays out a corbel); (b) inclined bars from the top of the nib down into the full section.
+     Ties, nodes (6.5.4), the nib's shear limit 6.2.2(6), and the anchorage of the nib tie at both ends and of the bottom bars
+     behind the hangers (8.4, measured from the inner face of the node, 6.5.4(7)).
+   - Grouted sleeve splices (10.9.4.5): the joint's resistance to N with bending about either axis or both (5.39), the bars'
+     tension capped by the sleeve's rated capacity, the joint's concrete strength the least of the two members and the
+     grout; shear across the grout bed (6.2.5); and the maker's requirements: embedment, grout strength, cover to the sleeve,
+     clear spacing (8.2). No maker's data is built in: the user enters it. */
+const Precast = (() => {
+  'use strict';
+  const fin = (v, nm) => { if (!Number.isFinite(v)) throw new Error(`${nm}: give a number`); return v; };
+  const pos = (v, nm) => { fin(v, nm); if (!(v > 0)) throw new Error(`${nm} must be greater than 0`); return v; };
+  const nonneg = (v, nm) => { fin(v, nm); if (v < 0) throw new Error(`${nm} cannot be negative`); return v; };
+  const AREA = p => Math.PI * p * p / 4, GS = 1.15, K1 = 1.0, K2 = 0.85;   // 6.5.4(4), UK NA: the recommended values
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+  /* ---------------- Bearings, 10.9.5 ---------------- */
+  const T102 = { line: [25, 30, 40], ribbed: [55, 70, 80], beam: [90, 110, 140] };
+  const T103 = { steel: { line: [0, 0, 10], conc: [5, 10, 15] }, rc30: { line: [5, 10, 15], conc: [10, 15, 25] },
+    plain: { line: [10, 15, 25], conc: [20, 25, 35] }, brick: { line: [10, 15, null], conc: [20, 25, null] } };
+  const BANDS = ['≤ 0.15', '0.15 to 0.4', '> 0.4'], band = r => r <= 0.15 ? 0 : r <= 0.4 ? 1 : 2;
+  const SUPPORT = { steel: 'Steel', rc30: 'Reinforced concrete C30/37 or stronger', plain: 'Plain concrete, or reinforced concrete below C30/37', brick: 'Brickwork' };
+  const ROW = { line: 'Line support (floors, roofs)', ribbed: 'Ribbed floors and purlins', beam: 'Concentrated support (beams)' };
+  const DETAIL = { cont: 'Continuous bars over the support', straight: 'Straight bars or horizontal loops close to the end', exposed: 'Tendons or straight bars exposed at the end', vloop: 'Vertical loop reinforcement' };
+  function a3Of(det, kind, cEnd, rBend) {   // Table 10.4
+    if (det === 'cont') return 0;
+    if (det === 'straight') return kind === 'line' ? 5 : Math.max(15, cEnd);
+    if (det === 'exposed') return kind === 'line' ? 5 : 15;
+    if (det === 'vloop') return kind === 'line' ? 15 : cEnd + rBend;
+    throw new Error('Choose how the reinforcement is detailed at the end');
+  }
+  // Table 10.5: the allowance for the clear distance between the faces of the supports, l the span
+  const dA2Of = (sup2, l) => sup2 === 'insitu' ? clamp(l / 1200 + 5, 15, 40) : clamp(l / 1200, 10, 30);
+
+  function bearing(inp) {
+    const F = pos(inp.FEd, 'Support reaction F_Ed') * 1e3, row = inp.row || 'beam', kind = row === 'line' ? 'line' : 'conc';
+    if (!T102[row]) throw new Error('Choose the kind of support');
+    const mat = inp.support || 'rc30'; if (!T103[mat]) throw new Error('Choose what the support is made of');
+    const fckA = pos(inp.fckSupported, 'f_ck of the supported member'), cA = EC2.concrete(fckA);
+    const concSup = mat === 'rc30' || mat === 'plain', fckB = concSup ? pos(inp.fckSupporting, 'f_ck of the supporting member') : null;
+    const cB = concSup ? EC2.concrete(fckB) : null, fcd = concSup ? Math.min(cA.fcd, cB.fcd) : cA.fcd;
+    if (mat === 'rc30' && fckB < 30) throw new Error('The support is reinforced concrete C30/37 or stronger, but its f_ck is below 30');
+    const conn = inp.conn || 'bedded';
+    let fbed = null;
+    if (conn === 'bedded') fbed = 0.85 * pos(inp.fckBed, 'f_ck of the bedding') / 1.5;   // α_cc f_ck / γ_c, as for concrete (UK NA α_cc 0.85)
+    else if (conn === 'pad') fbed = pos(inp.fbedPad, 'Design strength of the pad');
+    else if (conn !== 'dry') throw new Error('Choose the kind of connection');
+    const fRd = conn === 'dry' ? 0.4 * fcd : Math.min(fbed, 0.85 * fcd);
+    const b1in = pos(inp.b1, 'Net bearing width b1'), b1 = conn === 'dry' ? Math.min(b1in, 600) : b1in;
+    const aProv = pos(inp.aProv, 'Nominal bearing length provided');
+    const l = pos(inp.span, 'Span'), ln = pos(inp.ln, 'Length of the supported member'), sup2 = inp.sup2 === 'insitu' ? 'insitu' : 'precast';
+    const det = inp.detail || 'straight', cEnd = nonneg(inp.cEnd ?? 0, 'End cover'), rBend = nonneg(inp.rBend ?? 0, 'Inner radius of the bend');
+    const iso = !!inp.isolated, mv = nonneg(inp.movement || 0, 'Movement allowance'), lpad = inp.lpad > 0 ? inp.lpad : 0;
+    const a3 = a3Of(det, kind, cEnd, rBend), dA2 = dA2Of(sup2, l), dA3 = ln / 2500, tol = Math.hypot(dA2, dA3), extra = (iso ? 20 : 0) + mv;
+    // the column of Tables 10.2 and 10.3 from σ_Ed/f_cd over the net bearing length, iterated as a2 depends on it
+    let k = 0, it = 0, a2, a1prov, sigma, seen = new Set();
+    for (;;) {
+      a2 = T103[mat][kind][k];
+      const a1avail = aProv - (a2 ?? T103[mat][kind][1]) - a3 - tol - extra;
+      a1prov = lpad > 0 ? Math.min(lpad, a1avail) : a1avail;
+      sigma = a1prov > 0 ? F / (b1 * a1prov) : Infinity;
+      const k2 = band(sigma / fcd); seen.add(k);
+      if (k2 === k || ++it > 4) break;
+      if (seen.has(k2)) { k = Math.max(k, k2); a2 = T103[mat][kind][k]; break; }
+      k = k2;
+    }
+    const brickPad = a2 === null;   // brickwork above 0.4 f_cd: Table 10.3 asks for a concrete padstone
+    if (brickPad) a2 = T103[mat][kind][1];
+    const a1min = T102[row][k], a1stress = F / (b1 * fRd), a1req = Math.max(a1stress, a1min);
+    const aReq = Math.max(a1req, lpad) + extra + a2 + a3 + tol;
+    const checks = [];
+    const add = (id, name, ref, util, note, o = {}) => checks.push({ id, name, ref, util, note, ...o });
+    add('nominal', 'Nominal bearing length a', '10.9.5.2 (10.6)', aReq / aProv, `a = ${Math.round(Math.max(a1req, lpad))} + ${a2} + ${a3} + ${tol.toFixed(1)}${extra ? ` + ${extra}` : ''} = ${aReq.toFixed(0)} ≤ ${aProv.toFixed(0)} mm`);
+    add('stress', 'Bearing stress on the net bearing length', '10.9.5.2(2)', a1prov > 0 ? sigma / fRd : Infinity,
+      a1prov > 0 ? `σ_Ed = F_Ed / (b1 a1) = ${sigma.toFixed(2)} ≤ f_Rd ${fRd.toFixed(2)} N/mm²` : 'no net bearing length is left after the ineffective lengths and allowances');
+    if (lpad > 0) add('pad', 'Pad or bedding long enough', '10.9.5.2 Table 10.2', a1req / lpad, `l_pad ${lpad.toFixed(0)} ≥ a1 ${a1req.toFixed(0)} mm`);
+    if (conn === 'dry') add('dry', 'Dry connection: average bearing stress', '10.9.4.3(3)', a1prov > 0 ? sigma / (0.3 * fcd) : Infinity, `σ_Ed ${a1prov > 0 ? sigma.toFixed(2) : '–'} ≤ 0.3 f_cd ${(0.3 * fcd).toFixed(2)} N/mm²`);
+    if (brickPad) add('brick', 'Brickwork above 0.4 f_cd: a concrete padstone is needed', 'Table 10.3', Infinity, `σ_Ed/f_cd ${(sigma / fcd).toFixed(2)} > 0.4`, { req: true, ok: false });
+    let pad = null;
+    if (conn === 'pad') {
+      const t = nonneg(inp.tPad || 0, 'Pad thickness'), hP = inp.hPad > 0 ? inp.hPad : (lpad || a1prov), fyd = (inp.fyk || 500) / GS;
+      const As = t > 0 && hP > 0 ? 0.25 * (t / hP) * F / fyd : 0;
+      pad = { t, h: hP, As };
+      if (As > 0) add('padsteel', 'Transverse steel at each face for the soft pad', '10.9.4.3(5) (10.5)', inp.AsPad > 0 ? As / inp.AsPad : Infinity,
+        `A_s = 0.25 (t/h) F_Ed / f_yd = 0.25 × (${t}/${hP.toFixed(0)}) × ${(F / 1e3).toFixed(0)} kN / ${fyd.toFixed(0)} = ${As.toFixed(0)} mm²${inp.AsPad > 0 ? ` ≤ ${(+inp.AsPad).toFixed(0)}` : ' (give the steel provided)'}`);
+    }
+    const util = Math.max(...checks.map(c => c.util));
+    const warnings = [];
+    if (conn === 'dry' && b1in > 600) warnings.push(`Without a bedding that spreads the pressure evenly, b1 is taken as 600 mm, not ${b1in.toFixed(0)} mm (10.9.5.2(3)).`);
+    if (row === 'line' && Math.abs(b1in - 1000) > 1) warnings.push('For a line support give F_Ed per metre with b1 = 1000 mm, or the reaction and the bearing width of one unit.');
+    if (mat === 'brick') warnings.push('Check the brickwork under the bearing to BS EN 1996-1-1 (6.1.3): EN 1992 covers the concrete member and the bearing length.');
+    return { mode: 'bearing', inp, F, row, kind, mat, conn, fckA, fckB, fcd, fbed, fRd, b1, b1in, aProv, l, ln, sup2, det, cEnd, rBend, iso, mv, lpad,
+      k, band: BANDS[k], sigma, a1prov, a1min, a1stress, a1req, a2, a3, dA2, dA3, tol, extra, aReq, pad, brickPad, checks, util, warnings,
+      labels: { support: SUPPORT[mat], row: ROW[row], detail: DETAIL[det] } };
+  }
+
+  /* ---------------- Half-joints, 10.9.4.6 ---------------- */
+  const mandrelStd = phi => (phi <= 16 ? 4 : 7) * phi;   // UK NA Table NA.6a
+  // a bar anchored by a straight length lst then a bend (loop or U-bar): the force left at the bend, per bar, and the
+  // mandrel it needs, 8.4.4 / (8.1): φ_m,min = F_bt (1/a_b + 1/(2φ)) / f_cd
+  function bendEnd({ lst, lbd, phi, Fbar, fcd, ab, phim }) {
+    const Fbt = lst >= lbd ? 0 : (lbd - Math.max(0, lst)) / lbd * Fbar, phimReq = Fbt > 0 ? Fbt * (1 / ab + 1 / (2 * phi)) / fcd : 0;
+    return { lst, lbd, Fbt, phimReq, phim, util: phimReq / phim };
+  }
+  const goodBond = (h, yTop) => h <= 250 || (h <= 600 ? h - yTop <= 250 : yTop >= 300);   // 8.4.2(2), Figure 8.2
+  function halfJoint(inp) {
+    const V = pos(inp.VEd, 'Reaction V_Ed') * 1e3, H = inp.hRule === 'value' ? nonneg(inp.HEd || 0, 'H_Ed') * 1e3 : 0.2 * V;
+    const h = pos(inp.h, 'Depth of the beam h'), hn = pos(inp.hn, 'Depth of the nib'), b = pos(inp.b, 'Width b');
+    if (hn >= h) throw new Error('The nib must be shallower than the beam');
+    const av = pos(inp.av, 'Bearing centre from the re-entrant face'), lend = pos(inp.lend, 'Length of the nib'), lp = pos(inp.lp, 'Bearing length'), bp = pos(inp.bp, 'Bearing width');
+    if (av + lp / 2 > lend) throw new Error('The bearing runs past the end of the nib');
+    if (av - lp / 2 < 0) throw new Error('The bearing runs past the re-entrant face');
+    const fck = fin(inp.fck, 'f_ck'), c = EC2.concrete(fck), fyk = inp.fyk || 500, fyd = fyk / GS, cover = pos(inp.cover, 'Cover'), phiL = nonneg(inp.phiL || 0, 'Link size');
+    const nuP = 1 - fck / 250, s1 = K1 * nuP * c.fcd, s2 = K2 * nuP * c.fcd, nu = c.nu;
+    const tie = { n: Math.round(pos(inp.nTie, 'Nib tie bars')), phi: pos(inp.phiTie, 'Nib tie bar size') };
+    const hang = { n: Math.round(nonneg(inp.nHang || 0, 'Hanger links')), legs: Math.max(2, Math.round(inp.legsHang || 2)), phi: nonneg(inp.phiHang || 0, 'Hanger link size'), s: nonneg(inp.sHang || 0, 'Hanger spacing') };
+    const alpha = clamp(fin(inp.alpha ?? 0, 'Share by inclined bars'), 0, 1), beta = clamp(inp.beta || 45, 30, 60) * Math.PI / 180;
+    const inc = { n: Math.round(nonneg(inp.nInc || 0, 'Inclined bars')), phi: nonneg(inp.phiInc || 0, 'Inclined bar size') };
+    const bot = { n: Math.round(pos(inp.nBot, 'Bottom bars')), phi: pos(inp.phiBot, 'Bottom bar size') };
+    const nibL = { n: Math.round(nonneg(inp.nNibL || 0, 'Nib links')), legs: Math.max(2, Math.round(inp.legsNibL || 2)), phi: nonneg(inp.phiNibL || 0, 'Nib link size') };
+    const lin = nonneg(inp.lin || 0, 'Nib tie length past the face'), nibEnd = inp.nibEnd || 'loop', botEnd = inp.botEnd || 'bent';
+    const VA = (1 - alpha) * V, VB = alpha * V;
+    // the nib tie at the bottom of the nib; d_n from the top of the beam
+    const yTie = hn - cover - phiL - tie.phi / 2, dn = yTie;
+    if (!(dn > 0)) throw new Error('The nib tie does not fit in the nib: check h_nib, the cover and the bar sizes');
+    const As = { tie: tie.n * AREA(tie.phi), hang: hang.n * hang.legs * AREA(hang.phi), inc: inc.n * AREA(inc.phi), bot: bot.n * AREA(bot.phi), nibL: nibL.n * nibL.legs * AREA(nibL.phi) };
+    // hangers: their centroid from the re-entrant face
+    const xh = hang.n > 0 ? cover + hang.phi / 2 + (hang.n - 1) * hang.s / 2 : cover;
+    // model (a): the compression node at the top of the hangers, CCT, width ax = V_A / (b s2), centred no nearer the face than
+    // the hangers; kept hydrostatic: a_y = a_x a / z, z = d_n − a_y/2, so z² − d_n z + a_x a / 2 = 0
+    let G = null;
+    if (VA > 0) {
+      const ax = VA / (b * s2), xn = Math.max(ax / 2, xh), a = av + xn, disc = dn * dn - 2 * ax * a, fit = 2 * ax * a / (dn * dn);
+      const z = disc >= 0 ? (dn + Math.sqrt(disc)) / 2 : dn / 2, ay = disc >= 0 ? 2 * (dn - z) : dn, tan = z / a;
+      G = { ax, xn, a, z, ay, fit, tan, theta: Math.atan(tan) * 180 / Math.PI };
+    }
+    const Ftie = (G ? VA / G.tan : 0) + H, Fhang = VA, Finc = VB / Math.sin(beta), cotB = 1;   // the strut into the full section at 45°
+    const Fbot = VA * cotB + VB / Math.tan(beta) + H;
+    const checks = [];
+    const add = (id, name, ref, util, note, o = {}) => checks.push({ id, name, ref, util, note, ...o });
+    if (G) add('node', 'Compression node at the hangers fits in the nib (CCT)', '6.5.4(4) b)', G.fit, `a_x ${G.ax.toFixed(0)}, a_y ${G.ay.toFixed(0)} mm; z ${G.z.toFixed(0)} of d_n ${dn.toFixed(0)} mm`);
+    add('tie', 'Nib tie', '6.5.3, 10.9.4.6', Ftie / (As.tie * fyd), `F_t = ${G ? `V_A a / z + ` : ''}H = ${(Ftie / 1e3).toFixed(1)} kN; ${tie.n}H${tie.phi} ${As.tie.toFixed(0)} mm² × f_yd = ${(As.tie * fyd / 1e3).toFixed(1)} kN`);
+    if (VA > 0) add('hang', 'Hangers at the re-entrant corner', '10.9.4.6 Figure 10.4(a)', As.hang > 0 ? Fhang / (As.hang * fyd) : Infinity,
+      `F_h = V_A = ${(Fhang / 1e3).toFixed(1)} kN; ${hang.n} × ${hang.legs} legs H${hang.phi} = ${As.hang.toFixed(0)} mm²`);
+    if (VB > 0) add('inc', 'Inclined bars', '10.9.4.6 Figure 10.4(b)', As.inc > 0 ? Finc / (As.inc * fyd) : Infinity,
+      `F = V_B / sin β = ${(Finc / 1e3).toFixed(1)} kN; ${inc.n}H${inc.phi} = ${As.inc.toFixed(0)} mm²`);
+    if (VB > 0) add('niblinks', 'Links in the nib (the splitting of model (b))', '6.5.3(3)', As.nibL > 0 ? 0.25 * VB / (As.nibL * fyd) : Infinity,
+      `T = 0.25 V_B = ${(0.25 * VB / 1e3).toFixed(1)} kN; ${nibL.n} × ${nibL.legs} legs H${nibL.phi} = ${As.nibL.toFixed(0)} mm²`);
+    add('bot', 'Bottom tie of the full section at the hangers', '6.5.3', Fbot / (As.bot * fyd), `F = V_A cot 45° + V_B cot β + H = ${(Fbot / 1e3).toFixed(1)} kN; ${bot.n}H${bot.phi} ${As.bot.toFixed(0)} mm²`);
+    const sBear = V / (bp * lp);
+    add('bear', 'Bearing node under the nib (CCT)', '6.5.4(4) b)', sBear / s2, `σ = V_Ed / (b_p l_p) = ${sBear.toFixed(2)} ≤ k2 ν' f_cd ${s2.toFixed(2)} N/mm²`);
+    if (G) {
+      const u = 2 * (cover + phiL + tie.phi / 2), th = Math.atan(G.tan), w = lp * Math.sin(th) + u * Math.cos(th), C = VA / Math.sin(th);
+      add('strut', 'Strut from the bearing to the hangers', '6.5.2, 6.5.4(4) b)', C / (b * w) / s2, `C ${(C / 1e3).toFixed(1)} kN over ${b} × ${w.toFixed(0)} mm: ${(C / (b * w)).toFixed(2)} ≤ ${s2.toFixed(2)} N/mm² (θ ${G.theta.toFixed(1)}°)`);
+      G.u = u; G.w = w; G.C = C;
+    }
+    const VnMax = 0.5 * b * dn * nu * c.fcd;
+    add('shear', 'Shear in the nib', '6.2.2(6)', V / VnMax, `V_Ed ${(V / 1e3).toFixed(1)} ≤ 0.5 b d_n ν f_cd = ${(VnMax / 1e3).toFixed(1)} kN`);
+    // anchorages (8.4), from the inner face of each node (6.5.4(7))
+    const anch = (phi, sigma, good, bent) => EC2.anchorage({ phi, c, ss: clamp(sigma, 0, fyd), good, fyk, bent }).lbd;   // σ_sd at most f_yd
+    const sTie = Ftie / As.tie, goodTie = goodBond(h, yTie), lbTie = anch(tie.phi, sTie, goodTie, false);
+    const phimTie = inp.phimTie > 0 ? inp.phimTie : mandrelStd(tie.phi), phimBot = inp.phimBot > 0 ? inp.phimBot : mandrelStd(bot.phi);
+    const abOf = (n, phi, width) => Math.min(cover + phiL + phi / 2, n > 1 ? (width - 2 * (cover + phiL) - phi) / (n - 1) / 2 : Infinity);
+    const lavEnd = lend - (av - lp / 2) - cover - phiL;   // from the inner edge of the bearing (the node's inner face) to the end, less cover
+    let endT = null;
+    if (nibEnd === 'loop') {
+      endT = bendEnd({ lst: lavEnd - phimTie / 2 - tie.phi, lbd: lbTie, phi: tie.phi, Fbar: Math.min(sTie, fyd) * AREA(tie.phi), fcd: c.fcd, ab: abOf(tie.n, tie.phi, b), phim: phimTie });
+      add('anchEnd', 'Nib tie anchored past the bearing: loops', '8.4.4, 8.3 (8.1)', endT.util,
+        endT.Fbt > 0 ? `straight ${endT.lst.toFixed(0)} of l_bd ${lbTie.toFixed(0)} mm, then ${(endT.Fbt / 1e3).toFixed(1)} kN a bar at the bend needs φ_m ${endT.phimReq.toFixed(0)} ≤ ${phimTie.toFixed(0)} mm` : `straight ${endT.lst.toFixed(0)} ≥ l_bd ${lbTie.toFixed(0)} mm before the loop`);
+    } else if (nibEnd === 'straight') add('anchEnd', 'Nib tie anchored past the bearing: straight', '8.4.4, 6.5.4(7)', lbTie / lavEnd, `l_bd ${lbTie.toFixed(0)} ≤ ${lavEnd.toFixed(0)} mm from the inner edge of the bearing to the end, less cover`);
+    const nodeIn = G ? G.xn + G.ax / 2 : xh, lbTieIn = anch(tie.phi, sTie, goodTie, false);
+    add('anchIn', 'Nib tie carried past the hangers', '8.4.4, 6.5.4(7)', lin > nodeIn ? lbTieIn / (lin - nodeIn) : Infinity,
+      `l_bd ${lbTieIn.toFixed(0)} ≤ ${(lin - nodeIn).toFixed(0)} mm (the tie's ${lin.toFixed(0)} mm past the face, less ${nodeIn.toFixed(0)} to the node's inner face)`);
+    const yBot = h - cover - phiL - bot.phi / 2, sBot = Fbot / As.bot, lbBot = anch(bot.phi, sBot, goodBond(h, yBot), false);
+    const lavBot = nodeIn - cover - phiL;
+    let endB = null;
+    if (botEnd === 'bent') {
+      endB = bendEnd({ lst: lavBot - phimBot / 2 - bot.phi, lbd: lbBot, phi: bot.phi, Fbar: Math.min(sBot, fyd) * AREA(bot.phi), fcd: c.fcd, ab: abOf(bot.n, bot.phi, b), phim: phimBot });
+      add('anchBot', 'Bottom bars anchored behind the hangers: U-bars at the face', '8.4.4, 8.3 (8.1)', endB.util,
+        endB.Fbt > 0 ? `straight ${Math.max(0, endB.lst).toFixed(0)} of l_bd ${lbBot.toFixed(0)} mm, then ${(endB.Fbt / 1e3).toFixed(1)} kN a bar at the bend needs φ_m ${endB.phimReq.toFixed(0)} ≤ ${phimBot.toFixed(0)} mm` : `straight ${endB.lst.toFixed(0)} ≥ l_bd ${lbBot.toFixed(0)} mm before the bend`);
+    } else add('anchBot', 'Bottom bars anchored behind the hangers: straight', '8.4.4, 6.5.4(7)', lavBot > 0 ? lbBot / lavBot : Infinity,
+      `l_bd ${lbBot.toFixed(0)} ≤ ${lavBot.toFixed(0)} mm from the node's inner face to the end of the full section, less cover`);
+    const util = Math.max(...checks.map(k => k.util));
+    const warnings = [];
+    if (G && G.theta < 45) warnings.push(`The strut in the nib is at ${G.theta.toFixed(0)}°, flatter than 45°: keep the angle between struts and ties above 45° (Precast Eurocode 2 Design Manual 6.7) by moving the bearing nearer the face or deepening the nib.`);
+    if (VA > 0 && hang.n > 0 && xh + (hang.n - 1) * hang.s / 2 > hn / 2) warnings.push('Hangers spread more than h_nib/2 from the face act less directly: keep them close to the re-entrant corner.');
+    if (nibEnd === 'plate') warnings.push(`The nib tie is welded to an end plate or angle: design the weld and the plate for F_t = ${(Ftie / 1e3).toFixed(1)} kN (not checked here).`);
+    if (alpha > 0.5) warnings.push('More than half the reaction on inclined bars: they need anchoring at both ends and the nib needs its own links; most designers keep at least half on vertical hangers.');
+    return { mode: 'half', inp, V, H, h, hn, b, av, lend, lp, bp, fck, fyk, fyd, cover, phiL, c, nuP, s1, s2, tie, hang, alpha, beta, inc, bot, nibL, lin, nibEnd, botEnd,
+      VA, VB, yTie, dn, As, xh, G, Ftie, Fhang, Finc, Fbot, sBear, VnMax, yBot, lavEnd, lavBot, nodeIn, lbTie, lbTieIn, lbBot, endT, endB, phimTie, phimBot, checks, util, warnings };
+  }
+
+  /* ---------------- Grouted sleeve splices, 10.9.4.5 ---------------- */
+  // the resistance moment of a rectangle (depth D, width W) with bar layers {y from the compressed face, As} under N
+  // (compression +), the stress block of 3.1.7(3); bars elastic-plastic, tension capped at fsMax
+  function mrd(D, W, layers, N, c, fsMax, fyd) {
+    const ecu = c.ecu2, lam = c.lambda, eta = c.eta, fcd = c.fcd, Es = 200000;
+    const forces = x => {
+      const s = Math.min(lam * x, D), Cc = eta * fcd * W * s, yc = s / 2;
+      let F = Cc, M = Cc * (D / 2 - yc);
+      layers.forEach(L => { let sg = Es * ecu * (x - L.y) / x; sg = sg >= 0 ? Math.min(sg, fyd) : Math.max(sg, -fsMax); if (L.y < s && sg > 0) sg -= eta * fcd; F += sg * L.As; M += sg * L.As * (D / 2 - L.y); });
+      return { F, M };
+    };
+    const Asum = layers.reduce((t, L) => t + L.As, 0), Nmin = -Asum * fsMax, Nmax = eta * fcd * W * D + Asum * Math.min(fyd, Es * c.ec2);
+    if (N <= Nmin) return { MRd: 0, x: 0, Nmin, Nmax, out: 'tension' };
+    if (N >= Nmax) return { MRd: 0, x: Infinity, Nmin, Nmax, out: 'compression' };
+    let lo = 1e-6, hi = 50 * D;
+    for (let i = 0; i < 200; i++) { const m = (lo + hi) / 2; if (forces(m).F > N) hi = m; else lo = m; }
+    const x = (lo + hi) / 2;
+    return { MRd: Math.max(0, forces(x).M), x, Nmin, Nmax, out: '' };
+  }
+  const MU = { vsmooth: [0.025, 0.5], smooth: [0.20, 0.6], rough: [0.40, 0.7], indented: [0.50, 0.9] };   // 6.2.5(2)
+  const SURF = { vsmooth: 'very smooth', smooth: 'smooth', rough: 'rough', indented: 'indented' };
+  function splice(inp) {
+    const b = pos(inp.b, 'Width b'), h = pos(inp.h, 'Depth h'), nb = Math.round(pos(inp.nb, 'Bars along b')), nh = Math.round(pos(inp.nh, 'Bars along h'));
+    if (nb < 2 || nh < 2) throw new Error('At least two bars along each face (the corners)');
+    const phi = pos(inp.phi, 'Bar size'), fyk = inp.fyk || 500, fyd = fyk / GS, Ds = pos(inp.Ds, 'Sleeve outside diameter');
+    if (Ds <= phi) throw new Error('The sleeve must be wider than the bar');
+    const cL = pos(inp.cover, 'Cover to the links'), phiL = nonneg(inp.phiL || 0, 'Link size'), cS = cL + phiL, off = cS + Ds / 2;
+    const fckCol = fin(inp.fckCol, 'f_ck of the column'), fckLow = fin(inp.fckLow, 'f_ck of the element below'), fckG = pos(inp.fckGrout, 'f_ck of the grout');
+    const fj = Math.min(fckCol, fckLow, fckG), c = EC2.concrete(clamp(fj, 12, 90));
+    const N = fin(inp.NEd ?? 0, 'N_Ed') * 1e3, Mh = Math.abs(fin(inp.Mh ?? 0, 'M_Ed across h')) * 1e6, Mb = Math.abs(fin(inp.Mb ?? 0, 'M_Ed across b')) * 1e6, VEd = Math.abs(fin(inp.VEd ?? 0, 'V_Ed')) * 1e3;
+    const Ab = AREA(phi), full = inp.capMode !== 'value', Fk = full ? fyk * Ab : pos(inp.Fk, 'Rated tensile capacity of the splice') * 1e3;
+    const fsMax = Math.min(fyd, Fk / GS / Ab);   // the bar's tension at the joint: f_yd, or the splice's capacity / γ_s
+    // bars round the perimeter: positions (u along b, v along h) from the corner, then layers for each axis
+    const bars = [];
+    for (let i = 0; i < nb; i++) { const u = off + (b - 2 * off) * i / (nb - 1); bars.push([u, off], [u, h - off]); }
+    for (let j = 1; j < nh - 1; j++) { const v = off + (h - 2 * off) * j / (nh - 1); bars.push([off, v], [b - off, v]); }
+    if (b - 2 * off <= 0 || h - 2 * off <= 0) throw new Error('The sleeves do not fit in the section: check b, h, the cover and the sleeve diameter');
+    const layersOf = (coord, D) => { const m = new Map(); bars.forEach(p => { const y = +p[coord].toFixed(3); m.set(y, (m.get(y) || 0) + Ab); }); return [...m].map(([y, As]) => ({ y, As })); };
+    const Rh = mrd(h, b, layersOf(1, h), N, c, fsMax, fyd), Rb = mrd(b, h, layersOf(0, b), N, c, fsMax, fyd);
+    const AsTot = bars.length * Ab, NRd = c.eta * c.fcd * b * h + AsTot * Math.min(fyd, 200000 * c.ec2), NRt = AsTot * fsMax;
+    const checks = [];
+    const add = (id, name, ref, util, note, o = {}) => checks.push({ id, name, ref, util, note, ...o });
+    const uM = (M, R) => R.out ? Infinity : M / Math.max(R.MRd, 1e-9);
+    if (N > 0) add('ncomp', 'Axial compression across the joint', '6.1, 3.1.7(3)', N / NRd, `N_Ed ${(N / 1e3).toFixed(0)} ≤ N_Rd ${(NRd / 1e3).toFixed(0)} kN (f_ck at the joint ${fj})`);
+    if (N < 0) add('nten', 'Tension across the joint: the splices', '10.9.4.5', -N / NRt, `|N_Ed| ${(-N / 1e3).toFixed(0)} ≤ ${bars.length} × ${(fsMax * Ab / 1e3).toFixed(1)} = ${(NRt / 1e3).toFixed(0)} kN`);
+    if (Mh > 0 || Rh.out) add('mh', 'Bending across h with N_Ed', '6.1', uM(Mh, Rh), Rh.out ? `N_Ed outside the section's range (${Rh.out})` : `M_Ed ${(Mh / 1e6).toFixed(1)} ≤ M_Rd ${(Rh.MRd / 1e6).toFixed(1)} kNm, x ${Rh.x.toFixed(0)} mm`);
+    if (Mb > 0 || Rb.out) add('mb', 'Bending across b with N_Ed', '6.1', uM(Mb, Rb), Rb.out ? `N_Ed outside the section's range (${Rb.out})` : `M_Ed ${(Mb / 1e6).toFixed(1)} ≤ M_Rd ${(Rb.MRd / 1e6).toFixed(1)} kNm, x ${Rb.x.toFixed(0)} mm`);
+    let biax = null;
+    if (Mh > 0 && Mb > 0 && !Rh.out && !Rb.out) {
+      const r = N > 0 ? N / NRd : 0, a = r <= 0.1 ? 1 : r >= 1 ? 2 : r <= 0.7 ? 1 + (r - 0.1) / 0.6 * 0.5 : 1.5 + (r - 0.7) / 0.3 * 0.5;
+      const u = (Mh / Rh.MRd) ** a + (Mb / Rb.MRd) ** a; biax = { a, u };
+      add('biax', 'Bending about both axes', '5.8.9 (5.39)', u, `(M_h/M_Rd,h)^a + (M_b/M_Rd,b)^a, a = ${a.toFixed(2)}`);
+    }
+    // shear across the grout bed, 6.2.5: β = 1, A_i the whole joint, σ_n from N_Ed (compression only), the bars crossing at 90°
+    const surf = MU[inp.surface] ? inp.surface : 'smooth', [cc, mu] = MU[surf], Ai = b * h, sn = Math.min(Math.max(0, N) / Ai, 0.6 * c.fcd), rho = AsTot / Ai;
+    const vEdi = VEd / Ai, vRdi = Math.min(cc * c.fctd + mu * sn + rho * fyd * mu, 0.5 * c.nu * c.fcd);
+    add('shear', `Shear across the grout bed (${SURF[surf]})`, '6.2.5 (6.25)', vEdi / vRdi, `v_Edi ${vEdi.toFixed(3)} ≤ v_Rdi = c f_ctd + μ σ_n + ρ f_yd μ = ${vRdi.toFixed(3)} N/mm²`);
+    // the maker's requirements, met or not
+    const leMin = nonneg(inp.leMin || 0, 'Minimum embedment'), leProv = nonneg(inp.leProv || 0, 'Embedment provided'), fgMin = nonneg(inp.fgMin || 0, 'Minimum grout strength'), cReq = nonneg(inp.cReq || 0, 'Cover needed');
+    const req = (id, name, ref, ok, note, over) => add(id, name, ref, ok ? 0 : over, note, { req: true, ok });
+    req('embed', 'Embedment of the bar in the sleeve', "maker's data", leProv >= leMin, `${leProv.toFixed(0)} mm provided, ${leMin.toFixed(0)} mm needed`, leMin / Math.max(leProv, 1e-9));
+    req('grout', 'Grout strength', "maker's data", fckG >= fgMin, `f_ck,g ${fckG} N/mm² provided, ${fgMin} needed`, fgMin / fckG);
+    req('cover', 'Cover to the sleeve', '4.4.1', cS >= cReq, `${cS.toFixed(0)} mm (links ${cL} + ${phiL}), ${cReq.toFixed(0)} mm needed`, cReq / Math.max(cS, 1e-9));
+    const sMin = Math.max(Ds, (inp.dg || 20) + 5, 20), sB = (b - 2 * off) / (nb - 1) - Ds, sH = (h - 2 * off) / (nh - 1) - Ds, sClear = Math.min(sB, sH);
+    req('spacing', 'Clear spacing between sleeves', '8.2(2)', sClear >= sMin - 1e-9, `${sClear.toFixed(0)} mm clear, at least max(D_s, d_g + 5, 20) = ${sMin.toFixed(0)} mm`, sMin / Math.max(sClear, 1e-9));
+    const util = Math.max(...checks.map(k => k.util));
+    const warnings = [];
+    if (!full && Fk < fyk * Ab) warnings.push(`The splice is rated at ${(Fk / 1e3).toFixed(0)} kN, below the bar's ${(fyk * Ab / 1e3).toFixed(0)} kN (f_yk A_s): the joint is weaker than the column above and below it.`);
+    if (fckG < Math.min(fckCol, fckLow)) warnings.push(`The grout (${fckG}) is weaker than the concrete: the joint's compression block uses f_ck ${fj}.`);
+    warnings.push('The splice capacity, embedment and grout must come from the maker\'s certified data (tested to show the bar can yield before the splice fails): check them against the maker\'s current literature.');
+    return { mode: 'splice', inp, b, h, nb, nh, phi, fyk, fyd, Ds, cL, phiL, cS, off, fckCol, fckLow, fckG, fj, c, N, Mh, Mb, VEd, Ab, full, Fk, fsMax, bars, Rh, Rb, AsTot, NRd, NRt, biax,
+      surf, cc, mu, Ai, sn, rho, vEdi, vRdi, leMin, leProv, fgMin, cReq, sMin, sClear, checks, util, warnings };
+  }
+
+  function design(inp) {
+    if (inp.mode === 'half') return halfJoint(inp);
+    if (inp.mode === 'splice') return splice(inp);
+    return bearing(inp);
+  }
+  return { design, bearing, halfJoint, splice, mrd, T102, T103, a3Of, dA2Of, MU };
+})();
+if (typeof module !== 'undefined') module.exports = { Precast };
+
+</script>
+<script id="drawing-code">
+/* ===== CONNECTION DIAGRAMS (EngineeringTools ConnectionCheck) =====
+   Parametric, to-scale drafting views of each joint, drawn from the current inputs: an elevation and a plan or section,
+   with bolts, welds, dimension chains, labels and the design actions. Pure functions returning SVG strings.
+   Model units mm; each view maps a model box onto a pixel box (x right, y up). */
+const JD = (() => {
+  'use strict';
+  const C = { steel: '#e7ecf1', web: '#eef2f5', edge: '#2f3b47', plate: '#f6d58c', plateEdge: '#94700f', pack: '#e3d3ae', bolt: '#3a424b', boltDark: '#1f252b',
+    weld: '#1a1f24', dim: '#1b67b0', txt: '#222a31', mute: '#7a8590', cl: '#97a2ac', load: '#cc3426', conc: '#f1efea', concEdge: '#8b8478', grout: '#ddd7ca', paper: '#ffffff' };
+  const FS = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"', FM = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"';
+  const W = 920, H = 520;
+  const DEFS = `<defs>
+<pattern id="jdCut" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect width="6" height="6" fill="#c7d0d9"/><line x1="0" y1="0" x2="0" y2="6" stroke="#6f7d8a" stroke-width="0.9"/></pattern>
+<pattern id="jdPlCut" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(-45)"><rect width="5" height="5" fill="#efc560"/><line x1="0" y1="0" x2="0" y2="5" stroke="#94700f" stroke-width="0.8"/></pattern>
+<pattern id="jdConc" patternUnits="userSpaceOnUse" width="26" height="26"><rect width="26" height="26" fill="${C.conc}"/><circle cx="5" cy="6" r="1.3" fill="#b3ab9d"/><circle cx="17" cy="15" r="1.7" fill="#c0b8aa"/><circle cx="9" cy="21" r="1" fill="#a9a091"/><path d="M19 4 l3 2 l-3 2 z" fill="#c5bdaf"/><path d="M2 14 l2.5 -2 l1.5 3 z" fill="#bdb5a7"/></pattern>
+<pattern id="jdGrout" patternUnits="userSpaceOnUse" width="8" height="8"><rect width="8" height="8" fill="${C.grout}"/><circle cx="2" cy="2" r="0.7" fill="#9e9687"/><circle cx="6" cy="6" r="0.7" fill="#9e9687"/></pattern>
+<marker id="jdLd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${C.load}"/></marker>
+</defs>`;
+  const num = v => { const a = Math.abs(v); return a >= 100 || Number.isInteger(+v.toFixed(1)) ? Math.round(v).toString() : v.toFixed(1); };
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // ---------- views ----------
+  function view(box, bb) {
+    const w = bb[2] - bb[0], h = bb[3] - bb[1], k = Math.min(box[2] / w, box[3] / h);
+    const ox = box[0] + (box[2] - w * k) / 2 - bb[0] * k, oy = box[1] + (box[3] - h * k) / 2 + bb[3] * k;
+    return { k, X: x => ox + x * k, Y: y => oy - y * k, box };
+  }
+  const ST = {
+    steel: `fill="${C.steel}" stroke="${C.edge}" stroke-width="1.1"`, web: `fill="${C.web}" stroke="${C.edge}" stroke-width="1.1"`,
+    cut: `fill="url(#jdCut)" stroke="${C.edge}" stroke-width="1.2"`, plate: `fill="${C.plate}" stroke="${C.plateEdge}" stroke-width="1.1"`,
+    plateCut: `fill="url(#jdPlCut)" stroke="${C.plateEdge}" stroke-width="1.1"`, pack: `fill="${C.pack}" stroke="${C.plateEdge}" stroke-width="0.9"`,
+    conc: `fill="url(#jdConc)" stroke="${C.concEdge}" stroke-width="1"`, grout: `fill="url(#jdGrout)" stroke="${C.concEdge}" stroke-width="0.8"`,
+    ghost: `fill="none" stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="6 3"`, outline: `fill="none" stroke="${C.edge}" stroke-width="1.1"`,
+    bg: `fill="${C.paper}" stroke="none"`,
+  };
+  const R = (v, x0, y0, x1, y1, st = 'steel') => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)); return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${(Math.abs(x1 - x0) * v.k).toFixed(1)}" height="${(Math.abs(y1 - y0) * v.k).toFixed(1)}" ${ST[st]}/>`; };
+  const P = (v, pts, st = 'steel') => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + v.X(p[0]).toFixed(1) + ' ' + v.Y(p[1]).toFixed(1)).join(' ')} Z" ${ST[st]}/>`;
+  const LS = { e: `stroke="${C.edge}" stroke-width="1.1"`, t: `stroke="${C.edge}" stroke-width="0.55"`, c: `stroke="${C.cl}" stroke-width="0.7" stroke-dasharray="14 3 2 3"`,
+    h: `stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="5 3"`, d: `stroke="${C.dim}" stroke-width="0.7"` };
+  const Ln = (v, x0, y0, x1, y1, k = 'e') => `<line x1="${v.X(x0).toFixed(1)}" y1="${v.Y(y0).toFixed(1)}" x2="${v.X(x1).toFixed(1)}" y2="${v.Y(y1).toFixed(1)}" ${LS[k]}/>`;
+  const lnP = (x0, y0, x1, y1, k = 'e') => `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" ${LS[k]}/>`;
+  function Tx(x, y, s, o = {}) {
+    const sz = o.size || 11, col = o.color || C.txt, anc = o.anchor || 'start', w = o.weight || 400, rot = o.rot ? ` transform="rotate(${o.rot} ${x.toFixed(1)} ${y.toFixed(1)})"` : '';
+    const body = esc(s).replace(/_\{([^}]*)\}|_([A-Za-z0-9]+)/g, (m, p1, p2) => `<tspan baseline-shift="sub" font-size="78%">${p1 || p2}</tspan>`);
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${sz}" fill="${col}" text-anchor="${anc}" font-weight="${w}" ${o.mono ? FM : FS} paint-order="stroke" stroke="${C.paper}" stroke-width="3" stroke-linejoin="round"${rot}>${body}</text>`;
+  }
+  const tw = (s, sz = 10) => String(s).replace(/_/g, '').length * sz * 0.6;
+  // ---------- dimensions (tick terminators) ----------
+  const tick = (x, y) => `<line x1="${(x - 3.5).toFixed(1)}" y1="${(y + 3.5).toFixed(1)}" x2="${(x + 3.5).toFixed(1)}" y2="${(y - 3.5).toFixed(1)}" stroke="${C.dim}" stroke-width="1.3"/>`;
+  // horizontal chain: xs (model), measured from model level y, dimension line at off px (negative: below)
+  function DH(v, xs, y, off, labels) {
+    const Yf = v.Y(y), Yd = Yf - off, s = Math.sign(off) || 1; let o = '';
+    xs.forEach(x => { o += lnP(v.X(x), Yf - s * 3, v.X(x), Yd - s * 4, 'd'); });
+    o += lnP(v.X(xs[0]) - 4, Yd, v.X(xs[xs.length - 1]) + 4, Yd, 'd');
+    xs.forEach(x => { o += tick(v.X(x), Yd); });
+    for (let i = 0; i < xs.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(xs[i + 1] - xs[i])); if (lab === '') continue;
+      const a = v.X(xs[i]), b = v.X(xs[i + 1]), wpx = Math.abs(b - a), tW = tw(lab);
+      const ty = off > 0 ? Yd - 4 : Yd + 11;
+      if (wpx > tW + 6) o += Tx((a + b) / 2, ty, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true });
+      else o += Tx(Math.max(a, b) + 3 + (i === xs.length - 2 ? 2 : 0), ty + (off > 0 ? -9 : 9) * (i % 2), lab, { size: 10, color: C.dim, mono: true });
+    }
+    return o;
+  }
+  function DV(v, ys, x, off, labels) {
+    const Xf = v.X(x), Xd = Xf + off, s = Math.sign(off) || 1; let o = '';
+    ys.forEach(y => { o += lnP(Xf + s * 3, v.Y(y), Xd + s * 4, v.Y(y), 'd'); });
+    o += lnP(Xd, v.Y(ys[0]) + 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), Xd, v.Y(ys[ys.length - 1]) - 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), 'd');
+    ys.forEach(y => { o += tick(Xd, v.Y(y)); });
+    for (let i = 0; i < ys.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(ys[i + 1] - ys[i])); if (lab === '') continue;
+      const a = v.Y(ys[i]), b = v.Y(ys[i + 1]), hpx = Math.abs(b - a), tW = tw(lab);
+      const tx = off > 0 ? Xd + 11 : Xd - 4;
+      if (hpx > tW + 6) o += Tx(tx, (a + b) / 2, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true, rot: -90 });
+      else o += Tx(off > 0 ? Xd + 5 : Xd - 5, (a + b) / 2 + 3.5, lab, { size: 10, color: C.dim, mono: true, anchor: off > 0 ? 'start' : 'end' });
+    }
+    return o;
+  }
+  // leader with a dot at a model point and text lines at a pixel offset
+  function LD(v, x, y, dx, dy, lines, o = {}) {
+    const px = v.X(x), py = v.Y(y), ex = px + dx, ey = py + dy, s = dx >= 0 ? 1 : -1;
+    let out = `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="1.9" fill="${C.txt}"/>` + lnP(px, py, ex, ey, 't') + lnP(ex, ey, ex + s * 8, ey, 't');
+    [].concat(lines).forEach((t, i) => { out += Tx(ex + s * 11, ey + 4 + i * 13 - ([].concat(lines).length - 1) * 6.5, t, { size: o.size || 10.5, anchor: s > 0 ? 'start' : 'end', weight: i === 0 && o.bold ? 600 : 400, color: i === 0 ? C.txt : '#4b545d' }); });
+    return out;
+  }
+  // load arrow ending at pixel point (px, py); (vx, vy) is the arrow vector in pixels; label near the tail
+  function LA(px, py, vx, vy, label, o = {}) {
+    const x0 = px - vx, y0 = py - vy, lx = x0 + (o.ldx ?? 0), ly = y0 + (o.ldy ?? -6);
+    return `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${px.toFixed(1)}" y2="${py.toFixed(1)}" stroke="${C.load}" stroke-width="2.4" marker-end="url(#jdLd)"/>` +
+      (label ? Tx(lx, ly, label, { size: 11, color: C.load, weight: 600, anchor: o.anchor || 'middle' }) : '');
+  }
+  function moment(px, py, rr, label, cw = true) {
+    const a0 = cw ? 200 : -20, a1 = cw ? 340 : 160, p = a => [px + rr * Math.cos(a * Math.PI / 180), py - rr * Math.sin(a * Math.PI / 180)], [x0, y0] = p(a0), [x1, y1] = p(a1);
+    return `<path d="M${x0.toFixed(1)} ${y0.toFixed(1)} A${rr} ${rr} 0 1 ${cw ? 1 : 0} ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="${C.load}" stroke-width="2.2" marker-end="url(#jdLd)"/>` + Tx(px, py - rr - 7, label, { size: 11, color: C.load, weight: 600, anchor: 'middle' });
+  }
+  // ---------- steel symbols ----------
+  function BE(v, x, y, d) {   // bolt seen end-on: washer ring, head, centre cross
+    const px = v.X(x), py = v.Y(y), r1 = Math.max(0.95 * d * v.k, 3.2), r2 = Math.max(0.55 * d * v.k, 1.9), c = r1 + 3;
+    return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r1.toFixed(1)}" fill="#fff" stroke="${C.boltDark}" stroke-width="1"/><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r2.toFixed(1)}" fill="${C.bolt}"/>` +
+      lnP(px - c, py, px + c, py, 't') + lnP(px, py - c, px, py + c, 't');
+  }
+  // bolt seen side-on with its axis along x (dir 'x') or y: shank a0..a1 at c, head at a0, nut at a1
+  function BS(v, a0, a1, c, d, dir = 'x') {
+    const sg = Math.sign(a1 - a0) || 1, hd = 0.65 * d, nt = 0.8 * d, wh = 0.8 * d, wa = 0.15 * d, pr = 0.45 * d;
+    const seg = (s0, s1, half, fill) => dir === 'x' ? R(v, s0, c - half, s1, c + half, fill) : R(v, c - half, s0, c + half, s1, fill);
+    let o = seg(a0, a1 + sg * (wa + nt + pr), d / 2, 'bolt');
+    o += seg(a0 - sg * wa, a0, d, 'bolt') + seg(a0 - sg * (wa + hd), a0 - sg * wa, wh, 'boltH');
+    o += seg(a1, a1 + sg * wa, d, 'bolt') + seg(a1 + sg * wa, a1 + sg * (wa + nt), wh, 'boltH');
+    o += dir === 'x' ? Ln(v, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), c, 'c') : Ln(v, c, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), 'c');
+    return o;
+  }
+  ST.bolt = `fill="#59626c" stroke="${C.boltDark}" stroke-width="0.6"`; ST.boltH = `fill="${C.bolt}" stroke="${C.boltDark}" stroke-width="0.6"`;
+  // fillet weld at the corner (x, y): legs along sx (x) and sy (y), sized a (mm) but at least 4 px
+  function WD(v, x, y, a, sx, sy) {
+    const L = Math.max(a * v.k, 4.5), px = v.X(x), py = v.Y(y);
+    return `<path d="M${px.toFixed(1)} ${py.toFixed(1)} L${(px + sx * L).toFixed(1)} ${py.toFixed(1)} L${px.toFixed(1)} ${(py - sy * L).toFixed(1)} Z" fill="${C.weld}"/>`;
+  }
+  // weld seen along its length (elevation): narrow strip
+  const WS = (v, x0, y0, x1, y1) => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)), w = Math.max(Math.abs(x1 - x0) * v.k, 2.5), h = Math.max(Math.abs(y1 - y0) * v.k, 2.5);
+    return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${C.weld}" fill-opacity="0.82"/>`; };
+  // zigzag break lines through a member
+  function BK(v, x, y0, y1) {   // vertical break at model x between y0 and y1
+    const px = v.X(x), a = v.Y(Math.max(y0, y1)) - 4, b = v.Y(Math.min(y0, y1)) + 4, m = (a + b) / 2;
+    return `<path d="M${px} ${a} L${px} ${m - 7} L${px - 5} ${m - 3} L${px + 5} ${m + 3} L${px} ${m + 7} L${px} ${b}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  function BKH(v, y, x0, x1) {
+    const py = v.Y(y), a = v.X(Math.min(x0, x1)) - 4, b = v.X(Math.max(x0, x1)) + 4, m = (a + b) / 2;
+    return `<path d="M${a} ${py} L${m - 7} ${py} L${m - 3} ${py - 5} L${m + 3} ${py + 5} L${m + 7} ${py} L${b} ${py}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  // white mask to fade member ends beyond a break
+  const mask = (v, x0, y0, x1, y1) => R(v, x0, y0, x1, y1, 'bg');
+  // I section cross-section (cut), centred at (cx, cy); 'v': web vertical (depth along y), 'h': depth along x
+  function ISec(v, cx, cy, s, o = 'v', st = 'cut') {
+    const b = s.b, h = s.h, tf = s.tf, t = s.tw, r = Math.min(s.r || 0, (b - t) / 2 - 1), pts = [];
+    const arc = (ux, uy, a0, a1) => { for (let i = 0; i <= 6; i++) { const a = (a0 + (a1 - a0) * i / 6) * Math.PI / 180; pts.push([ux + r * Math.cos(a), uy + r * Math.sin(a)]); } };
+    pts.push([-b / 2, h / 2], [b / 2, h / 2], [b / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, h / 2 - tf - r, 90, 180); else pts.push([t / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, -h / 2 + tf + r, 180, 270); else pts.push([t / 2, -h / 2 + tf]);
+    pts.push([b / 2, -h / 2 + tf], [b / 2, -h / 2], [-b / 2, -h / 2], [-b / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, -h / 2 + tf + r, 270, 360); else pts.push([-t / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, h / 2 - tf - r, 0, 90); else pts.push([-t / 2, h / 2 - tf]);
+    pts.push([-b / 2, h / 2 - tf]);
+    return P(v, pts.map(([u, w]) => o === 'v' ? [cx + u, cy + w] : [cx + w, cy + u]), st);
+  }
+  // I member in side elevation: length along 'x' (a0..a1) with the depth c0..c1 across, or along 'y'
+  function IEl(v, a0, a1, c0, c1, s, dir = 'x', o = {}) {
+    const lo = Math.min(c0, c1), hi = Math.max(c0, c1), rr = s.r || 0;
+    const ln = (c, k) => dir === 'x' ? Ln(v, a0, c, a1, c, k) : Ln(v, c, a0, c, a1, k);
+    let out = dir === 'x' ? R(v, a0, lo, a1, hi, 'steel') : R(v, lo, a0, hi, a1, 'steel');
+    out += dir === 'x' ? R(v, a0, lo + s.tf, a1, hi - s.tf, 'web') : R(v, lo + s.tf, a0, hi - s.tf, a1, 'web');
+    out += ln(lo + s.tf, 'e') + ln(hi - s.tf, 'e');
+    if (rr > 0 && !o.noRoot) out += ln(lo + s.tf + rr, 't') + ln(hi - s.tf - rr, 't');
+    return out;
+  }
+  // I member seen on the flange face: width b, length along dir
+  const IFl = (v, a0, a1, cc, s, dir = 'y') => (dir === 'y' ? R(v, cc - s.b / 2, a0, cc + s.b / 2, a1, 'steel') + Ln(v, cc - s.tw / 2 - (s.r || 0), a0, cc - s.tw / 2 - (s.r || 0), a1, 'h') + Ln(v, cc + s.tw / 2 + (s.r || 0), a0, cc + s.tw / 2 + (s.r || 0), a1, 'h')
+    : R(v, a0, cc - s.b / 2, a1, cc + s.b / 2, 'steel'));
+  const title = (x, y, t, sub) => Tx(x, y, t, { size: 11.5, weight: 700, anchor: 'middle', color: C.txt }) + `<line x1="${(x - tw(t, 11.5) / 2).toFixed(1)}" y1="${(y + 3).toFixed(1)}" x2="${(x + tw(t, 11.5) / 2).toFixed(1)}" y2="${(y + 3).toFixed(1)}" stroke="${C.txt}" stroke-width="0.8"/>` + (sub ? Tx(x, y + 16, sub, { size: 10, anchor: 'middle', color: C.mute }) : '');
+  const svg = (body, h = H) => `<svg class="jd" viewBox="0 0 ${W} ${h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;background:${C.paper}" role="img">${DEFS}<rect width="${W}" height="${h}" fill="${C.paper}"/>${body}</svg>`;
+  const BOX = { L: [40, 46, 520, 400], Rt: [612, 46, 280, 400] };
+  const fv = x => { const n = parseFloat(x); return Number.isFinite(n) ? n : 0; };
+  const secName = x => x && x !== '0' ? x : '';   // a form without that selector reads as '0'
+  const BOLTD = { M12: 12, M16: 16, M20: 20, M24: 24, M27: 27, M30: 30, M36: 36 };
+  const bd = sz => BOLTD[sz] || 20;
+  const range = (n, f) => Array.from({ length: Math.max(0, n) }, (_, i) => f(i));
+  return { C, W, H, BOX, DEFS, view, R, P, Ln, lnP, Tx, tw, DH, DV, LD, LA, moment, BE, BS, WD, WS, BK, BKH, mask, ISec, IEl, IFl, title, svg, num, fv, secName, bd, range, esc, ST };
+})();
+
+/* ===== DRAWING KIT EXTRAS (EngineeringTools) =====
+   Additions to the JD drafting kit (joints/diagrams.js) for the member, floor and wall drawings: a page-width SVG wrapper,
+   arrows, supports, distributed loads, result fills, cross-section outlines (I, PFC, RHS, CHS) and SVG to PNG for PDF reports.
+   Source: scratchpad/drawings/kit.js. Pixel helpers take pixel coordinates; JD views map model mm to pixels. */
+const DK = (() => {
+  'use strict';
+  const { Tx, lnP, esc } = JD;
+  const BLUE = '#1d5fbf', FILL = 'rgba(29,95,191,.15)', RED = '#c4242a', REDF = 'rgba(196,36,42,.10)', INK = '#222a31', MUTE = '#6b7680', LINE = '#c9d0d7';
+  const DEFS = `<defs><marker id="dkB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${BLUE}"/></marker>`
+    + `<marker id="dkK" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${INK}"/></marker>`
+    + `<marker id="dkR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${RED}"/></marker>`
+    + `<pattern id="dkHatch" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)"><rect width="7" height="7" fill="#f3f1ec"/><line x1="0" y1="0" x2="0" y2="7" stroke="#8b8478" stroke-width="1"/></pattern></defs>`;
+  const f1 = v => (+v).toFixed(1);
+  // the page-width drawing: viewBox w x h, scales to its container
+  const svg = (body, w, h, label) => `<svg class="jd dk" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" role="img"${label ? ` aria-label="${esc(label)}"` : ''} `
+    + `style="width:100%;height:auto;display:block;background:#fff">${JD.DEFS}${DEFS}<rect width="${w}" height="${h}" fill="#fff"/>${body}</svg>`;
+  const col = c => ({ blue: BLUE, red: RED, ink: INK, mute: MUTE }[c] || c || INK);
+  const mk = c => ({ blue: 'dkB', red: 'dkR' }[c] || 'dkK');
+  // arrow from (x0, y0) to (x1, y1), head at the end (both: heads at both ends)
+  const arrow = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1.6}"`
+    + `${o.dash ? ` stroke-dasharray="${o.dash}"` : ''} marker-end="url(#${mk(o.c)})"${o.both ? ` marker-start="url(#${mk(o.c)})"` : ''}/>`;
+  const line = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.cap ? ` stroke-linecap="${o.cap}"` : ''}/>`;
+  const rect = (x, y, w, h, o = {}) => `<rect x="${f1(Math.min(x, x + w))}" y="${f1(Math.min(y, y + h))}" width="${f1(Math.abs(w))}" height="${f1(Math.abs(h))}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.rx ? ` rx="${o.rx}"` : ''}/>`;
+  const poly = (pts, o = {}) => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + f1(p[0]) + ' ' + f1(p[1])).join(' ')}${o.open ? '' : ' Z'}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+  const text = (x, y, s, o = {}) => Tx(x, y, s, Object.assign({ size: 11 }, o, { color: o.color ? col(o.color) : o.color }));
+  // pinned support under (px, py): triangle and ground line; dir 'down' (default) or 'up' (hanging, above the point)
+  function pin(px, py, dir = 'down') {
+    const s = dir === 'up' ? -1 : 1;
+    return poly([[px, py], [px - 8, py + s * 13], [px + 8, py + s * 13]], { fill: '#fff', stroke: 'ink', w: 1.3 }) + line(px - 12, py + s * 13, px + 12, py + s * 13, { w: 1.3 })
+      + [0, 1, 2, 3].map(k => line(px - 10 + k * 6, py + s * 13, px - 14 + k * 6, py + s * 18, { c: 'mute', w: 0.8 })).join('');
+  }
+  // hatched ground or wall strip: rectangle with the hatch fill and an edge line on the restrained side ('t', 'b', 'l', 'r')
+  function ground(x, y, w, h, edge = 't') {
+    const e = { t: [x, y, x + w, y], b: [x, y + h, x + w, y + h], l: [x, y, x, y + h], r: [x + w, y, x + w, y + h] }[edge];
+    return rect(x, y, w, h, { fill: 'url(#dkHatch)' }) + line(e[0], e[1], e[2], e[3], { w: 1.4 });
+  }
+  // a row of load arrows pointing from yTop to yBase between x0 and x1, with the bar along the tails and a label above
+  function udl(x0, x1, yTop, yBase, label, o = {}) {
+    const n = Math.max(2, Math.round((x1 - x0) / (o.pitch || 28)) + 1), c = o.c || 'red';
+    let g = line(x0, yTop, x1, yTop, { c, w: 1.3 });
+    for (let i = 0; i < n; i++) { const x = x0 + (x1 - x0) * i / (n - 1); g += arrow(x, yTop, x, yBase, { c, w: 1.2 }); }
+    return g + (label ? text((x0 + x1) / 2, yTop - 6, label, { anchor: 'middle', color: c === 'red' ? RED : col(c), weight: 600 }) : '');
+  }
+  // a result diagram: polyline pts (pixels) closed to the base line through the first and last points' base, filled blue
+  function fillDiagram(pts, base, o = {}) {
+    const vert = o.vertical;   // base is an x (diagram plotted sideways) when vertical
+    const close = vert ? [[base, pts[pts.length - 1][1]], [base, pts[0][1]]] : [[pts[pts.length - 1][0], base], [pts[0][0], base]];
+    return poly(pts.concat(close), { fill: o.fill || FILL, stroke: 'none' }) + poly(pts, { open: true, stroke: o.stroke || 'ink', w: 1.1 });
+  }
+  // cross-section outline, cut, centred at pixel (cx, cy) at scale k (px/mm); web vertical; returns svg
+  function section(s, cx, cy, k, o = {}) {
+    const st = o.style || 'cut', fill = st === 'cut' ? 'url(#jdCut)' : '#e7ecf1', edge = '#2f3b47';
+    if (s.shape === 'CHS') {
+      const ro = s.d / 2 * k, ri = (s.d / 2 - s.t) * k;
+      return `<path d="M${f1(cx - ro)} ${f1(cy)} a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(2 * ro)} 0 a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(-2 * ro)} 0 Z M${f1(cx - ri)} ${f1(cy)} a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(2 * ri)} 0 a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(-2 * ri)} 0 Z" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'RHS') {
+      const w = s.b * k, h = s.h * k, t = Math.max(s.t * k, 1.2), ro = Math.min((s.ro || 1.5 * s.t) * k, w / 2), ri = Math.max(0, ro - t);
+      const rr = (x, y, W, H, r) => `M${f1(x + r)} ${f1(y)} H${f1(x + W - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W)} ${f1(y + r)} V${f1(y + H - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W - r)} ${f1(y + H)} H${f1(x + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x)} ${f1(y + H - r)} V${f1(y + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + r)} ${f1(y)} Z`;
+      return `<path d="${rr(cx - w / 2, cy - h / 2, w, h, ro)} ${rr(cx - w / 2 + t, cy - h / 2 + t, w - 2 * t, h - 2 * t, ri)}" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'PFC') {   // channel, toes to the right, web on the left
+      const b = s.b * k, h = s.h * k, tf = Math.max(s.tf * k, 1.2), tw = Math.max(s.tw * k, 1.2), x0 = cx - b / 2, y0 = cy - h / 2;
+      return poly([[x0, y0], [x0 + b, y0], [x0 + b, y0 + tf], [x0 + tw, y0 + tf], [x0 + tw, y0 + h - tf], [x0 + b, y0 + h - tf], [x0 + b, y0 + h], [x0, y0 + h]], { fill, stroke: edge, w: 1.1 });
+    }
+    const v = { k, X: x => cx + x * k, Y: y => cy - y * k };   // I sections: JD's outline with root radii
+    return JD.ISec(v, 0, 0, s, 'v', st === 'cut' ? 'cut' : 'steel');
+  }
+  // SVG markup to a PNG data URL (for the jsPDF reports); resolves { url, w, h } with w, h the viewBox size
+  function toPNG(markup, wpx = 1800) {
+    return new Promise((resolve, reject) => {
+      const m = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(markup); if (!m) { reject(new Error('no viewBox')); return; }
+      const w = +m[1], h = +m[2], k = wpx / w, img = new Image();
+      const src = markup.replace(/style="[^"]*"/, `width="${f1(w * k)}" height="${f1(h * k)}"`);
+      img.onload = () => { const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k); const g = c.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height); resolve({ url: c.toDataURL('image/png'), w, h }); };
+      img.onerror = () => reject(new Error('drawing could not be rendered'));
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
+    });
+  }
+  // drawings for the page (heading + drawing) and for the A4 sheet (each kept whole on a page)
+  const page = blocks => blocks.map(([t, s]) => `<div class="dlabel">${t}</div>${s}`).join('');
+  const sheet = blocks => blocks.map(([t, s]) => `<div class="rfig" style="break-inside:avoid;page-break-inside:avoid;margin:1mm 0 3mm"><h3>${t}</h3><div class="rsvg">${s}</div></div>`).join('');
+  const fmt = (v, d = 0) => Number.isFinite(v) ? (+v).toFixed(d) : '–';
+  return { page, sheet, BLUE, FILL, RED, REDF, INK, MUTE, LINE, svg, arrow, line, rect, poly, text, pin, ground, udl, fillDiagram, section, toPNG, fmt, lnP };
+})();
+
+/* ===== PRECAST CONNECTIONS DRAWINGS (EngineeringTools) =====
+   Bearing: the end of the supported member on the support, to scale along the bearing, with the nominal length split into
+   a3, the deviations, the net bearing length a1 (and the pad), any isolated or movement allowance and a2 (Figure 10.6).
+   Half-joint: the dapped end to scale with the support under the nib, the nib tie, the hangers, inclined bars and bottom
+   bars, and the strut-and-tie model on top with its forces. Splice: the section with the bars in their sleeves and the
+   neutral axis at M_Rd; the joint in elevation with the grout bed and the embedment.
+   Source: scratchpad/precast/draw.js. Needs JD, DK; takes Precast.design results. */
+const DrawPrecast = (() => {
+  'use strict';
+  const { svg, arrow, line, rect, poly, text, page, sheet, BLUE, RED, MUTE } = DK;
+  const CON = '#d9dee4', CON2 = '#e9edf1', PAD = '#3a4a5a', r0 = v => Math.round(v).toLocaleString('en-GB'), r1 = v => (Math.round(v * 10) / 10).toFixed(1);
+  const dimH = (x0, x1, y, lab, o = {}) => line(x0, y, x1, y, { w: 0.8 }) + line(x0, y - 4, x0, y + 4, { w: 0.8 }) + line(x1, y - 4, x1, y + 4, { w: 0.8 })
+    + (lab ? text((x0 + x1) / 2, y + (o.below ? 13 : -4), lab, { size: o.size || 9.5, anchor: 'middle', color: o.color }) : '');
+  const dimV = (x, y0, y1, lab, o = {}) => line(x, y0, x, y1, { w: 0.8 }) + line(x - 4, y0, x + 4, y0, { w: 0.8 }) + line(x - 4, y1, x + 4, y1, { w: 0.8 })
+    + JD.Tx(o.right ? x + 11 : x - 5, (y0 + y1) / 2, lab, { size: 9.5, rot: -90, anchor: 'middle', color: o.color });
+  const hatch = (x, y, w, h) => rect(x, y, w, h, { fill: 'url(#dkHatch)', stroke: 'ink', w: 1 });
+  const bad = (R, id) => { const c = R.checks.find(k => k.id === id); return c && c.util > 1; };
+
+  /* ---------- bearing ---------- */
+  function bearing(R) {
+    const W = 700, a = R.aProv, k = Math.min(480 / (a * 1.9), 2.4), x0 = 150, X = x => x0 + x * k;
+    const hs = 120, yTop = 84, ySup = yTop + hs;   // the supported member's depth on the drawing (not to scale)
+    let g = '';
+    // supporting member: from behind the supported member's end out to its edge at a; the supported member: from its end into the span
+    g += hatch(X(-0.45 * a), ySup + 8, (1.45 * a) * k, 90) + text(X(-0.45 * a) + 6, ySup + 92, R.labels.support.split(',')[0], { size: 9.5, color: MUTE });
+    g += rect(X(0), yTop, (a * 1.75) * k, hs, { fill: CON, stroke: 'ink', w: 1.3 }) + text(X(a * 1.3), yTop + hs / 2 + 4, 'supported member', { size: 10, anchor: 'middle', color: MUTE });
+    // the chain from the supported member's end: a3, the deviation allowance, a1 (pad), allowances, spare, a2
+    const segs = [['a₃', R.a3, 'rgba(196,36,42,.25)'], ['dev.', R.tol, 'rgba(107,118,128,.25)'], ['a₁', Math.max(R.a1req, R.lpad), 'rgba(29,95,191,.30)']];
+    if (R.extra) segs.push([R.iso && R.mv ? 'iso. + mov.' : R.iso ? '20 isolated' : 'movement', R.extra, 'rgba(107,118,128,.25)']);
+    const used = segs.reduce((s, q) => s + q[1], 0), spare = a - used - R.a2;
+    if (spare > 0) segs.push(['spare', spare, 'rgba(255,255,255,0)']);
+    segs.push(['a₂', R.a2, 'rgba(196,36,42,.25)']);
+    let xx = 0; const yb = ySup + 2;
+    segs.forEach(([lab, len, col], i) => { if (len > 0) g += rect(X(xx), yb, len * k, 6, { fill: col, stroke: 'none' }); xx += len; });
+    // the pad or bedding and the bearing stress block
+    const xp = R.a3 + R.tol, lpd = R.lpad > 0 ? R.lpad : Math.max(R.a1prov, 0);
+    if (lpd > 0) g += rect(X(xp), ySup, lpd * k, 8, { fill: PAD, stroke: 'none' });
+    g += arrow(X(xp + lpd / 2), yTop - 34, X(xp + lpd / 2), yTop - 2, { c: 'red', w: 2 }) + text(X(xp + lpd / 2) + 6, yTop - 22, `F_Ed ${r0(R.F / 1e3)} kN`, { size: 10, weight: 700, color: RED });
+    // dimensions: the chain below, the nominal length provided and required above
+    let xd = 0, yd = ySup + 120;
+    segs.forEach(([lab, len], i) => { if (len > 0.5) g += dimH(X(xd), X(xd + len), yd + (i % 2) * 26, `${lab} ${len < 10 ? r1(len) : r0(len)}`, { below: true, size: 9 }); xd += len; });
+    g += dimH(X(0), X(a), yTop - 52, `a provided ${r0(a)}`, { color: bad(R, 'nominal') ? RED : undefined });
+    g += dimH(X(0), X(Math.min(R.aReq, a * 1.7)), ySup + 186, `a required ${r0(R.aReq)}`, { below: true, color: bad(R, 'nominal') ? RED : BLUE });
+    g += line(X(0), yTop - 52, X(0), ySup + 186, { c: 'mute', w: 0.6, dash: '3 3' }) + line(X(a), yTop - 52, X(a), ySup + 120, { c: 'mute', w: 0.6, dash: '3 3' });
+    const rows = [[`σ_Ed/f_cd = ${(R.sigma / R.fcd).toFixed(2)} (${R.band}): a₁ at least ${R.a1min} mm (Table 10.2), a₂ ${R.a2} (Table 10.3), a₃ ${R.a3} (Table 10.4)`, MUTE],
+      [`Deviations √(Δa₂² + Δa₃²) = √(${R.dA2.toFixed(1)}² + ${R.dA3.toFixed(1)}²) = ${R.tol.toFixed(1)} mm (Table 10.5, l_n/2500). Depths not to scale.`, MUTE]];
+    let gy = ySup + 222; rows.forEach(([t, c]) => { g += text(20, gy, t, { size: 9.5, color: c }); gy += 14; });
+    return svg(g, W, gy + 4, 'The end of the supported member on its support with the nominal bearing length split into its parts');
+  }
+
+  /* ---------- half-joint ---------- */
+  function halfJoint(R) {
+    const W = 700, h = R.h, hn = R.hn, L = R.lend, span = Math.max(1.6 * h, 700), k = Math.min(560 / (L + span + 80), 300 / (h + 140));
+    const x0 = 70 + (L + 40) * k, X = x => x0 + x * k, Y = y => 40 + y * k;   // x from the re-entrant face into the span, y down from the top
+    let g = '';
+    // the beam: nib to the left of the face, full depth to the right
+    g += poly([[X(-L), Y(0)], [X(span), Y(0)], [X(span), Y(h)], [X(0), Y(h)], [X(0), Y(hn)], [X(-L), Y(hn)]], { fill: CON2, stroke: 'ink', w: 1.3 });
+    g += line(X(span), Y(0), X(span), Y(h), { c: '#fff', w: 2 }) + poly([[X(span) - 4, Y(-6)], [X(span) + 4, Y(h * 0.45)], [X(span) - 4, Y(h * 0.55)], [X(span) + 4, Y(h + 6)]], { open: true, stroke: 'ink', w: 0.8 });
+    // the support under the nib and the bearing pad
+    const yS = hn + 10;
+    g += hatch(X(-L - 60), Y(yS), (L + 60 - 20) * k, (h - hn - 10) * k);
+    const xb = -R.av;   // the bearing centre, left of the face
+    g += rect(X(xb - R.lp / 2), Y(hn), R.lp * k, Math.max(10 * k, 4), { fill: PAD, stroke: 'none' });
+    g += arrow(X(xb), Y(h) + 26, X(xb), Y(hn) + 4, { c: 'red', w: 2 }) + text(X(xb) + 6, Y(h) + 22, `V_Ed ${r0(R.V / 1e3)} kN, H_Ed ${r0(R.H / 1e3)}`, { size: 10, weight: 700, color: RED });
+    // reinforcement: nib tie (loop at the end), hangers, inclined bars, bottom bars (U at the face)
+    const STL = '#1d5fbf', yT = R.yTie, c = R.cover + R.phiL;
+    g += line(X(-L + c), Y(yT), X(R.lin), Y(yT), { c: STL, w: 2.4 });
+    if (R.nibEnd === 'loop') g += poly([[X(-L + c + 30), Y(yT)], [X(-L + c), Y(yT)], [X(-L + c), Y(c)], [X(-L + c + 60), Y(c)]], { open: true, stroke: STL, w: 1.6 });
+    if (R.nibEnd === 'plate') g += rect(X(-L + c) - 3, Y(c), 6, (yT - c + 12) * k, { fill: STL, stroke: 'none' });
+    if (false) g += `<circle cx="${X(-L + c + 8).toFixed(1)}" cy="${Y(yT).toFixed(1)}" r="3.2" fill="${STL}"/>`;
+    for (let i = 0; i < R.hang.n; i++) { const x = R.cover + R.hang.phi / 2 + i * R.hang.s; g += line(X(x), Y(c), X(x), Y(h - c), { c: STL, w: 1.6 }); }
+    if (R.alpha > 0 && R.inc.n > 0) { const xs = xb, dy = h - 2 * c; g += line(X(xs), Y(c), X(xs + dy / Math.tan(R.beta)), Y(h - c), { c: STL, w: 2 }) + line(X(xs + dy / Math.tan(R.beta)), Y(h - c), X(xs + dy / Math.tan(R.beta) + 250), Y(h - c), { c: STL, w: 2 }); }
+    const yB = R.yBot;
+    g += line(X(R.cover), Y(yB), X(span - 10), Y(yB), { c: STL, w: 2.6 });
+    if (R.botEnd === 'bent') g += line(X(R.cover), Y(yB), X(R.cover), Y(yB - Math.min(h - hn, 10 * R.bot.phi)), { c: STL, w: 2.6 });
+    // the strut-and-tie model
+    const G = R.G, S = { c: 'red', w: 1.1, dash: '6 3' }, T = { c: STL, w: 1.1 };
+    const lab = (x, y, t, o = {}) => text(x, y, t, { size: 9.5, weight: 600, ...o });
+    if (G) {
+      const xn = G.xn, yB0 = G.ay / 2 + R.cover * 0;
+      g += line(X(xb), Y(yT), X(xn), Y(yB0), S) + line(X(xn), Y(yB0), X(xn), Y(yB), T) + line(X(xn), Y(yB), X(xn + (yB - yB0)), Y(yB0), S);
+      g += rect(X(xn - G.ax / 2), Y(0), G.ax * k, G.ay * k, { fill: 'rgba(196,36,42,.18)', stroke: 'red', w: 0.8 });
+      g += lab(X((xb + xn) / 2) - 4, Y((yT + yB0) / 2) - 4, `C ${r0(G.C / 1e3)}`, { anchor: 'end', color: RED });
+      g += lab(X(xn) + 5, Y((yB0 + yB) / 2), `F_h ${r0(R.Fhang / 1e3)}`, { color: STL });
+    }
+    if (R.VB > 0) { const dy = yB - R.cover; g += lab(X(xb + dy / Math.tan(R.beta) / 2) + 6, Y((R.cover + yB) / 2), `F_inc ${r0(R.Finc / 1e3)}`, { color: STL }); }
+    g += lab(X(-L / 2), Y(yT) - 6, `F_t ${r0(R.Ftie / 1e3)} kN`, { anchor: 'middle', color: bad(R, 'tie') ? RED : STL });
+    g += lab(X(span * 0.55), Y(yB) - 6, `F_bot ${r0(R.Fbot / 1e3)} kN`, { anchor: 'middle', color: bad(R, 'bot') ? RED : STL });
+    // dimensions
+    g += dimV(X(-L) - 16, Y(0), Y(hn), `h_nib ${r0(hn)}`) + dimV(X(span) + 14, Y(0), Y(h), `h ${r0(h)}`, { right: true });
+    g += dimH(X(-L), X(0), Y(0) - 16, `nib ${r0(L)}`) + dimH(X(xb), X(0), Y(h) + 44, `a_v ${r0(R.av)}`, { below: true });
+    if (G) g += dimH(X(xb), X(G.xn), Y(h) + 76, `a ${r0(G.a)}; z ${r0(G.z)}, θ ${G.theta.toFixed(0)}°`, { below: true });
+    const yt = Y(h) + 112;
+    const rows = [['Dashed red: struts; blue: ties and bars (forces in kN). Model (a): the nib hangs from hangers at the corner;', MUTE],
+      [`model (b): inclined bars from the top of the nib. Here ${r0((1 - R.alpha) * 100)} % by hangers, ${r0(R.alpha * 100)} % by inclined bars (Figure 10.4).`, MUTE]];
+    let gy = yt; rows.forEach(([t, cc]) => { g += text(20, gy, t, { size: 9.5, color: cc }); gy += 14; });
+    return svg(g, W, gy + 4, 'Elevation of the half-joint with its reinforcement and strut-and-tie model');
+  }
+
+  /* ---------- splice ---------- */
+  function spliceSection(R) {
+    const W = 700, k = Math.min(240 / R.b, 240 / R.h), x0 = 60, y0 = 30, X = x => x0 + x * k, Y = y => y0 + y * k;
+    let g = rect(X(0), Y(0), R.b * k, R.h * k, { fill: CON, stroke: 'ink', w: 1.3 });
+    // compression zone of the governing axis at M_Rd
+    const useH = R.Mh / Math.max(R.Rh.MRd, 1) >= R.Mb / Math.max(R.Rb.MRd, 1), Rg = useH ? R.Rh : R.Rb;
+    if (!Rg.out && Rg.x > 0 && (R.Mh > 0 || R.Mb > 0)) {
+      const s = Math.min(R.c.lambda * Rg.x, useH ? R.h : R.b);
+      g += useH ? rect(X(0), Y(0), R.b * k, s * k, { fill: 'rgba(196,36,42,.16)', stroke: 'none' }) + line(X(0), Y(Rg.x), X(R.b), Y(Rg.x), { c: 'red', w: 1, dash: '5 3' }) + text(X(R.b) + 6, Y(Rg.x) + 4, `x ${r0(Rg.x)}`, { size: 9.5, color: RED })
+        : rect(X(0), Y(0), s * k, R.h * k, { fill: 'rgba(196,36,42,.16)', stroke: 'none' }) + line(X(Rg.x), Y(0), X(Rg.x), Y(R.h), { c: 'red', w: 1, dash: '5 3' }) + text(X(Rg.x) + 4, Y(R.h) + 12, `x ${r0(Rg.x)}`, { size: 9.5, color: RED });
+    }
+    g += rect(X(R.cL + R.phiL / 2), Y(R.cL + R.phiL / 2), (R.b - 2 * R.cL - R.phiL) * k, (R.h - 2 * R.cL - R.phiL) * k, { stroke: 'ink', w: Math.max(1, R.phiL * k), rx: 4 });
+    R.bars.forEach(([u, v]) => { g += `<circle cx="${X(u).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${(R.Ds / 2 * k).toFixed(1)}" fill="#fff" stroke="#56606b" stroke-width="1.2"/><circle cx="${X(u).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${Math.max(2, R.phi / 2 * k).toFixed(1)}" fill="#1d5fbf"/>`; });
+    g += dimH(X(0), X(R.b), Y(R.h) + 22, `b ${r0(R.b)}`, { below: true }) + dimV(X(0) - 16, Y(0), Y(R.h), `h ${r0(R.h)}`);
+    const tx = X(R.b) + 70; let ty = 44;
+    [[`${R.bars.length}H${R.phi} in sleeves of ${r0(R.Ds)} mm`, 700, 11.5], [`cover to the sleeve ${r0(R.cS)} mm; clear gap ${r0(R.sClear)} mm`, 400, 10],
+      [`bar tension at the joint ≤ ${r1(R.fsMax)} N/mm² (${R.full ? 'full-strength splice: f_yd' : 'the splice: F_k/γ_s A_s'})`, 400, 10],
+      [`f_ck at the joint ${R.fj} (column ${R.fckCol}, below ${R.fckLow}, grout ${R.fckG})`, 400, 10],
+      [`M_Rd across h ${R.Rh.out ? '–' : r1(R.Rh.MRd / 1e6)} kNm, across b ${R.Rb.out ? '–' : r1(R.Rb.MRd / 1e6)} kNm at N_Ed ${r0(R.N / 1e3)} kN`, 700, 10],
+      ['Shaded: the compression zone at M_Rd for the more highly used axis.', 400, 9.5]].forEach(([t, w, s]) => { g += text(tx, ty, t, { size: s, weight: w, color: w === 400 && s < 10 ? MUTE : undefined }); ty += s + 9; });
+    return svg(g, W, Math.max(Y(R.h) + 44, ty + 8), 'Section through the joint with the bars in their sleeves and the compression zone');
+  }
+  function spliceElev(R) {
+    const W = 700, tb = R.inp.tBed > 0 ? R.inp.tBed : 20, le = Math.max(R.leProv, 50), hc = 2 * le + 160, k = Math.min(260 / R.h, 300 / (hc + 160)), x0 = 120, X = x => x0 + x * k, yJ = 40 + (hc - 40) * k, Y = y => yJ - y * k;
+    let g = '';
+    g += rect(X(-80), Y(0), (R.h + 160) * k, 140 * k, { fill: 'url(#dkHatch)', stroke: 'ink', w: 1 }) + text(X(-80) + 4, Y(0) + 140 * k - 6, 'element below', { size: 9.5, color: MUTE });
+    g += rect(X(0), Y(tb), R.h * k, tb * k, { fill: '#b7c0c9', stroke: 'ink', w: 0.8 }) + text(X(R.h) + 8, Y(tb / 2) + 4, `grout bed ${r0(tb)}`, { size: 9.5, color: MUTE });
+    g += rect(X(0), Y(hc), R.h * k, (hc - tb) * k, { fill: CON, stroke: 'ink', w: 1.3 }) + text(X(R.h / 2), Y(hc) + 16, 'column above', { size: 10, anchor: 'middle', color: MUTE });
+    const xs = [R.off, R.h - R.off], sl = 2 * le + 20;
+    xs.forEach(x => {
+      g += rect(X(x - R.Ds / 2), Y(tb + sl), R.Ds * k, sl * k, { fill: '#fff', stroke: '#56606b', w: 1.1 });
+      g += line(X(x), Y(-110), X(x), Y(tb + R.leProv), { c: '#1d5fbf', w: Math.max(2, R.phi * k) });
+      g += line(X(x), Y(tb + sl - R.leProv), X(x), Y(hc - 10), { c: '#1d5fbf', w: Math.max(2, R.phi * k) });
+    });
+    g += dimV(X(R.h) + 30, Y(tb), Y(tb + R.leProv), `embedment ${r0(R.leProv)}`, { right: true, color: R.leProv < R.leMin ? RED : undefined });
+    g += dimV(X(0) - 18, Y(tb), Y(tb + sl), `sleeve ${r0(sl)}`);
+    const yb = Y(0) + 140 * k + 18;
+    g += text(20, yb, `Embedment ${r0(R.leProv)} mm against the maker's ${r0(R.leMin)} mm; grout ${R.fckG} against ${R.fgMin} N/mm². Sleeve length drawn indicatively.`, { size: 9.5, color: MUTE });
+    return svg(g, W, yb + 10, 'Elevation of the joint: the bars from below in the grouted sleeves of the column above');
+  }
+
+  const blocks = R => R.mode === 'half' ? [['Half-joint: reinforcement and strut-and-tie model', halfJoint(R)]]
+    : R.mode === 'splice' ? [['The joint in section', spliceSection(R)], ['The joint in elevation', spliceElev(R)]]
+      : [['Bearing: the nominal length and its parts (EN 1992-1-1 Figure 10.6)', bearing(R)]];
+  return { html: R => page(blocks(R)), report: R => sheet(blocks(R)), bearing, halfJoint, spliceSection, spliceElev };
+})();
+
+</script>
+<script id="ui">
+'use strict';
+const $ = id => document.getElementById(id);
+const STORE = 'et-precast-connections-v1';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ufmt = u => !Number.isFinite(u) ? '&gt;99' : u.toFixed(3);
+const f0 = v => Number.isFinite(v) ? Math.round(v).toString() : '–', f1 = v => Number.isFinite(v) ? (Math.round(v * 10) / 10).toFixed(1) : '–', f2 = v => Number.isFinite(v) ? v.toFixed(2) : '–';
+const sub = s => esc(s).replace(/_\{([^}]+)\}/g, '<sub>$1</sub>').replace(/_([A-Za-z0-9,]+)/g, '<sub>$1</sub>');
+// concrete classes for the selects
+const CLASSES = [[20, 'C20/25'], [25, 'C25/30'], [28, 'C28/35'], [30, 'C30/37'], [32, 'C32/40'], [35, 'C35/45'], [40, 'C40/50'], [45, 'C45/55'], [50, 'C50/60'], [60, 'C60/75']];
+[['b_fckA', 40], ['b_fckB', 40], ['j_fck', 40], ['s_fckCol', 40], ['s_fckLow', 35]].forEach(([id, d]) => { $(id).innerHTML = CLASSES.map(([v, n]) => `<option value="${v}"${v === d ? ' selected' : ''}>${n}</option>`).join(''); });
+// ---------- modes ----------
+let mode = 'bearing';
+const HELP = { bearing: 'A precast member resting on a support: the nominal bearing length a = a1 + a2 + a3 + √(Δa2² + Δa3²) and the bearing stress, EN 1992-1-1 10.9.5.',
+  half: 'A dapped end resting on a nib or corbel: the strut-and-tie models of EN 1992-1-1 Figure 10.4, hangers at the corner and/or inclined bars.',
+  splice: 'Column bars joined in grouted sleeves: the joint under N and M, shear across the grout bed, and the maker\'s embedment, grout, cover and spacing.' };
+function refreshVis() {
+  ['bearing', 'half', 'splice'].forEach(m => { document.querySelector('.m-' + m).hidden = m !== mode; });
+  [...$('modes').children].forEach(b => b.classList.toggle('on', b.dataset.m === mode));
+  $('modeHelp').textContent = HELP[mode];
+  const conc = ['rc30', 'plain'].includes($('b_support').value);
+  $('b_fckBGrp').hidden = !conc; $('b_fckBedGrp').hidden = $('b_conn').value !== 'bedded';
+  document.querySelectorAll('.b-pad').forEach(e => { e.hidden = $('b_conn').value !== 'pad'; });
+  document.querySelectorAll('.b-vloop').forEach(e => { e.hidden = $('b_detail').value !== 'vloop'; });
+  document.querySelectorAll('.j-hval').forEach(e => { e.hidden = $('j_hRule').value !== 'value'; });
+  document.querySelectorAll('.j-loop').forEach(e => { e.hidden = $('j_nibEnd').value !== 'loop'; });
+  document.querySelectorAll('.j-inc').forEach(e => { e.hidden = !(+$('j_alpha').value > 0); });
+  document.querySelectorAll('.s-cap').forEach(e => { e.hidden = $('s_capMode').value !== 'value'; });
+}
+function setMode(m) { mode = ['bearing', 'half', 'splice'].includes(m) ? m : 'bearing'; refreshVis(); }
+[...$('modes').children].forEach(b => { b.onclick = () => { setMode(b.dataset.m); queueDraw(); }; });
+// ---------- state ----------
+const FIELDS = ['pName', 'pJob', 'pBy', 'pRef', 'fyk',
+  'b_FEd', 'b_row', 'b_support', 'b_fckA', 'b_fckB', 'b_conn', 'b_fckBed', 'b_fbedPad', 'b_b1', 'b_aProv', 'b_lpad', 'b_tPad', 'b_AsPad', 'b_detail', 'b_cEnd', 'b_rBend', 'b_span', 'b_ln', 'b_sup2', 'b_movement', 'b_isolated',
+  'j_VEd', 'j_hRule', 'j_HEd', 'j_h', 'j_hn', 'j_b', 'j_lend', 'j_av', 'j_lp', 'j_bp', 'j_fck', 'j_cover', 'j_phiL', 'j_nTie', 'j_phiTie', 'j_nibEnd', 'j_phimTie', 'j_lin', 'j_nHang', 'j_legsHang', 'j_phiHang', 'j_sHang', 'j_nBot', 'j_phiBot', 'j_botEnd', 'j_alpha', 'j_nInc', 'j_phiInc', 'j_beta', 'j_nNibL', 'j_legsNibL', 'j_phiNibL',
+  's_NEd', 's_Mh', 's_Mb', 's_VEd', 's_b', 's_h', 's_phi', 's_nb', 's_nh', 's_cover', 's_phiL', 's_cReq', 's_fckCol', 's_fckLow', 's_dg', 's_Ds', 's_capMode', 's_Fk', 's_leMin', 's_leProv', 's_fckGrout', 's_fgMin', 's_tBed', 's_surface'];
+function collect() { const s = { v: 1, mode }; FIELDS.forEach(id => { s[id] = $(id).type === 'checkbox' ? $(id).checked : $(id).value; }); return s; }
+function restore(s) { FIELDS.forEach(id => { if (s[id] === undefined || !$(id)) return; if ($(id).type === 'checkbox') $(id).checked = !!s[id]; else $(id).value = s[id]; }); setMode(s.mode); }
+const num = (s, k, nm) => { const v = s[k] === '' || s[k] === undefined ? NaN : +s[k]; if (!Number.isFinite(v)) throw new Error(`${nm}: give a number`); return v; };
+const opt = (s, k) => s[k] === '' || s[k] === undefined ? undefined : +s[k];
+function input(s) {
+  const fyk = num(s, 'fyk', 'f_yk');
+  if (s.mode === 'half') return { mode: 'half', fyk, VEd: num(s, 'j_VEd', 'V_Ed'), hRule: s.j_hRule, HEd: opt(s, 'j_HEd'), h: num(s, 'j_h', 'Beam depth'), hn: num(s, 'j_hn', 'Nib depth'), b: num(s, 'j_b', 'Width'),
+    lend: num(s, 'j_lend', 'Nib length'), av: num(s, 'j_av', 'a_v'), lp: num(s, 'j_lp', 'Bearing length'), bp: num(s, 'j_bp', 'Bearing width'), fck: +s.j_fck, cover: num(s, 'j_cover', 'Cover'), phiL: +s.j_phiL,
+    nTie: num(s, 'j_nTie', 'Nib tie bars'), phiTie: +s.j_phiTie, nibEnd: s.j_nibEnd, phimTie: opt(s, 'j_phimTie'), lin: num(s, 'j_lin', 'Nib tie past the face'), nHang: num(s, 'j_nHang', 'Hanger links'),
+    legsHang: +s.j_legsHang || 2, phiHang: +s.j_phiHang, sHang: num(s, 'j_sHang', 'Hanger spacing'), nBot: num(s, 'j_nBot', 'Bottom bars'), phiBot: +s.j_phiBot, botEnd: s.j_botEnd,
+    alpha: (+s.j_alpha || 0) / 100, nInc: +s.j_nInc || 0, phiInc: +s.j_phiInc, beta: +s.j_beta || 45, nNibL: +s.j_nNibL || 0, legsNibL: +s.j_legsNibL || 2, phiNibL: +s.j_phiNibL };
+  if (s.mode === 'splice') return { mode: 'splice', fyk, NEd: num(s, 's_NEd', 'N_Ed'), Mh: num(s, 's_Mh', 'M_Ed across h'), Mb: num(s, 's_Mb', 'M_Ed across b'), VEd: num(s, 's_VEd', 'V_Ed'),
+    b: num(s, 's_b', 'Width b'), h: num(s, 's_h', 'Depth h'), phi: +s.s_phi, nb: num(s, 's_nb', 'Bars along b'), nh: num(s, 's_nh', 'Bars along h'), cover: num(s, 's_cover', 'Cover'), phiL: +s.s_phiL, cReq: num(s, 's_cReq', 'Cover needed'),
+    fckCol: +s.s_fckCol, fckLow: +s.s_fckLow, dg: num(s, 's_dg', 'Aggregate size'), Ds: num(s, 's_Ds', 'Sleeve diameter'), capMode: s.s_capMode, Fk: opt(s, 's_Fk'), leMin: num(s, 's_leMin', 'Embedment needed'), leProv: num(s, 's_leProv', 'Embedment provided'),
+    fckGrout: num(s, 's_fckGrout', 'Grout f_ck'), fgMin: num(s, 's_fgMin', 'Grout needed'), tBed: opt(s, 's_tBed'), surface: s.s_surface };
+  return { mode: 'bearing', fyk, FEd: num(s, 'b_FEd', 'F_Ed'), row: s.b_row, support: s.b_support, fckSupported: +s.b_fckA, fckSupporting: +s.b_fckB, conn: s.b_conn, fckBed: opt(s, 'b_fckBed'), fbedPad: opt(s, 'b_fbedPad'),
+    b1: num(s, 'b_b1', 'b1'), aProv: num(s, 'b_aProv', 'Nominal bearing length'), lpad: opt(s, 'b_lpad'), tPad: opt(s, 'b_tPad'), AsPad: opt(s, 'b_AsPad'), detail: s.b_detail, cEnd: num(s, 'b_cEnd', 'End cover'), rBend: opt(s, 'b_rBend'),
+    span: num(s, 'b_span', 'Span'), ln: num(s, 'b_ln', 'Member length'), sup2: s.b_sup2, movement: opt(s, 'b_movement'), isolated: !!s.b_isolated };
+}
+const compute = s => Precast.design(input(s));
+// ---------- results ----------
+const bar = c => c.req ? `<div class="ck"><div class="nm">${sub(c.name)}<small>${esc(c.ref)} &nbsp;${sub(c.note || '')}</small></div><div></div><div class="u ${c.ok ? '' : 'over'}">${c.ok ? 'OK' : 'NOT MET'}</div></div>`
+  : `<div class="ck"><div class="nm">${sub(c.name)}<small>${esc(c.ref)} &nbsp;${sub(c.note || '')}</small></div><div class="bar"><i class="${c.util > 1 ? 'over' : c.util > 0.9 ? 'hi' : ''}" style="width:${Math.min(100, c.util * 100 / 1.2)}%"></i></div><div class="u ${c.util > 1 ? 'over' : ''}">${ufmt(c.util)}</div></div>`;
+const kv = (k, v) => `<div><b>${k}</b><span>${v}</span></div>`;
+function values(R) {
+  if (R.mode === 'half') return kv('d<sub>n</sub> (mm)', f0(R.dn)) + (R.G ? kv('z (mm)', f0(R.G.z)) + kv('θ (°)', f1(R.G.theta)) + kv('a (mm)', f0(R.G.a)) : '') + kv('F<sub>t</sub> nib tie (kN)', f1(R.Ftie / 1e3))
+    + kv('F<sub>h</sub> hangers (kN)', f1(R.Fhang / 1e3)) + (R.VB > 0 ? kv('F inclined (kN)', f1(R.Finc / 1e3)) : '') + kv('F bottom tie (kN)', f1(R.Fbot / 1e3)) + kv('k<sub>2</sub>ν′f<sub>cd</sub> (N/mm²)', f2(R.s2))
+    + kv('l<sub>bd</sub> tie / bottom (mm)', `${f0(R.lbTie)} / ${f0(R.lbBot)}`);
+  if (R.mode === 'splice') return kv('f<sub>ck</sub> at the joint', R.fj) + kv('Bar tension limit (N/mm²)', f1(R.fsMax)) + kv('N<sub>Rd</sub> (kN)', f0(R.NRd / 1e3)) + kv('M<sub>Rd</sub> across h (kNm)', R.Rh.out ? '–' : f1(R.Rh.MRd / 1e6))
+    + kv('M<sub>Rd</sub> across b (kNm)', R.Rb.out ? '–' : f1(R.Rb.MRd / 1e6)) + kv('v<sub>Rdi</sub> (N/mm²)', R.vRdi.toFixed(3)) + kv('Clear gap / needed (mm)', `${f0(R.sClear)} / ${f0(R.sMin)}`);
+  return kv('f<sub>cd</sub> (N/mm²)', f2(R.fcd)) + kv('f<sub>Rd</sub> (N/mm²)', f2(R.fRd)) + kv('σ<sub>Ed</sub>/f<sub>cd</sub>', `${f2(R.sigma / R.fcd)} (${R.band})`) + kv('a<sub>1</sub> (mm)', `${f0(R.a1req)} (min ${R.a1min})`)
+    + kv('a<sub>2</sub> / a<sub>3</sub> (mm)', `${R.a2} / ${R.a3}`) + kv('Δa<sub>2</sub> / Δa<sub>3</sub> (mm)', `${f1(R.dA2)} / ${f1(R.dA3)}`) + kv('a required / provided', `${f0(R.aReq)} / ${f0(R.aProv)}`);
+}
+const subOf = R => R.mode === 'half' ? `${f0(R.V / 1e3)} kN on a ${f0(R.b)} × ${f0(R.h)} beam with a ${f0(R.hn)} mm nib; ${f0((1 - R.alpha) * 100)} % on hangers, ${f0(R.alpha * 100)} % on inclined bars`
+  : R.mode === 'splice' ? `${R.bars.length}H${R.phi} in ${f0(R.Ds)} mm sleeves, ${f0(R.b)} × ${f0(R.h)} column; N<sub>Ed</sub> ${f0(R.N / 1e3)} kN`
+    : `${f0(R.F / 1e3)} kN on ${esc(R.labels.support.toLowerCase())}, ${esc(R.conn === 'dry' ? 'dry' : R.conn === 'pad' ? 'on a pad' : 'bedded')}; a ${f0(R.aReq)} needed of ${f0(R.aProv)} mm`;
+let last = null;
+function render(R, s) {
+  const W = [...R.checks].sort((a, b) => b.util - a.util)[0];
+  let h = `<div class="verdict ${R.util > 1 ? 'fail' : ''}"><div><div class="big">${R.util > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(R.util)}</div><div class="sub">Governs: ${sub(W.name.charAt(0).toLowerCase() + W.name.slice(1))} (${esc(W.ref)})<br>${subOf(R)}</div></div></div>`;
+  h += `<div id="drawings"></div>`;
+  h += `<div class="dlabel">Checks</div><div class="checks">${[...R.checks].sort((a, b) => b.util - a.util).map(bar).join('')}</div>`;
+  R.warnings.forEach(t => { h += `<div class="note">${sub(t)}</div>`; });
+  h += `<div class="dlabel">Values</div><div class="kv">${values(R)}</div>`;
+  h += `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  $('results').innerHTML = h; redraw();
+  $('printBtn').onclick = () => { $('report').innerHTML = report(R, s); window.print(); };
+}
+function run() {
+  const s = collect(); try { localStorage.setItem(STORE, JSON.stringify(s)); } catch (e) { /* storage unavailable */ }
+  try { const R = compute(s); last = { R, s }; render(R, s); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div><div id="drawings"></div>`; redraw(); }
+}
+let drawT = 0;
+function redraw() {
+  const el = $('drawings'); if (!el) return;
+  try { el.innerHTML = DrawPrecast.html(compute(collect())); }
+  catch (e) { el.innerHTML = `<div class="note">The drawing will appear when the inputs are complete: ${esc(e.message)}</div>`; }
+}
+const queueDraw = () => { clearTimeout(drawT); drawT = setTimeout(redraw, 150); };
+$('inputs').addEventListener('input', () => { refreshVis(); queueDraw(); }); $('inputs').addEventListener('change', () => { refreshVis(); queueDraw(); });
+// ---------- A4 sheet ----------
+const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
+const okng = u => u <= 1 ? `<span class="ok">${ufmt(u)} OK</span>` : `<span class="ng">${ufmt(u)} FAIL</span>`;
+const okc = c => c.req ? (c.ok ? '<span class="ok">OK</span>' : '<span class="ng">NOT MET</span>') : okng(c.util);
+function inputsRows(R) {
+  const i = R.inp;
+  if (R.mode === 'half') return rl(`V<sub>Ed</sub> ${f0(R.V / 1e3)} kN, H<sub>Ed</sub> ${f0(R.H / 1e3)} kN; beam ${f0(R.b)} × ${f0(R.h)} mm, nib ${f0(R.hn)} mm deep and ${f0(R.lend)} mm long; bearing ${f0(R.lp)} × ${f0(R.bp)} mm at a<sub>v</sub> ${f0(R.av)} mm from the face`, '', '')
+    + rl(`C${R.fck}, f<sub>yk</sub> ${R.fyk}, cover ${R.cover} mm to H${R.phiL} links; nib tie ${R.tie.n}H${R.tie.phi} (${R.nibEnd === 'loop' ? `loops, φ<sub>m</sub> ${f0(R.phimTie)}` : R.nibEnd === 'plate' ? 'welded to an end plate' : 'straight'}), ${f0(R.lin)} mm past the face; hangers ${R.hang.n} × ${R.hang.legs} legs H${R.hang.phi} @ ${R.hang.s}; bottom ${R.bot.n}H${R.bot.phi} (${R.botEnd === 'bent' ? `U-bars, φ<sub>m</sub> ${f0(R.phimBot)}` : 'straight'})${R.VB > 0 ? `; inclined ${R.inc.n}H${R.inc.phi} at ${f0(R.beta * 180 / Math.PI)}° carrying ${f0(R.alpha * 100)} %` : ''}`, '', '')
+    + rl(`d<sub>n</sub> = h<sub>nib</sub> − c − φ<sub>L</sub> − φ/2 = ${f0(R.dn)} mm; ν′ = 1 − f<sub>ck</sub>/250 = ${R.nuP.toFixed(3)}; CCT node limit k<sub>2</sub>ν′f<sub>cd</sub> = ${f2(R.s2)} N/mm²`, '6.5.2, 6.5.4', '')
+    + (R.G ? rl(`Node at the hangers a<sub>x</sub> = V<sub>A</sub>/(b k<sub>2</sub>ν′f<sub>cd</sub>) = ${f0(R.G.ax)} mm, centred ${f0(R.G.xn)} mm from the face; a = a<sub>v</sub> + ${f0(R.G.xn)} = ${f0(R.G.a)} mm; z² − d<sub>n</sub>z + a<sub>x</sub>a/2 = 0 gives z = ${f0(R.G.z)} mm, θ = ${f1(R.G.theta)}°`, 'CCIP-057', '') : '');
+  if (R.mode === 'splice') return rl(`Column ${f0(R.b)} × ${f0(R.h)} mm, ${R.bars.length}H${R.phi} (${R.nb} along b, ${R.nh} along h), f<sub>yk</sub> ${R.fyk}; links H${R.phiL} at ${R.cL} mm cover; sleeves ${f0(R.Ds)} mm outside diameter`, '', '')
+    + rl(`N<sub>Ed</sub> ${f0(R.N / 1e3)} kN, M<sub>Ed</sub> ${f1(R.Mh / 1e6)} kNm across h and ${f1(R.Mb / 1e6)} kNm across b, V<sub>Ed</sub> ${f0(R.VEd / 1e3)} kN`, '', '')
+    + rl(`f<sub>ck</sub> at the joint = min(column ${R.fckCol}, below ${R.fckLow}, grout ${R.fckG}) = ${R.fj}; bar tension ≤ ${R.full ? 'f<sub>yd</sub>' : `min(f<sub>yd</sub>, F<sub>k</sub>/(γ<sub>s</sub>A<sub>s</sub>)) with F<sub>k</sub> ${f0(R.Fk / 1e3)} kN`} = ${f1(R.fsMax)} N/mm²`, '3.1.7, 10.9.4.5', '')
+    + rl(`Shear across the bed: c = ${R.cc}, μ = ${R.mu} (${esc(R.surf)}), σ<sub>n</sub> = ${R.sn.toFixed(2)} N/mm², ρ = ${R.rho.toFixed(4)}`, '6.2.5', '');
+  return rl(`F<sub>Ed</sub> ${f0(R.F / 1e3)} kN; ${esc(R.labels.row)} on ${esc(R.labels.support.toLowerCase())}; supported member C${R.fckA}${R.fckB ? `, support C${R.fckB}` : ''}; f<sub>cd</sub> = ${f2(R.fcd)} N/mm² (the lower)`, '10.9.5.2', '')
+    + rl(`${R.conn === 'dry' ? 'Dry: f<sub>Rd</sub> = 0.4 f<sub>cd</sub>' : `f<sub>Rd</sub> = f<sub>bed</sub> ≤ 0.85 f<sub>cd</sub>, f<sub>bed</sub> ${f2(R.fbed)}`} = ${f2(R.fRd)} N/mm²; b<sub>1</sub> ${f0(R.b1)} mm${R.b1 !== R.b1in ? ` (of ${f0(R.b1in)}, 10.9.5.2(3))` : ''}`, '10.9.5.2(2)', '')
+    + rl(`a<sub>1</sub> = max(F<sub>Ed</sub>/(b<sub>1</sub>f<sub>Rd</sub>) = ${f1(R.a1stress)}, ${R.a1min} (Table 10.2, σ<sub>Ed</sub>/f<sub>cd</sub> ${R.band})) = ${f1(R.a1req)} mm; a<sub>2</sub> = ${R.a2} (Table 10.3); a<sub>3</sub> = ${R.a3} (Table 10.4, ${esc(R.labels.detail.toLowerCase())})`, '10.9.5.2', '')
+    + rl(`Δa<sub>2</sub> = ${f1(R.dA2)} (Table 10.5, l = ${f0(R.l)}), Δa<sub>3</sub> = l<sub>n</sub>/2500 = ${f1(R.dA3)}; √(Δa<sub>2</sub>² + Δa<sub>3</sub>²) = ${f1(R.tol)} mm${R.extra ? `; plus ${R.iso ? '20 for an isolated member' : ''}${R.iso && R.mv ? ' and ' : ''}${R.mv ? `${f0(R.mv)} for movement` : ''}` : ''}`, '10.9.5.2, 10.9.5.3', '')
+    + rl(`a = ${f1(Math.max(R.a1req, R.lpad))} + ${R.a2} + ${R.a3} + ${f1(R.tol)}${R.extra ? ` + ${f0(R.extra)}` : ''} = ${f1(R.aReq)} mm against ${f0(R.aProv)} mm provided`, '(10.6)', okng(R.aReq / R.aProv));
+}
+function report(R, s) {
+  const today = new Date().toLocaleDateString('en-GB');
+  const title = R.mode === 'half' ? 'Half-joint to BS EN 1992-1-1 10.9.4.6' : R.mode === 'splice' ? 'Grouted sleeve splice to BS EN 1992-1-1' : 'Bearing to BS EN 1992-1-1 10.9.5';
+  const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.pRef) || '&nbsp;'}</div><div class="ttl">${title}</div></div>`;
+  let b = `<div class="rs"><h2>1 Connection</h2>${inputsRows(R)}</div>`;
+  b += `<div class="rs"><h2>2 Drawings</h2>${DrawPrecast.report(R)}</div>`;
+  b += `<div class="rs"><h2>3 Checks</h2>` + R.checks.map(c => rl(sub(c.name) + ` <span style="color:#666">${sub(c.note || '')}</span>`, esc(c.ref), okc(c))).join('') + R.warnings.map(t => `<p class="rp">${sub(t)}</p>`).join('') + `</div>`;
+  b += `<p class="rp" style="color:#555">BS EN 1992-1-1:2004+A1:2014 with the UK National Annex${R.mode === 'half' ? '; the node and lever arm laid out as The Concrete Centre\'s CCIP-057 does for corbels' : ''}. Generated by EngineeringTools — Precast Connections.</p>`;
+  return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
+}
+$('calc').onclick = run;
+(function init() {
+  let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
+  if (s && s.v === 1) restore(s); else setMode('bearing');
+  redraw();
+})();
+</script>
+<footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent engineer to check and approve all calculations before they are used.</footer>
+<!-- @@FILEIO: save / open, shared by every tool (scratchpad/common/fileio.*) -->
+<style id="ef-style">
+/* Save / open buttons on the page header, and the status message (source: scratchpad/common/fileio.css) */
+.ef-bar{position:absolute;top:14px;right:16px;z-index:3;display:flex;gap:8px;}
+.ef-bar.ef-float{position:fixed;top:12px;right:12px;}
+.ef-btn{height:32px;padding:0 12px;display:inline-flex;align-items:center;gap:6px;border:0;border-radius:6px;background:rgba(255,255,255,.94);color:#111;font-family:inherit;font-size:13px;font-weight:500;line-height:1;cursor:pointer;}
+.ef-btn:hover{background:#fff;}
+.ef-btn:focus-visible{outline:2px solid #fff;outline-offset:2px;}
+.ef-btn svg{width:15px;height:15px;flex:none;}
+.ef-msg{position:fixed;left:50%;bottom:20px;z-index:1000;width:max-content;max-width:min(560px,calc(100vw - 32px));transform:translate(-50%,8px);opacity:0;pointer-events:none;
+  background:#1d1f20;color:#fff;font-family:inherit;font-size:13px;line-height:1.45;padding:10px 14px;border-radius:6px;transition:opacity .15s,transform .15s;}
+.ef-msg.on{opacity:1;transform:translate(-50%,0);}
+.ef-msg.bad{background:#b3261e;}
+@media(max-width:560px){.ef-bar{position:static;margin-top:12px;align-self:flex-start;}}
+@media print{.ef-bar,.ef-msg{display:none!important;}}
+</style>
+<script id="ef-script">
+/* Save / open: a tool's inputs as a .json file. Shared by every Engineering Tools page (source: scratchpad/common/fileio.js),
+   configured per page with EngFile.init({...}).
+   File: { app: 'EngineeringTools', tool, key, format, saved, state }.
+   Two ways to open:
+   - store: the tool already restores itself from browser storage on load. Open writes the file's state there and reloads,
+     so the tool rebuilds everything (load tables, spans, models) exactly as on a return visit, then recalculates.
+   - set: the page applies the state itself (pages without saved state); EngFile.fields() covers plain forms. */
+const EngFile = (() => {
+  'use strict';
+  const APP = 'EngineeringTools', FMT = 1, FLAG = 'ef-opened';
+  let C = null, input = null, timer = 0;
+  const ICON = {
+    open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+    save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v5h8V3"/><path d="M7 21v-7h10v7"/></svg>',
+  };
+  const sess = {
+    get: k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
+    set: (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } },
+    del: k => { try { sessionStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
+  };
+
+  function msg(t, bad) {
+    let m = document.getElementById('ef-msg');
+    if (!m) { m = document.createElement('div'); m.id = 'ef-msg'; m.className = 'ef-msg no-print'; m.setAttribute('role', 'status'); m.setAttribute('aria-live', 'polite'); document.body.appendChild(m); }
+    m.textContent = t || ''; m.classList.toggle('bad', !!bad); m.classList.toggle('on', !!t);
+    clearTimeout(timer); if (t) timer = setTimeout(() => m.classList.remove('on'), bad ? 9000 : 5000);
+  }
+  function data() { return { app: APP, tool: C.tool, key: C.key, format: FMT, saved: new Date().toISOString(), state: C.get() }; }
+  function fileName() {
+    let ref = '', nm = ''; try { ref = C.ref ? String(C.ref() || '').trim() : ''; nm = C.name ? String(C.name() || '').trim() : ''; } catch (e) { ref = ''; }
+    return `${ref ? ref + ' ' : ''}${nm || C.tool}.json`.replace(/[\\/:*?"<>|]+/g, '-');
+  }
+  async function save() {
+    let d; try { d = data(); } catch (e) { msg(`Could not save: ${e.message}`, true); return; }
+    const name = fileName(), text = JSON.stringify(d, null, 1);
+    if (window.showSaveFilePicker) {   // Chrome / Edge: a Save As dialog, so the file can go straight into the job folder
+      try {
+        const h = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: `${C.tool} file`, accept: { 'application/json': ['.json'] } }] });
+        const w = await h.createWritable(); await w.write(text); await w.close(); msg(`Saved ${h.name}`); return;
+      } catch (e) { if (e && e.name === 'AbortError') return; }   // cancelled; any other failure falls back to a download
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    msg(`Saved ${name} to your downloads folder`);
+  }
+  function open() { input.value = ''; input.click(); }
+  // the saved state, or an error saying what the file is
+  function stateOf(d) {
+    const old = C.legacy ? C.legacy(d) : null; if (old) return old;
+    if (!d || d.app !== APP || !d.state || typeof d.state !== 'object') throw new Error('this is not an Engineering Tools file');
+    if (d.key !== C.key) throw new Error(d.tool ? `it was saved in ${d.tool}, so open it there` : 'it was saved in another tool');
+    if (!(d.format >= 1) || d.format > FMT) throw new Error('this file was saved by a newer version of the tools');
+    return d.state;
+  }
+  async function apply(d, name) {
+    const s = stateOf(d);
+    if (C.store) {
+      try { localStorage.setItem(C.store, JSON.stringify(s)); } catch (e) { throw new Error('this browser is blocking site storage for this page, which Open needs'); }
+      sess.set(FLAG, JSON.stringify({ name, key: C.key }));
+      history.replaceState(null, '', location.href.split('#')[0]);   // a #in= hand-over in the address would otherwise win over the file
+      location.reload(); return { reload: true };
+    }
+    const r = (await C.set(s)) || {};
+    if (C.calc) try { C.calc(); } catch (e) { /* the tool reports its own input errors */ }
+    return r;
+  }
+  function done(name, r) {
+    const k = r && r.skipped ? r.skipped.length : 0;
+    msg(`Opened ${name}` + (k ? `. ${k} saved value${k > 1 ? 's are' : ' is'} not used by this version and ${k > 1 ? 'were' : 'was'} left at the default` : ''));
+  }
+  async function openFile(file) {
+    if (!file) return;
+    let d; try { d = JSON.parse(await file.text()); } catch (e) { msg(`${file.name} could not be read as a saved file`, true); return; }
+    try { const r = await apply(d, file.name); if (!r.reload) done(file.name, r); } catch (e) { msg(`${file.name} was not opened: ${e.message}`, true); }
+  }
+  // plain forms: every input, select and textarea with an id under root; dropdowns are restored first, since choosing a
+  // section often auto-fills its dimensions, which the saved values then override
+  function fields(root) {
+    const els = () => [...(typeof root === 'string' ? document.querySelector(root) : root || document).querySelectorAll('input[id],select[id],textarea[id]')]
+      .filter(el => el.id !== 'ef-file' && !['file', 'button', 'submit', 'reset'].includes(el.type));
+    return {
+      get: () => { const o = {}; els().forEach(el => { o[el.id] = el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value; }); return o; },
+      set: o => {
+        const have = new Map(els().map(el => [el.id, el])), skipped = [], ent = Object.entries(o || {}), fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+        for (const [id, v] of ent) {
+          const el = have.get(id); if (!el) { skipped.push(id); continue; }
+          if (el.tagName === 'SELECT') { if ([...el.options].some(x => x.value === String(v))) { el.value = String(v); fire(el, 'change'); } else skipped.push(id); }
+        }
+        for (const [id, v] of ent) {
+          const el = have.get(id); if (!el || el.tagName === 'SELECT') continue;
+          if (el.type === 'checkbox' || el.type === 'radio') { el.checked = !!v; fire(el, 'change'); } else { el.value = String(v); fire(el, 'input'); fire(el, 'change'); }
+        }
+        return { skipped };
+      },
+    };
+  }
+  // file names lead with the job and member references from the page, e.g. '24-123 Slab S3 RC Slab Design.json'
+  const refOf = ids => () => ids.map(id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; }).filter(Boolean).join(' ');
+  function mount() {
+    const bar = document.createElement('div'); bar.className = 'ef-bar no-print';
+    bar.innerHTML = `<button type="button" class="ef-btn" id="ef-open" title="Open a saved file (Ctrl+O), or drop it onto the page">${ICON.open}Open</button>`
+      + `<button type="button" class="ef-btn" id="ef-save" title="Save the inputs to a file (Ctrl+S)">${ICON.save}Save</button>`;
+    const h = document.querySelector('.page-hdr'); if (h) h.appendChild(bar); else { bar.classList.add('ef-float'); document.body.appendChild(bar); }
+    bar.querySelector('#ef-open').addEventListener('click', open); bar.querySelector('#ef-save').addEventListener('click', save);
+  }
+  function init(c) {
+    C = Object.assign({ tool: (document.querySelector('h1') || {}).textContent || document.title, ref: refOf(['pJob', 'pRef']), calc: () => { const b = document.getElementById('calc'); if (b) b.click(); }, delay: 200 }, c);
+    C.tool = C.tool.trim(); if (!C.key) C.key = C.store;
+    if (C.store && !C.get) C.get = () => collect();   // eslint-disable-line no-undef -- the tool's own serialiser
+    input = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json', id: 'ef-file' }); input.hidden = true;
+    document.body.appendChild(input); input.addEventListener('change', () => openFile(input.files[0]));
+    mount();
+    document.addEventListener('keydown', e => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return; const k = (e.key || '').toLowerCase();
+      if (k === 's') { e.preventDefault(); save(); } else if (k === 'o') { e.preventDefault(); open(); }
+    });
+    document.addEventListener('dragover', e => { if ([...((e.dataTransfer && e.dataTransfer.types) || [])].includes('Files')) e.preventDefault(); });
+    document.addEventListener('drop', e => { const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f && /\.json$/i.test(f.name)) { e.preventDefault(); openFile(f); } });
+    // after an Open that reloaded the page: the tool has restored itself; recalculate and say what was opened
+    const f = sess.get(FLAG);
+    if (f) {
+      sess.del(FLAG); let o = null; try { o = JSON.parse(f); } catch (e) { o = null; }
+      if (o && o.key === C.key) setTimeout(() => { if (C.calc) try { C.calc(); } catch (e) { /* the tool reports its own input errors */ } done(o.name); }, C.delay);
+    }
+  }
+  return { init, save, open, openFile, apply, data, fileName, msg, fields, stateOf, refOf };
+})();
+window.EngFile = EngFile;   // reachable from the page's other scripts and the tests
+EngFile.init({ store: STORE });
+</script>
+<!-- /@@FILEIO -->
+</body>
+</html>
