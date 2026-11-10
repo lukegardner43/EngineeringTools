@@ -260,5 +260,12 @@ async function sweep(f, cases, expect) {
     ['splice', w => w.document.querySelector('#modes [data-m=splice]').click()], ['splice, biaxial, 5 by 4 bars', w => { set(w, 's_Mb', '80'); set(w, 's_nb', '5'); set(w, 's_nh', '4'); set(w, 's_phi', '20', 'change'); }],
     ['splice in tension, rated below the bar', w => { set(w, 's_NEd', '-300'); set(w, 's_capMode', 'value', 'change'); set(w, 's_Fk', '120'); }],
   ], 1);
+  await sweep('Pad Foundation.html', [
+    ['offset column, both offsets', w => { set(w, 'ex', '300'); set(w, 'ey', '-200'); }], ['rectangular base, moments both ways', w => { set(w, 'L', '3600'); set(w, 'B', '2200'); set(w, 'G_My', '60'); set(w, 'Q_Mx', '-40'); }],
+    ['deep soil cover, big bars', w => { set(w, 'Dover', '2200'); set(w, 'phiX', '25', 'change'); set(w, 'sX', '200'); }], ['no soil over the base', w => set(w, 'Dover', '600')],
+    ['small base: perimeters off the edge', w => { set(w, 'L', '1200'); set(w, 'B', '1200'); set(w, 'ex', '0'); set(w, 'ey', '0'); }], ['undrained', w => { set(w, 'L', '2800'); set(w, 'B', '2800'); set(w, 'soil', 'undrained', 'change'); set(w, 'cu', '50'); }],
+    ['allowable pressure', w => { set(w, 'soil', 'allowable', 'change'); set(w, 'qa', '250'); }], ['big wind moment, uplift on one side', w => { set(w, 'W_Mx', '900'); set(w, 'W_N', '-300'); }],
+    ['strip footing', w => w.document.querySelector('#types [data-t=strip]').click()], ['strip, offset wall', w => { set(w, 'L', '1800'); set(w, 'c1', '215'); set(w, 'ex', '-400'); set(w, 'W_Mx', '0'); set(w, 'W_N', '0'); }],
+  ], 2);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
