@@ -267,5 +267,12 @@ async function sweep(f, cases, expect) {
     ['allowable pressure', w => { set(w, 'soil', 'allowable', 'change'); set(w, 'qa', '250'); }], ['big wind moment, uplift on one side', w => { set(w, 'W_Mx', '900'); set(w, 'W_N', '-300'); }],
     ['strip footing', w => w.document.querySelector('#types [data-t=strip]').click()], ['strip, offset wall', w => { set(w, 'L', '1800'); set(w, 'c1', '215'); set(w, 'ex', '-400'); set(w, 'W_Mx', '0'); set(w, 'W_N', '0'); }],
   ], 2);
+  await sweep('Pile Cap.html', [
+    ['2 piles', w => w.document.querySelector('#ns [data-n="2"]').click()], ['2 piles, truss, offset column', w => { set(w, 'method', 'truss', 'change'); set(w, 'ex', '150'); }],
+    ['3 piles', w => w.document.querySelector('#ns [data-n="3"]').click()], ['3 piles, big moments', w => { set(w, 'G_My', '200'); set(w, 'W_Mx', '400'); }],
+    ['4 piles, rectangular, bending', w => { w.document.querySelector('#ns [data-n="4"]').click(); set(w, 'method', 'bending', 'change'); set(w, 'sy', '1000'); set(w, 'ex', '0'); }],
+    ['5 piles', w => w.document.querySelector('#ns [data-n="5"]').click()], ['6 piles, truss', w => { w.document.querySelector('#ns [data-n="6"]').click(); set(w, 'method', 'truss', 'change'); }],
+    ['6 piles, tension piles', w => { set(w, 'W_Mx', '2500'); set(w, 'G_N', '300'); set(w, 'Q_N', '0'); }], ['shallow cap, wide piles', w => { set(w, 'H', '450'); set(w, 's', '2400'); set(w, 'W_Mx', '0'); set(w, 'G_N', '1500'); }],
+  ], 2);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
