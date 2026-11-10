@@ -239,5 +239,16 @@ async function sweep(f, cases, expect) {
     const { w } = await load('RC Lintel Design.html'); const h = w.document.getElementById('drawings').textContent;
     truth('RC Lintel Design: spans, the triangle height and M_Ed carry the engine values', /clear span 1,800/.test(h) && /1,950/.test(h) && /990/.test(h) && /2\.26 at 898/.test(h) && /in the interaction zone: halved/.test(h)); w.close();
   }
+  {   // RC Lintel Design, checking a Naylor lintel: three drawings across the lintels, spans and loads, values from the engine
+    const { w, errs } = await load('RC Lintel Design.html'), d = () => w.document.getElementById('drawings').innerHTML;
+    w.document.querySelector('#tools [data-t=naylor]').click(); await wait(260);
+    let ok = (d().match(/<svg class="jd dk"/g) || []).length === 3 && !bad(d());
+    const cases = [['nl', 'HS-R6'], ['L', '2700'], ['nl', 'EE-ER4'], ['nn', '2'], ['mode', 'full'], ['L', '3400'], ['nl', 'XF-XFS8'], ['L', '600'], ['nl', 'FS-FireR14-120'], ['Hm', '300'], ['dG', '12']];
+    for (const [id, v] of cases) { set(w, id, v, 'change'); await wait(220); const h = d(); if ((h.match(/<svg class="jd dk"/g) || []).length !== 3 || bad(h)) { ok = false; console.log('  Naylor drawing failed at', id, v); } }
+    truth('RC Lintel Design, Naylor: three drawings across lintels, spans, side by side and the wall', ok && errs.length === 0);
+    set(w, 'nl', 'HS-R8', 'change'); set(w, 'nn', '1', 'change'); set(w, 'mode', 'tri', 'change'); set(w, 'L', '1800', 'change'); set(w, 'Hm', '2000', 'change'); set(w, 'dG', '0', 'change'); await wait(260);
+    const t = w.document.getElementById('drawings').textContent;
+    truth('RC Lintel Design, Naylor: w_eq 3.43, the allowable 31.18 and M_k 1.63 from the engine', /eq3\.43/.test(t.replace(/\s/g, '')) && /31\.18/.test(t) && /1\.63 kNm/.test(t) && /Naylor R8/.test(t)); w.close();
+  }
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();

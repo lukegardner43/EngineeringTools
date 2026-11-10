@@ -160,7 +160,10 @@ sub,sup{font-size:max(11px,.75em);line-height:0;}
   .rsvg *{vector-effect:non-scaling-stroke;}
 }
 
+[hidden]{display:none!important;}
 .row.ffloor{grid-template-columns:repeat(3,minmax(0,1fr)) 32px;}
+.src{font-size:12.5px;color:var(--mut);line-height:1.5;margin-top:8px;} .src a{color:var(--txt);word-break:break-all;}
+table.t td.use{background:#e8f0fb;font-weight:700;} table.t td.na{color:var(--mut);}
 .row.fpoint{grid-template-columns:repeat(4,minmax(0,1fr)) 32px;}
 .kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 20px;background:var(--surf2);border:1px solid var(--rule);border-radius:var(--rc);padding:12px 16px;margin-bottom:12px;}
 .kv div{min-width:0;} .kv b{display:block;font-size:12px;font-weight:400;color:var(--mut);} .kv span{font-size:15px;font-weight:600;}
@@ -173,7 +176,7 @@ sub,sup{font-size:max(11px,.75em);line-height:0;}
   <div class="page-hdr">
     <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
     <h1>RC Lintel Design</h1>
-    <p>Reinforced concrete lintels over openings in masonry walls to BS EN 1992-1-1 + UK NA &nbsp;·&nbsp; the load from the wall above by the load triangle and interaction zone of PD 6697 clause 7, or all of it &nbsp;·&nbsp; floors and point loads above &nbsp;·&nbsp; bending, shear, steel, span/depth, lateral stability and bearing</p>
+    <p>Lintels over openings in masonry walls: design a reinforced concrete lintel to BS EN 1992-1-1 + UK NA, or check a Naylor prestressed lintel against the unfactored loads in Naylor's brochure &nbsp;·&nbsp; the load from the wall above by the load triangle and interaction zone of PD 6697 clause 7, or all of it &nbsp;·&nbsp; floors and point loads above &nbsp;·&nbsp; bearing on the masonry</p>
   </div>
   <div class="main-grid">
     <div id="inputs">
@@ -183,19 +186,35 @@ sub,sup{font-size:max(11px,.75em);line-height:0;}
         <div class="grid3"><div class="form-group"><label>Job no.</label><input type="text" id="pJob"></div><div class="form-group"><label>By</label><input type="text" id="pBy"></div><div class="form-group"><label>Member ref.</label><input type="text" id="pRef" placeholder="e.g. Lintel L1"></div></div>
       </div>
       <div class="card">
+        <div class="section-title">What do you want to do?</div>
+        <div class="seg" id="tools" style="margin-bottom:6px"><button type="button" data-t="ec2" class="on">Design an RC lintel</button><button type="button" data-t="naylor">Check a Naylor lintel</button></div>
+        <input type="hidden" id="tool" value="ec2">
+        <div class="help" id="toolHelp"></div>
+      </div>
+      <div class="card">
         <div class="section-title">Opening and lintel <span class="aux">mm</span></div>
         <div class="grid3">
           <div class="form-group"><label>Clear span of the opening</label><input type="number" id="L" value="1800" step="50"></div>
           <div class="form-group"><label>Bearing, left</label><input type="number" id="t1" value="150" step="25"></div>
           <div class="form-group"><label>Bearing, right</label><input type="number" id="t2" value="150" step="25"></div>
         </div>
-        <div class="grid3">
+        <div class="grid3" id="ecSize">
           <div class="form-group"><label>Width b</label><input type="number" id="b" value="140" step="5"></div>
           <div class="form-group"><label>Depth h</label><input type="number" id="h" value="215" step="5"></div>
         </div>
         <div class="help">The lintel is simply supported on its bearings; the effective span is the clear span plus min(h/2, bearing/2) at each end (5.3.2.2).</div>
       </div>
-      <div class="card">
+      <div class="card" id="cardNaylor" hidden>
+        <div class="section-title">Naylor lintel</div>
+        <div class="form-group"><label>Lintel</label><select id="nl"></select></div>
+        <div class="grid3">
+          <div class="form-group"><label>Number side by side</label><select id="nn"><option>1</option><option>2</option><option>3</option></select></div>
+          <div class="form-group"><label>Fire resistance needed</label><select id="fire"><option value="30">30 min</option><option value="60">60 min</option><option value="90">90 min</option><option value="120">120 min</option><option value="240">240 min</option></select></div>
+        </div>
+        <div class="help">The brochure's loads are unfactored and uniformly distributed. The load here, G + Q unfactored with the lintel's own weight, is turned into the uniform load with the same largest bending moment or end shear, and checked at the next tabulated clear span up. Side by side, the load is shared equally.</div>
+        <div class="src" id="nSrc"></div>
+      </div>
+      <div class="card" id="cardRC">
         <div class="section-title">Concrete and reinforcement</div>
         <div class="grid3">
           <div class="form-group"><label>Concrete</label><select id="fck"><option value="25">C25/30</option><option value="28">C28/35</option><option value="30">C30/37</option><option value="32" selected>C32/40</option><option value="35">C35/45</option><option value="40">C40/50</option><option value="45">C45/55</option><option value="50">C50/60</option></select></div>
@@ -252,13 +271,13 @@ sub,sup{font-size:max(11px,.75em);line-height:0;}
         <div class="section-title">Combination and bearing</div>
         <div class="grid3">
           <div class="form-group"><label>ULS combination</label><select id="comb"><option value="6.10">6.10: 1.35G + 1.5Q</option><option value="6.10ab">6.10a and 6.10b</option></select></div>
-          <div class="form-group"><label>ψ₂ (quasi-permanent)</label><input type="number" id="psi2" value="0.3" step="0.1"></div>
+          <div class="form-group" id="psiGrp"><label>ψ₂ (quasi-permanent)</label><input type="number" id="psi2" value="0.3" step="0.1"></div>
         </div>
         <div class="grid3">
           <div class="form-group"><label>Masonry f<sub>k</sub> (N/mm²)</label><input type="number" id="fk" value="" placeholder="e.g. 4.0" step="0.1"></div>
           <div class="form-group"><label>γ<sub>M</sub> (UK NA)</label><select id="gM"><option value="2.3">2.3: category I units, class 1</option><option value="2.7">2.7: category I units, class 2</option><option value="2.6">2.6: category II units, class 1</option><option value="3.0">3.0: category II units, class 2</option></select></div>
         </div>
-        <div class="help">Give the characteristic compressive strength of the masonry under the bearings to check them (BS EN 1996-1-1 6.1.3, without the enhancement β).</div>
+        <div class="help">Give the characteristic compressive strength of the masonry under the bearings to check them (BS EN 1996-1-1 6.1.3, without the enhancement β).<span id="combHelpN" hidden> For a Naylor lintel the ULS combination is used only for this bearing check; the brochure's loads are unfactored.</span></div>
       </div>
       <button class="btn" id="calc">Check lintel</button>
     </div>
@@ -659,6 +678,103 @@ const EC2Section = (() => {
 })();
 if (typeof module !== 'undefined') module.exports = { EC2Section };
 
+/* ===== NAYLOR LINTEL LOAD TABLES (EngineeringTools) =====
+   Generated by scratchpad/naylor25/gen.py from the load tables of Naylor Concrete's lintels brochure, March 2025
+   (LintelsBrochureXFS4March2025, pages 8 to 14). The brochure's tables are pictures, not text: every value was read by eye
+   and checked cell by cell against the page images and two independent OCR passes.
+   Each lintel: b x h (mm), the fire resistance (minutes), its weight (kg/m), the maximum stock length (mm) and the
+   allowable UNFACTORED uniformly distributed load w (kN/m) at each tabulated clear span (SPANS); a span past the end of w is
+   n/a in the brochure. Standard lengths are the clear span plus the brochure's end bearings (100 mm up to and including a
+   1000 mm opening, 150 mm up to and including 3000 mm, 200 mm over 3000 mm). */
+const Naylor = (() => {
+  'use strict';
+  const SOURCE = {
+    title: 'Naylor Concrete lintels brochure',
+    edition: 'March 2025',
+    file: 'LintelsBrochureXFS4March2025',
+    url: 'https://www.naylorconcrete.co.uk/site/assets/files/4939/lintelsbrochurexfs4march2025_1.pdf',
+    pages: 'load tables pages 8 to 14; lintel end bearing page 17',
+  };
+  const SPANS = [700, 1000, 1200, 1500, 1800, 2100, 2400, 2700, 3000, 3200];
+  const RANGES = {"EC": "Economy", "EE": "Economy, laid on edge", "HS": "Hi-Spec and Fair Faced", "FS": "Fire-Spec and Faced Fire-Spec", "XF": "XtraFire"};
+  const LINTELS = [
+    {"id":"EC-ER1","range":"EC","name":"ER1","also":"","ref":"ER1","b":100,"h":65,"fire":30,"fires":[30],"kg":16.0,"stock":2400,"w":[9.27,5.0,3.46,2.18,1.48,1.05]},
+    {"id":"EC-ER2","range":"EC","name":"ER2","also":"","ref":"ER2","b":100,"h":140,"fire":30,"fires":[30],"kg":34.0,"stock":3000,"w":[35.3,20.83,14.69,9.49,6.59,4.81,3.63,2.82]},
+    {"id":"EC-ER3","range":"EC","name":"ER3","also":"","ref":"ER3","b":140,"h":65,"fire":30,"fires":[30],"kg":22.0,"stock":3000,"w":[9.8,5.56,3.84,2.4,1.61,1.13,0.82,0.61]},
+    {"id":"EC-ER4","range":"EC","name":"ER4","also":"","ref":"ER4","b":215,"h":65,"fire":30,"fires":[30],"kg":34.0,"stock":3000,"w":[19.67,11.24,7.79,4.92,3.34,2.38,1.75,1.32]},
+    {"id":"EC-ER6","range":"EC","name":"ER6","also":"","ref":"ER6","b":140,"h":140,"fire":30,"fires":[30],"kg":47.0,"stock":3000,"w":[27.18,15.95,11.19,7.16,4.91,3.52,2.61,1.98]},
+    {"id":"EC-ER7","range":"EC","name":"ER7","also":"","ref":"ER7","b":100,"h":215,"fire":30,"fires":[30],"kg":52.0,"stock":3000,"w":[58.49,35.32,24.85,16.26,11.4,8.38,6.38,4.99]},
+    {"id":"EC-ER8","range":"EC","name":"ER8","also":"","ref":"ER8","b":140,"h":215,"fire":30,"fires":[30],"kg":72.0,"stock":3000,"w":[67.89,40.93,28.76,18.78,13.13,9.62,7.3,5.67]},
+    {"id":"EE-ER1","range":"EE","name":"ER1 on edge","also":"","ref":"ER1","b":65,"h":100,"fire":30,"fires":[30],"kg":16.0,"stock":2400,"w":[12.98,7.53,5.27,3.37,2.32,1.67]},
+    {"id":"EE-ER2","range":"EE","name":"ER2 on edge","also":"","ref":"ER2","b":140,"h":100,"fire":30,"fires":[30],"kg":34.0,"stock":3000,"w":[26.64,15.54,10.92,7.05,4.9,3.59,2.72,2.13]},
+    {"id":"EE-ER3","range":"EE","name":"ER3 on edge","also":"","ref":"ER3","b":65,"h":140,"fire":30,"fires":[30],"kg":22.0,"stock":3000,"w":[19.18,11.31,7.96,5.14,3.55,2.58,1.94,1.5]},
+    {"id":"EE-ER4","range":"EE","name":"ER4 on edge","also":"","ref":"ER4","b":65,"h":215,"fire":30,"fires":[30],"kg":34.0,"stock":3000,"w":[33.93,20.47,14.39,9.4,6.58,4.83,3.66,2.85]},
+    {"id":"EE-ER6","range":"EE","name":"ER6 on edge","also":"","ref":"ER6","b":140,"h":140,"fire":30,"fires":[30],"kg":47.0,"stock":3000,"w":[27.18,15.95,11.19,7.16,4.91,3.52,2.61,1.98]},
+    {"id":"EE-ER7","range":"EE","name":"ER7 on edge","also":"","ref":"ER7","b":215,"h":100,"fire":30,"fires":[30],"kg":51.6,"stock":3000,"w":[30.73,17.77,12.39,7.88,5.37,3.85,2.84,2.15]},
+    {"id":"EE-ER8","range":"EE","name":"ER8 on edge","also":"","ref":"ER8","b":215,"h":140,"fire":30,"fires":[30],"kg":72.0,"stock":3000,"w":[47.5,27.93,19.62,12.59,8.66,6.25,4.66,3.55]},
+    {"id":"HS-S4","range":"HS","name":"S4","also":"Faced S4","ref":"S4","b":100,"h":100,"fire":30,"fires":[30],"kg":23.0,"stock":3000,"w":[15.77,10.9,9.41,7.21,5.04,3.7,2.81,2.19]},
+    {"id":"HS-R6","range":"HS","name":"R6","also":"Faced R6","ref":"R6","b":100,"h":140,"fire":30,"fires":[30],"kg":34.0,"stock":3000,"w":[38.73,30.87,27.22,19.32,13.59,10.04,7.7,6.06,4.88,4.27]},
+    {"id":"HS-R9","range":"HS","name":"R9","also":"Faced R9","ref":"R9","b":100,"h":215,"fire":30,"fires":[30],"kg":52.0,"stock":3600,"w":[96.25,62.92,50.0,37.15,28.63,22.61,18.13,14.48,11.68,9.78]},
+    {"id":"HS-R12","range":"HS","name":"R12","also":"Faced R12","ref":"R12","b":100,"h":290,"fire":30,"fires":[30],"kg":70.0,"stock":3600,"w":[127.77,83.26,77.43,63.07,47.94,36.95,28.62,22.77,18.51,15.79]},
+    {"id":"HS-R3","range":"HS","name":"R3","also":"Faced R3","ref":"R3","b":140,"h":100,"fire":30,"fires":[30],"kg":34.0,"stock":2400,"w":[55.12,32.59,23.01,14.93,10.42,7.65]},
+    {"id":"HS-S5","range":"HS","name":"S5","also":"Faced S5","ref":"S5","b":140,"h":140,"fire":30,"fires":[30],"kg":47.0,"stock":3600,"w":[58.05,36.52,27.35,19.2,13.67,10.07,7.68,6.03,4.83,4.2]},
+    {"id":"HS-R8","range":"HS","name":"R8","also":"Faced R8","ref":"R8","b":140,"h":215,"fire":30,"fires":[30],"kg":72.0,"stock":3600,"w":[117.41,71.19,54.5,41.19,31.18,23.94,18.46,14.63,11.84,10.38]},
+    {"id":"HS-R11","range":"HS","name":"R11","also":"Faced R11","ref":"R11","b":140,"h":290,"fire":30,"fires":[30],"kg":97.0,"stock":3600,"w":[155.63,101.39,89.79,68.08,51.69,39.78,30.76,24.43,19.82,16.87]},
+    {"id":"HS-R2","range":"HS","name":"R2","also":"Faced R2","ref":"R2","b":190,"h":145,"fire":30,"fires":[30],"kg":66.0,"stock":3600,"w":[85.34,51.57,36.74,24.03,16.85,12.4,9.45,7.4,5.92,4.27]},
+    {"id":"HS-R190","range":"HS","name":"R190","also":"Faced R190","ref":"R190","b":190,"h":215,"fire":30,"fires":[30],"kg":98.0,"stock":3600,"w":[141.0,77.44,59.23,44.7,33.79,25.89,19.92,15.74,12.7,11.11]},
+    {"id":"HS-R13","range":"HS","name":"R13","also":"Faced R13","ref":"R13","b":190,"h":290,"fire":30,"fires":[30],"kg":132.0,"stock":3600,"w":[186.95,121.77,94.5,71.56,54.25,41.68,32.16,25.48,20.62,17.51]},
+    {"id":"HS-R7","range":"HS","name":"R7","also":"Faced R7","ref":"R7","b":215,"h":145,"fire":30,"fires":[30],"kg":75.0,"stock":3600,"w":[100.27,60.61,42.18,27.71,19.49,14.38,10.99,8.62,6.9,4.98]},
+    {"id":"HS-S8","range":"HS","name":"S8","also":"Faced S8","ref":"S8","b":215,"h":215,"fire":30,"fires":[30],"kg":111.0,"stock":3600,"w":[152.21,79.2,60.55,45.67,34.49,26.4,20.29,16.01,12.9,11.27]},
+    {"id":"HS-R14","range":"HS","name":"R14","also":"Faced R14","ref":"R14","b":215,"h":290,"fire":30,"fires":[30],"kg":150.0,"stock":3600,"w":[202.02,127.15,96.07,72.71,55.07,42.27,32.58,25.78,20.83,17.67]},
+    {"id":"FS-FireR3-60","range":"FS","name":"Fire R3, 60 min","also":"Faced Fire R3","ref":"Fire R3","b":140,"h":100,"fire":60,"fires":[60],"kg":34.0,"stock":2400,"w":[42.68,24.96,17.54,11.31,7.84,5.72]},
+    {"id":"FS-FireR3-90","range":"FS","name":"Fire R3, 90 min","also":"Faced Fire R3","ref":"Fire R3","b":140,"h":100,"fire":90,"fires":[90],"kg":34.0,"stock":2400,"w":[17.12,9.79,6.79,4.28,2.9,2.05]},
+    {"id":"FS-FireS5-60","range":"FS","name":"Fire S5, 60 min","also":"Faced Fire S5","ref":"Fire S5","b":140,"h":140,"fire":60,"fires":[60],"kg":47.0,"stock":3600,"w":[38.81,26.62,22.92,17.55,12.26,9.0,6.85,5.36,4.28,3.72]},
+    {"id":"FS-FireS5-90","range":"FS","name":"Fire S5, 90 min","also":"Faced Fire S5","ref":"Fire S5","b":140,"h":140,"fire":90,"fires":[90],"kg":47.0,"stock":3600,"w":[25.37,17.35,14.9,11.35,7.88,5.74,4.33,3.35,2.65,2.28]},
+    {"id":"FS-FireR8-60","range":"FS","name":"Fire R8, 60 min","also":"Faced Fire R8","ref":"Fire R8","b":140,"h":215,"fire":60,"fires":[60],"kg":72.0,"stock":3600,"w":[113.9,66.63,52.01,39.19,29.6,22.68,17.47,13.82,11.16,9.78]},
+    {"id":"FS-FireR8-90","range":"FS","name":"Fire R8, 90 min","also":"Faced Fire R8","ref":"Fire R8","b":140,"h":215,"fire":90,"fires":[90],"kg":72.0,"stock":3600,"w":[107.27,60.54,47.75,35.86,27.02,20.66,15.87,12.53,10.11,8.84]},
+    {"id":"FS-FireR11-60","range":"FS","name":"Fire R11, 60 min","also":"Faced Fire R11","ref":"Fire R11","b":140,"h":290,"fire":60,"fires":[60],"kg":98.0,"stock":3600,"w":[149.0,97.06,85.74,65.0,49.34,37.96,29.34,23.29,18.89,16.08]},
+    {"id":"FS-FireR11-90","range":"FS","name":"Fire R11, 90 min","also":"Faced Fire R11","ref":"Fire R11","b":140,"h":290,"fire":90,"fires":[90],"kg":98.0,"stock":3600,"w":[143.35,93.37,81.6,61.85,46.93,36.1,27.89,22.13,17.94,15.29]},
+    {"id":"FS-FireR2-60","range":"FS","name":"Fire R2, 60 min","also":"Faced Fire R2","ref":"Fire R2","b":190,"h":145,"fire":60,"fires":[60],"kg":66.0,"stock":3600,"w":[85.34,51.57,36.74,24.03,16.85,12.39,9.45,7.4,5.92,4.27]},
+    {"id":"FS-FireR2-90","range":"FS","name":"Fire R2, 90 min","also":"Faced Fire R2","ref":"Fire R2","b":190,"h":145,"fire":90,"fires":[90],"kg":66.0,"stock":3600,"w":[70.58,42.15,29.86,19.4,13.52,9.9,7.5,5.84,4.64,3.33]},
+    {"id":"FS-FireR2-120","range":"FS","name":"Fire R2, 120 min","also":"Faced Fire R2","ref":"Fire R2","b":190,"h":145,"fire":120,"fires":[120],"kg":66.0,"stock":3600,"w":[54.6,32.18,22.65,14.59,10.09,7.32,5.5,4.24,3.33,2.37]},
+    {"id":"FS-FireR190-60","range":"FS","name":"Fire R190, 60 min","also":"Faced Fire R190","ref":"Fire R190","b":190,"h":215,"fire":60,"fires":[60],"kg":98.0,"stock":3600,"w":[135.35,71.7,55.66,41.87,31.58,24.14,18.54,14.62,11.78,10.29]},
+    {"id":"FS-FireR190-90","range":"FS","name":"Fire R190, 90 min","also":"Faced Fire R190","ref":"Fire R190","b":190,"h":215,"fire":90,"fires":[90],"kg":98.0,"stock":3600,"w":[131.45,65.73,51.79,38.83,29.2,22.28,17.07,13.44,10.8,9.42]},
+    {"id":"FS-FireR190-120","range":"FS","name":"Fire R190, 120 min","also":"Faced Fire R190","ref":"Fire R190","b":190,"h":215,"fire":120,"fires":[120],"kg":98.0,"stock":3600,"w":[127.62,64.34,52.6,39.33,29.52,22.49,17.22,13.54,10.88,9.49]},
+    {"id":"FS-FireR13-60","range":"FS","name":"Fire R13, 60 min","also":"Faced Fire R13","ref":"Fire R13","b":190,"h":290,"fire":60,"fires":[60],"kg":132.0,"stock":3600,"w":[179.74,117.06,90.25,68.32,51.78,39.77,30.67,24.29,19.64,16.67]},
+    {"id":"FS-FireR13-90","range":"FS","name":"Fire R13, 90 min","also":"Faced Fire R13","ref":"Fire R13","b":190,"h":290,"fire":90,"fires":[90],"kg":132.0,"stock":3600,"w":[173.11,112.73,85.89,65.01,49.25,37.81,29.14,23.07,18.64,15.85]},
+    {"id":"FS-FireR13-120","range":"FS","name":"Fire R13, 120 min","also":"Faced Fire R13","ref":"Fire R13","b":190,"h":290,"fire":120,"fires":[120],"kg":132.0,"stock":3600,"w":[167.65,107.7,81.36,61.56,46.62,35.77,27.56,21.8,17.6,15.05]},
+    {"id":"FS-FireR7-60","range":"FS","name":"Fire R7, 60 min","also":"Faced Fire R7","ref":"Fire R7","b":215,"h":145,"fire":60,"fires":[60],"kg":75.0,"stock":3600,"w":[87.76,53.0,37.74,24.66,17.27,12.69,9.66,7.55,6.02,4.33]},
+    {"id":"FS-FireR7-90","range":"FS","name":"Fire R7, 90 min","also":"Faced Fire R7","ref":"Fire R7","b":215,"h":145,"fire":90,"fires":[90],"kg":75.0,"stock":3600,"w":[76.72,45.8,32.44,21.06,14.67,10.73,8.12,6.32,5.01,3.59]},
+    {"id":"FS-FireR7-120","range":"FS","name":"Fire R7, 120 min","also":"Faced Fire R7","ref":"Fire R7","b":215,"h":145,"fire":120,"fires":[120],"kg":75.0,"stock":3600,"w":[63.08,37.32,26.32,16.99,11.77,8.55,6.43,4.96,3.9,2.78]},
+    {"id":"FS-FireS8-60","range":"FS","name":"Fire S8, 60 min","also":"Faced Fire S8","ref":"Fire S8","b":215,"h":215,"fire":60,"fires":[60],"kg":111.0,"stock":3600,"w":[146.16,73.37,56.93,42.8,32.24,24.62,18.89,14.87,11.96,10.44]},
+    {"id":"FS-FireS8-90","range":"FS","name":"Fire S8, 90 min","also":"Faced Fire S8","ref":"Fire S8","b":215,"h":215,"fire":90,"fires":[90],"kg":111.0,"stock":3600,"w":[142.07,67.3,53.01,39.71,29.83,22.73,17.4,13.67,10.97,9.56]},
+    {"id":"FS-FireS8-120","range":"FS","name":"Fire S8, 120 min","also":"Faced Fire S8","ref":"Fire S8","b":215,"h":215,"fire":120,"fires":[120],"kg":111.0,"stock":3600,"w":[129.49,61.1,48.85,36.46,27.31,20.76,15.84,12.42,9.94,8.64]},
+    {"id":"FS-FireR14-60","range":"FS","name":"Fire R14, 60 min","also":"Faced Fire R14","ref":"Fire R14","b":215,"h":290,"fire":60,"fires":[60],"kg":150.0,"stock":3600,"w":[194.22,121.46,91.75,69.42,52.56,40.33,31.07,24.57,19.84,16.82]},
+    {"id":"FS-FireR14-90","range":"FS","name":"Fire R14, 90 min","also":"Faced Fire R14","ref":"Fire R14","b":215,"h":290,"fire":90,"fires":[90],"kg":150.0,"stock":3600,"w":[187.4,117.52,88.77,67.14,50.83,38.99,30.02,23.73,19.16,16.23]},
+    {"id":"FS-FireR14-120","range":"FS","name":"Fire R14, 120 min","also":"Faced Fire R14","ref":"Fire R14","b":215,"h":290,"fire":120,"fires":[120],"kg":150.0,"stock":3600,"w":[181.55,113.78,85.93,64.98,49.18,37.71,29.02,22.94,18.5,15.81]},
+    {"id":"XF-XFS4","range":"XF","name":"XFS4","also":"","ref":"XFS4","b":100,"h":100,"fire":120,"fires":[60,90,120],"kg":24.0,"stock":3000,"w":[17.54,8.83,6.16,3.92,2.68,1.92,1.43,1.08]},
+    {"id":"XF-XFR6","range":"XF","name":"XFR6","also":"","ref":"XFR6","b":100,"h":140,"fire":120,"fires":[60,90,120],"kg":32.0,"stock":3600,"w":[29.74,15.18,10.66,6.64,4.72,3.42,2.56,1.97,1.54,0.92]},
+    {"id":"XF-XFR9","range":"XF","name":"XFR9","also":"","ref":"XFR9","b":100,"h":215,"fire":240,"fires":[60,90,120,240],"kg":49.0,"stock":3600,"w":[65.73,47.67,39.41,25.1,19.4,14.4,11.07,8.74,7.05,6.17]},
+    {"id":"XF-XFS5","range":"XF","name":"XFS5","also":"","ref":"XFS5","b":140,"h":140,"fire":240,"fires":[120,240],"kg":47.0,"stock":3600,"w":[29.02,17.8,12.48,8.0,5.49,3.95,2.94,2.24,1.59,1.11]},
+    {"id":"XF-XFR8","range":"XF","name":"XFR8","also":"","ref":"XFR8","b":140,"h":215,"fire":240,"fires":[120,240],"kg":72.0,"stock":3600,"w":[107.48,61.2,43.79,28.6,20.33,15.06,11.57,9.14,7.37,6.45]},
+    {"id":"XF-XFS8","range":"XF","name":"XFS8","also":"","ref":"XFS8","b":215,"h":215,"fire":240,"fires":[240],"kg":111.0,"stock":3600,"w":[99.05,72.06,56.82,37.28,26.18,19.29,14.71,11.51,9.2,8.0]}
+  ];
+  const byId = new Map(LINTELS.map(l => [l.id, l]));
+  const get = id => byId.get(id) || null;
+  // the end bearing the brochure's standard lengths allow for an opening of clear span Lc (mm)
+  const bearingNeed = Lc => Lc <= 1000 ? 100 : Lc <= 3000 ? 150 : 200;
+  // the table row for a clear span: the shortest tabulated span not less than Lc (a longer span carries less, so this is on the
+  // safe side); w is null when the span is past the table or the brochure gives n/a there
+  function allowable(l, Lc) {
+    const i = SPANS.findIndex(s => s >= Lc - 1e-6);
+    if (i < 0) return { i: -1, span: null, w: null, why: `the table stops at a ${SPANS[SPANS.length - 1]} mm clear span` };
+    if (i >= l.w.length) return { i, span: SPANS[i], w: null, why: `the brochure gives n/a for ${l.name} at a ${SPANS[i]} mm clear span` };
+    return { i, span: SPANS[i], w: l.w[i], why: '' };
+  }
+  return { SOURCE, SPANS, RANGES, LINTELS, get, bearingNeed, allowable };
+})();
+if (typeof module !== 'undefined') module.exports = { Naylor };
+
 /* ===== RC LINTEL ENGINE (EngineeringTools) =====
    A reinforced concrete lintel over an opening in a masonry wall, simply supported on its bearings, to BS EN 1992-1-1 + UK NA.
    Loads: the lintel's self weight; the masonry above, either within the load triangle (a 45° triangle on 1.1 × the clear span)
@@ -670,6 +786,9 @@ if (typeof module !== 'undefined') module.exports = { EC2Section };
    Effective span 5.3.2.2 (a_i = min(h/2, t_i/2)); the section by EC2Section (bending, steel limits, bar spacing, crack control,
    span/depth, shear with or without links); minimum links omitted only for lintels up to 2 m (6.2.1(4)); lateral stability
    before the masonry restrains the lintel (5.9(3)); bearing on the masonry (BS EN 1996-1-1 6.1.3 with β = 1).
+   Or check a Naylor prestressed lintel against the allowable unfactored loads of Naylor's brochure (naylor()): the same load
+   take-down, characteristic (G + Q, unfactored), turned into the uniform load that gives the same largest bending moment or end
+   shear, whichever is greater, and compared with the tabulated load at the next tabulated clear span up (Naylor, lintel/naylor.js).
    Units: N, mm inside; the input gives loads in kN, kN/m and kN/m³. */
 const Lintel = (() => {
   'use strict';
@@ -683,13 +802,11 @@ const Lintel = (() => {
      opening (0 at its left edge): heights of the 45° and 60° triangles on the base 1.1L centred on the opening */
   const tri = L => ({ x0: -0.05 * L, x1: 1.05 * L, h45: 0.55 * L, h60: 0.55 * L * T60, at45: x => Math.max(0, 0.55 * L - Math.abs(x - L / 2)), at60: x => Math.max(0, (0.55 * L - Math.abs(x - L / 2)) * T60) });
 
-  function design(inp) {
+  /* the loads on a lintel of depth h with self weight sw (N/mm) over the clear span L on bearings t1, t2: each source as a
+     load per strip, the G and Q totals, and the simply supported beam between the support lines */
+  function takedown(inp, h, sw, swName) {
     const L = pos(inp.L, 'Clear span'), t1 = pos(inp.t1, 'Bearing at the left'), t2 = pos(inp.t2, 'Bearing at the right');
-    const b = pos(inp.b, 'Width b'), h = pos(inp.h, 'Depth h'), fck = fin(inp.fck, 'f_ck'), fyk = inp.fyk ?? 500, cover = pos(inp.cover, 'Cover');
     const arch = inp.mode !== 'full', Hm = nonneg(inp.Hm, 'Height of masonry above'), tm = nonneg(inp.tm, 'Masonry thickness'), gm = nonneg(inp.gm, 'Masonry density');
-    const bot = inp.bottom, top = inp.top, link = inp.link && inp.link.s > 0 ? inp.link : null;
-    pos(bot && bot.n, 'Bottom bars'); pos(bot.phi, 'Bottom bar size');
-    if (h >= 4 * b && b < 100) throw new Error('A lintel this deep and narrow cannot be built: check b and h');
     const T = tri(L), xa = -t1, xb = L + t2;                         // the lintel's ends
     const a1 = Math.min(h / 2, t1 / 2), a2 = Math.min(h / 2, t2 / 2), xs1 = -a1, xs2 = L + a2, leff = xs2 - xs1;   // 5.3.2.2
     // strips along the lintel
@@ -703,7 +820,7 @@ const Lintel = (() => {
       const lo = Math.max(p, x - y), hi = Math.min(q, x + y); return hi > lo ? w * (hi - lo) / (2 * y) : 0;
     };
     // self weight
-    add('Lintel self weight', 'G', () => 25e-6 * b * h, { kind: 'self' });
+    add(swName, 'G', () => sw, { kind: 'self' });
     // masonry
     const qm = gm * 1e-6 * tm;                                   // N/mm² of wall face
     if (qm > 0 && Hm > 0) {
@@ -729,8 +846,10 @@ const Lintel = (() => {
     const points = (inp.points || []).map((p, k) => {
       const x = fin(p.x, `Point load ${k + 1}: position`), y = nonneg(p.y, `Point load ${k + 1}: height`), G = nonneg(p.G || 0, `Point load ${k + 1}: G`), Q = nonneg(p.Q || 0, `Point load ${k + 1}: Q`);
       const factor = !arch ? 1 : y <= T.at45(x) + 1e-9 ? 1 : y <= T.at60(x) + 1e-9 ? 0.5 : 0;
-      const spread = Math.max(y, dx / 2);
-      const f1 = xx => factor * (Math.abs(xx - x) <= spread ? 1 / (2 * spread) : 0);
+      // spread uniformly over 2s about x (s = y, or half a strip at the top of the lintel), shared by each strip's overlap so
+      // the strips carry exactly the load (a point between two strips is not counted on both)
+      const s = Math.max(y, dx / 2);
+      const f1 = xx => factor * Math.max(0, Math.min(xx + dx / 2, x + s) - Math.max(xx - dx / 2, x - s)) / (2 * s * dx);
       if (G > 0 && factor > 0) add(`Point ${k + 1}: G`, 'G', xx => G * 1e3 * f1(xx), { kind: 'point', k });
       if (Q > 0 && factor > 0) add(`Point ${k + 1}: Q`, 'Q', xx => Q * 1e3 * f1(xx), { kind: 'point', k });
       return { x, y, G, Q, factor };
@@ -742,14 +861,33 @@ const Lintel = (() => {
 
     const gG = X.map((_, i) => sources.filter(s => s.case === 'G').reduce((t, s) => t + s.w[i], 0));
     const gQ = X.map((_, i) => sources.filter(s => s.case === 'Q').reduce((t, s) => t + s.w[i], 0));
-    // simply supported between xs1 and xs2; strips over the bearings beyond them go straight into the supports
-    const beam = w => {
-      let R1 = 0, R2 = 0, R1b = 0;
-      X.forEach((x, i) => { const F = w[i] * dx; if (x < xs1) R1 += F; else if (x > xs2) R2 += F; else { const r2 = F * (x - xs1) / leff; R2 += r2; R1 += F - r2; R1b += F - r2; } });
-      const M = x => { let m = R1b * (x - xs1); X.forEach((xi, i) => { if (xi >= xs1 && xi < x) m -= w[i] * dx * (x - xi); }); return m; };
-      const V = x => { let v = R1b; X.forEach((xi, i) => { if (xi >= xs1 && xi < x) v -= w[i] * dx; }); return v; };
-      return { R1, R2, M, V };
+    const beam = w => simple(X, dx, w, xs1, xs2);
+    return { L, t1, t2, h, arch, Hm, tm, gm, qm, T, xa, xb, a1, a2, xs1, xs2, leff, X, dx, sources, floors, points, gG, gQ, beam };
+  }
+
+  // simply supported between xs1 and xs2; strips over the bearings beyond them go straight into the supports
+  function simple(X, dx, w, xs1, xs2) {
+    const leff = xs2 - xs1;
+    let R1 = 0, R2 = 0, R1b = 0, R2b = 0;
+    X.forEach((x, i) => { const F = w[i] * dx; if (x < xs1) R1 += F; else if (x > xs2) R2 += F; else { const r2 = F * (x - xs1) / leff; R2 += r2; R2b += r2; R1 += F - r2; R1b += F - r2; } });
+    const M = x => { let m = R1b * (x - xs1); X.forEach((xi, i) => { if (xi >= xs1 && xi < x) m -= w[i] * dx * (x - xi); }); return m; };
+    const V = x => { let v = R1b; X.forEach((xi, i) => { if (xi >= xs1 && xi < x) v -= w[i] * dx; }); return v; };
+    // the largest moment, in one pass: at each strip's centre, M = R1b (x - xs1) - sum of the strips to its left x (x - x_j)
+    const peak = () => {
+      let s0 = 0, s1 = 0, best = 0, xb = (xs1 + xs2) / 2;
+      X.forEach((x, i) => { if (x < xs1 || x > xs2) return; const m = R1b * (x - xs1) - (s0 * x - s1); if (m > best) { best = m; xb = x; } const F = w[i] * dx; s0 += F; s1 += F * x; });
+      return { M: best, x: xb };
     };
+    return { R1, R2, R1b, R2b, M, V, peak };
+  }
+
+  function design(inp) {
+    const b = pos(inp.b, 'Width b'), h = pos(inp.h, 'Depth h'), fck = fin(inp.fck, 'f_ck'), fyk = inp.fyk ?? 500, cover = pos(inp.cover, 'Cover');
+    const bot = inp.bottom, top = inp.top, link = inp.link && inp.link.s > 0 ? inp.link : null;
+    pos(bot && bot.n, 'Bottom bars'); pos(bot.phi, 'Bottom bar size');
+    if (h >= 4 * b && b < 100) throw new Error('A lintel this deep and narrow cannot be built: check b and h');
+    const D = takedown(inp, h, 25e-6 * b * h, 'Lintel self weight');
+    const { L, t1, t2, arch, Hm, qm, T, xa, xb, a1, a2, xs1, xs2, leff, X, dx, sources, floors, points, gG, gQ, beam } = D;
     const cbs = COMB[inp.comb || '6.10'], psi2 = fin(inp.psi2 ?? 0.3, 'ψ₂');
     const runs = cbs.map(cb => ({ cb, B: beam(X.map((_, i) => cb.gG * gG[i] + cb.gQ * gQ[i])) }));
     const K = beam(X.map((_, i) => gG[i] + gQ[i])), Qp = beam(X.map((_, i) => gG[i] + psi2 * gQ[i])), Gk = beam(gG), Qk = beam(gQ);
@@ -793,7 +931,67 @@ const Lintel = (() => {
       MEd, xM, Mk, Mqp, govCombo: best.run.cb.name, VEd, VEd_d, shearEnd: right ? 'right' : 'left', d, R1, R2, Rk1: K.R1, Rk2: K.R2, RG: [Gk.R1, Gk.R2], RQ: [Qk.R1, Qk.R2],
       floors, points, sec, secIn, checks, util, bearing, warnings, link };
   }
-  return { design, tri };
+  /* Check a Naylor prestressed lintel (n side by side) against the brochure's allowable unfactored loads. The load on it,
+     characteristic and unfactored (G + Q, with its own weight added: the brochure does not say whether its loads include the
+     lintel's weight, so adding it is on the safe side), is turned into the uniform load w_eq over l_eff that gives the same
+     largest bending moment (w = 8M/l²) or the same end shear (w = 2V/l), whichever is greater; for a uniform load w_eq is that
+     load. The allowable load is the table's at the shortest tabulated clear span not less than the opening. */
+  const G_ACC = 9.80665e-3;   // kg/m to N/mm
+  function naylor(inp) {
+    const NL = inp.table || (typeof Naylor !== 'undefined' ? Naylor : null);
+    if (!NL) throw new Error('The Naylor load tables are not loaded');
+    const l = NL.get(inp.lintel); if (!l) throw new Error('Choose a Naylor lintel');
+    const n = Math.round(fin(inp.n ?? 1, 'Number side by side')); if (n < 1 || n > 4) throw new Error('Number side by side: 1 to 4');
+    const fireNeed = nonneg(inp.fireNeed || 30, 'Fire resistance needed');
+    const D = takedown(inp, l.h, n * l.kg * G_ACC, `${n > 1 ? `${n} × ` : ''}Naylor ${l.name} self weight (${l.kg} kg/m)`);
+    const { L, t1, t2, arch, Hm, qm, T, xa, xb, a1, a2, xs1, xs2, leff, X, dx, sources, floors, points, gG, gQ, beam } = D;
+    const b = l.b, wq = X.map((_, i) => gG[i] + gQ[i]);
+    const K = beam(wq), Gk = beam(gG), Qk = beam(gQ), pk = K.peak();
+    // the equivalent uniform load of a load w over the strips, on support lines from a lintel of depth hh
+    const equiv = (w, hh) => {
+      const s1 = -Math.min(hh / 2, t1 / 2), s2 = L + Math.min(hh / 2, t2 / 2), le = s2 - s1, B = simple(X, dx, w, s1, s2), p = B.peak(), V = Math.max(B.R1b, B.R2b);
+      const wM = 8 * p.M / le ** 2, wV = 2 * V / le;
+      return { le, M: p.M, xM: p.x, V, wM, wV, w: Math.max(wM, wV), by: wM >= wV ? 'moment' : 'shear', R1: B.R1, R2: B.R2 };
+    };
+    const E = equiv(wq, l.h), A = NL.allowable(l, L), need = NL.bearingNeed(L);
+    const checks = [];
+    checks.push({ id: 'table', name: `Allowable load, Naylor table: ${l.name}${n > 1 ? ` × ${n}` : ''}`, ref: `Naylor brochure ${NL.SOURCE.edition}`,
+      util: A.w ? E.w / (n * A.w) : Infinity,
+      note: A.w ? `w_eq ${E.w.toFixed(2)} ≤ ${n > 1 ? `${n} × ` : ''}${A.w.toFixed(2)} kN/m at the ${A.span} mm clear span` : A.why });
+    // requirements, met or not (req): a utilisation of 0 when met, so they govern only when they are not
+    const tMin = Math.min(t1, t2), bOk = tMin >= need - 1e-9, fOk = l.fire >= fireNeed;
+    checks.push({ id: 'bearlen', req: true, ok: bOk, name: 'End bearing: at least the brochure\'s allowance', ref: 'Naylor brochure p. 17', util: bOk ? 0 : need / tMin,
+      note: `shorter bearing ${Math.round(tMin)} mm ${bOk ? '≥' : '<'} ${need} mm for a clear span ${L <= 1000 ? 'up to 1000' : L <= 3000 ? 'up to 3000' : 'over 3000'} mm` });
+    checks.push({ id: 'fire', req: true, ok: fOk, name: 'Fire resistance', ref: `Naylor brochure ${NL.SOURCE.edition}`, util: fOk ? 0 : fireNeed / l.fire,
+      note: `${l.fires.join(', ')} min available; ${fireNeed} min needed` });
+    // bearing on the masonry, each end (ULS reaction over n b × bearing; β = 1): the brochure leaves this to the designer
+    const cbs = COMB[inp.comb || '6.10'], runs = cbs.map(cb => ({ cb, B: beam(X.map((_, i) => cb.gG * gG[i] + cb.gQ * gQ[i])) }));
+    const fk = inp.fk, gM = inp.gammaM ?? 2.3, R1 = Math.max(...runs.map(r => r.B.R1)), R2 = Math.max(...runs.map(r => r.B.R2));
+    let bearing = null;
+    if (fk > 0) {
+      const fd = fk / gM, s1 = R1 / (n * b * t1), s2 = R2 / (n * b * t2);
+      bearing = { fd, s1, s2, beta: 1 };
+      checks.push({ id: 'bearing', name: `Bearing on the masonry, ${s1 >= s2 ? 'left' : 'right'} end`, ref: 'BS EN 1996-1-1 6.1.3', util: Math.max(s1, s2) / fd, note: `σ ${Math.max(s1, s2).toFixed(2)} ≤ f_d ${fd.toFixed(2)} N/mm² (β = 1)` });
+    }
+    const util = Math.max(...checks.map(k => k.util));
+    // the other lintels in the brochure that would pass here, n side by side, lightest first
+    const wSup = X.map((_, i) => wq[i] - n * l.kg * G_ACC);
+    const options = NL.LINTELS.map(c => {
+      const a = NL.allowable(c, L); if (!a.w) return null;
+      const e = c === l ? E : equiv(wSup.map(v => v + n * c.kg * G_ACC), c.h);
+      return { l: c, w: a.w, span: a.span, weq: e.w, util: e.w / (n * a.w), fireOk: c.fire >= fireNeed };
+    }).filter(Boolean).sort((p, q) => p.l.kg - q.l.kg || p.l.h - q.l.h);
+    const warnings = [];
+    if (arch && L > 4500) warnings.push('The load triangle method of PD 6697 clause 7 (BS 5977-1) is for lintels up to 4.5 m: check the arching more closely, or design for all the masonry above.');
+    if (arch && Hm < T.h60) warnings.push(`The masonry above (${Math.round(Hm)} mm) does not reach the top of the interaction zone (${Math.round(T.h60)} mm): arching may not develop. Consider all the masonry above.`);
+    const len = L + t1 + t2;
+    if (len > l.stock) warnings.push(`The lintel is ${Math.round(len)} mm long, more than Naylor's maximum stock length for ${l.name} (${l.stock} mm): check with Naylor that it can be made.`);
+    if (inp.tm > 0 && Math.abs(n * b - inp.tm) > 15) warnings.push(`The lintel${n > 1 ? 's are' : ' is'} ${n * b} mm wide and the leaf ${Math.round(inp.tm)} mm thick: check the masonry is fully supported${n * b > inp.tm ? '' : ', or use a wider lintel or more side by side'}.`);
+    return { naylor: true, inp, l, n, A, E, need, fireNeed, options, L, t1, t2, b: n * b, h: l.h, xa, xb, a1, a2, xs1, xs2, leff, T, arch, qm, Hm, X, dx, sources, gG, gQ, runs, K, Gk, Qk, cbs,
+      Mk: pk.M, xM: pk.x, R1, R2, Rk1: K.R1, Rk2: K.R2, RG: [Gk.R1, Gk.R2], RQ: [Qk.R1, Qk.R2], floors, points, checks, util, bearing, warnings, govCombo: cbs[0].name };
+  }
+
+  return { design, naylor, tri };
 })();
 if (typeof module !== 'undefined') module.exports = { Lintel };
 
@@ -1332,7 +1530,10 @@ const DrawRCKit = (() => {
    load with its share; the clear span, bearings, effective span and the heights. Then the load on the lintel (G and Q,
    characteristic) with the supports and the ULS reactions, and the governing bending moment and shear with M_Ed and V_Ed.
    The section, strains, shear truss and span/depth follow from the RC Section Toolkit's views (drawings/rckit.js).
-   Source: scratchpad/drawings/lintel.js. Needs JD, DK, DrawRCKit; takes Lintel.design results. */
+   For a Naylor lintel (Lintel.naylor results): the same elevation, then the characteristic load with the equivalent uniform
+   load and the brochure's allowable load, the characteristic bending moment and shear they come from, and the unit in section
+   under the wall.
+   Source: scratchpad/drawings/lintel.js. Needs JD, DK, DrawRCKit; takes Lintel.design or Lintel.naylor results. */
 const DrawLintel = (() => {
   'use strict';
   const { svg, arrow, line, rect, poly, text, pin, page, sheet, BLUE, FILL, RED, MUTE } = DK;
@@ -1366,19 +1567,29 @@ const DrawLintel = (() => {
       g += text(X(L / 2), Y(Math.min(hT, T.h45) * 0.35) + 4, 'load triangle', { size: 10, anchor: 'middle', color: RED, weight: 600 });
       if (T.h60 <= top) g += text(X(L / 2) + 8, Y(T.h60) + 12, 'interaction zone', { size: 9.5, color: RED });
     } else g += rect(X(R.xa), Y(Math.min(R.Hm, top)), (R.xb - R.xa) * k, Math.min(R.Hm, top) * k, { fill: 'rgba(196,36,42,.16)', stroke: 'red', w: 1 }) + text(X(L / 2), Y(Math.min(R.Hm, top) / 2) + 4, 'all the masonry above is carried', { size: 10, anchor: 'middle', color: RED, weight: 600 });
-    // floors: the line, the part carried (solid in full, dashed halved) and its dispersal to the lintel
+    // a 45° line from (xs, ys) down to the lintel, stopping at its ends, clipped to the wall drawn (model mm)
+    const ray = (xs, ys, dir) => {
+      const xe = dir < 0 ? Math.max(xs - ys, R.xa) : Math.min(xs + ys, R.xb), ye = ys - Math.abs(xe - xs);
+      let t0 = 0, t1 = 1; const dxl = xe - xs, dyl = ye - ys;
+      for (const [p, q] of [[-dxl, xs - x0], [dxl, x1 - xs], [-dyl, ys], [dyl, top - ys]]) {
+        if (p === 0) { if (q < 0) return ''; continue; }
+        const r = q / p; if (p < 0) t0 = Math.max(t0, r); else t1 = Math.min(t1, r);
+      }
+      return t1 > t0 ? line(X(xs + t0 * dxl), Y(ys + t0 * dyl), X(xs + t1 * dxl), Y(ys + t1 * dyl), { c: 'red', w: 0.7, dash: '3 3' }) : '';
+    };
+    // floors: the line, the part carried (solid in full, dashed halved) and its dispersal to the lintel: from each end of the
+    // part carried, outward while that end is over the lintel, else inward to the lintel's end
     R.floors.forEach((f, i) => {
       if (f.y > top) return;
       g += line(X(x0), Y(f.y), X(x1), Y(f.y), { c: '#56606b', w: 2.4 });
       f.segs.forEach(([p, q, fac]) => {
         const pp = Math.max(p, x0), qq = Math.min(q, x1); if (qq <= pp) return;
         g += line(X(pp), Y(f.y), X(qq), Y(f.y), { c: 'red', w: 3.2, dash: fac < 1 ? '5 3' : undefined });
-        g += line(X(pp), Y(f.y), X(Math.max(pp - f.y, R.xa)), Y(Math.max(0, f.y - (pp - Math.max(pp - f.y, R.xa)))), { c: 'red', w: 0.7, dash: '3 3' })
-          + line(X(qq), Y(f.y), X(Math.min(qq + f.y, R.xb)), Y(Math.max(0, f.y - (Math.min(qq + f.y, R.xb) - qq))), { c: 'red', w: 0.7, dash: '3 3' });
+        g += ray(p, f.y, p > R.xa ? -1 : 1) + ray(q, f.y, q < R.xb ? 1 : -1);
       });
       const roomR = W - X(x1) > 210, lab = `floor ${i + 1}: G ${r1(f.G)} + Q ${r1(f.Q)} kN/m`, how = R.arch ? (f.factor === 1 ? 'partly in the triangle: in full' : f.factor === 0.5 ? 'in the interaction zone: halved' : 'above the zone: not carried') : 'carried in full';
       g += roomR ? text(X(x1) + 8, Y(f.y) - 2, lab, { size: 9.5, color: f.factor ? RED : MUTE, weight: 600 }) + text(X(x1) + 8, Y(f.y) + 11, how, { size: 9.5, color: MUTE })
-        : text(X(x1) - 4, Y(f.y) - 6, `${lab}, ${how}`, { size: 9.5, anchor: 'end', color: f.factor ? RED : MUTE });
+        : text(X(x1) - 30, Y(f.y) - 6, `${lab}, ${how}`, { size: 9.5, anchor: 'end', color: f.factor ? RED : MUTE });
     });
     // point loads with their share
     R.points.forEach((p, i) => {
@@ -1435,9 +1646,63 @@ const DrawLintel = (() => {
     return svg(g, W, yV + 64, 'The load on the lintel with its supports and reactions, and the ULS bending moment and shear');
   }
 
-  const blocks = R => [['Elevation: the opening, the wall above and what the lintel carries', elevation(R)], ['Load, bending and shear', loading(R)],
-    ['Section, strains and forces at M<sub>Rd</sub> (6.1)', DrawRCKit.secView(R.secIn, R.sec)], ['Shear: truss model and resistances (6.2)', DrawRCKit.shearView(R.secIn, R.sec)], ['Span/depth (7.4.2)', DrawRCKit.deflView(R.secIn, R.sec)]];
-  return { html: R => page(blocks(R)), report: R => sheet(blocks(R)), elevation, loading };
+  // Naylor: the characteristic load with w_eq and the allowable load, then the characteristic bending moment and shear
+  function loadingN(R) {
+    const W = 700, X = x => 70 + (x - R.xa) / (R.xb - R.xa) * 560, E = R.E, allow = R.A.w ? R.n * R.A.w : null, fail = R.checks.find(c => c.id === 'table').util > 1;
+    const wtop = Math.max(1e-9, ...R.X.map((_, i) => R.gG[i] + R.gQ[i]), E.w), cap = wtop * 1.6, clipped = allow !== null && allow > cap;
+    const y0 = 150, sw = 100 / (clipped ? cap : Math.max(wtop, allow || 0));   // the plot from y0 up to 50
+    let g = text(20, 18, 'Load on the lintel, characteristic (unfactored), kN/m', { size: 10.5, weight: 600 });
+    const top = R.X.map((x, i) => [X(x), y0 - (R.gG[i] + R.gQ[i]) * sw]), mid = R.X.map((x, i) => [X(x), y0 - R.gG[i] * sw]);
+    g += poly([[X(R.xa), y0], ...mid, [X(R.xb), y0]], { fill: 'rgba(196,36,42,.20)', stroke: 'red', w: 1 });
+    g += poly([...mid, ...[...top].reverse()], { fill: 'rgba(29,95,191,.22)', stroke: 'none' }) + poly(top, { open: true, stroke: 'blue', w: 1 });
+    // the equivalent uniform load over l_eff, and the allowable load
+    const yE = y0 - E.w * sw;
+    g += line(X(R.xs1), yE, X(R.xs2), yE, { c: 'ink', w: 1.6, dash: '6 3' });
+    g += text(X(R.xs2) + 6, yE + 4, `w_eq ${r2(E.w)}`, { size: 10, weight: 700 });
+    if (allow !== null) {
+      const yA = clipped ? y0 - cap * sw : y0 - allow * sw;
+      g += line(X(R.xs1), yA, X(R.xs2), yA, { c: fail ? 'red' : '#247b50', w: 1.6, dash: clipped ? '10 3 2 3' : undefined });
+      g += text(X(R.xs1), yA - 5, `allowable, Naylor table: ${R.n > 1 ? `${R.n} × ${r2(R.A.w)} = ` : ''}${r2(allow)} kN/m${clipped ? ' (above the scale of this diagram)' : ''}`, { size: 10, weight: 700, color: fail ? RED : '#247b50' });
+    } else g += text(X((R.xs1 + R.xs2) / 2), 34, `no allowable load: ${R.A.why}`, { size: 10, anchor: 'middle', weight: 700, color: RED });
+    g += line(X(R.xa), y0, X(R.xb), y0, { w: 2.2 }) + pin(X(R.xs1), y0 + 1) + pin(X(R.xs2), y0 + 1);
+    g += text(X(R.xs1), y0 + 34, `R_k ${r1(R.Rk1 / 1e3)} kN`, { size: 10, anchor: 'middle', weight: 600 }) + text(X(R.xs2), y0 + 34, `R_k ${r1(R.Rk2 / 1e3)} kN`, { size: 10, anchor: 'middle', weight: 600 });
+    g += text(X((R.xs1 + R.xs2) / 2), y0 + 34, 'G + Q, unfactored; with the lintel\'s own weight', { size: 9.5, anchor: 'middle', color: MUTE });
+    // characteristic bending and shear between the support lines
+    const N = 120, xs = Array.from({ length: N + 1 }, (_, i) => R.xs1 + (R.xs2 - R.xs1) * i / N), B = R.K;
+    const yM = y0 + 70, Ms = xs.map(x => B.M(x)), mmx = Math.max(1e-9, ...Ms), sm = 56 / mmx;
+    g += text(20, yM - 6, 'Bending moment, characteristic, kNm', { size: 10.5, weight: 600 });
+    g += line(X(R.xs1), yM, X(R.xs2), yM, { c: 'mute', w: 0.8 }) + DK.fillDiagram(xs.map((x, i) => [X(x), yM + Ms[i] * sm]), yM);
+    g += text(X(E.xM), yM + E.M * sm / 2 + 4, `M_k ${r2(E.M / 1e6)} kNm → 8M/l² = ${r2(E.wM)} kN/m`, { size: 10, anchor: 'middle', weight: E.by === 'moment' ? 700 : 400 });
+    const yV = yM + 104, Vs = xs.map(x => B.V(x)), vmx = Math.max(1e-9, ...Vs.map(Math.abs)), sv = 32 / vmx;
+    g += text(20, yV - 40, 'Shear force, characteristic, kN', { size: 10.5, weight: 600 });
+    g += line(X(R.xs1), yV, X(R.xs2), yV, { c: 'mute', w: 0.8 }) + DK.fillDiagram(xs.map((x, i) => [X(x), yV - Vs[i] * sv]), yV);
+    const right = B.R2b > B.R1b;
+    g += text(X(right ? R.xs2 : R.xs1) + (right ? -6 : 6), yV + (right ? -12 : 22), `V_k ${r1(E.V / 1e3)} kN → 2V/l = ${r2(E.wV)} kN/m`, { size: 10, anchor: right ? 'end' : 'start', weight: E.by === 'shear' ? 700 : 400 });
+    g += text(20, yV + 54, `l = l_eff ${r0(E.le)} mm. w_eq is the uniform load with the same largest moment or end shear, whichever is greater (here the ${E.by}).`, { size: 9.5, color: MUTE });
+    return svg(g, W, yV + 62, 'The characteristic load on the Naylor lintel, its equivalent uniform load and the allowable load, with the bending moment and shear');
+  }
+
+  // Naylor: the unit(s) in section under the wall leaf, to scale
+  function sectionN(R) {
+    const W = 700, l = R.l, n = R.n, tm = Math.max(R.inp.tm || 0, 0), bw = n * l.b, wide = Math.max(bw, tm), k = Math.min(200 / wide, 150 / (l.h + 120)), cx = 230;
+    const x0 = cx - bw * k / 2, y0 = 40 + 90 * k;   // y0: the top of the lintel, under 90 mm of the leaf
+    let g = '';
+    if (tm > 0) g += brick(cx - tm * k / 2, y0 - 90 * k, tm * k, 90 * k) + line(cx - tm * k / 2, y0 - 90 * k, cx - tm * k / 2, y0, { w: 1 }) + line(cx + tm * k / 2, y0 - 90 * k, cx + tm * k / 2, y0, { w: 1 });
+    for (let i = 0; i < n; i++) g += rect(x0 + i * l.b * k, y0, l.b * k, l.h * k, { fill: CON, stroke: 'ink', w: 1.3 });
+    g += dimH(x0, x0 + bw * k, y0 + l.h * k + 18, n > 1 ? `${n} × ${l.b} = ${bw}` : `b ${l.b}`, { below: true });
+    g += dimV(x0 + bw * k + 16, y0, y0 + l.h * k, `h ${l.h}`, { right: true });
+    if (tm > 0) g += dimH(cx - tm * k / 2, cx + tm * k / 2, y0 - 90 * k - 10, `leaf ${r0(tm)}`);
+    const tx = 400; let ty = 40;
+    const rows = [[`Naylor ${l.name}${l.also ? ` (or ${l.also})` : ''}`, 700, 12], [`${R.n > 1 ? `${R.n} side by side, ` : ''}${l.b} × ${l.h} mm, prestressed`, 400, 10.5],
+      [`${R.l.kg} kg/m each; fire resistance ${l.fires.join(', ')} min`, 400, 10.5], [`maximum stock length ${r0(l.stock)} mm`, 400, 10.5]];
+    rows.forEach(([t, wgt, sz]) => { g += text(tx, ty, t, { size: sz, weight: wgt }); ty += sz + 8; });
+    return svg(g, W, Math.max(y0 + l.h * k + 40, ty + 10), `Section through the Naylor lintel under the wall`);
+  }
+
+  const blocks = R => R.naylor ? [['Elevation: the opening, the wall above and what the lintel carries', elevation(R)], ['Load, equivalent uniform load and the allowable load', loadingN(R)], ['The lintel in section', sectionN(R)]]
+    : [['Elevation: the opening, the wall above and what the lintel carries', elevation(R)], ['Load, bending and shear', loading(R)],
+      ['Section, strains and forces at M<sub>Rd</sub> (6.1)', DrawRCKit.secView(R.secIn, R.sec)], ['Shear: truss model and resistances (6.2)', DrawRCKit.shearView(R.secIn, R.sec)], ['Span/depth (7.4.2)', DrawRCKit.deflView(R.secIn, R.sec)]];
+  return { html: R => page(blocks(R)), report: R => sheet(blocks(R)), elevation, loading, loadingN, sectionN };
 })();
 
 </script>
@@ -1462,17 +1727,46 @@ function pointRow(p = { x: 900, y: 600, G: 10, Q: 5 }) {
 }
 $('addFloor').onclick = () => { floorRow(); queueDraw(); };
 $('addPoint').onclick = () => { pointRow(); queueDraw(); };
+// ---------- the two ways: design to BS EN 1992, or check a Naylor lintel against the brochure ----------
+const NS = Naylor.SOURCE;
+const srcHTML = () => `Loads from the ${esc(NS.title)}, ${esc(NS.edition)} (${esc(NS.file)}; ${esc(NS.pages)}). Check it is still Naylor's current brochure before relying on the result: <a href="${esc(NS.url)}" target="_blank" rel="noopener">${esc(NS.url)}</a>`;
+(function fillNaylor() {
+  const sel = $('nl');
+  Object.entries(Naylor.RANGES).forEach(([code, name]) => {
+    const g = document.createElement('optgroup'); g.label = name;
+    Naylor.LINTELS.filter(l => l.range === code).forEach(l => { const o = document.createElement('option'); o.value = l.id; o.textContent = `${l.name}${l.also ? ` / ${l.also}` : ''}: ${l.b} × ${l.h}, ${l.kg} kg/m`; g.appendChild(o); });
+    sel.appendChild(g);
+  });
+  sel.value = 'HS-R8'; $('nSrc').innerHTML = srcHTML();
+})();
+const HELP = { ec2: 'Design a reinforced concrete lintel to BS EN 1992-1-1 + UK NA: bending, shear, steel, span/depth, lateral stability and bearing.',
+  naylor: 'Check a Naylor prestressed lintel: the unfactored load on it against the allowable load in Naylor\'s brochure, the end bearing and the fire resistance.' };
+function setTool(t) {
+  t = t === 'naylor' ? 'naylor' : 'ec2'; $('tool').value = t;
+  [...$('tools').children].forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  const N = t === 'naylor';
+  $('cardNaylor').hidden = !N; $('cardRC').hidden = N; $('ecSize').hidden = N; $('psiGrp').hidden = N; $('combHelpN').hidden = !N;
+  $('toolHelp').textContent = HELP[t];
+}
+[...$('tools').children].forEach(b => { b.onclick = () => { setTool(b.dataset.t); queueDraw(); }; });
 // ---------- state ----------
-const FIELDS = ['pName', 'pJob', 'pBy', 'pRef', 'L', 't1', 't2', 'b', 'h', 'fck', 'fyk', 'cover', 'nb', 'phib', 'dg', 'phil', 'legs', 'sl', 'nt', 'phit', 'mode', 'Hm', 'tm', 'gm', 'dG', 'dQ', 'comb', 'psi2', 'fk', 'gM'];
+const FIELDS = ['pName', 'pJob', 'pBy', 'pRef', 'tool', 'nl', 'nn', 'fire', 'L', 't1', 't2', 'b', 'h', 'fck', 'fyk', 'cover', 'nb', 'phib', 'dg', 'phil', 'legs', 'sl', 'nt', 'phit', 'mode', 'Hm', 'tm', 'gm', 'dG', 'dQ', 'comb', 'psi2', 'fk', 'gM'];
 const rowsOf = (id, keys) => [...$(id).children].map(r => Object.fromEntries(keys.map(k => [k, r.querySelector('.' + k).value])));
 function collect() { const s = { v: 1 }; FIELDS.forEach(id => s[id] = $(id).value); s.floors = rowsOf('floorRows', ['y', 'G', 'Q']); s.points = rowsOf('pointRows', ['x', 'y', 'G', 'Q']); return s; }
 function restore(s) {
   FIELDS.forEach(id => { if (s[id] !== undefined && $(id)) $(id).value = s[id]; });
+  if (!Naylor.get($('nl').value)) $('nl').value = 'HS-R8';
+  setTool(s.tool);
   $('floorRows').innerHTML = ''; (s.floors || []).forEach(f => floorRow(f)); $('pointRows').innerHTML = ''; (s.points || []).forEach(p => pointRow(p));
 }
 const num = (s, k, nm) => { const v = s[k] === '' || s[k] === undefined ? NaN : +s[k]; if (!Number.isFinite(v)) throw new Error(`${nm}: give a number`); return v; };
 function input(s) {
   const phil = +s.phil;
+  if (s.tool === 'naylor') return { L: num(s, 'L', 'Clear span'), t1: num(s, 't1', 'Bearing, left'), t2: num(s, 't2', 'Bearing, right'), lintel: s.nl, n: +s.nn || 1, fireNeed: +s.fire || 30,
+    mode: s.mode, Hm: num(s, 'Hm', 'Height of masonry'), tm: num(s, 'tm', 'Leaf thickness'), gm: num(s, 'gm', 'Masonry density'),
+    floors: (s.floors || []).map((f, k) => ({ y: num(f, 'y', `Floor ${k + 1}: height`), G: +f.G || 0, Q: +f.Q || 0 })),
+    points: (s.points || []).map((p, k) => ({ x: num(p, 'x', `Point load ${k + 1}: x`), y: num(p, 'y', `Point load ${k + 1}: height`), G: +p.G || 0, Q: +p.Q || 0 })),
+    dG: +s.dG || 0, dQ: +s.dQ || 0, comb: s.comb, fk: s.fk === '' ? 0 : +s.fk, gammaM: +s.gM };
   return { L: num(s, 'L', 'Clear span'), t1: num(s, 't1', 'Bearing, left'), t2: num(s, 't2', 'Bearing, right'), b: num(s, 'b', 'Width b'), h: num(s, 'h', 'Depth h'),
     fck: +s.fck, fyk: num(s, 'fyk', 'f_yk'), cover: num(s, 'cover', 'Cover'), dg: num(s, 'dg', 'Aggregate size'),
     bottom: { n: Math.round(num(s, 'nb', 'Bottom bars')), phi: +s.phib }, top: { n: Math.round(+s.nt || 0), phi: +s.phit },
@@ -1482,8 +1776,9 @@ function input(s) {
     points: (s.points || []).map((p, k) => ({ x: num(p, 'x', `Point load ${k + 1}: x`), y: num(p, 'y', `Point load ${k + 1}: height`), G: +p.G || 0, Q: +p.Q || 0 })),
     dG: +s.dG || 0, dQ: +s.dQ || 0, comb: s.comb, psi2: num(s, 'psi2', 'ψ₂'), fk: s.fk === '' ? 0 : +s.fk, gammaM: +s.gM };
 }
+const compute = s => s.tool === 'naylor' ? Lintel.naylor(input(s)) : Lintel.design(input(s));
 // ---------- results ----------
-const bar = c => `<div class="ck"><div class="nm">${sub(c.name)}<small>${esc(c.ref)} &nbsp;${sub(c.note || '')}</small></div><div class="bar"><i class="${c.util > 1 ? 'over' : c.util > 0.9 ? 'hi' : ''}" style="width:${Math.min(100, c.util * 100 / 1.2)}%"></i></div><div class="u ${c.util > 1 ? 'over' : ''}">${ufmt(c.util)}</div></div>`;
+const bar = c => c.req ? `<div class="ck"><div class="nm">${sub(c.name)}<small>${esc(c.ref)} &nbsp;${sub(c.note || '')}</small></div><div></div><div class="u ${c.ok ? '' : 'over'}">${c.ok ? 'OK' : 'NOT MET'}</div></div>` : `<div class="ck"><div class="nm">${sub(c.name)}<small>${esc(c.ref)} &nbsp;${sub(c.note || '')}</small></div><div class="bar"><i class="${c.util > 1 ? 'over' : c.util > 0.9 ? 'hi' : ''}" style="width:${Math.min(100, c.util * 100 / 1.2)}%"></i></div><div class="u ${c.util > 1 ? 'over' : ''}">${ufmt(c.util)}</div></div>`;
 const kv = (k, v) => `<div><b>${k}</b><span>${v}</span></div>`;
 function loadTable(R) {
   return `<table class="t rtab"><tr><th>Load</th><th>Case</th><th>On the lintel (kN)</th></tr>` + R.sources.map(s => `<tr><td>${esc(s.name)}</td><td>${s.case}</td><td>${f2(s.W / 1e3)}</td></tr>`).join('')
@@ -1496,8 +1791,42 @@ function values(R) {
     + (S.shear.resV ? kv('V<sub>Rd,s</sub> (kN)', f1(S.shear.resV.VRds / 1e3)) : '') + kv('Reactions ULS (kN)', `${f1(R.R1 / 1e3)}, ${f1(R.R2 / 1e3)}`)
     + kv('Reactions G<sub>k</sub> / Q<sub>k</sub> (kN)', `${f1(R.RG[0] / 1e3)} / ${f1(R.RQ[0] / 1e3)}, ${f1(R.RG[1] / 1e3)} / ${f1(R.RQ[1] / 1e3)}`) + (S.defl ? kv('l/d actual / allowed', `${f1(S.defl.actual)} / ${f1(S.defl.allowed)}`) : '');
 }
+// the Naylor table for the chosen lintel, with the span used marked
+function nTable(R) {
+  const l = R.l, sp = Naylor.SPANS;
+  return `<table class="t rtab"><tr><th>Clear span (mm)</th>${sp.map(s => `<th>${s}</th>`).join('')}</tr><tr><td>${esc(l.name)}, kN/m</td>${sp.map((s, i) => i < l.w.length ? `<td class="${i === R.A.i ? 'use' : ''}">${f2(l.w[i])}</td>` : `<td class="na ${i === R.A.i ? 'use' : ''}">n/a</td>`).join('')}</tr></table>`;
+}
+// the other lintels of the same width that pass here, lightest first
+function nOptions(R) {
+  const ok = R.options.filter(o => o.l.b === R.l.b && o.util <= 1 && o.fireOk && o.l !== R.l);
+  if (!ok.length) return `<div class="note">No other Naylor lintel ${R.l.b} mm wide passes here${R.n > 1 ? ` with ${R.n} side by side` : ''}${R.fireNeed > 30 ? ` with ${R.fireNeed} min fire resistance` : ''}.</div>`;
+  return `<table class="t rtab"><tr><th>Lintel</th><th>Size (mm)</th><th>kg/m</th><th>Fire (min)</th><th>Allowable (kN/m)</th><th>w<sub>eq</sub> (kN/m)</th><th>Utilisation</th></tr>`
+    + ok.slice(0, 6).map(o => `<tr><td>${esc(o.l.name)}</td><td>${o.l.b} × ${o.l.h}</td><td>${o.l.kg}</td><td>${o.l.fires.join(', ')}</td><td>${R.n > 1 ? `${R.n} × ` : ''}${f2(o.w)}</td><td>${f2(o.weq)}</td><td>${ufmt(o.util)}</td></tr>`).join('') + `</table>`;
+}
+function valuesN(R) {
+  const E = R.E;
+  return kv('l<sub>eff</sub> (mm)', f0(E.le)) + kv('M<sub>k</sub> (kNm)', f2(E.M / 1e6)) + kv('V<sub>k</sub> at the support (kN)', f1(E.V / 1e3)) + kv('8M<sub>k</sub>/l² (kN/m)', f2(E.wM)) + kv('2V<sub>k</sub>/l (kN/m)', f2(E.wV))
+    + kv('w<sub>eq</sub> (kN/m)', f2(E.w)) + kv('Allowable (kN/m)', R.A.w ? `${R.n > 1 ? `${R.n} × ${f2(R.A.w)} = ` : ''}${f2(R.n * R.A.w)}` : 'n/a')
+    + kv('Reactions G<sub>k</sub> / Q<sub>k</sub> (kN)', `${f1(R.RG[0] / 1e3)} / ${f1(R.RQ[0] / 1e3)}, ${f1(R.RG[1] / 1e3)} / ${f1(R.RQ[1] / 1e3)}`) + kv('Reactions ULS (kN)', `${f1(R.R1 / 1e3)}, ${f1(R.R2 / 1e3)}`);
+}
+function renderN(R, s) {
+  const W = [...R.checks].sort((a, b) => b.util - a.util)[0], l = R.l;
+  let h = `<div class="verdict ${R.util > 1 ? 'fail' : ''}"><div><div class="big">${R.util > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(R.util)}</div><div class="sub">Governs: ${sub(W.name.charAt(0).toLowerCase() + W.name.slice(1))}<br>Naylor ${esc(l.name)}${R.n > 1 ? ` × ${R.n}` : ''} (${l.b} × ${l.h}), clear span ${f0(R.L)} mm; w<sub>eq</sub> ${f2(R.E.w)} kN/m${R.A.w ? ` against ${f2(R.n * R.A.w)} kN/m allowed at the ${R.A.span} mm clear span` : `; no allowable load: ${esc(R.A.why)}`}; ${R.arch ? 'the wall arches' : 'no arching'}</div></div></div>`;
+  h += `<div id="drawings"></div>`;
+  h += `<div class="dlabel">Checks</div><div class="checks">${[...R.checks].sort((a, b) => b.util - a.util).map(bar).join('')}</div>`;
+  if (!R.bearing) h += `<div class="note">Give the masonry f<sub>k</sub> to check the bearings: the brochure leaves this to the designer.</div>`;
+  R.warnings.forEach(t => { h += `<div class="note">${esc(t)}</div>`; });
+  h += `<div class="dlabel">Naylor's table for ${esc(l.name)}</div>${nTable(R)}<div class="src">${srcHTML()}</div>`;
+  h += `<div class="dlabel">Other ${l.b} mm wide Naylor lintels that pass here, lightest first</div>${nOptions(R)}`;
+  h += `<div class="dlabel">Loads on the lintel</div>${loadTable(R)}<div class="dlabel">Values</div><div class="kv">${valuesN(R)}</div>`;
+  h += `<div class="note">The brochure does not say whether its loads include the lintel's own weight, so it is added to the load here, which is on the safe side. A load that is not uniform (the load triangle, floors, point loads) is checked as the uniform load with the same largest bending moment or end shear over l<sub>eff</sub>, whichever is greater.</div>`;
+  h += `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  $('results').innerHTML = h; redraw();
+  $('printBtn').onclick = () => { $('report').innerHTML = reportN(R, s); window.print(); };
+}
 let last = null;
 function render(R, s) {
+  if (R.naylor) return renderN(R, s);
   const W = [...R.checks].sort((a, b) => b.util - a.util)[0];
   let h = `<div class="verdict ${R.util > 1 ? 'fail' : ''}"><div><div class="big">${R.util > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(R.util)}</div><div class="sub">Governs: ${sub(W.name.charAt(0).toLowerCase() + W.name.slice(1))} (${esc(W.ref)})<br>${f0(R.b)} × ${f0(R.h)} lintel, clear span ${f0(R.L)} mm, ${R.inp.bottom.n}H${R.inp.bottom.phi} bottom${R.link ? `, H${R.link.phi} links @ ${R.link.s}` : ', no links'}; ${R.arch ? 'the wall arches' : 'no arching'}; ${esc(R.govCombo)}</div></div></div>`;
   h += `<div id="drawings"></div>`;
@@ -1511,13 +1840,13 @@ function render(R, s) {
 }
 function run() {
   const s = collect(); try { localStorage.setItem(STORE, JSON.stringify(s)); } catch (e) { /* storage unavailable */ }
-  try { const R = Lintel.design(input(s)); last = { R, s }; render(R, s); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div><div id="drawings"></div>`; redraw(); }
+  try { const R = compute(s); last = { R, s }; render(R, s); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div><div id="drawings"></div>`; redraw(); }
 }
 // the drawings follow the inputs as they change (the design is quick)
 let drawT = 0;
 function redraw() {
   const el = $('drawings'); if (!el) return;
-  try { el.innerHTML = DrawLintel.html(Lintel.design(input(collect()))); }
+  try { el.innerHTML = DrawLintel.html(compute(collect())); }
   catch (e) { el.innerHTML = `<div class="note">The drawing will appear when the inputs are complete: ${esc(e.message)}</div>`; }
 }
 const queueDraw = () => { clearTimeout(drawT); drawT = setTimeout(redraw, 150); };
@@ -1525,6 +1854,30 @@ $('inputs').addEventListener('input', queueDraw); $('inputs').addEventListener('
 // ---------- A4 sheet ----------
 const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
 const okng = u => u <= 1 ? `<span class="ok">${ufmt(u)} OK</span>` : `<span class="ng">${ufmt(u)} FAIL</span>`;
+const okc = c => c.req ? (c.ok ? '<span class="ok">OK</span>' : '<span class="ng">NOT MET</span>') : okng(c.util);
+function reportN(R, s) {
+  const today = new Date().toLocaleDateString('en-GB'), inp = R.inp, l = R.l, E = R.E;
+  const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.pRef) || '&nbsp;'}</div><div class="ttl">Naylor lintel against the brochure load tables</div></div>`;
+  let b = `<div class="rs"><h2>1 Lintel and loads</h2>`
+    + rl(`Naylor ${esc(l.name)}${l.also ? ` (or ${esc(l.also)})` : ''}, ${esc(Naylor.RANGES[l.range])}${R.n > 1 ? `, ${R.n} side by side` : ''}: ${l.b} × ${l.h} mm prestressed, ${l.kg} kg/m, fire resistance ${l.fires.join(', ')} min, maximum stock length ${l.stock} mm`, '', '')
+    + rl(`Source: ${esc(NS.title)}, ${esc(NS.edition)} (${esc(NS.file)}; ${esc(NS.pages)}), ${esc(NS.url)}. <b>Check this is still Naylor's current brochure.</b>`, '', '')
+    + rl(`Clear span ${f0(R.L)} mm, bearings ${f0(R.t1)} and ${f0(R.t2)} mm; l<sub>eff</sub> = l<sub>n</sub> + a₁ + a₂ = ${f0(R.L)} + ${f0(R.a1)} + ${f0(R.a2)} = ${f0(R.leff)} mm, a<sub>i</sub> = min(h/2, t<sub>i</sub>/2)`, 'EC2 5.3.2.2', '')
+    + rl(R.arch ? `Masonry ${f0(inp.tm)} mm at ${inp.gm} kN/m³ (${f2(R.qm * 1e3)} kN/m²), ${f0(R.Hm)} mm high; the wall arches: the masonry in the 45° load triangle on 1.1 l<sub>n</sub> (height ${f0(R.T.h45)} mm) is carried; loads in it in full, in the interaction zone (60°, height ${f0(R.T.h60)} mm) halved, above it not at all, each spread at 45°`
+      : `Masonry ${f0(inp.tm)} mm at ${inp.gm} kN/m³ (${f2(R.qm * 1e3)} kN/m²), ${f0(R.Hm)} mm high; no arching: all of it and every load on it carried, spread at 45°`, 'PD 6697 cl. 7', '')
+    + loadTable(R) + `</div>`;
+  b += `<div class="rs"><h2>2 Drawings</h2>${DrawLintel.report(R)}</div>`;
+  b += `<div class="rs"><h2>3 Against Naylor's table</h2>`
+    + rl(`Load G + Q, unfactored, with the lintel's own weight ${R.n > 1 ? `${R.n} × ` : ''}${l.kg} kg/m × g = ${f2(R.n * l.kg * 9.80665e-3)} kN/m (the brochure does not say whether its loads include it)`, '', '')
+    + rl(`M<sub>k</sub> = ${f2(E.M / 1e6)} kNm at ${f0(E.xM)} mm; w<sub>eq,M</sub> = 8M<sub>k</sub>/l<sub>eff</sub>² = 8 × ${f2(E.M / 1e6)} / ${(E.le / 1e3).toFixed(3)}² = ${f2(E.wM)} kN/m`, '', '')
+    + rl(`V<sub>k</sub> = ${f1(E.V / 1e3)} kN at the support; w<sub>eq,V</sub> = 2V<sub>k</sub>/l<sub>eff</sub> = 2 × ${f2(E.V / 1e3)} / ${(E.le / 1e3).toFixed(3)} = ${f2(E.wV)} kN/m`, '', '')
+    + rl(`w<sub>eq</sub> = the greater = ${f2(E.w)} kN/m (by ${E.by})`, '', '')
+    + rl(R.A.w ? `Allowable at the next tabulated clear span not less than ${f0(R.L)} mm: ${R.A.span} mm, ${f2(R.A.w)} kN/m${R.n > 1 ? `; × ${R.n} = ${f2(R.n * R.A.w)} kN/m` : ''}` : `No allowable load: ${esc(R.A.why)}`, 'Naylor', okng(R.checks.find(c => c.id === 'table').util))
+    + nTable(R) + `</div>`;
+  b += `<div class="rs"><h2>4 Checks</h2>` + [...R.checks].map(c => rl(sub(c.name) + ` <span style="color:#666">${sub(c.note || '')}</span>`, esc(c.ref), okc(c))).join('')
+    + R.warnings.map(t => `<p class="rp">${esc(t)}</p>`).join('') + (R.bearing ? '' : `<p class="rp">Bearings on the masonry not checked: no masonry strength given. The brochure leaves this to the designer.</p>`) + `</div>`;
+  b += `<p class="rp" style="color:#555">Allowable unfactored loads from the ${esc(NS.title)}, ${esc(NS.edition)} (${esc(NS.file)}), ${esc(NS.url)}: check it is still the current edition. The brochure states the lintels are designed to Eurocode 2 Part 1-1. Load from the masonry by the method of PD 6697:2019 clause 7; bearing on the masonry to BS EN 1996-1-1 with the UK National Annex. Generated by EngineeringTools — RC Lintel Design.</p>`;
+  return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
+}
 function report(R, s) {
   const today = new Date().toLocaleDateString('en-GB'), inp = R.inp;
   const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.pRef) || '&nbsp;'}</div><div class="ttl">RC lintel to BS EN 1992-1-1 + UK NA</div></div>`;
@@ -1546,7 +1899,7 @@ function report(R, s) {
 $('calc').onclick = run;
 (function init() {
   let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
-  if (s && s.v === 1) restore(s); else floorRow();
+  if (s && s.v === 1) restore(s); else { floorRow(); setTool('ec2'); }
   redraw();
 })();
 </script>

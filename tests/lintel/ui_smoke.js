@@ -28,9 +28,31 @@ function page(store) {
   set('L', '0'); $('calc').click(); truth('a zero span is reported', !!$('results').querySelector('.err') && /Clear span/.test(res()));
   set('L', '1800'); set('phil', '6'); $('calc').click();
   $('printBtn').click(); truth('print: the A4 sheet with the drawings, section design and checks', w.printed && $('report').querySelectorAll('svg.dk').length === 5 && /3 Section design/.test($('report').textContent) && /4 Checks/.test($('report').textContent));
+  // ---- check a Naylor lintel against the brochure ----
+  truth('opens on the RC design: the Naylor card hidden', $('cardNaylor').hidden && !$('cardRC').hidden && $('tool').value === 'ec2');
+  d.querySelector('#tools [data-t=naylor]').click(); await wait(260);
+  truth('Naylor: the RC inputs hidden, the lintel list filled from the brochure', !$('cardNaylor').hidden && $('cardRC').hidden && $('ecSize').hidden && $('nl').options.length === 60 && d.querySelectorAll('#nl optgroup').length === 5);
+  truth('Naylor: the brochure named with its edition and address on the inputs', /March 2025/.test($('nSrc').textContent) && !!$('nSrc').querySelector('a[href*="lintelsbrochurexfs4march2025"]'));
+  truth('Naylor: drawings on change: elevation, load against the allowable, section', d.querySelectorAll('#drawings svg.dk').length === 3 && /allowable, Naylor table/.test(draw()) && /Naylor R8/.test(draw()));
+  set('L', '1800'); $('calc').click();
+  truth('Naylor check: verdict, table check, end bearing and fire', /PASS|FAIL/.test(res()) && /Allowable load, Naylor table: R8/.test(res()) && /End bearing/.test(res()) && /Fire resistance/.test(res()));
+  truth('Naylor check: the table row with the span used, the source, the lighter options', !!$('results').querySelector('td.use') && /31\.18/.test($('results').querySelector('td.use').textContent) && /LintelsBrochureXFS4March2025/.test(res()) && /lightest first/.test(res()));
+  set('nl', 'HS-R6'); set('L', '3000'); set('t1', '200'); set('t2', '200'); $('calc').click();
+  truth('Naylor: R6 at a 3000 mm opening with the default loads', /R6/.test(res()) && /stock length/.test(res()));
+  set('t1', '100'); $('calc').click(); truth('Naylor: a 100 mm bearing at 3000 mm is NOT MET and fails', /NOT MET/.test(res()) && /FAIL/.test(res()));
+  set('t1', '200'); set('fire', '60'); $('calc').click(); truth('Naylor: 60 min needed from a 30 min lintel fails', /30 min available; 60 min needed/.test(res()) && /FAIL/.test(res()));
+  set('fire', '30'); set('L', '1800'); set('t1', '150'); set('t2', '150'); set('nl', 'HS-R8'); $('calc').click();
+  $('printBtn').click();
+  truth('Naylor print: the A4 sheet names the brochure and shows the table check', /Naylor lintel against the brochure load tables/.test($('report').textContent) && /LintelsBrochureXFS4March2025/.test($('report').textContent)
+    && /lintelsbrochurexfs4march2025_1\.pdf/.test($('report').textContent) && /3 Against Naylor/.test($('report').textContent) && $('report').querySelectorAll('svg.dk').length === 3);
+  const savedN = w.localStorage.getItem('et-rc-lintel-v1');
+  const wN = page(savedN); await wait(300);
+  truth('Naylor: the mode and the lintel restored', wN.document.getElementById('tool').value === 'naylor' && wN.document.getElementById('nl').value === 'HS-R8' && !wN.document.getElementById('cardNaylor').hidden && wN.document.querySelectorAll('#drawings svg.dk').length === 3);
+  d.querySelector('#tools [data-t=ec2]').click(); await wait(260); $('calc').click();
+  truth('back to the RC design: five drawings and the section design', d.querySelectorAll('#drawings svg.dk').length === 5 && /Governs/.test(res()) && /Bending/.test(res()));
   const saved = w.localStorage.getItem('et-rc-lintel-v1');
   const w2 = page(saved); await wait(300);
   truth('inputs restored with the rows', w2.document.getElementById('mode').value === 'full' && w2.document.querySelectorAll('#pointRows .row').length === 1 && w2.document.getElementById('fk').value === '4' && w2.document.querySelectorAll('#drawings svg.dk').length === 5);
-  truth('no script errors', w.errs.length === 0 && w2.errs.length === 0);
+  truth('no script errors', w.errs.length === 0 && w2.errs.length === 0 && wN.errs.length === 0);
   console.log(`\n${n - fails}/${n} passed`); process.exit(fails ? 1 : 0);
 })();
