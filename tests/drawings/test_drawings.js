@@ -172,5 +172,19 @@ async function sweep(f, cases, expect) {
     const { w } = await load('RC Section Design Toolkit.html'); const h = w.document.getElementById('drawings').innerHTML;
     truth('RC Section Design Toolkit: M_Rd, the forces, x and the shear resistances carry the engine values', /328\.9 kNm/.test(h) && /F<tspan[^>]*>c<\/tspan> 686 kN/.test(h) && /x 145\.5/.test(h) && />340</.test(h) && />498\.2</.test(h) && /16\.95/.test(h)); w.close();
   }
+  await sweep('RC Punching Shear.html', [
+    ['edge column', w => { set(w, 'ptype', 'edge', 'change'); set(w, 'pey', '150'); }], ['corner column', w => set(w, 'ptype', 'corner', 'change')], ['circular', w => set(w, 'pshape', 'circ', 'change')],
+    ['an opening', w => w.document.getElementById('addHole').click()], ['β calculated with moments', w => { set(w, 'pbeta', 'calc', 'change'); set(w, 'pMx', '40'); set(w, 'pMy', '25'); }],
+    ['no links needed', w => set(w, 'pV', '300')], ['beyond 2 v_Rd,c', w => set(w, 'pV', '2500')],
+  ], 3);
+  {
+    const { w } = await load('RC Punching Shear.html'); const h = w.document.getElementById('drawings').textContent;
+    truth('RC Punching Shear: perimeters, stresses and links carry the engine values', /u₁ 4,164 mm at 2d = 408/.test(h) && /2\.47 against/.test(h) && /0\.948/.test(h) && /H8 links, 3 perimeters, 40 legs/.test(h) && /306 ≤ 1\.5d 306/.test(h)); w.close();
+  }
+  for (const bay of ['internal', 'edge']) {
+    const { w, errs } = await load('RC Flat Slab Design.html'); if (bay === 'edge') set(w, 'bay', 'edge', 'change'); w.document.getElementById('calc').click(); await wait(300);
+    const r = w.document.getElementById('results'), plan = r.querySelector('svg.plan'), elev = r.querySelector('svg.elev');
+    truth(`RC Flat Slab Design (${bay} bay): punching views, strip widths and bars, loads on the elevation`, r.querySelectorAll('svg.dk').length === 3 && !!plan && /CS H\d+ @ \d+/.test(plan.textContent) && /MS H\d+ @ \d+/.test(plan.textContent) && /kN\/m²/.test(elev.textContent) && !bad(r.innerHTML) && errs.length === 0); w.close();
+  }
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();

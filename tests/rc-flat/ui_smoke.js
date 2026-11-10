@@ -15,7 +15,7 @@ truth('page loads without script errors', w.errs.length === 0);
 truth('no single-column mode here (it is RC Punching Shear)', !$('modes') && !$('pane-punch'));
 truth('default frame: 3 spans, 4 columns, δ fixed at the end columns', rows('spanRows').length === 3 && rows('colRows').length === 4 && rows('colRows')[0].querySelector('.delta').disabled && rows('colRows')[3].querySelector('.delta').disabled && !rows('colRows')[1].querySelector('.delta').disabled);
 $('calc').click();
-truth('flat slab: verdict, elevation, moments, plan, strips, punching', /PASS|FAIL/.test(res()) && !!$('results').querySelector('svg.elev') && !!$('results').querySelector('svg.env') && !!$('results').querySelector('svg.plan') && !!$('results').querySelector('svg.pplan') && /Table I\.1/.test(res()) && /Punching shear at the columns/.test(res()) && !$('results').querySelector('.err'));
+truth('flat slab: verdict, elevation, moments, plan, strips, punching', /PASS|FAIL/.test(res()) && !!$('results').querySelector('svg.elev') && !!$('results').querySelector('svg.env') && !!$('results').querySelector('svg.plan') && $('results').querySelectorAll('svg.dk').length === 3 && /Punching at column/.test(res()) && /CS H/.test($('results').querySelector('svg.plan').textContent) && /Table I\.1/.test(res()) && /Punching shear at the columns/.test(res()) && !$('results').querySelector('.err'));
 truth('the governing check is named', /Governs: (Column|Span) \d/.test(res()));
 truth('moment transfer to the end columns reported', /Mt,max/.test(res()) && /I\.1\.2\(5\)/.test(res()));
 const links = [...$('results').querySelectorAll('a.lnk')];
@@ -32,7 +32,7 @@ rows('colRows')[1].querySelector('.delta').value = '0.5'; $('calc').click(); tru
 rows('colRows')[1].querySelector('.delta').value = '0.85';
 const c2 = rows('colRows')[2]; c2.querySelector('.shape').value = 'circ'; c2.querySelector('.c1').value = '500'; $('calc').click();
 truth('a circular column calculates', /PASS|FAIL/.test(res()) && !$('results').querySelector('.err'));
-$('printBtn').click(); truth('print: frame drawings, moments, strips, punching, summary', w.printed && $('report').querySelectorAll('svg').length === 3 && /Support and span moments/.test($('report').textContent) && /Summary/.test($('report').textContent) && !$('report').querySelector('a.lnk'));
+$('printBtn').click(); truth('print: frame drawings, moments, strips, punching, summary', w.printed && $('report').querySelectorAll('svg').length === 6 && /Support and span moments/.test($('report').textContent) && /Summary/.test($('report').textContent) && !$('report').querySelector('a.lnk'));
 const w2 = page(w.localStorage.getItem('et-rc-flat-v1')), $2 = id => w2.document.getElementById(id);
 truth('inputs restored', w2.document.querySelectorAll('#colRows .row')[2].querySelector('.shape').value === 'circ' && $2('b').value === '7500');
 truth('no script errors', w.errs.length === 0 && w2.errs.length === 0);

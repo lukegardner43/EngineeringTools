@@ -161,7 +161,6 @@ sub,sup{font-size:max(11px,.75em);line-height:0;}
 }
 
 .row.fhole{grid-template-columns:repeat(4,minmax(0,1fr)) 32px;}
-svg.pplan{width:100%;height:auto;display:block;max-width:620px;margin:4px auto 10px;}
 .kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 20px;background:var(--surf2);border:1px solid var(--rule);border-radius:var(--rc);padding:12px 16px;margin-bottom:12px;}
 .kv div{min-width:0;} .kv b{display:block;font-size:12px;font-weight:400;color:var(--mut);} .kv span{font-size:15px;font-weight:600;}
 .from{font-size:13px;color:var(--lbl);background:var(--accent-dim);border-radius:var(--r);padding:8px 12px;margin-bottom:12px;}
@@ -245,7 +244,7 @@ svg.pplan{width:100%;height:auto;display:block;max-width:620px;margin:4px auto 1
       </div>
       <button class="btn" id="calc">Calculate</button>
     </div>
-    <div><div class="card" id="results"><div class="placeholder">Set up the column and the slab, then Calculate.</div></div></div>
+    <div><div class="card" id="results"><div class="placeholder">Set up the column and the slab, then Calculate.</div><div id="drawings"></div></div></div>
   </div>
 </div>
 <div id="report"></div>
@@ -477,6 +476,403 @@ const Punching = (() => {
 if (typeof module !== 'undefined') module.exports = { Punching };
 
 </script>
+<script id="drawing-code">
+/* ===== CONNECTION DIAGRAMS (EngineeringTools ConnectionCheck) =====
+   Parametric, to-scale drafting views of each joint, drawn from the current inputs: an elevation and a plan or section,
+   with bolts, welds, dimension chains, labels and the design actions. Pure functions returning SVG strings.
+   Model units mm; each view maps a model box onto a pixel box (x right, y up). */
+const JD = (() => {
+  'use strict';
+  const C = { steel: '#e7ecf1', web: '#eef2f5', edge: '#2f3b47', plate: '#f6d58c', plateEdge: '#94700f', pack: '#e3d3ae', bolt: '#3a424b', boltDark: '#1f252b',
+    weld: '#1a1f24', dim: '#1b67b0', txt: '#222a31', mute: '#7a8590', cl: '#97a2ac', load: '#cc3426', conc: '#f1efea', concEdge: '#8b8478', grout: '#ddd7ca', paper: '#ffffff' };
+  const FS = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"', FM = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"';
+  const W = 920, H = 520;
+  const DEFS = `<defs>
+<pattern id="jdCut" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect width="6" height="6" fill="#c7d0d9"/><line x1="0" y1="0" x2="0" y2="6" stroke="#6f7d8a" stroke-width="0.9"/></pattern>
+<pattern id="jdPlCut" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(-45)"><rect width="5" height="5" fill="#efc560"/><line x1="0" y1="0" x2="0" y2="5" stroke="#94700f" stroke-width="0.8"/></pattern>
+<pattern id="jdConc" patternUnits="userSpaceOnUse" width="26" height="26"><rect width="26" height="26" fill="${C.conc}"/><circle cx="5" cy="6" r="1.3" fill="#b3ab9d"/><circle cx="17" cy="15" r="1.7" fill="#c0b8aa"/><circle cx="9" cy="21" r="1" fill="#a9a091"/><path d="M19 4 l3 2 l-3 2 z" fill="#c5bdaf"/><path d="M2 14 l2.5 -2 l1.5 3 z" fill="#bdb5a7"/></pattern>
+<pattern id="jdGrout" patternUnits="userSpaceOnUse" width="8" height="8"><rect width="8" height="8" fill="${C.grout}"/><circle cx="2" cy="2" r="0.7" fill="#9e9687"/><circle cx="6" cy="6" r="0.7" fill="#9e9687"/></pattern>
+<marker id="jdLd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${C.load}"/></marker>
+</defs>`;
+  const num = v => { const a = Math.abs(v); return a >= 100 || Number.isInteger(+v.toFixed(1)) ? Math.round(v).toString() : v.toFixed(1); };
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // ---------- views ----------
+  function view(box, bb) {
+    const w = bb[2] - bb[0], h = bb[3] - bb[1], k = Math.min(box[2] / w, box[3] / h);
+    const ox = box[0] + (box[2] - w * k) / 2 - bb[0] * k, oy = box[1] + (box[3] - h * k) / 2 + bb[3] * k;
+    return { k, X: x => ox + x * k, Y: y => oy - y * k, box };
+  }
+  const ST = {
+    steel: `fill="${C.steel}" stroke="${C.edge}" stroke-width="1.1"`, web: `fill="${C.web}" stroke="${C.edge}" stroke-width="1.1"`,
+    cut: `fill="url(#jdCut)" stroke="${C.edge}" stroke-width="1.2"`, plate: `fill="${C.plate}" stroke="${C.plateEdge}" stroke-width="1.1"`,
+    plateCut: `fill="url(#jdPlCut)" stroke="${C.plateEdge}" stroke-width="1.1"`, pack: `fill="${C.pack}" stroke="${C.plateEdge}" stroke-width="0.9"`,
+    conc: `fill="url(#jdConc)" stroke="${C.concEdge}" stroke-width="1"`, grout: `fill="url(#jdGrout)" stroke="${C.concEdge}" stroke-width="0.8"`,
+    ghost: `fill="none" stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="6 3"`, outline: `fill="none" stroke="${C.edge}" stroke-width="1.1"`,
+    bg: `fill="${C.paper}" stroke="none"`,
+  };
+  const R = (v, x0, y0, x1, y1, st = 'steel') => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)); return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${(Math.abs(x1 - x0) * v.k).toFixed(1)}" height="${(Math.abs(y1 - y0) * v.k).toFixed(1)}" ${ST[st]}/>`; };
+  const P = (v, pts, st = 'steel') => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + v.X(p[0]).toFixed(1) + ' ' + v.Y(p[1]).toFixed(1)).join(' ')} Z" ${ST[st]}/>`;
+  const LS = { e: `stroke="${C.edge}" stroke-width="1.1"`, t: `stroke="${C.edge}" stroke-width="0.55"`, c: `stroke="${C.cl}" stroke-width="0.7" stroke-dasharray="14 3 2 3"`,
+    h: `stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="5 3"`, d: `stroke="${C.dim}" stroke-width="0.7"` };
+  const Ln = (v, x0, y0, x1, y1, k = 'e') => `<line x1="${v.X(x0).toFixed(1)}" y1="${v.Y(y0).toFixed(1)}" x2="${v.X(x1).toFixed(1)}" y2="${v.Y(y1).toFixed(1)}" ${LS[k]}/>`;
+  const lnP = (x0, y0, x1, y1, k = 'e') => `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" ${LS[k]}/>`;
+  function Tx(x, y, s, o = {}) {
+    const sz = o.size || 11, col = o.color || C.txt, anc = o.anchor || 'start', w = o.weight || 400, rot = o.rot ? ` transform="rotate(${o.rot} ${x.toFixed(1)} ${y.toFixed(1)})"` : '';
+    const body = esc(s).replace(/_\{([^}]*)\}|_([A-Za-z0-9]+)/g, (m, p1, p2) => `<tspan baseline-shift="sub" font-size="78%">${p1 || p2}</tspan>`);
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${sz}" fill="${col}" text-anchor="${anc}" font-weight="${w}" ${o.mono ? FM : FS} paint-order="stroke" stroke="${C.paper}" stroke-width="3" stroke-linejoin="round"${rot}>${body}</text>`;
+  }
+  const tw = (s, sz = 10) => String(s).replace(/_/g, '').length * sz * 0.6;
+  // ---------- dimensions (tick terminators) ----------
+  const tick = (x, y) => `<line x1="${(x - 3.5).toFixed(1)}" y1="${(y + 3.5).toFixed(1)}" x2="${(x + 3.5).toFixed(1)}" y2="${(y - 3.5).toFixed(1)}" stroke="${C.dim}" stroke-width="1.3"/>`;
+  // horizontal chain: xs (model), measured from model level y, dimension line at off px (negative: below)
+  function DH(v, xs, y, off, labels) {
+    const Yf = v.Y(y), Yd = Yf - off, s = Math.sign(off) || 1; let o = '';
+    xs.forEach(x => { o += lnP(v.X(x), Yf - s * 3, v.X(x), Yd - s * 4, 'd'); });
+    o += lnP(v.X(xs[0]) - 4, Yd, v.X(xs[xs.length - 1]) + 4, Yd, 'd');
+    xs.forEach(x => { o += tick(v.X(x), Yd); });
+    for (let i = 0; i < xs.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(xs[i + 1] - xs[i])); if (lab === '') continue;
+      const a = v.X(xs[i]), b = v.X(xs[i + 1]), wpx = Math.abs(b - a), tW = tw(lab);
+      const ty = off > 0 ? Yd - 4 : Yd + 11;
+      if (wpx > tW + 6) o += Tx((a + b) / 2, ty, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true });
+      else o += Tx(Math.max(a, b) + 3 + (i === xs.length - 2 ? 2 : 0), ty + (off > 0 ? -9 : 9) * (i % 2), lab, { size: 10, color: C.dim, mono: true });
+    }
+    return o;
+  }
+  function DV(v, ys, x, off, labels) {
+    const Xf = v.X(x), Xd = Xf + off, s = Math.sign(off) || 1; let o = '';
+    ys.forEach(y => { o += lnP(Xf + s * 3, v.Y(y), Xd + s * 4, v.Y(y), 'd'); });
+    o += lnP(Xd, v.Y(ys[0]) + 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), Xd, v.Y(ys[ys.length - 1]) - 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), 'd');
+    ys.forEach(y => { o += tick(Xd, v.Y(y)); });
+    for (let i = 0; i < ys.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(ys[i + 1] - ys[i])); if (lab === '') continue;
+      const a = v.Y(ys[i]), b = v.Y(ys[i + 1]), hpx = Math.abs(b - a), tW = tw(lab);
+      const tx = off > 0 ? Xd + 11 : Xd - 4;
+      if (hpx > tW + 6) o += Tx(tx, (a + b) / 2, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true, rot: -90 });
+      else o += Tx(off > 0 ? Xd + 5 : Xd - 5, (a + b) / 2 + 3.5, lab, { size: 10, color: C.dim, mono: true, anchor: off > 0 ? 'start' : 'end' });
+    }
+    return o;
+  }
+  // leader with a dot at a model point and text lines at a pixel offset
+  function LD(v, x, y, dx, dy, lines, o = {}) {
+    const px = v.X(x), py = v.Y(y), ex = px + dx, ey = py + dy, s = dx >= 0 ? 1 : -1;
+    let out = `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="1.9" fill="${C.txt}"/>` + lnP(px, py, ex, ey, 't') + lnP(ex, ey, ex + s * 8, ey, 't');
+    [].concat(lines).forEach((t, i) => { out += Tx(ex + s * 11, ey + 4 + i * 13 - ([].concat(lines).length - 1) * 6.5, t, { size: o.size || 10.5, anchor: s > 0 ? 'start' : 'end', weight: i === 0 && o.bold ? 600 : 400, color: i === 0 ? C.txt : '#4b545d' }); });
+    return out;
+  }
+  // load arrow ending at pixel point (px, py); (vx, vy) is the arrow vector in pixels; label near the tail
+  function LA(px, py, vx, vy, label, o = {}) {
+    const x0 = px - vx, y0 = py - vy, lx = x0 + (o.ldx ?? 0), ly = y0 + (o.ldy ?? -6);
+    return `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${px.toFixed(1)}" y2="${py.toFixed(1)}" stroke="${C.load}" stroke-width="2.4" marker-end="url(#jdLd)"/>` +
+      (label ? Tx(lx, ly, label, { size: 11, color: C.load, weight: 600, anchor: o.anchor || 'middle' }) : '');
+  }
+  function moment(px, py, rr, label, cw = true) {
+    const a0 = cw ? 200 : -20, a1 = cw ? 340 : 160, p = a => [px + rr * Math.cos(a * Math.PI / 180), py - rr * Math.sin(a * Math.PI / 180)], [x0, y0] = p(a0), [x1, y1] = p(a1);
+    return `<path d="M${x0.toFixed(1)} ${y0.toFixed(1)} A${rr} ${rr} 0 1 ${cw ? 1 : 0} ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="${C.load}" stroke-width="2.2" marker-end="url(#jdLd)"/>` + Tx(px, py - rr - 7, label, { size: 11, color: C.load, weight: 600, anchor: 'middle' });
+  }
+  // ---------- steel symbols ----------
+  function BE(v, x, y, d) {   // bolt seen end-on: washer ring, head, centre cross
+    const px = v.X(x), py = v.Y(y), r1 = Math.max(0.95 * d * v.k, 3.2), r2 = Math.max(0.55 * d * v.k, 1.9), c = r1 + 3;
+    return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r1.toFixed(1)}" fill="#fff" stroke="${C.boltDark}" stroke-width="1"/><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r2.toFixed(1)}" fill="${C.bolt}"/>` +
+      lnP(px - c, py, px + c, py, 't') + lnP(px, py - c, px, py + c, 't');
+  }
+  // bolt seen side-on with its axis along x (dir 'x') or y: shank a0..a1 at c, head at a0, nut at a1
+  function BS(v, a0, a1, c, d, dir = 'x') {
+    const sg = Math.sign(a1 - a0) || 1, hd = 0.65 * d, nt = 0.8 * d, wh = 0.8 * d, wa = 0.15 * d, pr = 0.45 * d;
+    const seg = (s0, s1, half, fill) => dir === 'x' ? R(v, s0, c - half, s1, c + half, fill) : R(v, c - half, s0, c + half, s1, fill);
+    let o = seg(a0, a1 + sg * (wa + nt + pr), d / 2, 'bolt');
+    o += seg(a0 - sg * wa, a0, d, 'bolt') + seg(a0 - sg * (wa + hd), a0 - sg * wa, wh, 'boltH');
+    o += seg(a1, a1 + sg * wa, d, 'bolt') + seg(a1 + sg * wa, a1 + sg * (wa + nt), wh, 'boltH');
+    o += dir === 'x' ? Ln(v, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), c, 'c') : Ln(v, c, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), 'c');
+    return o;
+  }
+  ST.bolt = `fill="#59626c" stroke="${C.boltDark}" stroke-width="0.6"`; ST.boltH = `fill="${C.bolt}" stroke="${C.boltDark}" stroke-width="0.6"`;
+  // fillet weld at the corner (x, y): legs along sx (x) and sy (y), sized a (mm) but at least 4 px
+  function WD(v, x, y, a, sx, sy) {
+    const L = Math.max(a * v.k, 4.5), px = v.X(x), py = v.Y(y);
+    return `<path d="M${px.toFixed(1)} ${py.toFixed(1)} L${(px + sx * L).toFixed(1)} ${py.toFixed(1)} L${px.toFixed(1)} ${(py - sy * L).toFixed(1)} Z" fill="${C.weld}"/>`;
+  }
+  // weld seen along its length (elevation): narrow strip
+  const WS = (v, x0, y0, x1, y1) => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)), w = Math.max(Math.abs(x1 - x0) * v.k, 2.5), h = Math.max(Math.abs(y1 - y0) * v.k, 2.5);
+    return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${C.weld}" fill-opacity="0.82"/>`; };
+  // zigzag break lines through a member
+  function BK(v, x, y0, y1) {   // vertical break at model x between y0 and y1
+    const px = v.X(x), a = v.Y(Math.max(y0, y1)) - 4, b = v.Y(Math.min(y0, y1)) + 4, m = (a + b) / 2;
+    return `<path d="M${px} ${a} L${px} ${m - 7} L${px - 5} ${m - 3} L${px + 5} ${m + 3} L${px} ${m + 7} L${px} ${b}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  function BKH(v, y, x0, x1) {
+    const py = v.Y(y), a = v.X(Math.min(x0, x1)) - 4, b = v.X(Math.max(x0, x1)) + 4, m = (a + b) / 2;
+    return `<path d="M${a} ${py} L${m - 7} ${py} L${m - 3} ${py - 5} L${m + 3} ${py + 5} L${m + 7} ${py} L${b} ${py}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  // white mask to fade member ends beyond a break
+  const mask = (v, x0, y0, x1, y1) => R(v, x0, y0, x1, y1, 'bg');
+  // I section cross-section (cut), centred at (cx, cy); 'v': web vertical (depth along y), 'h': depth along x
+  function ISec(v, cx, cy, s, o = 'v', st = 'cut') {
+    const b = s.b, h = s.h, tf = s.tf, t = s.tw, r = Math.min(s.r || 0, (b - t) / 2 - 1), pts = [];
+    const arc = (ux, uy, a0, a1) => { for (let i = 0; i <= 6; i++) { const a = (a0 + (a1 - a0) * i / 6) * Math.PI / 180; pts.push([ux + r * Math.cos(a), uy + r * Math.sin(a)]); } };
+    pts.push([-b / 2, h / 2], [b / 2, h / 2], [b / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, h / 2 - tf - r, 90, 180); else pts.push([t / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, -h / 2 + tf + r, 180, 270); else pts.push([t / 2, -h / 2 + tf]);
+    pts.push([b / 2, -h / 2 + tf], [b / 2, -h / 2], [-b / 2, -h / 2], [-b / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, -h / 2 + tf + r, 270, 360); else pts.push([-t / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, h / 2 - tf - r, 0, 90); else pts.push([-t / 2, h / 2 - tf]);
+    pts.push([-b / 2, h / 2 - tf]);
+    return P(v, pts.map(([u, w]) => o === 'v' ? [cx + u, cy + w] : [cx + w, cy + u]), st);
+  }
+  // I member in side elevation: length along 'x' (a0..a1) with the depth c0..c1 across, or along 'y'
+  function IEl(v, a0, a1, c0, c1, s, dir = 'x', o = {}) {
+    const lo = Math.min(c0, c1), hi = Math.max(c0, c1), rr = s.r || 0;
+    const ln = (c, k) => dir === 'x' ? Ln(v, a0, c, a1, c, k) : Ln(v, c, a0, c, a1, k);
+    let out = dir === 'x' ? R(v, a0, lo, a1, hi, 'steel') : R(v, lo, a0, hi, a1, 'steel');
+    out += dir === 'x' ? R(v, a0, lo + s.tf, a1, hi - s.tf, 'web') : R(v, lo + s.tf, a0, hi - s.tf, a1, 'web');
+    out += ln(lo + s.tf, 'e') + ln(hi - s.tf, 'e');
+    if (rr > 0 && !o.noRoot) out += ln(lo + s.tf + rr, 't') + ln(hi - s.tf - rr, 't');
+    return out;
+  }
+  // I member seen on the flange face: width b, length along dir
+  const IFl = (v, a0, a1, cc, s, dir = 'y') => (dir === 'y' ? R(v, cc - s.b / 2, a0, cc + s.b / 2, a1, 'steel') + Ln(v, cc - s.tw / 2 - (s.r || 0), a0, cc - s.tw / 2 - (s.r || 0), a1, 'h') + Ln(v, cc + s.tw / 2 + (s.r || 0), a0, cc + s.tw / 2 + (s.r || 0), a1, 'h')
+    : R(v, a0, cc - s.b / 2, a1, cc + s.b / 2, 'steel'));
+  const title = (x, y, t, sub) => Tx(x, y, t, { size: 11.5, weight: 700, anchor: 'middle', color: C.txt }) + `<line x1="${(x - tw(t, 11.5) / 2).toFixed(1)}" y1="${(y + 3).toFixed(1)}" x2="${(x + tw(t, 11.5) / 2).toFixed(1)}" y2="${(y + 3).toFixed(1)}" stroke="${C.txt}" stroke-width="0.8"/>` + (sub ? Tx(x, y + 16, sub, { size: 10, anchor: 'middle', color: C.mute }) : '');
+  const svg = (body, h = H) => `<svg class="jd" viewBox="0 0 ${W} ${h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;background:${C.paper}" role="img">${DEFS}<rect width="${W}" height="${h}" fill="${C.paper}"/>${body}</svg>`;
+  const BOX = { L: [40, 46, 520, 400], Rt: [612, 46, 280, 400] };
+  const fv = x => { const n = parseFloat(x); return Number.isFinite(n) ? n : 0; };
+  const secName = x => x && x !== '0' ? x : '';   // a form without that selector reads as '0'
+  const BOLTD = { M12: 12, M16: 16, M20: 20, M24: 24, M27: 27, M30: 30, M36: 36 };
+  const bd = sz => BOLTD[sz] || 20;
+  const range = (n, f) => Array.from({ length: Math.max(0, n) }, (_, i) => f(i));
+  return { C, W, H, BOX, DEFS, view, R, P, Ln, lnP, Tx, tw, DH, DV, LD, LA, moment, BE, BS, WD, WS, BK, BKH, mask, ISec, IEl, IFl, title, svg, num, fv, secName, bd, range, esc, ST };
+})();
+
+/* ===== DRAWING KIT EXTRAS (EngineeringTools) =====
+   Additions to the JD drafting kit (joints/diagrams.js) for the member, floor and wall drawings: a page-width SVG wrapper,
+   arrows, supports, distributed loads, result fills, cross-section outlines (I, PFC, RHS, CHS) and SVG to PNG for PDF reports.
+   Source: scratchpad/drawings/kit.js. Pixel helpers take pixel coordinates; JD views map model mm to pixels. */
+const DK = (() => {
+  'use strict';
+  const { Tx, lnP, esc } = JD;
+  const BLUE = '#1d5fbf', FILL = 'rgba(29,95,191,.15)', RED = '#c4242a', REDF = 'rgba(196,36,42,.10)', INK = '#222a31', MUTE = '#6b7680', LINE = '#c9d0d7';
+  const DEFS = `<defs><marker id="dkB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${BLUE}"/></marker>`
+    + `<marker id="dkK" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${INK}"/></marker>`
+    + `<marker id="dkR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${RED}"/></marker>`
+    + `<pattern id="dkHatch" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)"><rect width="7" height="7" fill="#f3f1ec"/><line x1="0" y1="0" x2="0" y2="7" stroke="#8b8478" stroke-width="1"/></pattern></defs>`;
+  const f1 = v => (+v).toFixed(1);
+  // the page-width drawing: viewBox w x h, scales to its container
+  const svg = (body, w, h, label) => `<svg class="jd dk" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" role="img"${label ? ` aria-label="${esc(label)}"` : ''} `
+    + `style="width:100%;height:auto;display:block;background:#fff">${JD.DEFS}${DEFS}<rect width="${w}" height="${h}" fill="#fff"/>${body}</svg>`;
+  const col = c => ({ blue: BLUE, red: RED, ink: INK, mute: MUTE }[c] || c || INK);
+  const mk = c => ({ blue: 'dkB', red: 'dkR' }[c] || 'dkK');
+  // arrow from (x0, y0) to (x1, y1), head at the end (both: heads at both ends)
+  const arrow = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1.6}"`
+    + `${o.dash ? ` stroke-dasharray="${o.dash}"` : ''} marker-end="url(#${mk(o.c)})"${o.both ? ` marker-start="url(#${mk(o.c)})"` : ''}/>`;
+  const line = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.cap ? ` stroke-linecap="${o.cap}"` : ''}/>`;
+  const rect = (x, y, w, h, o = {}) => `<rect x="${f1(Math.min(x, x + w))}" y="${f1(Math.min(y, y + h))}" width="${f1(Math.abs(w))}" height="${f1(Math.abs(h))}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.rx ? ` rx="${o.rx}"` : ''}/>`;
+  const poly = (pts, o = {}) => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + f1(p[0]) + ' ' + f1(p[1])).join(' ')}${o.open ? '' : ' Z'}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+  const text = (x, y, s, o = {}) => Tx(x, y, s, Object.assign({ size: 11 }, o, { color: o.color ? col(o.color) : o.color }));
+  // pinned support under (px, py): triangle and ground line; dir 'down' (default) or 'up' (hanging, above the point)
+  function pin(px, py, dir = 'down') {
+    const s = dir === 'up' ? -1 : 1;
+    return poly([[px, py], [px - 8, py + s * 13], [px + 8, py + s * 13]], { fill: '#fff', stroke: 'ink', w: 1.3 }) + line(px - 12, py + s * 13, px + 12, py + s * 13, { w: 1.3 })
+      + [0, 1, 2, 3].map(k => line(px - 10 + k * 6, py + s * 13, px - 14 + k * 6, py + s * 18, { c: 'mute', w: 0.8 })).join('');
+  }
+  // hatched ground or wall strip: rectangle with the hatch fill and an edge line on the restrained side ('t', 'b', 'l', 'r')
+  function ground(x, y, w, h, edge = 't') {
+    const e = { t: [x, y, x + w, y], b: [x, y + h, x + w, y + h], l: [x, y, x, y + h], r: [x + w, y, x + w, y + h] }[edge];
+    return rect(x, y, w, h, { fill: 'url(#dkHatch)' }) + line(e[0], e[1], e[2], e[3], { w: 1.4 });
+  }
+  // a row of load arrows pointing from yTop to yBase between x0 and x1, with the bar along the tails and a label above
+  function udl(x0, x1, yTop, yBase, label, o = {}) {
+    const n = Math.max(2, Math.round((x1 - x0) / (o.pitch || 28)) + 1), c = o.c || 'red';
+    let g = line(x0, yTop, x1, yTop, { c, w: 1.3 });
+    for (let i = 0; i < n; i++) { const x = x0 + (x1 - x0) * i / (n - 1); g += arrow(x, yTop, x, yBase, { c, w: 1.2 }); }
+    return g + (label ? text((x0 + x1) / 2, yTop - 6, label, { anchor: 'middle', color: c === 'red' ? RED : col(c), weight: 600 }) : '');
+  }
+  // a result diagram: polyline pts (pixels) closed to the base line through the first and last points' base, filled blue
+  function fillDiagram(pts, base, o = {}) {
+    const vert = o.vertical;   // base is an x (diagram plotted sideways) when vertical
+    const close = vert ? [[base, pts[pts.length - 1][1]], [base, pts[0][1]]] : [[pts[pts.length - 1][0], base], [pts[0][0], base]];
+    return poly(pts.concat(close), { fill: o.fill || FILL, stroke: 'none' }) + poly(pts, { open: true, stroke: o.stroke || 'ink', w: 1.1 });
+  }
+  // cross-section outline, cut, centred at pixel (cx, cy) at scale k (px/mm); web vertical; returns svg
+  function section(s, cx, cy, k, o = {}) {
+    const st = o.style || 'cut', fill = st === 'cut' ? 'url(#jdCut)' : '#e7ecf1', edge = '#2f3b47';
+    if (s.shape === 'CHS') {
+      const ro = s.d / 2 * k, ri = (s.d / 2 - s.t) * k;
+      return `<path d="M${f1(cx - ro)} ${f1(cy)} a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(2 * ro)} 0 a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(-2 * ro)} 0 Z M${f1(cx - ri)} ${f1(cy)} a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(2 * ri)} 0 a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(-2 * ri)} 0 Z" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'RHS') {
+      const w = s.b * k, h = s.h * k, t = Math.max(s.t * k, 1.2), ro = Math.min((s.ro || 1.5 * s.t) * k, w / 2), ri = Math.max(0, ro - t);
+      const rr = (x, y, W, H, r) => `M${f1(x + r)} ${f1(y)} H${f1(x + W - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W)} ${f1(y + r)} V${f1(y + H - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W - r)} ${f1(y + H)} H${f1(x + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x)} ${f1(y + H - r)} V${f1(y + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + r)} ${f1(y)} Z`;
+      return `<path d="${rr(cx - w / 2, cy - h / 2, w, h, ro)} ${rr(cx - w / 2 + t, cy - h / 2 + t, w - 2 * t, h - 2 * t, ri)}" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'PFC') {   // channel, toes to the right, web on the left
+      const b = s.b * k, h = s.h * k, tf = Math.max(s.tf * k, 1.2), tw = Math.max(s.tw * k, 1.2), x0 = cx - b / 2, y0 = cy - h / 2;
+      return poly([[x0, y0], [x0 + b, y0], [x0 + b, y0 + tf], [x0 + tw, y0 + tf], [x0 + tw, y0 + h - tf], [x0 + b, y0 + h - tf], [x0 + b, y0 + h], [x0, y0 + h]], { fill, stroke: edge, w: 1.1 });
+    }
+    const v = { k, X: x => cx + x * k, Y: y => cy - y * k };   // I sections: JD's outline with root radii
+    return JD.ISec(v, 0, 0, s, 'v', st === 'cut' ? 'cut' : 'steel');
+  }
+  // SVG markup to a PNG data URL (for the jsPDF reports); resolves { url, w, h } with w, h the viewBox size
+  function toPNG(markup, wpx = 1800) {
+    return new Promise((resolve, reject) => {
+      const m = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(markup); if (!m) { reject(new Error('no viewBox')); return; }
+      const w = +m[1], h = +m[2], k = wpx / w, img = new Image();
+      const src = markup.replace(/style="[^"]*"/, `width="${f1(w * k)}" height="${f1(h * k)}"`);
+      img.onload = () => { const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k); const g = c.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height); resolve({ url: c.toDataURL('image/png'), w, h }); };
+      img.onerror = () => reject(new Error('drawing could not be rendered'));
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
+    });
+  }
+  // drawings for the page (heading + drawing) and for the A4 sheet (each kept whole on a page)
+  const page = blocks => blocks.map(([t, s]) => `<div class="dlabel">${t}</div>${s}`).join('');
+  const sheet = blocks => blocks.map(([t, s]) => `<div class="rfig" style="break-inside:avoid;page-break-inside:avoid;margin:1mm 0 3mm"><h3>${t}</h3><div class="rsvg">${s}</div></div>`).join('');
+  const fmt = (v, d = 0) => Number.isFinite(v) ? (+v).toFixed(d) : '–';
+  return { page, sheet, BLUE, FILL, RED, REDF, INK, MUTE, LINE, svg, arrow, line, rect, poly, text, pin, ground, udl, fillDiagram, section, toPNG, fmt, lnP };
+})();
+
+/* ===== PUNCHING SHEAR DRAWINGS (EngineeringTools) =====
+   Shared by RC Punching Shear and RC Flat Slab Design. Plan: the column, slab edges, openings with the parts of the
+   perimeters they take out, the control perimeters u_0, u_1 at 2d and u_out,ef, and the link perimeters with each leg,
+   beside the values each perimeter is checked with. Section through the slab along x: the column, the top bars, d, the
+   26.6° cone to u_1, the links at s_0 and s_r with the distances from the face, u_1 and u_out,ef, and the last perimeter
+   within 1.5d of u_out,ef (9.4.3(4)). Then the shear stresses against their resistances. Failing checks in red.
+   Source: scratchpad/drawings/punch.js. Needs JD, DK and Punching (rcflat/punching.js). */
+const DrawPunch = (() => {
+  'use strict';
+  const { svg, arrow, line, rect, poly, text, page, sheet, BLUE, RED, MUTE } = DK;
+  const CON = '#e9edf1', COL = '#d4dae0', f0 = v => Math.round(v).toLocaleString('en-GB'), f2 = v => (+v).toFixed(2), f3 = v => (+v).toFixed(3);
+  const dimH = (x0, x1, y, lab, o = {}) => line(x0, y, x1, y, { w: 0.8 }) + line(x0, y - 4, x0, y + 4, { w: 0.8 }) + line(x1, y - 4, x1, y + 4, { w: 0.8 })
+    + (lab ? text((x0 + x1) / 2, y + (o.below ? 13 : -4), lab, { size: o.size || 9.5, anchor: 'middle', color: o.color }) : '');
+  const ck = (P, id) => P.checks.find(c => c.id === id);
+  let clipN = 0;   // a clip path per plan, so several on one page do not share an id
+  const bad = (P, id) => { const c = ck(P, id); return !!c && c.util > 1; };
+
+  function plan(P, inp) {
+    const G = P.G, d = P.d, rMax = Math.max(P.rout || 0, 2 * d) + 0.5 * d;
+    const ext = { x0: -(G.ax + rMax), x1: G.ax + rMax, y0: -(G.ay + rMax), y1: G.ay + rMax };
+    if (G.type !== 'internal') ext.y0 = -(G.ay + G.ey) - 0.15 * d; if (G.type === 'corner') ext.x0 = -(G.ax + G.ex) - 0.15 * d;
+    for (const h of G.holes || []) { ext.x0 = Math.min(ext.x0, h.x - h.a / 2 - 50); ext.x1 = Math.max(ext.x1, h.x + h.a / 2 + 50); ext.y0 = Math.min(ext.y0, h.y - h.b / 2 - 50); ext.y1 = Math.max(ext.y1, h.y + h.b / 2 + 50); }
+    const k = Math.min(420 / (ext.x1 - ext.x0), 400 / (ext.y1 - ext.y0)), X = x => 20 + (x - ext.x0) * k, Y = y => 20 + (ext.y1 - y) * k, Hp = (ext.y1 - ext.y0) * k + 40;
+    const perim = (r, seg) => Punching.path(G.type !== 'internal' && Punching.uGross({ ...G, type: 'internal' }, r) <= Punching.uGross(G, r) + 1e-9 ? { ...G, type: 'internal' } : G, r, seg);
+    const path = r => { const pp = perim(r, 4); return pp.pts.map(([x, y]) => [X(x), Y(y)]); };
+    const closed = r => perim(r, 4).closed;
+    const cid = `dkPunchClip${++clipN}`;
+    let g = `<defs><clipPath id="${cid}"><rect x="${X(ext.x0) - 2}" y="${Y(ext.y1) - 2}" width="${(ext.x1 - ext.x0) * k + 4}" height="${(ext.y1 - ext.y0) * k + 4}"/></clipPath></defs><g clip-path="url(#${cid})">`;
+    // slab edges
+    if (G.type !== 'internal') g += line(X(ext.x0), Y(-(G.ay + G.ey)), X(ext.x1), Y(-(G.ay + G.ey)), { w: 2 }) + text(X(ext.x1) - 4, Y(-(G.ay + G.ey)) + 14, 'slab edge', { size: 9.5, anchor: 'end', color: MUTE });
+    if (G.type === 'corner') g += line(X(-(G.ax + G.ex)), Y(ext.y0), X(-(G.ax + G.ex)), Y(ext.y1), { w: 2 });
+    // openings, crossed, with the tangents from the column centre bounding the part of each perimeter they take out
+    for (const s of P.S || []) {
+      const h = s.h; g += rect(X(h.x - h.a / 2), Y(h.y + h.b / 2), h.a * k, h.b * k, { stroke: 'ink', fill: '#fff' }) + line(X(h.x - h.a / 2), Y(h.y + h.b / 2), X(h.x + h.a / 2), Y(h.y - h.b / 2), { c: 'mute', w: 0.6 }) + line(X(h.x - h.a / 2), Y(h.y - h.b / 2), X(h.x + h.a / 2), Y(h.y + h.b / 2), { c: 'mute', w: 0.6 });
+      if (s.active) for (const a of [s.lo, s.hi]) { const R0 = Math.hypot(ext.x1 - ext.x0, ext.y1 - ext.y0); g += line(X(0), Y(0), X(R0 * Math.cos(s.phi + a)), Y(R0 * Math.sin(s.phi + a)), { c: 'mute', w: 0.7, dash: '3 3' }); }
+    }
+    // perimeters: u_1 at 2d dashed, u_out,ef blue; the link perimeters thin with a dot for each leg
+    g += poly(path(2 * d), { open: !closed(2 * d), stroke: bad(P, 'c') ? 'red' : 'ink', w: 1.1, dash: '6 4' });
+    if (P.needLinks && P.rout > 0) g += poly(path(P.rout), { open: !closed(P.rout), stroke: 'blue', w: 1.6 });
+    if (P.links) {
+      const S = P.S || [], inCone = (x, y) => S.some(s => { if (!s.active) return false; let a = Math.atan2(y, x) - s.phi; while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a >= s.lo && a <= s.hi; });
+      for (const pr of P.links.per) {
+        g += poly(path(pr.r), { open: !closed(pr.r), stroke: '#9fb6d6', w: 0.6 });
+        const pp = perim(pr.r, 2).pts, seg = []; let L = 0;
+        for (let i = 1; i < pp.length; i++) { const mx = (pp[i][0] + pp[i - 1][0]) / 2, my = (pp[i][1] + pp[i - 1][1]) / 2; if (inCone(mx, my)) continue; const l = Math.hypot(pp[i][0] - pp[i - 1][0], pp[i][1] - pp[i - 1][1]); seg.push([L, l, pp[i - 1], pp[i]]); L += l; }
+        let j = 0;
+        for (let m = 0; m < pr.n; m++) { const t = (m + 0.5) / pr.n * L; while (j < seg.length - 1 && seg[j][0] + seg[j][1] < t) j++; const [s0, l, a, b] = seg[j], f = l > 0 ? Math.min(1, Math.max(0, (t - s0) / l)) : 0;
+          g += `<circle cx="${X(a[0] + (b[0] - a[0]) * f).toFixed(1)}" cy="${Y(a[1] + (b[1] - a[1]) * f).toFixed(1)}" r="2.6" fill="${bad(P, 'cs') ? RED : BLUE}"/>`; }
+      }
+    }
+    // the column (u_0)
+    g += G.circ ? `<circle cx="${X(0)}" cy="${Y(0)}" r="${(G.ax * k).toFixed(1)}" fill="${COL}" stroke="#222a31" stroke-width="1.2"/>` : rect(X(-G.ax), Y(G.ay), 2 * G.ax * k, 2 * G.ay * k, { fill: COL, stroke: 'ink', w: 1.2 });
+    g += '</g>' + text(X(0), Y(0) + 4, 'u₀', { size: 10, anchor: 'middle', weight: 600, color: bad(P, 'max') ? RED : undefined });
+    // labels on the perimeters, at the top right where the outline runs diagonally
+    const tag = (r, lab, c) => { const a = Math.PI / 4, px = G.ax + r * Math.cos(a), py = G.ay + r * Math.sin(a); return px < ext.x1 && py < ext.y1 ? text(X(px) + 4, Y(py) - 4, lab, { size: 10, color: c, weight: 600 }) : ''; };
+    g += tag(2 * d, 'u₁', bad(P, 'c') ? RED : undefined);
+    if (P.needLinks && P.rout > 0) g += tag(P.rout, 'u_{out,ef}', BLUE);
+    g += JD.Tx(20, Hp - 8, `x along the ${G.type === 'internal' ? 'c₂ side' : 'slab edge'}; y up the page`, { size: 9, color: MUTE });
+
+    // the values beside the plan
+    const tx = 462, rows = [
+      [`${G.circ ? `Circular column D ${f0(2 * G.ax)}` : `Column ${f0(2 * G.ay)} × ${f0(2 * G.ax)}`} (${G.type})`, { weight: 700 }],
+      [`d ${f0(d)} (d_x ${f0(P.dX)}, d_y ${f0(P.dY)}); ρ_l ${(P.rhoL * 100).toFixed(2)}%; β ${f3(P.beta)}`, {}],
+      [``, {}],
+      [`u₀ ${f0(P.u0)} mm, the column face`, { weight: 600 }],
+      [`v_{Ed,0} ${f2(P.vEd0)} against v_{Rd,max} ${f2(P.vRdmax)} N/mm²`, { color: bad(P, 'max') ? RED : undefined }],
+      [`u₁ ${f0(P.u1)} mm at 2d = ${f0(2 * d)}${P.lost1 > 0 ? `, less ${f0(P.lost1)} (openings)` : ''}`, { weight: 600 }],
+      [`v_Ed ${f3(P.vEd1)} against v_{Rd,c} ${f3(P.vRdc)} N/mm²`, { color: P.vEd1 > P.vRdc ? (P.needLinks && !bad(P, 'c') ? BLUE : RED) : undefined }],
+      ...(P.needLinks ? [[P.links ? `with links v_{Rd,cs} ${f3(P.links.vRdcs)}; limit 2v_{Rd,c} ${f3(P.kmax * P.vRdc)}` : `limit 2v_{Rd,c} ${f3(P.kmax * P.vRdc)}: links cannot carry it`, { color: bad(P, 'cs') || bad(P, 'c') ? RED : BLUE }],
+        [`u_{out,ef} ${f0(P.uout)} mm, ${f0(P.rout)} from the face`, { weight: 600, color: BLUE }]] : [['no shear links needed', { color: MUTE }]]),
+      ...(P.links ? [[``, {}], [`H${P.links.phi} links, ${P.links.nPer} perimeters, ${P.links.legs} legs`, { weight: 600, color: BLUE }],
+        [`first at ${f0(P.links.s0)}, then s_r ${f0(P.links.sr)} (≤ 0.75d ${f0(P.links.srMax)})`, { color: BLUE }],
+        [`A_sw ${f0(P.links.AswProv)} mm² per perimeter`, { color: BLUE }]] : []),
+    ];
+    rows.forEach(([t, o], i) => { if (t) g += text(tx, 34 + i * 18, t, Object.assign({ size: 10 }, o)); });
+    return svg(g, 700, Math.max(Hp, 34 + rows.length * 18 + 10), 'Plan of the column with the control perimeters, openings and shear links');
+  }
+
+  function section(P, inp) {
+    const G = P.G, d = P.d, h = inp.h, a = G.ax, rEnd = Math.max(P.rout || 0, 2 * d) + 0.45 * d;
+    const xL = G.type === 'corner' ? -(a + (G.ex || 0)) : -(a + Math.min(rEnd, 0.5 * rEnd + 0.4 * d)), xR = a + rEnd;
+    const k = Math.min(570 / (xR - xL), 150 / h), X = x => 40 + (x - xL) * k, yT = 56, Y = y => yT + (h - y) * k;   // y up from the soffit
+    let g = '';
+    // slab, column below and above
+    g += rect(X(xL), Y(h), (xR - xL) * k, h * k, { fill: CON, stroke: 'ink', w: 1.1 });
+    if (G.type !== 'corner') g += line(X(xL), Y(h) - 4, X(xL), Y(0) + 4, { c: '#fff', w: 3 }) + poly([[X(xL), Y(h) - 4], [X(xL) - 4, Y(h * 0.55)], [X(xL) + 4, Y(h * 0.45)], [X(xL), Y(0) + 4]], { open: true, stroke: 'ink', w: 0.9 });
+    g += line(X(xR), Y(h) - 4, X(xR), Y(0) + 4, { c: '#fff', w: 3 }) + poly([[X(xR), Y(h) - 4], [X(xR) - 4, Y(h * 0.55)], [X(xR) + 4, Y(h * 0.45)], [X(xR), Y(0) + 4]], { open: true, stroke: 'ink', w: 0.9 });
+    g += rect(X(-a), Y(0), 2 * a * k, 40, { fill: COL, stroke: 'ink', w: 1 }) + rect(X(-a), Y(h) - 26, 2 * a * k, 26, { fill: COL, stroke: 'ink', w: 1 });
+    // top bars: the outer layer as a line, the inner layer as dots at their spacing; d to the mean of the two layers
+    const outerX = inp.outer !== 'y', cv = inp.cover, yO = h - cv - (outerX ? inp.phiX : inp.phiY) / 2, yI = h - cv - (outerX ? inp.phiX : inp.phiY) - (outerX ? inp.phiY : inp.phiX) / 2;
+    const yLine = outerX ? yO : yI, yDots = outerX ? yI : yO, sD = outerX ? inp.sY : inp.sX, phD = outerX ? inp.phiY : inp.phiX;
+    g += line(X(xL) + 3, Y(yLine), X(xR) - 3, Y(yLine), { c: BLUE, w: Math.max(1.4, (outerX ? inp.phiX : inp.phiY) * k) });
+    for (let x = xL + sD / 2; x < xR; x += sD) g += `<circle cx="${X(x).toFixed(1)}" cy="${Y(yDots).toFixed(1)}" r="${Math.max(1.6, phD / 2 * k).toFixed(1)}" fill="${BLUE}"/>`;
+    // the 26.6° cone from the column face at the soffit to u_1 at the top
+    g += line(X(a), Y(0), X(a + 2 * d), Y(d), { c: 'red', w: 0.9, dash: '4 3' });
+    // links
+    const L = P.links, xs = [];
+    if (L) for (const pr of L.per) xs.push(a + pr.r);
+    xs.forEach(x => { g += line(X(x), Y(cv), X(x), Y(yI + 4), { c: bad(P, 'cs') ? 'red' : BLUE, w: 1.6 }); if (G.type !== 'corner' && -x > xL) g += line(X(-x), Y(cv), X(-x), Y(yI + 4), { c: BLUE, w: 1.6 }); });
+    // control perimeters
+    g += line(X(a + 2 * d), Y(h) - 18, X(a + 2 * d), Y(0) + 14, { c: bad(P, 'c') ? 'red' : 'ink', w: 1, dash: '6 4' }) + text(X(a + 2 * d), Y(h) - 22, 'u₁', { size: 10, anchor: 'middle', weight: 600 });
+    if (P.needLinks && P.rout > 0) g += line(X(a + P.rout), Y(h) - 18, X(a + P.rout), Y(0) + 14, { c: 'blue', w: 1.4 }) + text(X(a + P.rout), Y(h) - 22, 'u_{out,ef}', { size: 10, anchor: 'middle', weight: 600, color: BLUE });
+    // d and h
+    const vd = (x, y0, y1, lab) => line(x, y0, x, y1, { w: 0.8 }) + line(x - 4, y0, x + 4, y0, { w: 0.8 }) + line(x - 4, y1, x + 4, y1, { w: 0.8 }) + JD.Tx(x + 12, (y0 + y1) / 2, lab, { size: 9.5, rot: -90, anchor: 'middle' });
+    g += vd(X(xR) + 12, Y(0), Y(h), `h ${f0(h)}`) + vd(X(xR) + 36, Y(0), Y(d), `d ${f0(d)}`);
+    // distances from the face: above, 2d to u_1; below, s_0, s_r ..., and the last perimeter to u_out,ef
+    g += dimH(X(a), X(a + 2 * d), Y(h) - 38, `2d ${f0(2 * d)}`);
+    const yb = Y(0) + 56;
+    if (L) {
+      let p = a;
+      if (L.per.length > 3) { const x1 = a + L.per[0].r, xn = a + L.rLast; g += dimH(X(a), X(x1), yb, `s₀ ${f0(L.per[0].r)}`, { below: true }) + dimH(X(x1), X(xn), yb, `${L.per.length - 1} × s_r ${f0(L.sr)}`, { below: true }); p = xn; }
+      else L.per.forEach((pr, i) => { const x = a + pr.r; g += dimH(X(p), X(x), yb, i ? `s_r ${f0(pr.r - L.per[i - 1].r)}` : `s₀ ${f0(pr.r)}`, { below: true }); p = x; });
+      if (P.rout > 0) { const gap = P.rout - L.rLast; g += dimH(X(p), X(a + P.rout), yb, `${f0(gap)} ≤ 1.5d ${f0(1.5 * d)}`, { below: true, color: gap > 1.5 * d + 1 ? RED : undefined }); }
+    }
+    g += text(40, yb + 34, `Top bars H${inp.phiX} @ ${f0(inp.sX)} along x and H${inp.phiY} @ ${f0(inp.sY)} along y (${inp.outer !== 'y' ? 'x' : 'y'} outer); d is the mean of the two layers.`, { size: 9.5, color: BLUE });
+    g += text(40, yb + 50, P.needLinks ? (L ? `First perimeter 0.3d to 0.5d from the face, radial spacing ≤ 0.75d, the last within 1.5d of u_{out,ef} (9.4.3); f_{ywd,ef} ${P.fywdef.toFixed(0)} N/mm².` : 'v_Ed at u₁ is more than 2v_{Rd,c}: links cannot make it work. Thicken the slab, add a drop panel or column head, enlarge the column or add top steel.')
+      : 'v_Ed at u₁ does not exceed v_{Rd,c}: no shear reinforcement is needed.', { size: 9.5, color: P.needLinks && !L ? RED : MUTE });
+    return svg(g, 700, yb + 60, 'Section through the slab at the column with the top bars, links, control perimeters and their distances');
+  }
+
+  function stresses(P) {
+    let g = '';
+    const x0 = 230, wb = 400;
+    // each row on its own scale: the stress as a bar, the resistances as ticks labelled underneath (staggered when close)
+    const row = (y, lab, v, marks, red) => {
+      const vmx = Math.max(v, ...marks.map(m => m[0])) * 1.08, X = u => x0 + u / vmx * wb;
+      let s = text(x0 - 8, y + 11, `${lab} ${f3(v)}`, { size: 10, anchor: 'end', weight: 600, color: red ? RED : undefined }) + rect(x0, y, Math.max(1, v / vmx * wb), 14, { fill: red ? RED : '#56606b' });
+      let lastX = -1e9, lvl = 0;
+      [...marks].sort((p, q) => p[0] - q[0]).forEach(([m, l, dash]) => { const xm = X(m); lvl = xm - lastX < 90 ? lvl + 1 : 0; lastX = xm;
+        s += line(xm, y - 4, xm, y + 20 + lvl * 12, { c: 'blue', w: dash ? 1 : 1.6, dash: dash ? '2 2' : undefined }) + text(xm + 3, y + 30 + lvl * 12, `${l} ${f3(m)}`, { size: 9, color: BLUE }); });
+      return s;
+    };
+    g += row(16, 'at u₀: v_{Ed,0}', P.vEd0, [[P.vRdmax, 'v_{Rd,max}']], bad(P, 'max'));
+    g += row(72, 'at u₁: v_Ed', P.vEd1, [[P.vRdc, 'v_{Rd,c}'], ...(P.needLinks ? [[P.kmax * P.vRdc, '2v_{Rd,c}']] : []), ...(P.links ? [[P.links.vRdcs, 'v_{Rd,cs}', true]] : [])], bad(P, 'c') || bad(P, 'cs'));
+    g += text(20, 140, 'N/mm². Bars: the shear stress β V_Ed / (u d) at each perimeter, each row to its own scale; blue ticks: the resistances it is checked against.', { size: 9.5, color: MUTE });
+    return svg(g, 700, 150, 'The shear stresses at the column face and the basic control perimeter against their resistances');
+  }
+
+  const blocks = (P, inp, title) => [[`${title || 'Plan'}: control perimeters${P.links ? ' and shear links' : ''}`, plan(P, inp)], ['Section through the slab at the column', section(P, inp)], ['Shear stresses and resistances', stresses(P)]];
+  return { html: (P, inp, title) => page(blocks(P, inp, title)), report: (P, inp, title) => sheet(blocks(P, inp, title)), plan, section, stresses };
+})();
+
+</script>
 <script id="ui">
 'use strict';
 const $ = id => document.getElementById(id);
@@ -504,9 +900,9 @@ function holeRow(h = {}) {
   h = { x: 600, y: 0, a: 300, b: 300, ...h };
   const d = document.createElement('div'); d.className = 'row fhole';
   d.innerHTML = `<div><label>x (mm)</label><input class="x" type="number" value="${h.x}"></div><div><label>y (mm)</label><input class="y" type="number" value="${h.y}"></div><div><label>Size along x</label><input class="a" type="number" value="${h.a}"></div><div><label>Size along y</label><input class="b" type="number" value="${h.b}"></div><button class="xbtn" title="Remove opening">&times;</button>`;
-  d.querySelector('.xbtn').onclick = () => d.remove(); return d;
+  d.querySelector('.xbtn').onclick = () => { d.remove(); queueDraw(); }; return d;
 }
-$('addHole').onclick = () => $('holeRows').appendChild(holeRow());
+$('addHole').onclick = () => { $('holeRows').appendChild(holeRow()); queueDraw(); };
 // ---------- state ----------
 const FIELDS = ['pName', 'pJob', 'pBy', 'pRef', 'fck', 'fyk', 'fywk', 'ptype', 'pshape', 'pc1', 'pc2', 'pey', 'pex', 'ph', 'pcov', 'pouter', 'pfx', 'psx', 'pfy', 'psy', 'pV', 'pbeta', 'pq', 'pMx', 'pMy', 'plphi', 'plsr', 'pls0'];
 function collect() {
@@ -529,43 +925,6 @@ function punchInput() {
     holes: [...$('holeRows').children].map(r => ({ x: +r.querySelector('.x').value, y: +r.querySelector('.y').value, a: +r.querySelector('.a').value, b: +r.querySelector('.b').value })),
     link: { phi: $('plphi').value === 'auto' ? undefined : +$('plphi').value, sr: +$('plsr').value || undefined, s0: +$('pls0').value || undefined } };
 }
-// Punching plan drawing, shared by RC Punching Shear and RC Flat Slab Design (inlined into each page's UI script; uses f0 and Punching).
-function svgPunch(P, light) {
-  const G = P.G, d = P.d, ink = light ? '#000' : 'var(--txt)', mut = light ? '#777' : 'var(--mut)', acc = light ? '#1b67b0' : 'var(--accent)', fill = light ? '#ddd' : '#d9dde3';
-  const rMax = Math.max(P.rout || 0, 2 * d) + 0.6 * d, ext = { x0: -(G.ax + rMax), x1: G.ax + rMax, y0: -(G.ay + rMax), y1: G.ay + rMax };
-  if (G.type !== 'internal') ext.y0 = -(G.ay + G.ey) - 0.15 * d; if (G.type === 'corner') ext.x0 = -(G.ax + G.ex) - 0.15 * d;
-  for (const h of G.holes || []) { ext.x0 = Math.min(ext.x0, h.x - h.a / 2 - 50); ext.x1 = Math.max(ext.x1, h.x + h.a / 2 + 50); ext.y0 = Math.min(ext.y0, h.y - h.b / 2 - 50); ext.y1 = Math.max(ext.y1, h.y + h.b / 2 + 50); }
-  const Wp = 560, sc = Math.min(Wp / (ext.x1 - ext.x0), 460 / (ext.y1 - ext.y0)), Hp = (ext.y1 - ext.y0) * sc + 30;
-  const X = x => (x - ext.x0) * sc + 10, Y = y => (ext.y1 - y) * sc + 10;
-  const perim = (r, seg) => Punching.path(G.type !== 'internal' && Punching.uGross({ ...G, type: 'internal' }, r) <= Punching.uGross(G, r) + 1e-9 ? { ...G, type: 'internal' } : G, r, seg);
-  const poly = r => { const pp = perim(r, 4); return pp.pts.map((p, k) => `${k ? 'L' : 'M'}${X(p[0]).toFixed(1)} ${Y(p[1]).toFixed(1)}`).join(' ') + (pp.closed ? ' Z' : ''); };
-  let g = '';
-  if (G.type !== 'internal') g += `<line x1="${X(ext.x0)}" y1="${Y(-(G.ay + G.ey))}" x2="${X(ext.x1)}" y2="${Y(-(G.ay + G.ey))}" stroke="${ink}" stroke-width="2"/><text x="${X(ext.x1) - 4}" y="${Y(-(G.ay + G.ey)) + 14}" font-size="11" text-anchor="end" fill="${mut}">slab edge</text>`;
-  if (G.type === 'corner') g += `<line x1="${X(-(G.ax + G.ex))}" y1="${Y(ext.y0)}" x2="${X(-(G.ax + G.ex))}" y2="${Y(ext.y1)}" stroke="${ink}" stroke-width="2"/>`;
-  // openings and their shadows
-  for (const s of P.S || []) {
-    const h = s.h; g += `<rect x="${X(h.x - h.a / 2)}" y="${Y(h.y + h.b / 2)}" width="${h.a * sc}" height="${h.b * sc}" fill="none" stroke="${ink}" stroke-width="1"/><path d="M${X(h.x - h.a / 2)} ${Y(h.y + h.b / 2)} L${X(h.x + h.a / 2)} ${Y(h.y - h.b / 2)} M${X(h.x - h.a / 2)} ${Y(h.y - h.b / 2)} L${X(h.x + h.a / 2)} ${Y(h.y + h.b / 2)}" stroke="${mut}" stroke-width="0.6"/>`;
-    if (s.active) for (const a of [s.lo, s.hi]) { const R0 = Math.hypot(ext.x1 - ext.x0, ext.y1 - ext.y0); g += `<line x1="${X(0)}" y1="${Y(0)}" x2="${X(R0 * Math.cos(s.phi + a))}" y2="${Y(R0 * Math.sin(s.phi + a))}" stroke="${mut}" stroke-width="0.7" stroke-dasharray="3 3"/>`; }
-  }
-  // perimeters: u1 at 2d dashed ink, uout blue
-  g += `<path d="${poly(2 * d)}" fill="none" stroke="${ink}" stroke-width="1" stroke-dasharray="6 4"/>`;
-  if (P.needLinks && P.rout > 0) g += `<path d="${poly(P.rout)}" fill="none" stroke="${acc}" stroke-width="1.6"/>`;
-  // links
-  if (P.links) {
-    const S = P.S || [], inCone = (x, y) => S.some(s => { if (!s.active) return false; let a = Math.atan2(y, x) - s.phi; while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a >= s.lo && a <= s.hi; });
-    for (const pr of P.links.per) {   // legs spread evenly over the part of the perimeter outside the openings' shadows
-      const pp = perim(pr.r, 2).pts, seg = []; let L = 0;
-      for (let k = 1; k < pp.length; k++) { const mx = (pp[k][0] + pp[k - 1][0]) / 2, my = (pp[k][1] + pp[k - 1][1]) / 2; if (inCone(mx, my)) continue; const l = Math.hypot(pp[k][0] - pp[k - 1][0], pp[k][1] - pp[k - 1][1]); seg.push([L, l, pp[k - 1], pp[k]]); L += l; }
-      let k = 0;
-      for (let m = 0; m < pr.n; m++) { const t = (m + 0.5) / pr.n * L; while (k < seg.length - 1 && seg[k][0] + seg[k][1] < t) k++; const [s0, l, a, b] = seg[k], f = l > 0 ? Math.min(1, Math.max(0, (t - s0) / l)) : 0; g += `<circle cx="${X(a[0] + (b[0] - a[0]) * f).toFixed(1)}" cy="${Y(a[1] + (b[1] - a[1]) * f).toFixed(1)}" r="2.6" fill="${acc}"/>`; }
-    }
-  }
-  // column
-  g += G.circ ? `<circle cx="${X(0)}" cy="${Y(0)}" r="${G.ax * sc}" fill="${fill}" stroke="${ink}" stroke-width="1.2"/>` : `<rect x="${X(-G.ax)}" y="${Y(G.ay)}" width="${2 * G.ax * sc}" height="${2 * G.ay * sc}" fill="${fill}" stroke="${ink}" stroke-width="1.2"/>`;
-  g += `<text x="10" y="${Hp - 6}" font-size="11" fill="${mut}">u₁ at 2d = ${f0(2 * d)} mm dashed${P.needLinks ? `; u_out at ${f0(P.rout)} mm in blue; links as dots` : ''}</text>`;
-  return `<svg class="${light ? 'rsvg' : 'pplan'}" viewBox="0 0 ${Wp + 20} ${Hp}">${g}</svg>`;
-}
-
 // ---------- results ----------
 const bar = c => `<div class="ck"><div class="nm">${esc(c.name)}<small>${esc(c.ref)} &nbsp;${esc(c.note || '')}</small></div><div class="bar"><i class="${c.util > 1 ? 'over' : ''}" style="width:${Math.min(100, c.util * 100 / 1.2)}%"></i></div><div class="u ${c.util > 1 ? 'over' : ''}">${ufmt(c.util)}</div></div>`;
 function verdict(util, sub) { return `<div class="verdict ${util > 1 ? 'fail' : ''}"><div><div class="big">${util > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(util)}</div><div class="sub">${sub}</div></div></div>`; }
@@ -585,9 +944,10 @@ function runPunch() {
   const g = Wc[0], what = inp.shape === 'circ' ? `circular column D ${inp.D} mm` : `column ${inp.c1} × ${inp.c2} mm`;
   $('results').innerHTML = (from ? `<div class="from">${esc(from)}</div>` : '')
     + verdict(P.util, `Governs: ${esc(g.name.charAt(0).toLowerCase() + g.name.slice(1))} (${esc(g.ref)})<br>${inp.type} ${what}, h ${inp.h} mm, V<sub>Ed</sub> ${inp.VEd} kN, β ${f3(P.beta)}; ${P.needLinks ? (P.vEd1 > 2 * P.vRdc ? 'more than links can carry (k<sub>max</sub> = 2)' : 'shear links needed') : 'no shear links needed'}`)
-    + `<div class="dlabel">Plan</div>${svgPunch(P, false)}<div class="dlabel">Checks</div><div class="checks">${Wc.map(bar).join('')}</div><div class="dlabel">Values</div>${punchDetails(P)}`
+    + `<div id="drawings"></div><div class="dlabel">Checks</div><div class="checks">${Wc.map(bar).join('')}</div><div class="dlabel">Values</div>${punchDetails(P)}`
     + (P.vEd1 > 2 * P.vRdc ? `<div class="note">v<sub>Ed</sub> at u₁ is more than 2 v<sub>Rd,c</sub> (UK NA k<sub>max</sub>): links cannot make it work. Thicken the slab, add a drop panel or column head, enlarge the column or add top steel.</div>` : '')
     + `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  redraw();
   $('printBtn').onclick = () => { $('report').innerHTML = report(); window.print(); };
 }
 function run() {
@@ -603,12 +963,21 @@ function report() {
   let b = `<div class="rs"><h2>Basis</h2>${rl(`BS EN 1992-1-1:2004+A1:2014 6.4 and 9.4.3 with the UK NA (v<sub>Rd,max</sub> = 0.5νf<sub>cd</sub>, k<sub>max</sub> = 2)`, '6.4', '')}`
     + rl(`${inp.type} ${inp.shape === 'circ' ? `circular column D = ${inp.D}` : `column c₁ × c₂ = ${inp.c1} × ${inp.c2}`} mm${inp.type !== 'internal' ? `, face to the slab edge ${inp.ey} mm${inp.type === 'corner' ? ` and ${inp.ex} mm` : ''}` : ''}; h = ${inp.h} mm, cover ${inp.cover} mm; H${inp.phiX} @ ${inp.sX} along x, H${inp.phiY} @ ${inp.sY} along y (outer: ${inp.outer})`, '', '')
     + rl(`C${inp.fck}/${EC2c(inp.fck)}, f<sub>yk</sub> ${inp.fyk}, f<sub>ywk</sub> ${inp.fywk} N/mm²; V<sub>Ed</sub> = ${inp.VEd} kN${inp.beta.method === 'calc' ? `, M<sub>x</sub> = ${inp.beta.Mx}, M<sub>y</sub> = ${inp.beta.My} kNm` : ''}${inp.q > 0 ? `, q = ${inp.q} kN/m² deducted` : ''}${inp.holes.length ? `; ${inp.holes.length} opening${inp.holes.length > 1 ? 's' : ''}` : ''}`, '', '') + '</div>';
-  b += `<div class="rs"><h2>Plan</h2>${svgPunch(P, true)}</div><div class="rs"><h2>Values</h2>${punchDetails(P)}</div>`;
+  b += `<div class="rs"><h2>Plan and section</h2>${DrawPunch.report(P, inp)}</div><div class="rs"><h2>Values</h2>${punchDetails(P)}</div>`;
   b += `<div class="rs"><h2>Checks</h2>` + P.checks.map(c => rl(esc(c.name) + ` <span style="color:#666">${esc(c.note || '')}</span>`, esc(c.ref), okng(c.util))).join('') + '</div>';
   b += `<p class="rp" style="color:#555">Generated by EngineeringTools — RC Punching Shear.</p>`;
   return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
 }
 const EC2c = f => ({ 25: 30, 28: 35, 30: 37, 32: 40, 35: 45, 40: 50, 45: 55, 50: 60 }[f] || '');
+// the drawing follows the inputs as they change (the punching design is quick)
+let drawT = 0;
+function redraw() {
+  const el = $('drawings'); if (!el) return;
+  try { const inp = punchInput(); el.innerHTML = DrawPunch.html(Punching.design(inp), inp); }
+  catch (e) { el.innerHTML = `<div class="note">The drawing will appear when the inputs are complete: ${esc(e.message)}</div>`; }
+}
+const queueDraw = () => { clearTimeout(drawT); drawT = setTimeout(redraw, 150); };
+$('inputs').addEventListener('input', queueDraw); $('inputs').addEventListener('change', queueDraw);
 $('calc').onclick = run;
 // a column handed over from RC Flat Slab Design: #in=<JSON of the fields>
 let from = null;
@@ -618,6 +987,7 @@ let from = null;
   if (m) { try { handed = JSON.parse(decodeURIComponent(m[1])); } catch (e) { handed = null; } }
   if (handed && handed.v === 1) { restore({ ...(s || {}), ...handed }); from = handed.from || null; try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* file: urls */ } run(); return; }
   if (s && s.v === 1) restore(s); else refreshVis();
+  redraw();
 })();
 </script>
 <footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent engineer to check and approve all calculations before they are used.</footer>
