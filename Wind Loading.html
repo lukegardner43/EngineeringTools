@@ -160,14 +160,14 @@ sub,sup{font-size:max(11px,.75em);line-height:0;}
   .rsvg *{vector-effect:non-scaling-stroke;}
 }
 
-svg.plan,svg.elev{width:100%;height:auto;display:block;max-width:480px;margin:4px auto 10px;}
+svg.plan,svg.elev{width:100%;height:auto;display:block;max-width:700px;margin:4px auto 10px;}
 .kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px 20px;background:var(--surf2);border:1px solid var(--rule);border-radius:var(--rc);padding:12px 16px;margin-bottom:12px;}
 .kv div{min-width:0;} .kv b{display:block;font-size:12px;font-weight:400;color:var(--mut);} .kv span{font-size:15px;font-weight:600;}
 .sum{background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--rc);padding:14px 16px;margin-bottom:16px;}
 .sum .big{font-size:22px;font-weight:600;line-height:1.25;} .sum .sub{font-size:13px;color:var(--mut);margin-top:4px;line-height:1.5;}
 .seg.four{grid-template-columns:repeat(4,1fr);}
 a.lnk{color:var(--accent);font-size:13px;}
-@media print{svg.plan,svg.elev{max-width:110mm;} .rtab{width:100%;border-collapse:collapse;font-size:7.5pt;margin:1mm 0 2mm;} .rtab th,.rtab td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;} .rtab th:first-child,.rtab td:first-child{text-align:left;}}
+@media print{svg.plan,svg.elev{max-width:150mm;} .rtab{width:100%;border-collapse:collapse;font-size:7.5pt;margin:1mm 0 2mm;} .rtab th,.rtab td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;} .rtab th:first-child,.rtab td:first-child{text-align:left;}}
 </style>
 </head>
 <body data-material="frame" style="--photo:url(img/windsock.jpg);--credit:'Photo: Mrmanssss, CC0'">
@@ -687,25 +687,45 @@ function roofRects(c) {
   else if (c.kind === 'duo90') { R('F', 0, 0, Fw, s1); R('G', Fw, 0, b - Fw, s1); R('F', b - Fw, 0, b, s1); R('H', 0, s1, b, s2); R('I', 0, s2, b, d); }
   return r;
 }
+// plan: the roof zones with their c_pe and the extents from e dimensioned; the wall zones A to E round it with c_pe and w_e
 function svgPlan(R, c, light) {
-  const W0 = 440, pad = 46, sc = Math.min((W0 - 2 * pad) / c.b, 300 / c.d), H0 = c.d * sc + 30 + 92, X = x => pad + (W0 - 2 * pad - c.b * sc) / 2 + x * sc, Y = y => 30 + (c.d - y) * sc;
+  const W0 = 680, sc = Math.min(400 / c.b, 300 / c.d), H0 = c.d * sc + 168, X = x => 130 + (400 - c.b * sc) / 2 + x * sc, Y = y => 62 + (c.d - y) * sc;
+  const T = (x, y, t, o = {}) => `<text x="${(+x).toFixed(1)}" y="${(+y).toFixed(1)}" font-size="${o.size || 11}" text-anchor="${o.anchor || 'middle'}" fill="${o.c || INK(light)}"${o.w ? ` font-weight="${o.w}"` : ''}${o.rot ? ` transform="rotate(${o.rot} ${(+x).toFixed(1)} ${(+y).toFixed(1)})"` : ''}>${t}</text>`;
+  const dim = (x0, y0, x1, y1, lab, vert) => `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="${INK(light)}" stroke-width="0.8"/>` + (vert ? `<line x1="${x0 - 4}" y1="${y0}" x2="${x0 + 4}" y2="${y0}" stroke="${INK(light)}" stroke-width="0.8"/><line x1="${x1 - 4}" y1="${y1}" x2="${x1 + 4}" y2="${y1}" stroke="${INK(light)}" stroke-width="0.8"/>` : `<line x1="${x0}" y1="${y0 - 4}" x2="${x0}" y2="${y0 + 4}" stroke="${INK(light)}" stroke-width="0.8"/><line x1="${x1}" y1="${y1 - 4}" x2="${x1}" y2="${y1 + 4}" stroke="${INK(light)}" stroke-width="0.8"/>`)
+    + (Math.abs(vert ? y1 - y0 : x1 - x0) > 22 ? (vert ? T(x0 + 12, (y0 + y1) / 2, lab, { size: 9.5, rot: -90 }) : T((x0 + x1) / 2, y0 - 4, lab, { size: 9.5 })) : '');
+  const cpeOf = zone => { const z = c.roof.find(q => q.zone === zone); if (!z) return ''; const v = [z.cpe.neg, z.cpe.pos].filter(u => u !== null && u !== undefined); return v.length > 1 && v[0] !== v[1] ? `${fp(Math.min(...v))} / ${fp(Math.max(...v))}` : fp(v[0]); };
   let g = '';
-  for (const z of roofRects(c)) g += `<rect x="${X(z.x0)}" y="${Y(z.y1)}" width="${(z.x1 - z.x0) * sc}" height="${(z.y1 - z.y0) * sc}" fill="${['F', 'Fup', 'Flow'].includes(z.zone) ? (light ? '#d4d4d4' : '#d3dbe8') : z.zone === 'G' || z.zone === 'J' ? (light ? '#e2e2e2' : '#e1e7f0') : FILL(light)}" stroke="${MUT(light)}" stroke-width="0.6"/>` + ((z.x1 - z.x0) * sc > 18 && (z.y1 - z.y0) * sc > 12 ? `<text x="${X((z.x0 + z.x1) / 2)}" y="${Y((z.y0 + z.y1) / 2) + 4}" font-size="12" text-anchor="middle" fill="${INK(light)}">${z.zone}</text>` : '');
+  const rects = roofRects(c);
+  for (const z of rects) {
+    const w = (z.x1 - z.x0) * sc, h = (z.y1 - z.y0) * sc, nm = z.zone === 'Fup' || z.zone === 'Flow' ? 'F' : z.zone;
+    g += `<rect x="${X(z.x0)}" y="${Y(z.y1)}" width="${w}" height="${h}" fill="${['F', 'Fup', 'Flow'].includes(z.zone) ? '#d3dbe8' : z.zone === 'G' || z.zone === 'J' ? '#e1e7f0' : FILL(light)}" stroke="${MUT(light)}" stroke-width="0.6"/>`;
+    const cy = Y((z.y0 + z.y1) / 2), cxm = (z.x0 + z.x1) / 2 - (c.kind === 'duo90' && z.x0 < c.b / 2 && z.x1 > c.b / 2 ? (z.x1 - z.x0) / 4 : 0);
+    if (w > 18 && h > 12) g += h > 30 && w > 46 ? T(X(cxm), cy - 2, z.zone === 'Fup' ? 'F up' : z.zone === 'Flow' ? 'F low' : nm, { w: 600 }) + T(X(cxm), cy + 12, cpeOf(z.zone), { size: 10, c: ACC(light) }) : T(X(cxm), cy + 4, nm, { w: 600, size: 10 });
+  }
   g += `<rect x="${X(0)}" y="${Y(c.d)}" width="${c.b * sc}" height="${c.d * sc}" fill="none" stroke="${INK(light)}" stroke-width="1.4"/>`;
   if (c.kind === 'duo0') g += `<line x1="${X(0)}" y1="${Y(c.d / 2)}" x2="${X(c.b)}" y2="${Y(c.d / 2)}" stroke="${INK(light)}" stroke-dasharray="6 3"/>`;
   if (c.kind === 'duo90') g += `<line x1="${X(c.b / 2)}" y1="${Y(0)}" x2="${X(c.b / 2)}" y2="${Y(c.d)}" stroke="${INK(light)}" stroke-dasharray="6 3"/>`;
-  // wall zones along the sides: D windward (bottom), E leeward (top), A/B/C on the sides
-  const zl = Wind.wallZones(c.e, c.d); let y = 0;
-  for (const z of ['A', 'B', 'C']) { if (zl[z] > 1e-9) { for (const xx of [X(0) - 7, X(c.b) + 7]) g += `<line x1="${xx}" y1="${Y(y)}" x2="${xx}" y2="${Y(y + zl[z])}" stroke="${ACC(light)}" stroke-width="3"/>`; if (zl[z] * sc > 14) g += `<text x="${X(0) - 14}" y="${Y(y + zl[z] / 2) + 4}" font-size="12" text-anchor="end" fill="${ACC(light)}">${z}</text>`; } y += zl[z]; }
-  g += `<text x="${X(c.b / 2)}" y="${Y(0) + 18}" font-size="12" text-anchor="middle" fill="${ACC(light)}">D (side ${c.side})</text><text x="${X(c.b / 2)}" y="${Y(c.d) - 8}" font-size="12" text-anchor="middle" fill="${ACC(light)}">E</text>`;
-  const ya = Y(0) + 52;
-  g += `<path d="M${W0 / 2} ${ya} v-22 m-5 7 l5 -7 l5 7" fill="none" stroke="${INK(light)}" stroke-width="1.6"/><text x="${W0 / 2 + 10}" y="${ya - 4}" font-size="12" fill="${INK(light)}">wind from ${f1(c.from)}°</text>`;
-  g += `<text x="${W0 / 2}" y="${ya + 26}" font-size="12" text-anchor="middle" fill="${MUT(light)}">b = ${f1(c.b)} m across the wind, d = ${f1(c.d)} m along it, e = ${f2(c.e)} m</text>`;
-  return `<svg class="plan" viewBox="0 0 ${W0} ${H0}" role="img" aria-label="Plan with the roof and wall zones for this wind direction">${g}</svg>`;
+  // zone extents: across the wind above the plan, along it on the right
+  const xs = [...new Set(rects.flatMap(z => [z.x0, z.x1]).map(v => +v.toFixed(3)))].sort((a, b) => a - b), ys = [...new Set(rects.flatMap(z => [z.y0, z.y1]).map(v => +v.toFixed(3)))].sort((a, b) => a - b);
+  for (let k = 1; k < xs.length; k++) g += dim(X(xs[k - 1]), Y(c.d) - 30, X(xs[k]), Y(c.d) - 30, f2(xs[k] - xs[k - 1]), false);
+  for (let k = 1; k < ys.length; k++) g += dim(X(c.b) + 30, Y(ys[k - 1]), X(c.b) + 30, Y(ys[k]), f2(ys[k] - ys[k - 1]), true);
+  // wall zones: A, B, C along the sides (left labelled), D windward, E leeward
+  const wl = z => c.walls.find(w => w.zone === z), zl = Wind.wallZones(c.e, c.d); let y = 0;
+  for (const z of ['A', 'B', 'C']) { if (zl[z] > 1e-9) { for (const xx of [X(0) - 7, X(c.b) + 7]) g += `<line x1="${xx}" y1="${Y(y)}" x2="${xx}" y2="${Y(y + zl[z])}" stroke="${ACC(light)}" stroke-width="3"/>`;
+    const w = wl(z); if (zl[z] * sc > 12 && w) g += T(X(0) - 14, Y(y + zl[z] / 2) + 4, `${z} ${fp(w.cpe)}`, { anchor: 'end', c: ACC(light), size: 10.5, w: 600 }) + (zl[z] * sc > 26 ? T(X(0) - 14, Y(y + zl[z] / 2) + 17, `${f2(w.we)} kN/m²`, { anchor: 'end', c: MUT(light), size: 9.5 }) : ''); } y += zl[z]; }
+  const D = wl('D'), E = wl('E');
+  g += T(X(c.b / 2), Y(0) + 18, `D (side ${c.side}) c_pe ${D ? fp(D.cpe) : ''}, w_e ${D ? f2(D.we) : ''} kN/m²`.replace(/c_pe/, 'c<tspan font-size="8" dy="2">pe</tspan><tspan dy="-2">').replace(/, w_e/, '</tspan>, w<tspan font-size="8" dy="2">e</tspan><tspan dy="-2">') + '</tspan>', { c: ACC(light), w: 600, size: 10.5 });
+  g += T(X(c.b / 2), Y(c.d) - 8, `E ${E ? fp(E.cpe) : ''}, ${E ? f2(E.we) : ''} kN/m²`, { c: ACC(light), w: 600, size: 10.5 });
+  const ya = Y(0) + 56;
+  g += `<path d="M${X(c.b / 2)} ${ya} v-22 m-5 7 l5 -7 l5 7" fill="none" stroke="${INK(light)}" stroke-width="1.6"/>` + T(X(c.b / 2) + 10, ya - 4, `wind from ${f1(c.from)}°`, { anchor: 'start' });
+  g += T(X(c.b / 2), ya + 22, `b = ${f1(c.b)} m across the wind, d = ${f1(c.d)} m along it, e = ${f2(c.e)} m`, { c: MUT(light), size: 10.5 });
+  const zs = [...new Set(c.roof.map(z => z.zone))].map(zn => `${zn === 'Fup' ? 'F up' : zn === 'Flow' ? 'F low' : zn} ${cpeOf(zn)}`).join(', ');
+  g += `<text x="${X(c.b / 2)}" y="${ya + 38}" font-size="10.5" text-anchor="middle" fill="${ACC(light)}">Roof c<tspan font-size="8" dy="2">pe</tspan><tspan dy="-2">: ${zs}, with q</tspan><tspan font-size="8" dy="2">p</tspan><tspan dy="-2"> ${f2(c.qH.qp)} kN/m²</tspan></text>`;
+  return `<svg class="plan" viewBox="0 0 ${W0} ${H0.toFixed(0)}" role="img" aria-label="Plan with the roof and wall zones for this wind direction">${g}</svg>`;
 }
-// windward face with its reference-height parts and q_p
-function svgElev(R, c, light) {
-  const W0 = 440, pad = 40, top = R.H + R.hp, sc = Math.min((W0 - 2 * pad - 90) / c.b, 220 / top), H0 = top * sc + 50, X = x => pad + x * sc, Y = z => 16 + (top - z) * sc;
+// windward face with its reference-height parts and q_p, and the overall force at its lever arm
+function svgElev(R, c, light, m) {
+  const W0 = 680, top = R.H + R.hp, sc = Math.min(300 / c.b, 220 / top), H0 = top * sc + 54, X = x => 190 + x * sc, Y = z => 18 + (top - z) * sc;
   const sloping = (R.roof.type !== 'flat') && (c.side === 2 || c.side === 4), monoHigh = R.roof.type === 'mono' && c.side === 3;
   let outline;
   if (sloping && R.roof.type === 'duo') outline = `M${X(0)} ${Y(0)} V${Y(R.he)} L${X(c.b / 2)} ${Y(R.H)} L${X(c.b)} ${Y(R.he)} V${Y(0)} Z`;
@@ -713,13 +733,16 @@ function svgElev(R, c, light) {
   else if (sloping) outline = `M${X(0)} ${Y(0)} V${Y(R.he)} L${X(c.b)} ${Y(R.H)} V${Y(0)} Z`;
   else outline = `M${X(0)} ${Y(0)} V${Y(monoHigh ? R.H : R.he + R.hp)} H${X(c.b)} V${Y(0)} Z`;
   let g = '';
-  // the roof seen beyond an eaves face: ridge (duopitch) or the high eave (monopitch, low eave windward)
   if (!sloping && !monoHigh && R.roof.type !== 'flat') g += `<path d="M${X(0)} ${Y(R.he)} V${Y(R.H)} H${X(c.b)} V${Y(R.he)} Z" fill="none" stroke="${MUT(light)}" stroke-dasharray="4 3"/><text x="${X(c.b / 2)}" y="${Y((R.he + R.H) / 2) + 4}" font-size="12" text-anchor="middle" fill="${MUT(light)}">roof beyond</text>`;
   g += `<path d="${outline}" fill="${FILL(light)}" stroke="${INK(light)}" stroke-width="1.3"/>`;
-  c.parts.forEach(p => { g += `<line x1="${X(0)}" y1="${Y(p.z1)}" x2="${X(c.b) + 8}" y2="${Y(p.z1)}" stroke="${MUT(light)}" stroke-dasharray="3 3"/><text x="${X(c.b) + 12}" y="${Y((p.z0 + p.z1) / 2) + 4}" font-size="12" fill="${INK(light)}">z<tspan font-size="8.5" dy="2">e</tspan><tspan dy="-2"> ${f1(p.ze)} m: q</tspan><tspan font-size="8.5" dy="2">p</tspan><tspan dy="-2"> ${f2(p.q.qp)}</tspan></text>`; });
+  c.parts.forEach(p => { g += `<line x1="${X(0)}" y1="${Y(p.z1)}" x2="${X(c.b) + 8}" y2="${Y(p.z1)}" stroke="${MUT(light)}" stroke-dasharray="3 3"/><text x="${X(c.b) + 12}" y="${Y((p.z0 + p.z1) / 2) + 4}" font-size="11.5" fill="${INK(light)}">z<tspan font-size="8.5" dy="2">e</tspan><tspan dy="-2"> ${f1(p.ze)} m: q</tspan><tspan font-size="8.5" dy="2">p</tspan><tspan dy="-2"> ${f2(p.q.qp)} kN/m²</tspan></text>`; });
   g += `<line x1="${X(0) - 12}" y1="${Y(0)}" x2="${X(c.b) + 12}" y2="${Y(0)}" stroke="${INK(light)}" stroke-width="1.6"/>`;
-  g += `<text x="${X(c.b / 2)}" y="${H0 - 8}" font-size="11.5" text-anchor="middle" fill="${MUT(light)}">side ${c.side}, ${f1(c.b)} m wide; q<tspan font-size="8" dy="2">p</tspan><tspan dy="-2"> in kN/m²</tspan></text>`;
-  return `<svg class="elev" viewBox="0 0 ${W0} ${H0}" role="img" aria-label="Windward face with its reference heights">${g}</svg>`;
+  // the overall force at the height of its resultant (M / F about the ground)
+  const F = m === 'DE' ? c.FwDE : c.Fw, M = m === 'DE' ? c.MwDE : c.Mw, zF = F > 0 ? M / F : 0;
+  if (F > 0) { const yF = Y(zF); g += `<line x1="${X(0) - 70}" y1="${yF}" x2="${X(0) - 6}" y2="${yF}" stroke="${ACC(light)}" stroke-width="2"/><path d="M${X(0) - 2} ${yF} l-9 -4 v8 z" fill="${ACC(light)}"/>`
+    + `<text x="${X(0) - 74}" y="${yF - 4}" font-size="11" text-anchor="end" fill="${ACC(light)}" font-weight="600">F<tspan font-size="8" dy="2">w</tspan><tspan dy="-2"> ${f1(F)} kN</tspan></text><text x="${X(0) - 74}" y="${yF + 10}" font-size="10" text-anchor="end" fill="${MUT(light)}">at ${f2(zF)} m; M ${f0(M)} kNm</text>`; }
+  g += `<text x="${X(c.b / 2)}" y="${H0 - 8}" font-size="11" text-anchor="middle" fill="${MUT(light)}">side ${c.side}, ${f1(c.b)} m wide; the overall force and its overturning moment about the ground (characteristic)</text>`;
+  return `<svg class="elev" viewBox="0 0 ${W0} ${H0}" role="img" aria-label="Windward face with its reference heights and the overall wind force">${g}</svg>`;
 }
 
 const kv = (k, v) => `<div><b>${k}</b><span>${v}</span></div>`;
@@ -727,7 +750,7 @@ const Fof = (c, m) => m === 'DE' ? c.FwDE : c.Fw, Mof = (c, m) => m === 'DE' ? c
 function caseHtml(R, c, m) {
   const q = c.qH;
   let h = `<div class="kv">${kv('c<sub>dir</sub>', f3(c.cdir))}${kv('c<sub>alt</sub>', f3(q.calt))}${kv('v<sub>b</sub> (m/s)', f2(q.vb))}${kv('q<sub>b</sub> (kN/m²)', f3(q.qb))}${kv('c<sub>e</sub>', f3(q.ce))}${R.S.inTown ? kv('c<sub>e,T</sub>', f3(q.ceT)) : ''}${q.co > 1 ? kv('c<sub>o</sub>', f3(q.co)) : ''}${kv(`q<sub>p</sub> at ${f1(q.z)} m`, f3(q.qp))}${kv('c<sub>s</sub>c<sub>d</sub>', f3(c.cscd))}${kv('h/d', f2(c.hd))}</div>`;
-  h += `<div class="dlabel">Plan with the roof and wall zones</div>${svgPlan(R, c, false)}<div class="dlabel">Windward face and reference heights</div>${svgElev(R, c, false)}`;
+  h += `<div class="dlabel">Plan with the roof and wall zones</div>${svgPlan(R, c, false)}<div class="dlabel">Windward face, reference heights and the overall force</div>${svgElev(R, c, false, m)}`;
   h += `<div class="dlabel">Walls <span class="aux">Table NA.4</span></div><table class="t"><tr><th>Zone</th><th>Length (m)</th><th>c<sub>pe</sub></th><th>w<sub>e</sub> (kN/m²)</th><th>net, c<sub>pi</sub> ${fp(R.cpi[0])}</th><th>net, c<sub>pi</sub> ${fp(R.cpi[1])}</th></tr>`
     + c.walls.map(w => `<tr><td>${w.zone}</td><td>${f2(w.len)}</td><td>${fp(w.cpe)}</td><td>${f3(w.we)}</td><td>${f3(w.net[0])}</td><td>${f3(w.net[1])}</td></tr>`).join('') + `</table>`;
   h += `<div class="dlabel">Roof <span class="aux">${c.kind === 'flat' ? 'Table NA.5' : c.kind.startsWith('mono') ? 'Table NA.6' : 'Table NA.7'}, q<sub>p</sub> at ${f1(c.qH.z)} m</span></div><table class="t"><tr><th>Zone</th><th>Area (m²)</th><th>c<sub>pe</sub></th><th>w<sub>e</sub> (kN/m²)</th><th>Most uplift, net</th><th>Most down, net</th></tr>`
@@ -764,7 +787,7 @@ function report() {
     + rl(`${S.inTown ? `Town, ${S.xt} km inside, ` : 'Country, '}${S.xs} km from the shoreline${R.hdis > 0 ? `; h<sub>dis</sub> = ${f2(R.hdis)} m (A.5)` : ''}${S.orog.type !== 'none' ? `; ${S.orog.type === 'hill' ? 'hill or ridge' : 'cliff or escarpment'} H = ${S.orog.H} m, L<sub>u</sub> = ${S.orog.Lu} m, X = ${S.orog.X} m, base at ${S.Abase} m` : ''}`, 'NA.2.11–2.17', '')
     + rl(`Building ${R.L} × ${R.W} m, eaves ${R.he} m, ${R.roof.type === 'flat' ? `flat roof (${(inp.roof.eaves || {}).type} eaves)` : `${R.roof.type === 'mono' ? 'monopitch' : 'duopitch'} roof at ${R.alpha}°`}, top at ${f2(R.H + R.hp)} m; c<sub>pi</sub> = ${fp(R.cpi[0])} / ${fp(R.cpi[1])}`, '', '') + '</div>';
   for (const c of R.cases) {
-    b += `<div class="rs"><h2>Wind on side ${c.side} (from ${f1(c.from)}°)</h2>${rl(`c<sub>dir</sub> = ${f3(c.cdir)}; b = ${f1(c.b)} m, d = ${f1(c.d)} m, e = ${f2(c.e)} m, h/d = ${f2(c.hd)}`, '', '')}`
+    b += `<div class="rs"><h2>Wind on side ${c.side} (from ${f1(c.from)}°)</h2>${svgPlan(R, c, true)}${svgElev(R, c, true, m)}${rl(`c<sub>dir</sub> = ${f3(c.cdir)}; b = ${f1(c.b)} m, d = ${f1(c.d)} m, e = ${f2(c.e)} m, h/d = ${f2(c.hd)}`, '', '')}`
       + c.parts.map(p => rl(`z<sub>e</sub> = ${f2(p.ze)} m: c<sub>alt</sub> ${f3(p.q.calt)}, v<sub>b</sub> = ${f2(p.q.vb)} m/s, q<sub>b</sub> = ${f3(p.q.qb)}, c<sub>e</sub> = ${f3(p.q.ce)}${S.inTown ? `, c<sub>e,T</sub> = ${f3(p.q.ceT)}` : ''}${p.q.co > 1 ? `, c<sub>o</sub> = ${f3(p.q.co)}` : ''}`, p.q.how, `q<sub>p</sub> = ${f3(p.q.qp)} kN/m²`)).join('')
       + `<table class="rtab"><tr><th>Wall zone</th><th>c<sub>pe</sub></th><th>w<sub>e</sub></th><th>net (c<sub>pi</sub> ${fp(R.cpi[0])})</th><th>net (c<sub>pi</sub> ${fp(R.cpi[1])})</th></tr>${c.walls.map(w => `<tr><td>${w.zone}</td><td>${fp(w.cpe)}</td><td>${f3(w.we)}</td><td>${f3(w.net[0])}</td><td>${f3(w.net[1])}</td></tr>`).join('')}</table>`
       + `<table class="rtab"><tr><th>Roof zone</th><th>Area (m²)</th><th>c<sub>pe</sub> −</th><th>c<sub>pe</sub> +</th></tr>${c.roof.map(z => `<tr><td>${z.zone}</td><td>${f1(z.area)}</td><td>${fp(z.cpe.neg)}</td><td>${fp(z.cpe.pos)}</td></tr>`).join('')}</table>`

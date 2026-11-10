@@ -909,31 +909,44 @@ function psiOf(s) { return { Q: [s.psiQ === '1.0' ? 1.0 : 0.7, 0.5, 0.3], S: [+s
 // ---------- drawing ----------
 const W = 760, PADL = 46, PADR = 24;
 function xmap(Ltot) { const s = (W - PADL - PADR) / Ltot; return x => PADL + x * s; }
-function svgBeam(lay, loads, light) {
-  const X = xmap(lay.Ltot), y = 62, col = light ? '#000' : 'var(--txt)', acc = light ? '#b06000' : 'var(--accent)', mut = light ? '#555' : 'var(--mut)';
-  const caseCol = { G: col, Q: acc, S: light ? '#0060b0' : '#b45309', W: light ? '#7a3eb0' : '#5f6368' };
-  let g = `<line x1="${X(0)}" y1="${y}" x2="${X(lay.Ltot)}" y2="${y}" stroke="${col}" stroke-width="3"/>`;
+// the model: members to scale, supports, springs and hinges; every load with its case and value, distributed loads stacked
+// so that none overlap; after a run, the ULS reactions under each support (uplift in red)
+function svgBeam(lay, loads, light, R) {
+  const X = xmap(lay.Ltot), ink = '#222a31', mut = '#6b7680', CC = { G: '#c4242a', Q: '#1d5fbf', S: '#0f7b6c', W: '#7a3eb0' };
+  const nm = v => String(+(+v).toFixed(2)), T = (x, y, t, o = {}) => `<text x="${(+x).toFixed(1)}" y="${(+y).toFixed(1)}" font-size="${o.size || 10.5}" text-anchor="${o.anchor || 'start'}" fill="${o.c || ink}"${o.w ? ` font-weight="${o.w}"` : ''} paint-order="stroke" stroke="#fff" stroke-width="3">${t}</text>`;
+  const arr = (x0, y0, x1, y1, c, w = 1.1) => { const a = Math.atan2(y1 - y0, x1 - x0), hx = x1 - 6 * Math.cos(a), hy = y1 - 6 * Math.sin(a), px = 2.8 * Math.sin(a), py = -2.8 * Math.cos(a);
+    return `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${hx.toFixed(1)}" y2="${hy.toFixed(1)}" stroke="${c}" stroke-width="${w}"/><path d="M${x1.toFixed(1)} ${y1.toFixed(1)} L${(hx + px).toFixed(1)} ${(hy + py).toFixed(1)} L${(hx - px).toFixed(1)} ${(hy - py).toFixed(1)} Z" fill="${c}"/>`; };
+  const glob = l => { const m = lay.mem[l.member]; if (!m) return null; const a = l.type === 'udl' ? 0 : l.a, b = l.type === 'udl' ? m.L : l.b; return [m.x0 + a, m.x0 + (b ?? a)]; };
+  // levels for the distributed loads
+  const dist = loads.filter(l => ['udl', 'pudl', 'vdl'].includes(l.type) && lay.mem[l.member]), lv = [];
+  dist.forEach(l => { const [a, b] = glob(l); let k = 0; while (lv.some(o => o.k === k && o.a < b - 1 && o.b > a + 1)) k++; lv.push({ l, k, a, b }); });
+  const nLv = Math.max(0, ...lv.map(o => o.k + 1)), pts = loads.filter(l => l.type === 'point' && lay.mem[l.member]), cps = loads.filter(l => l.type === 'moment' && lay.mem[l.member]);
+  const y = 40 + 30 * nLv + (pts.length ? 30 : 6);
+  let g = Object.entries(CASES).map(([k, t], i) => T(PADL + i * 110, 14, t, { c: CC[k], size: 10 })).join('');
+  lv.forEach(({ l, k, a, b }) => {
+    const c = CC[l.case] || ink, w1 = l.type === 'vdl' ? l.w1 : l.w, w2 = l.type === 'vdl' ? l.w2 : l.w, wm = Math.max(Math.abs(w1), Math.abs(w2), 1e-9), up = (w1 + w2) < 0;
+    const yb = y - 6 - 30 * k, h1 = 5 + 13 * Math.abs(w1) / wm, h2 = 5 + 13 * Math.abs(w2) / wm, n = Math.max(2, Math.round((X(b) - X(a)) / 24));
+    g += `<line x1="${X(a).toFixed(1)}" y1="${(yb - h1).toFixed(1)}" x2="${X(b).toFixed(1)}" y2="${(yb - h2).toFixed(1)}" stroke="${c}" stroke-width="1.1"/>`;
+    for (let i = 0; i <= n; i++) { const t = i / n, x = X(a + (b - a) * t), hh = h1 + (h2 - h1) * t; g += up ? arr(x, yb, x, yb - hh, c, 1) : arr(x, yb - hh, x, yb, c, 1); }
+    g += T(X(a) + 3, yb - Math.max(h1, h2) - 4, `${l.case}${l.sw ? ' self weight' : ''} ${l.type === 'vdl' ? `${nm(w1)}–${nm(w2)}` : nm(l.w)} kN/m`, { c, w: 600, size: 10 });
+  });
+  pts.forEach(l => { const c = CC[l.case] || ink, x = X(lay.mem[l.member].x0 + l.a), up = l.P < 0; g += up ? arr(x, y - 3, x, y - 30 * nLv - 30, c, 1.5) : arr(x, y - 30 * nLv - 30, x, y - 3, c, 1.5); g += T(x + 4, y - 30 * nLv - 22, `${l.case} ${nm(l.P / 1e3)} kN`, { c, w: 600, size: 10 }); });
+  cps.forEach(l => { const c = CC[l.case] || ink, x = X(lay.mem[l.member].x0 + l.a); g += `<path d="M${x - 10} ${y - 4} a 11 11 0 1 1 20 0" fill="none" stroke="${c}" stroke-width="1.5"/>` + arr(x + 10.5, y - 9, x + 10, y - 3, c, 1.5) + T(x + 6, y + 18, `${l.case} ${nm(l.M / 1e6)} kNm`, { c, w: 600, size: 10 }); });
+  // the beam, supports, hinges and springs, joint letters and member lengths
+  g += `<line x1="${X(0)}" y1="${y}" x2="${X(lay.Ltot)}" y2="${y}" stroke="${ink}" stroke-width="3"/>`;
   for (const j of lay.joints) {
     const x = X(j.x);
-    if (j.sup === 'fixed') g += `<line x1="${x}" y1="${y - 16}" x2="${x}" y2="${y + 16}" stroke="${col}" stroke-width="2"/>` + [...Array(5)].map((_, k) => `<line x1="${x}" y1="${y - 14 + k * 7}" x2="${x + (j.x === 0 ? -7 : 7)}" y2="${y - 19 + k * 7}" stroke="${mut}"/>`).join('');
-    else if (j.sup === 'pin') g += `<path d="M${x} ${y + 2} l-8 13 h16 z" fill="none" stroke="${col}" stroke-width="1.5"/>`;
-    else if (j.sup === 'spring') g += `<path d="M${x} ${y + 2} l0 3 l-5 2 l10 3 l-10 3 l10 3 l-5 2 l0 3 M${x - 8} ${y + 21} h16" fill="none" stroke="${col}" stroke-width="1.2"/>`;
-    if (j.hinge) g += `<circle cx="${x}" cy="${y}" r="4" fill="${light ? '#fff' : 'var(--surf)'}" stroke="${col}" stroke-width="1.5"/>`;
-    g += `<text x="${x}" y="${y + 36}" text-anchor="middle" font-size="10" fill="${mut}">${String.fromCharCode(65 + j.i)}</text>`;
+    if (j.sup === 'fixed') g += `<line x1="${x}" y1="${y - 16}" x2="${x}" y2="${y + 16}" stroke="${ink}" stroke-width="2"/>` + [...Array(5)].map((_, k) => `<line x1="${x}" y1="${y - 14 + k * 7}" x2="${x + (j.x === 0 ? -7 : 7)}" y2="${y - 19 + k * 7}" stroke="${mut}"/>`).join('');
+    else if (j.sup === 'pin') g += `<path d="M${x} ${y + 2} l-8 13 h16 z" fill="#fff" stroke="${ink}" stroke-width="1.5"/>`;
+    else if (j.sup === 'spring') g += `<path d="M${x} ${y + 2} l0 3 l-5 2 l10 3 l-10 3 l10 3 l-5 2 l0 3 M${x - 8} ${y + 21} h16" fill="none" stroke="${ink}" stroke-width="1.2"/>`;
+    if (j.hinge) g += `<circle cx="${x}" cy="${y}" r="4" fill="#fff" stroke="${ink}" stroke-width="1.5"/>`;
+    g += T(x, y + 34, String.fromCharCode(65 + j.i), { anchor: 'middle', c: mut, w: 600 });
+    if (R && R.envU && j.sup !== 'free') { const r = R.envU.reac[j.i]; g += T(x, y + 48, `${fmt(kN(r.Rmax))}`, { anchor: 'middle', size: 10 }) + (r.Rmin < -1 ? T(x, y + 60, `${fmt(kN(r.Rmin))}`, { anchor: 'middle', size: 10, c: '#c4242a' }) : ''); }
   }
-  lay.mem.forEach(m => { g += `<text x="${(X(m.x0) + X(m.x1)) / 2}" y="${y + 36}" text-anchor="middle" font-size="10" fill="${mut}">${(m.L / 1000).toFixed(2)} m</text>`; });
-  const lvl = { G: 0, Q: 1, S: 2, W: 3 };
-  for (const l of loads) {
-    const m = lay.mem[l.member]; if (!m) continue;
-    const c = caseCol[l.case] || col, top = y - 22 - 9 * (lvl[l.case] || 0);
-    if (l.type === 'udl' || l.type === 'pudl' || l.type === 'vdl') {
-      const a = l.type === 'udl' ? 0 : l.a, b = l.type === 'udl' ? m.L : l.b;
-      g += `<rect x="${X(m.x0 + a)}" y="${top}" width="${Math.max(1, X(m.x0 + b) - X(m.x0 + a))}" height="7" fill="none" stroke="${c}" stroke-width="1"/>`;
-    } else if (l.type === 'point') { const x = X(m.x0 + l.a); g += `<line x1="${x}" y1="${y - 52}" x2="${x}" y2="${y - 5}" stroke="${c}" stroke-width="1.5"/><path d="M${x} ${y - 3} l-4 -7 h8 z" fill="${c}"/>`; }
-    else if (l.type === 'moment') { const x = X(m.x0 + l.a); g += `<path d="M${x - 9} ${y - 6} a 10 10 0 1 1 18 0" fill="none" stroke="${c}" stroke-width="1.5"/>`; }
-  }
-  g += Object.entries(CASES).map(([k], i) => `<text x="${PADL + i * 54}" y="12" font-size="10" fill="${caseCol[k]}">${k} ▭</text>`).join('');
-  return `<svg class="${light ? 'rsvg' : 'diag'}" viewBox="0 0 ${W} 104">${g}</svg>`;
+  lay.mem.forEach(m => { g += T((X(m.x0) + X(m.x1)) / 2, y + 34, `${(m.L / 1000).toFixed(2)} m`, { anchor: 'middle', c: mut, size: 10 }); });
+  const hgt = y + (R && R.envU ? 66 : 42);
+  if (R && R.envU) g += T(PADL, hgt + 6, 'Under each support: the ULS reaction, kN (upward +); red, the uplift case where there is one.', { c: mut, size: 10 });
+  return `<svg class="${light ? 'rsvg' : 'diag'}" viewBox="0 0 ${W} ${hgt + 12}">${g}</svg>`;
 }
 function svgPlot(lay, st, hi, lo, unit, scaleTo, light, invert, dec = 1) {
   const X = xmap(lay.Ltot), H = 150, y0 = 75;
@@ -1009,7 +1022,7 @@ function reacTable(R, light) {
 function render(R, key) {
   const lay = R.res.lay, st = R.res.st, d = viewData(R, key);
   let h = `<div class="viewsel"><span class="dlabel" style="margin:0">Show</span><select id="view">${viewOptions(R).map(([k, t]) => `<option value="${k}"${k === key ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`;
-  h += `<div class="dlabel">Model</div>${svgBeam(lay, R.model.loads, false)}`;
+  h += `<div class="dlabel">Model, loads and ULS reactions</div>${svgBeam(lay, R.model.loads, false, R)}`;
   h += `<div class="dlabel">Bending moment (kNm, sagging plotted below)</div>${svgPlot(lay, st, d.M[0], d.M[1], 'kNm', 1e6, false, true)}`;
   h += `<div class="dlabel">Shear force (kN)</div>${svgPlot(lay, st, d.V[0], d.V[1], 'kN', 1e3, false, false)}`;
   h += `<div class="dlabel">Deflection (mm, downward plotted below)</div>${svgPlot(lay, st, d.W[0], d.W[1], 'mm', 1, false, true, 2)}`;
@@ -1036,7 +1049,7 @@ function report(R) {
   const s = R.s, lay = R.res.lay, st = R.res.st, today = new Date().toLocaleDateString('en-GB'), names = memberNames(s.joints);
   const head = `<div class="rh"><div><b>Project</b>${esc(s.proj.name) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.proj.job) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.proj.by) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.proj.ref) || '&nbsp;'}</div>
     <div class="ttl">Beam analysis &mdash; ${lay.mem.length} member${lay.mem.length > 1 ? 's' : ''}, ${(lay.Ltot / 1000).toFixed(2)} m</div></div>`;
-  let b = `<div class="rs"><h2>1 Model</h2>${svgBeam(lay, R.model.loads, true)}<table class="rt"><tr><th>Member</th><th>L (m)</th><th>E (kN/mm²)</th><th>I (cm⁴)</th><th>Section</th></tr>` +
+  let b = `<div class="rs"><h2>1 Model</h2>${svgBeam(lay, R.model.loads, true, R)}<table class="rt"><tr><th>Member</th><th>L (m)</th><th>E (kN/mm²)</th><th>I (cm⁴)</th><th>Section</th></tr>` +
     s.members.map((m, i) => `<tr><td>${names[i]}</td><td>${m.L.toFixed(2)}</td><td>${m.E}</td><td>${m.I}</td><td>${esc(m.sec) || '&ndash;'}</td></tr>`).join('') + `</table>` +
     `<table class="rt"><tr><th>Joint</th><th>x (m)</th><th>Support</th><th>k<sub>v</sub> (kN/mm)</th><th>k<sub>&theta;</sub> (kNm/rad)</th><th>Hinge</th></tr>` +
     lay.joints.map(j => `<tr><td>${String.fromCharCode(65 + j.i)}</td><td>${(j.x / 1000).toFixed(2)}</td><td>${SUPS[j.sup]}</td><td>${j.sup === 'spring' && j.kv ? fmt(j.kv / 1e3, 1) : '&ndash;'}</td><td>${j.sup === 'spring' && j.kr ? fmt(j.kr / 1e6, 0) : '&ndash;'}</td><td>${j.hinge ? 'yes' : ''}</td></tr>`).join('') + `</table></div>`;

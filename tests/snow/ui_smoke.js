@@ -13,12 +13,12 @@ const sel = (id, v) => { $(id).value = v; $(id).dispatchEvent(new w.Event('chang
 truth('page loads without script errors', w.errs.length === 0);
 truth('monopitch first: its inputs only', shown(d.querySelector('.m-mono')) && !shown(d.querySelector('.m-duo')) && !shown(d.querySelector('.m-abut')));
 $('calc').click();
-truth('monopitch: summary, sk, one persistent case with a section', /Snow on the roof up to 0\.400 kN\/m²/.test(res()) && /sk \(kN\/m²\)0\.500/.test(res()) && d.querySelectorAll('#results .case').length === 1 && d.querySelectorAll('#results svg.sec').length === 1 && !/Accidental/.test(res()));
+truth('monopitch: summary, sk, one persistent case with a section', /Snow on the roof up to 0\.400 kN\/m²/.test(res()) && /0\.400 kN\/m²μ 0\.80/.test(d.querySelector('#results svg.dk').textContent) && /sk \(kN\/m²\)0\.500/.test(res()) && d.querySelectorAll('#results .case').length === 1 && d.querySelectorAll('#results svg.dk').length === 1 && !/Accidental/.test(res()));
 const expect = { duo: [3, /Table NA\.1/], multi: [2, /Annex B2/], cyl: [2, /Table NA\.2/], abut: [2, /Table B1/], parapet: [2, /B4\(3\)/], obstr: [2, /Figure B3/], canopy: [2, /Figure B3/] };
 for (const [t, [k, re]] of Object.entries(expect)) {
   sel('type', t); truth(`${t}: its inputs shown`, shown(d.querySelector('.m-' + t)) && !shown(d.querySelector('.m-mono')));
   $('calc').click();
-  truth(`${t}: ${k} cases, references, sections, no error`, d.querySelectorAll('#results .case').length === k && re.test(res()) && d.querySelectorAll('#results svg.sec').length === k && !$('results').querySelector('.err'));
+  truth(`${t}: ${k} cases, references, sections, no error`, d.querySelectorAll('#results .case').length === k && re.test(res()) && d.querySelectorAll('#results svg.dk').length === k && !$('results').querySelector('.err'));
   if (t !== 'duo' && t !== 'cyl') truth(`${t}: accidental drift reported`, /Accidental/.test(res()) && /exceptional drift up to/.test(res()));
 }
 sel('zone', '6.5'); $('alt').value = '400'; $('calc').click(); truth('zone and altitude change sk', /sk \(kN\/m²\)1\.421/.test(res()));

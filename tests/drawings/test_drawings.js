@@ -186,5 +186,29 @@ async function sweep(f, cases, expect) {
     const r = w.document.getElementById('results'), plan = r.querySelector('svg.plan'), elev = r.querySelector('svg.elev');
     truth(`RC Flat Slab Design (${bay} bay): punching views, strip widths and bars, loads on the elevation`, r.querySelectorAll('svg.dk').length === 3 && !!plan && /CS H\d+ @ \d+/.test(plan.textContent) && /MS H\d+ @ \d+/.test(plan.textContent) && /kN\/m²/.test(elev.textContent) && !bad(r.innerHTML) && errs.length === 0); w.close();
   }
+  for (const t of ['mono', 'duo', 'multi', 'cyl', 'abut', 'parapet', 'obstr', 'canopy']) {
+    const { w, errs } = await load('Snow Loading.html'); set(w, 'type', t, 'change'); w.document.getElementById('calc').click(); await wait(150);
+    const r = w.document.getElementById('results'), cases = r.querySelectorAll('.case'), svgs = r.querySelectorAll('.case svg.dk');
+    truth(`Snow Loading (${t}): a drawing per case with the loads in kN/m² and the roof dimensioned`, cases.length > 0 && svgs.length === cases.length && [...svgs].every(s => /kN\/m²/.test(s.textContent) || /no load/.test(s.textContent)) && /\d\.\d\d m/.test(svgs[0].textContent) && !bad(r.innerHTML) && errs.length === 0); w.close();
+  }
+  {
+    const { w, errs } = await load('Beam Analysis.html');
+    w.eval(`loadRow({ case: 'Q', member: 0, type: 'point', P: 30, a: 2 }); loadRow({ case: 'S', member: 1, type: 'vdl', w1: 2, w2: 6, a: 1, b: 5 }); loadRow({ case: 'G', member: 2, type: 'moment', M: 15, a: 0.5 });`);
+    const pre = w.document.getElementById('results').innerHTML;
+    w.document.getElementById('calc').click(); await wait(400);
+    const h = w.document.getElementById('results').querySelector('svg.diag').textContent;
+    truth('Beam Analysis: the model gives every load with its value, and the ULS reactions after a run', /G 8 kN\/m/.test(pre) && /Q 10 kN\/m/.test(h) && /W -3 kN\/m/.test(h) && /Q 30 kN/.test(h) && /S 2–6 kN\/m/.test(h) && /G 15 kNm/.test(h) && /184\.6|1\d\d\.\d/.test(h) && !bad(w.document.getElementById('results').innerHTML) && errs.length === 0); w.close();
+  }
+  for (const [rt, pitch] of [['flat', 0], ['mono', 10], ['duo', 25]]) {
+    const { w, errs } = await load('Wind Loading.html'); set(w, 'rtype', rt, 'change'); if (pitch) set(w, 'pitch', String(pitch)); w.document.getElementById('calc').click(); await wait(200);
+    let ok = true;
+    for (let k = 0; k < 4; k++) {
+      w.document.querySelector(`#cases button[data-k="${k}"]`).click(); await wait(60);
+      const r = w.document.getElementById('results'), plan = r.querySelector('svg.plan'), elev = r.querySelector('svg.elev');
+      ok = ok && !!plan && !!elev && /[+-]\d\.\d\d/.test(plan.textContent) && /kN\/m²/.test(plan.textContent) && /\d+\.\d kN/.test(elev.textContent) && !bad(r.innerHTML);
+    }
+    w.document.getElementById('printBtn').click();
+    truth(`Wind Loading (${rt} roof): every direction's plan gives c_pe and w_e by zone, the face the overall force; all on the A4 sheet`, ok && w.document.getElementById('report').querySelectorAll('svg.plan').length === 4 && errs.length === 0); w.close();
+  }
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
