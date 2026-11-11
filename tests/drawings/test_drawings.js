@@ -1,6 +1,6 @@
 // Drawings on Composite Beam, Floor Vibration, Steel Member, Concrete Tie Force and RC Crack Width (group 1) and on Steel Beam
 // Torsion, Beam Web Openings, Steel Frame Design, Sheet Pile Wall, the RC Section Toolkit tabs, RC Column, Hollowcore Support
-// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages to Timber Member (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
+// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages to Timber Stud Wall (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
 //   NODE_PATH=<jsdom>/node_modules node tests/drawings/test_drawings.js
 const fs = require('fs'), path = require('path'), { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '../..');
@@ -354,5 +354,10 @@ async function sweep(f, cases, expect) {
     ['a moment', w => act(w, 'Q', 0, 2, 0, 0)], ['wind on the face', w => act(w, 'W', 0, 0, 0, 1.5)], ['tension', w => act(w, 'W', -80, 0, 0, 0)],
     ['restrained mid-height', w => set(w, 'kY', '0.5')], ['glulam', w => { set(w, 'fam', 'glulam', 'change'); set(w, 'h', '315'); }], ['LVL', w => set(w, 'fam', 'other', 'change')],
   ], 1);
+  await sweep('Timber Stud Wall.html', [
+    ['taller', w => set(w, 'H', '3000')], ['closer studs', w => set(w, 's', '400')], ['deeper studs', w => set(w, 'h', '89')], ['noggings', w => set(w, 'restraint', 'noggings', 'change')],
+    ['two rows', w => set(w, 'rows', '2')], ['no restraint', w => set(w, 'restraint', 'none', 'change')], ['loads per stud', w => set(w, 'per', 'stud', 'change')],
+    ['off centre', w => set(w, 'e', '40')], ['thicker plate', w => set(w, 'tp', '50')], ['no wind', w => { const r = [...w.document.querySelectorAll('#loadRows .row')].pop(); r.querySelector('.xbtn').click(); }],
+  ], 2);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
