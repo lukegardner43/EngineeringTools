@@ -69,6 +69,8 @@ li.planned > div{display:grid;grid-template-columns:minmax(0,1fr) 220px 16px;gap
 li:first-child.planned > div{border-top:none;}
 li.planned .nm{font-weight:500;color:var(--mut);}
 .pill{display:inline-block;font-size:12px;font-weight:500;padding:2px 9px;border-radius:999px;background:#eeeeee;color:#3d3d3d;}
+.pill.vt{font-weight:600;margin-bottom:3px;background:#f2b33d;color:#221500;}   /* verification tags: see the footer */
+.pill.vt-part{background:#fbe3b0;color:#3d2a00;}
 ul{list-style:none;}
 li a{display:grid;grid-template-columns:minmax(0,1fr) 220px 16px;gap:24px;align-items:center;padding:12px 24px;text-decoration:none;color:inherit;border-top:1px solid var(--rule);}
 li:first-child a{border-top:none;}
@@ -140,6 +142,7 @@ mark{background:none;color:inherit;font-weight:600;text-decoration:underline;tex
 
   <footer>
     <p class="disc"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent engineer to check and approve all calculations before they are used.</p>
+    <p><span class="pill vt">Not yet verified</span> tools have been checked only against our own hand calculations so far, and <span class="pill vt vt-part">Partly verified</span> tools reproduce published worked examples for some of their checks but not all: check their results independently. Each tool’s page says what has been checked.</p>
     <p>Methods follow the published standards and the SCI and Concrete Centre guidance cited in each tool.</p>
     <p>Photographs, via Wikimedia Commons: <a href="https://commons.wikimedia.org/wiki/File:St._Vincent_Hospital_Construction,_Billings_MT,_2026.jpg">steel frame</a> by Chevsapher (CC0);
       <a href="https://commons.wikimedia.org/wiki/File:Span_12_Roadway_Formwork_and_Reinforcing_(November_4,_2016)_(30727949610).jpg">deck reinforcement</a> by MassDOT (public domain);
@@ -225,7 +228,10 @@ const TOOLS = [
 ];
 const GROUPS = ['Steel', 'Concrete', 'Masonry', 'Timber', 'Loading', 'Analysis', 'Geotechnical'];
 const PHOTO = { Steel: 'steel', Concrete: 'concrete', Masonry: 'masonry', Timber: 'timber', Loading: 'windsock', Analysis: 'frame', Geotechnical: 'ground' };
+const VERIFY = {"Base Plate Design.html": "no", "Beam Web Openings.html": "part", "Bolt Group Analysis.html": "no", "Composite Beam Design.html": "no", "Concrete Tie Force.html": "no", "ConnectionCheck.html": "part", "Floor Vibration.html": "no", "Hollowcore Support Beam.html": "no", "Masonry Bearing.html": "part", "Masonry Column.html": "no", "Masonry Wall Panel.html": "part", "Precast Connections.html": "no", "RC Corbel and Nib Design.html": "part", "RC Crack Width.html": "no", "RC Lintel Design.html": "no", "RC Slab FE Design.html": "part", "Retaining Wall.html": "part", "Sheet Pile Wall.html": "no", "Snow Loading.html": "no", "Steel Beam Analysis and Design.html": "part", "Steel Beam Torsion.html": "part", "Steel Column Design.html": "no", "Steel Frame Design.html": "part", "Steel Masonry Support.html": "no", "Steel Member Design.html": "part", "Steel Member Fire Design.html": "no", "Timber Connections.html": "part", "Timber Racking Wall.html": "no", "Wind Loading.html": "part", "Windpost Design.html": "no"};   // the verification tags (scratchpad/verify/tags.py; the ROADMAP's Verification status)
 const LIVE = TOOLS.filter(t => t[1]);
+const TAG = { no: ['Not yet verified', 'vt'], part: ['Partly verified', 'vt vt-part'] };
+const tag = t => { const v = TAG[VERIFY[t[1]]]; return v ? `<span class="pill ${v[1]}">${v[0]}</span><br>` : ''; };
 const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const hl = (s, words) => { let h = esc(s); for (const w of words) if (w.length > 1) h = h.replace(new RegExp('(' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'ig'), '<mark>$1</mark>'); return h; };
 const chev = '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>';
@@ -233,7 +239,7 @@ const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 let group = 'All';
 function render() {
   const raw = document.getElementById('q').value.trim(), q = raw.toLowerCase(), words = q.split(/\s+/).filter(Boolean);
-  const hit = t => words.every(w => (t[2] + ' ' + t[3] + ' ' + t[4] + ' ' + t[5] + ' ' + t[0]).toLowerCase().includes(w));
+  const hit = t => words.every(w => (t[2] + ' ' + t[3] + ' ' + t[4] + ' ' + t[5] + ' ' + t[0] + ' ' + (TAG[VERIFY[t[1]]] || [''])[0]).toLowerCase().includes(w));
   const found = TOOLS.filter(hit), shown = found.filter(t => group === 'All' || t[0] === group);
   const live = g => found.filter(t => t[1] && (g === 'All' || t[0] === g)).length, planned = g => found.filter(t => !t[1] && t[0] === g).length;
   document.getElementById('tabs').innerHTML = ['All', ...GROUPS].map(g => `<button role="tab" aria-selected="${g === group}" class="${g === group ? 'on' : ''}" data-g="${g}">${g}<span>${live(g) || (planned(g) ? 'planned' : 0)}</span></button>`).join('');
@@ -241,7 +247,7 @@ function render() {
     const rows = shown.filter(t => t[0] === g); if (!rows.length) return '';
     const n = rows.filter(t => t[1]).length, p = rows.length - n;
     return `<section><h2><i style="--photo:url(img/${PHOTO[g]}.jpg)"></i>${g}<span>${n ? plural(n, 'tool') : ''}${n && p ? ', ' : ''}${p ? p + ' planned' : ''}</span></h2><ul>${rows.map(t => t[1]
-      ? `<li><a href="${encodeURI(t[1])}"><div><div class="nm">${hl(t[2], words)}</div><div class="ds">${hl(t[3], words)}</div></div><div class="std">${hl(t[4], words)}</div>${chev}</a></li>`
+      ? `<li><a href="${encodeURI(t[1])}"><div><div class="nm">${hl(t[2], words)}</div><div class="ds">${hl(t[3], words)}</div></div><div class="std">${tag(t)}${hl(t[4], words)}</div>${chev}</a></li>`
       : `<li class="planned"><div><div><div class="nm">${hl(t[2], words)}</div><div class="ds">${hl(t[3], words)}</div></div><div class="std"><span class="pill">Planned</span> ${hl(t[4], words)}</div><span></span></div></li>`).join('')}</ul></section>`;
   }).join('');
   document.getElementById('count').textContent = q ? `${plural(shown.filter(t => t[1]).length, 'tool')} match “${raw}”` : '';
@@ -252,6 +258,7 @@ function render() {
 console.assert(GROUPS.reduce((s, g) => s + TOOLS.filter(t => t[0] === g).length, 0) === TOOLS.length, 'every tool is in a group');
 console.assert(LIVE.length === 50, 'live tools');
 console.assert(TOOLS.length - LIVE.length === 14, 'planned tools');
+console.assert(Object.keys(VERIFY).every(p => LIVE.some(t => t[1] === p)), 'every verification tag names a live tool');
 document.getElementById('q').addEventListener('input', render);
 document.getElementById('tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { group = b.dataset.g; render(); } });
 (function slideshow() {   // a new photograph every 6 s, each fetched one slide ahead; none while the tab is hidden or the reader prefers less motion
