@@ -310,5 +310,14 @@ async function sweep(f, cases, expect) {
     ['edge bay', w => { set(w, 'bay', 'edge', 'change'); set(w, 'b', '4050'); }], ['circular column 3', w => { q(w, '#colRows .row:nth-child(3) .shape', 'circ', 'change'); q(w, '#colRows .row:nth-child(3) .c1', '500'); }],
     ['four spans', w => w.document.getElementById('addSpan').click()], ['heavy imposed load', w => set(w, 'qk', '10')],
   ], 3);
+  await sweep('RC Ribbed and Waffle Slabs.html', [
+    ['span 2 at 9 m', w => q(w, '#spanRows .row:nth-child(2) .L', '9')], ['no solid zone at the end', w => q(w, '#spanRows .row:first-child .solL', '0')],
+    ['two transverse ribs', w => qa(w, '#spanRows .cross', '2', 'input')], ['vertical rib sides, wide centres', w => { set(w, 'taper', '0'); set(w, 's', '1200'); }],
+    ['no links, no mesh', w => { set(w, 'lphi', '0', 'change'); set(w, 'mesh', '0', 'change'); }], ['bearing ends', w => { q(w, '#supRows .row:first-child .kind', 'knife', 'change'); q(w, '#supRows .row:last-child .kind', 'knife', 'change'); }],
+    ['cantilever at the right', w => { q(w, '#supRows .row:last-child .kind', 'free', 'change'); q(w, '#spanRows .row:last-child .L', '1.8'); q(w, '#spanRows .row:last-child .solR', '0'); }],
+    ['waffle panel', w => w.document.querySelector('#modes [data-m="two"]').click()],
+    ['waffle, all edges continuous', w => ['eL1', 'eL2', 'eS1', 'eS2'].forEach(id => { const e = w.document.getElementById(id); e.checked = true; e.dispatchEvent(new w.Event('change', { bubbles: true })); })],
+    ['waffle, simply supported', w => set(w, 'method', 'simple', 'change')], ['waffle, no margins', w => set(w, 'margin', '0')], ['waffle, long panel', w => set(w, 'ly', '16')],
+  ], 2);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
