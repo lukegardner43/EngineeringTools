@@ -412,16 +412,159 @@ const EC5 = (() => {
   return { C, D, GL, CLASSES, material, DUR, kmod, kdef, ACTIONS, combinations, kh, kcrit, kc, bearing };
 })();
 
+/* ===== EC5 FASTENERS (EngineeringTools) =====
+   Metal dowel-type fasteners to BS EN 1995-1-1:2004+A2:2014 Section 8 (with the UK NA: γ_M 1.3 for connections). Shared by
+   Timber Connections and Timber Racking Wall. Needs nothing else. Units: N, mm.
+   - Embedment: nails up to 8 mm (8.15 not pre-drilled, 8.16 pre-drilled) in timber; plywood (8.20), OSB and particleboard
+     (8.22) for nails; bolts, dowels, nails over 8 mm and screws over 6 mm (8.31, 8.32 with k_90 by Hankinson) in timber,
+     plywood (8.36), OSB (8.37).
+   - Yield moment: round nails 0.3 f_u d^2.6 (8.14), bolts and dowels 0.3 f_u,k d^2.6 (8.30); screws with d_ef (8.7.1).
+   - Lateral capacity per shear plane: timber and panels in single shear (8.6, modes a–f) and double shear (8.7, g, h, j, k);
+     steel to timber, single shear thin (8.9) and thick (8.10) plates, double shear with a central plate (8.11) and with
+     thin (8.12) or thick (8.13) outer plates, interpolated for 0.5d < t < d (8.2.3(1)); the rope effect F_ax,Rk/4 capped at
+     15 % round nails, 25 % square nails and bolts, 50 % other nails, 100 % screws, 0 dowels of the Johansen part (8.2.2(2)).
+   - Withdrawal: smooth nails (8.24 with the headside shank) and other nails (8.23), f_ax,k = 20 × 10⁻⁶ρ_k², f_head,k =
+     70 × 10⁻⁶ρ_k² (8.25, 8.26) or declared, the penetration factors (8d/12d smooth, 6d/8d other), × 2/3 for timber
+     installed near saturation (8.3.2(7)); screws by A1 (8.38–8.40: 0.52 d^-0.5 l_ef^-0.1 ρ_k^0.8, k_d, the angle, n^0.9) or
+     declared values; bolts by the washer at 3 f_c,90,k (8.5.2).
+   - Effective number in a row along the grain: nails (8.17, Table 8.1), bolts and dowels (8.34); minimum spacings and
+     distances (Tables 8.2, 8.4, 8.5, with 0.85 for panels and 0.7 for steel on nail spacings); splitting (8.1.4, eq. 8.4);
+     slip modulus K_ser (Table 7.1). */
+const EC5F = (() => {
+  'use strict';
+  const ROPE = { smooth: 0.15, square: 0.25, ring: 0.5, screw: 1.0, bolt: 0.25, dowel: 0 };
+  const kef = a1d => { const T = [[4, 0.5], [7, 0.7], [8, 0.75], [9, 0.8], [10, 0.85], [12, 0.925], [14, 1]]; if (a1d >= 14) return 1; if (a1d <= 4) return 0.5;
+    for (let i = 1; i < T.length; i++) if (a1d <= T[i][0]) { const [x0, y0] = T[i - 1], [x1, y1] = T[i]; return y0 + (y1 - y0) * (a1d - x0) / (x1 - x0); } return 1; };
+  const rad = a => a * Math.PI / 180;
+
+  // ---------- embedment (N/mm²) ----------
+  /* m: { kind: 'timber'|'ply'|'osb', rhok, t (panel thickness), hard (hardwood), lvl }, f: { d, dowel: true for bolt-type rules,
+     predrilled }, alpha (degrees, load to grain) */
+  function fh(m, f, alpha = 0) {
+    const d = f.d;
+    if (!f.dowel) {   // nails ≤ 8 mm, screws ≤ 6 mm
+      if (m.kind === 'ply') return { v: 0.11 * m.rhok * d ** -0.3, eq: '8.20' };
+      if (m.kind === 'osb') return { v: 65 * d ** -0.7 * m.t ** 0.1, eq: '8.22' };
+      return f.predrilled ? { v: 0.082 * (1 - 0.01 * d) * m.rhok, eq: '8.16' } : { v: 0.082 * m.rhok * d ** -0.3, eq: '8.15' };
+    }
+    if (m.kind === 'ply') return { v: 0.11 * (1 - 0.01 * d) * m.rhok, eq: '8.36' };
+    if (m.kind === 'osb') return { v: 50 * d ** -0.6 * m.t ** 0.2, eq: '8.37' };
+    const f0 = 0.082 * (1 - 0.01 * d) * m.rhok, k90 = (m.hard ? 0.9 : m.lvl ? 1.3 : 1.35) + 0.015 * d, s = Math.sin(rad(alpha)), c = Math.cos(rad(alpha));
+    return { v: f0 / (k90 * s * s + c * c), f0, k90, eq: alpha ? '8.31, 8.32' : '8.32' };
+  }
+  const My = (fu, d) => 0.3 * fu * d ** 2.6;
+
+  // ---------- lateral capacity per shear plane (N) ----------
+  const ropeAdd = (J, Fax, cap) => J + Math.min(Fax / 4, cap * J);
+  /* timber or panel to timber, single shear (8.6): fh1, fh2, t1, t2, d, My, Fax, cap */
+  function single(p) {
+    const { fh1, fh2, t1, t2, d, My: M, Fax = 0, cap = 0 } = p, b = fh2 / fh1, r = t2 / t1, R = J => ropeAdd(J, Fax, cap);
+    const m = {
+      a: fh1 * t1 * d, b: fh2 * t2 * d,
+      c: R(fh1 * t1 * d / (1 + b) * (Math.sqrt(b + 2 * b * b * (1 + r + r * r) + b ** 3 * r * r) - b * (1 + r))),
+      d: R(1.05 * fh1 * t1 * d / (2 + b) * (Math.sqrt(2 * b * (1 + b) + 4 * b * (2 + b) * M / (fh1 * d * t1 * t1)) - b)),
+      e: R(1.05 * fh1 * t2 * d / (1 + 2 * b) * (Math.sqrt(2 * b * b * (1 + b) + 4 * b * (1 + 2 * b) * M / (fh1 * d * t2 * t2)) - b)),
+      f: R(1.15 * Math.sqrt(2 * b / (1 + b)) * Math.sqrt(2 * M * fh1 * d)),
+    };
+    return pick(m, b);
+  }
+  /* timber or panel, double shear (8.7): t1 the side members, t2 the central member */
+  function double(p) {
+    const { fh1, fh2, t1, t2, d, My: M, Fax = 0, cap = 0 } = p, b = fh2 / fh1, R = J => ropeAdd(J, Fax, cap);
+    const m = { g: fh1 * t1 * d, h: 0.5 * fh2 * t2 * d,
+      j: R(1.05 * fh1 * t1 * d / (2 + b) * (Math.sqrt(2 * b * (1 + b) + 4 * b * (2 + b) * M / (fh1 * d * t1 * t1)) - b)),
+      k: R(1.15 * Math.sqrt(2 * b / (1 + b)) * Math.sqrt(2 * M * fh1 * d)) };
+    return pick(m, b);
+  }
+  /* steel plate to timber, single shear: thin (8.9) and thick (8.10), interpolated between t ≤ 0.5d and t ≥ d (and a hole
+     clearance under 0.1d for thick); fh, t (timber), d, My, Fax, cap, ts (plate), thickOK */
+  function steelSingle(p) {
+    const { fh: f, t, d, My: M, Fax = 0, cap = 0 } = p, R = J => ropeAdd(J, Fax, cap);
+    const thin = { a: 0.4 * f * t * d, b: R(1.15 * Math.sqrt(2 * M * f * d)) };
+    const thick = { c: R(f * t * d * (Math.sqrt(2 + 4 * M / (f * d * t * t)) - 1)), d: R(2.3 * Math.sqrt(M * f * d)), e: f * t * d };
+    return blend(thin, thick, p);
+  }
+  /* steel plate in the middle, double shear (8.11): fh (side timber), t (side timber thickness) */
+  function steelCentral(p) {
+    const { fh: f, t, d, My: M, Fax = 0, cap = 0 } = p, R = J => ropeAdd(J, Fax, cap);
+    return pick({ f: f * t * d, g: R(f * t * d * (Math.sqrt(2 + 4 * M / (f * d * t * t)) - 1)), h: R(2.3 * Math.sqrt(M * f * d)) });
+  }
+  /* steel plates outside, double shear: thin (8.12) and thick (8.13), interpolated; fh and t of the central timber */
+  function steelOuter(p) {
+    const { fh: f, t, d, My: M, Fax = 0, cap = 0 } = p, R = J => ropeAdd(J, Fax, cap);
+    return blend({ j: 0.5 * f * t * d, k: R(1.15 * Math.sqrt(2 * M * f * d)) }, { l: 0.5 * f * t * d, m: R(2.3 * Math.sqrt(M * f * d)) }, p);
+  }
+  function pick(m, beta) { const k = Object.keys(m).reduce((a, b) => (m[b] < m[a] ? b : a)); return { modes: m, mode: k, F: m[k], beta }; }
+  function blend(thin, thick, p) {
+    const d = p.d, ts = p.ts, okThick = p.thickOK !== false, A = pick(thin), B = pick(thick);
+    if (!okThick || ts <= 0.5 * d) return { ...A, plate: 'thin', modes: { ...thin } };
+    if (ts >= d) return { ...B, plate: 'thick', modes: { ...thick } };
+    const w = (ts - 0.5 * d) / (0.5 * d), F = A.F + w * (B.F - A.F);
+    return { modes: { ...thin, ...thick }, mode: `${A.mode}/${B.mode}`, F, plate: `between (t = ${(ts / d).toFixed(2)}d, interpolated)`, w };
+  }
+
+  // ---------- withdrawal (N) ----------
+  // nails: smooth (8.24) or other (8.23); pointside penetration tp, headside thickness th; rho the point- and head-side ρ_k
+  function nailAx(o) {
+    const { type, d, tp, th, rhoP, rhoH, dh } = o, wet = o.wet ? 2 / 3 : 1, smooth = type !== 'ring';
+    const faxP = (o.faxk ?? 20e-6 * rhoP * rhoP) * wet, faxH = 20e-6 * rhoH * rhoH * wet, fhead = (o.fheadk ?? 70e-6 * rhoH * rhoH) * wet;
+    const pf = t => (smooth ? (t < 8 * d ? 0 : t < 12 * d ? t / (4 * d) - 2 : 1) : (t < 6 * d ? 0 : t < 8 * d ? t / (2 * d) - 3 : 1));
+    const point = faxP * pf(tp) * d * tp, head = (smooth ? faxH * pf(th) * d * th : 0) + fhead * dh * dh;
+    return { F: Math.min(point, head), point, head, faxP, fhead, kp: pf(tp), kh: smooth ? pf(th) : 0, eq: smooth ? '8.24' : '8.23' };
+  }
+  // screws, A1 (8.38–8.40) for 6 ≤ d ≤ 12 and 0.6 ≤ d1/d ≤ 0.75; otherwise from declared f_ax,k and ρ_a
+  function screwAx(o) {
+    const { d, d1, lef, rhok, alpha = 90, n = 1 } = o, nef = n ** 0.9, s = Math.sin(rad(alpha)), c = Math.cos(rad(alpha)), den = 1.2 * c * c + s * s;
+    const std = d >= 6 && d <= 12 && d1 / d >= 0.6 && d1 / d <= 0.75;
+    let fax, F1, how;
+    if (o.faxk > 0) { fax = o.faxk; F1 = fax * d * lef * (rhok / (o.rhoa || rhok)) ** 0.8 / den; how = '8.40a (declared)'; }
+    else if (std) { fax = 0.52 * d ** -0.5 * lef ** -0.1 * rhok ** 0.8; F1 = Math.min(d / 8, 1) * fax * d * lef / den; how = '8.38–8.40'; }
+    else return { F: NaN, why: 'outside 6 ≤ d ≤ 12 mm, 0.6 ≤ d₁/d ≤ 0.75: give the declared f_ax,k' };
+    return { F: F1, Fgroup: nef * F1, nef, fax, kd: Math.min(d / 8, 1), den, how };
+  }
+  // bolts: the washer bearing at 3 f_c,90,k; under a steel plate the washer diameter is not more than 12t or 4d
+  function boltAx(o) { const dw = o.plate ? Math.min(o.dw, 12 * o.plate, 4 * o.d) : o.dw, A = Math.PI / 4 * (dw * dw - (o.d + 1) ** 2); return { F: 3 * o.fc90k * Math.max(A, 0), A, dw }; }
+
+  // ---------- effective number in a row along the grain ----------
+  function nef(kind, n, a1, d, predrilled) {
+    if (n <= 1) return { v: n, k: 1 };
+    if (kind === 'nail' || kind === 'smallscrew') { const k = kef(a1 / d); return { v: n ** k, k, why: `k_ef = ${k.toFixed(3)} for a₁ = ${(a1 / d).toFixed(1)}d (8.17, Table 8.1)` }; }
+    const v = Math.min(n, n ** 0.9 * (a1 / (13 * d)) ** 0.25); return { v, why: 'min(n, n^0.9 (a₁/13d)^0.25) (8.34)' };
+  }
+
+  // ---------- minimum spacings and distances (mm) for an angle α (0–90) between force and grain ----------
+  function spacing(kind, d, rhok, opt = {}) {
+    const a = rad(opt.alpha || 0), s = Math.sin(a), c = Math.abs(Math.cos(a)), out = {};
+    if (kind === 'nail' || kind === 'smallscrew') {
+      const pd = opt.predrilled, big = !pd && rhok > 420, sm = d < 5;
+      if (pd) Object.assign(out, { a1: (4 + c) * d, a2: (3 + s) * d, a3t: (7 + 5 * c) * d, a3c: 7 * d, a4t: (sm ? 3 + 2 * s : 3 + 4 * s) * d, a4c: 3 * d, src: 'Table 8.2, pre-drilled' });
+      else if (big) Object.assign(out, { a1: (7 + 8 * c) * d, a2: 7 * d, a3t: (15 + 5 * c) * d, a3c: 15 * d, a4t: (sm ? 7 + 2 * s : 7 + 5 * s) * d, a4c: 7 * d, src: 'Table 8.2, 420 < ρ_k ≤ 500' });
+      else Object.assign(out, { a1: (sm ? 5 + 5 * c : 5 + 7 * c) * d, a2: 5 * d, a3t: (10 + 5 * c) * d, a3c: 10 * d, a4t: (sm ? 5 + 2 * s : 5 + 5 * s) * d, a4c: 5 * d, src: 'Table 8.2, ρ_k ≤ 420' });
+      const f = opt.panel ? 0.85 : opt.steel ? 0.7 : 1; if (f < 1) { out.a1 *= f; out.a2 *= f; out.src += `, spacings × ${f}`; }
+    } else if (kind === 'bolt' || kind === 'bigscrew') {
+      Object.assign(out, { a1: (4 + c) * d, a2: 4 * d, a3t: Math.max(7 * d, 80), a3c: s < 0.5 ? 4 * d : Math.max((1 + 6 * s) * d, 4 * d), a4t: Math.max((2 + 2 * s) * d, 3 * d), a4c: 3 * d, src: 'Table 8.4' });
+    } else {
+      const a3t = Math.max(7 * d, 80);
+      Object.assign(out, { a1: (3 + 2 * c) * d, a2: 3 * d, a3t, a3c: s < 0.5 ? 3 * d : Math.max(a3t * s, 3 * d), a4t: Math.max((2 + 2 * s) * d, 3 * d), a4c: 3 * d, src: 'Table 8.5' });
+    }
+    return out;
+  }
+  // splitting by a force at an angle to the grain (8.1.4, eq. 8.4), softwood: N
+  const F90 = (b, he, h) => (he < h ? 14 * b * Math.sqrt(he / (1 - he / h)) : Infinity);
+  // slip modulus per shear plane per fastener (Table 7.1), N/mm; ρ_m mean of the two members
+  const Kser = (kind, rhom, d, predrilled, steel) => (kind === 'nail' && !predrilled ? rhom ** 1.5 * d ** 0.8 / 30 : rhom ** 1.5 * d / 23) * (steel ? 2 : 1);
+  return { ROPE, kef, fh, My, single, double, steelSingle, steelCentral, steelOuter, nailAx, screwAx, boltAx, nef, spacing, F90, Kser };
+})();
+
 /* ===== TIMBER RACKING WALL ENGINE (EngineeringTools) =====
    The racking strength of a sheathed timber frame wall diaphragm by the simplified method of PD 6693-1:2025, clause 20
    (which the UK National Annex to BS EN 1995-1-1 calls up in place of 9.2.4), under the design wind load from this storey
-   and the storeys above. Needs EC5 (ec5/core.js).
-   - The sheathing fastener: F_f,Rd by BS EN 1995-1-1 8.2.2 (single shear, panel to timber, eq. 8.6) for smooth or
-     ring-shank nails: f_h of OSB (8.22) or plywood (8.20) and of the timber (8.15, not pre-drilled), M_y,Rk = 0.3 f_u d^2.6
-     (8.14), the rope effect F_ax,Rk/4 capped at 15 % (smooth) or 50 % (other nails) of the Johansen part, F_ax,Rk =
-     min(f_ax,k d t_pen, f_head,k d_h²) with f_ax,k = 20 × 10⁻⁶ ρ_k², f_head,k = 70 × 10⁻⁶ ρ_k² (8.25, 8.26: smooth-nail
-     values, safe for ring-shank), nothing for t_pen < 8d and a linear reduction to 12d; k_mod = √(k_mod,timber k_mod,panel)
-     for instantaneous load (2.3.2.1(2), Table 3.1), γ_M 1.3. Or F_f,Rd as given (screws, makers' values).
+   and the storeys above. Needs EC5 (ec5/core.js) and EC5F (ec5/fasteners.js).
+   - The sheathing fastener: F_f,Rd by BS EN 1995-1-1 8.2.2 through the shared fastener rules (ec5/fasteners.js): single
+     shear, panel to timber (8.6) for smooth or ring-shank nails, f_h of OSB (8.22) or plywood (8.20) and of the timber
+     (8.15), M_y,Rk (8.14), the rope effect capped at 15 % (smooth) or 50 % (ring-shank), F_ax,Rk by 8.24 (smooth, with the
+     headside shank) or 8.23 (ring-shank) with the smooth-nail f_ax,k and f_head,k (safe for ring-shank) and the penetration
+     factors; k_mod = √(k_mod,timber k_mod,panel) for instantaneous load (2.3.2.1(2), Table 3.1), γ_M 1.3. Or F_f,Rd as given.
    - f_p,d = 1.2 F_f,Rd (1 + 2.5s)/s (20) per sheathing layer; f_p,d,t = f_p,d,1 + K_comb f_p,d,2 with f_p,d,2 ≤ f_p,d,1 (17,
      18) and K_comb from Table 7; plasterboard alone by Table 8 (Clause 22); with a wood-based sheathing, plasterboard on
      the same diaphragm is ignored (21.3).
@@ -462,17 +605,11 @@ const TimberRacking = (() => {
     const d = pos(+f.d, 'The nail diameter'), len = pos(+f.len, 'The nail length'), t1 = pos(+panel.t, 'The sheathing thickness'), t2 = len - t1;
     if (!(t2 > 0)) throw new Error('The nail must be longer than the sheathing is thick');
     const P = PANELS[panel.kind], rp = +panel.rhok || P.rhok, rt = pos(+timber.rhok, 'The timber density'), fu = +f.fu || 600, dh = +f.dh || 2.25 * d;
-    const fh1 = P.fh === 'osb' ? 65 * d ** -0.7 * t1 ** 0.1 : 0.11 * rp * d ** -0.3, fh2 = 0.082 * rt * d ** -0.3, b = fh2 / fh1, My = 0.3 * fu * d ** 2.6;
-    let Fax = Math.min(20e-6 * rt * rt * d * t2, 70e-6 * rp * rp * dh * dh), why = '';
-    if (t2 < 8 * d) { Fax = 0; why = ' (t_pen < 8d: no withdrawal)'; } else if (t2 < 12 * d) { Fax *= t2 / (4 * d) - 2; why = ' (8d ≤ t_pen < 12d: reduced)'; }
-    const cap = f.type === 'ring' ? 0.5 : 0.15, rope = J => J + Math.min(Fax / 4, cap * J);
-    const modes = [fh1 * t1 * d, fh2 * t2 * d,
-      rope(fh1 * t1 * d / (1 + b) * (Math.sqrt(b + 2 * b * b * (1 + t2 / t1 + (t2 / t1) ** 2) + b ** 3 * (t2 / t1) ** 2) - b * (1 + t2 / t1))),
-      rope(1.05 * fh1 * t1 * d / (2 + b) * (Math.sqrt(2 * b * (1 + b) + 4 * b * (2 + b) * My / (fh1 * d * t1 * t1)) - b)),
-      rope(1.05 * fh1 * t2 * d / (1 + 2 * b) * (Math.sqrt(2 * b * b * (1 + b) + 4 * b * (1 + 2 * b) * My / (fh1 * d * t2 * t2)) - b)),
-      rope(1.15 * Math.sqrt(2 * b / (1 + b)) * Math.sqrt(2 * My * fh1 * d))];
-    const Fk = Math.min(...modes), mode = 'abcdef'[modes.indexOf(Fk)], Fd = kmod * Fk / 1.3;
-    return { d, len, t1, t2, dh, fu, rp, rt, fh1, fh2, beta: b, My, Fax, why, cap, modes, mode, Fk, kmod, Fd };
+    const fh1 = EC5F.fh({ kind: P.fh, rhok: rp, t: t1 }, { d }).v, fh2 = EC5F.fh({ kind: 'timber', rhok: rt }, { d }).v, My = EC5F.My(fu, d);
+    const ax = EC5F.nailAx({ type: f.type, d, tp: t2, th: t1, rhoP: rt, rhoH: rp, dh }), ring = f.type === 'ring';
+    const why = ax.kp === 0 ? ` (t_pen < ${ring ? 6 : 8}d: no withdrawal)` : ax.kp < 1 ? ` (t_pen < ${ring ? 8 : 12}d: reduced)` : '';
+    const cap = EC5F.ROPE[ring ? 'ring' : 'smooth'], L = EC5F.single({ fh1, fh2, t1, t2, d, My, Fax: ax.F, cap });
+    return { d, len, t1, t2, dh, fu, rp, rt, fh1, fh2, beta: L.beta, My, Fax: ax.F, why, cap, modes: Object.values(L.modes), mode: L.mode, Fk: L.F, kmod, Fd: kmod * L.F / 1.3 };
   }
 
   /* inp: { L, H (m), sc, stud: { cls, b, h, s (mm), rail (mm) }, sheath: { kind: 'OSB/3'|'OSB/4'|'ply'|'pb', pb, t, rhok,
