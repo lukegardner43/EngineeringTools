@@ -1,6 +1,6 @@
 // Drawings on Composite Beam, Floor Vibration, Steel Member, Concrete Tie Force and RC Crack Width (group 1) and on Steel Beam
 // Torsion, Beam Web Openings, Steel Frame Design, Sheet Pile Wall, the RC Section Toolkit tabs, RC Column, Hollowcore Support
-// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
+// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages to Timber Beam (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
 //   NODE_PATH=<jsdom>/node_modules node tests/drawings/test_drawings.js
 const fs = require('fs'), path = require('path'), { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '../..');
@@ -337,6 +337,15 @@ async function sweep(f, cases, expect) {
     ['spanning vertically', w => { set(w, 'eL', 'free', 'change'); set(w, 'l', '4500'); }], ['spanning horizontally', w => { set(w, 'eL', 'ss', 'change'); set(w, 'eR', 'ss', 'change'); set(w, 'eTopS', 'free', 'change'); set(w, 'eBotS', 'free', 'change'); }],
     ['single leaf', w => { set(w, 'eTopS', 'ss', 'change'); set(w, 'eBotS', 'ss', 'change'); const c = w.document.getElementById('cav'); c.checked = false; c.dispatchEvent(new w.Event('change', { bubbles: true })); }],
     ['no wind', w => set(w, 'wk', '0')], ['eccentric load', w => set(w, 'eT', '-30')], ['clay bricks', w => { set(w, 'unit', 'clay', 'change'); set(w, 't', '215'); }],
+  ], 1);
+  const row = (w, c, f, v, a, b, up) => { w.document.getElementById('addLoad').click(); const r = [...w.document.querySelectorAll('#loadRows .row')].pop(), q = s => r.querySelector(s);
+    q('.case').value = c; q('.form').value = f; q('.w').value = v; if (a != null) q('.a').value = a; if (b != null) q('.bb').value = b; q('.up').checked = !!up; q('.form').dispatchEvent(new w.Event('change', { bubbles: true })); };
+  const tick = (w, id, v) => { const c = w.document.getElementById(id); c.checked = v; c.dispatchEvent(new w.Event('change', { bubbles: true })); };
+  await sweep('Timber Beam.html', [
+    ['longer span', w => set(w, 'clear', '5200')], ['deeper', w => set(w, 'h', '250')], ['two plies', w => set(w, 'n', '2')],
+    ['notched', w => { tick(w, 'notchOn', true); set(w, 'hn', '40'); }], ['glulam', w => { set(w, 'fam', 'glulam', 'change'); set(w, 'b', '90'); }], ['product', w => set(w, 'fam', 'other', 'change')],
+    ['a point load', w => row(w, 'Q', 'point', 3, 2.0)], ['partial snow', w => row(w, 'S', 'partial', 1.5, 0.5, 3)], ['wind uplift', w => row(w, 'W', 'line', 1.2, null, null, true)],
+    ['no self-weight', w => tick(w, 'sw', false)], ['short bearing', w => set(w, 'lb', '50')],
   ], 1);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
