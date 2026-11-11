@@ -2331,7 +2331,7 @@ const W = 760, PADL = 40, PADR = 24;
 function layout(P) { const x0 = [0]; P.spans.forEach(s => x0.push(x0[x0.length - 1] + s.L)); const Lt = x0[x0.length - 1], sc = (W - PADL - PADR) / Lt; return { x0, Lt, X: x => PADL + x * sc }; }
 function svgElev(D, inp, light) {
   const A = D.A, P = A.P, Lo = layout(P), X = Lo.X, y = 96, hb = 18;
-  const col = light ? '#000' : 'var(--txt)', mut = light ? '#666' : 'var(--mut)', acc = light ? '#b06000' : 'var(--faint)', st = light ? '#1b67b0' : 'var(--accent)', con = light ? '#eee' : '#eceef1';
+  const col = light ? '#000' : 'var(--txt)', mut = light ? '#666' : 'var(--mut)', acc = light ? '#b06000' : '#a15c07', st = light ? '#1b67b0' : 'var(--accent)', con = light ? '#eee' : '#eceef1';
   let g = `<rect x="${X(0)}" y="${y}" width="${X(Lo.Lt) - X(0)}" height="${hb}" fill="${con}" stroke="${col}" stroke-width="1"/>`;
   P.supports.forEach((s, j) => {
     const x = X(Lo.x0[j]), w = Math.max(6, (X(s.width) - X(0)));
@@ -2341,11 +2341,15 @@ function svgElev(D, inp, light) {
     if (s.kind !== 'free') g += `<text x="${x}" y="${y + hb + 48}" font-size="9" text-anchor="middle" fill="${mut}">${j + 1}</text>`;
   });
   // loads (characteristic, above the beam)
+  const full = {};   // full-span UDLs summed per span and case, labelled once
   for (const l of inp.loads) {
-    const x0 = Lo.x0[l.span], c = l.case === 'Q' ? acc : col, top = l.case === 'Q' ? y - 58 : y - 44;
-    if (l.type === 'point') { const x = X(x0 + l.a * 1000); g += `<line x1="${x}" y1="${y - 64}" x2="${x}" y2="${y - 34}" stroke="${c}" stroke-width="1.4"/><path d="M${x} ${y - 32} l-4 -7 h8 z" fill="${c}"/><text x="${x + 3}" y="${y - 66}" font-size="9" fill="${c}">${f1(l.P)}</text>`; }
-    else { const a = l.type === 'udl' ? 0 : l.a * 1000, b = l.type === 'udl' ? P.spans[l.span].L : Math.min(P.spans[l.span].L, (l.a + l.b) * 1000); g += `<rect x="${X(x0 + a)}" y="${top}" width="${X(x0 + b) - X(x0 + a)}" height="9" fill="none" stroke="${c}" stroke-width="0.9"/>`; }
+    const x0 = Lo.x0[l.span], c = l.case === 'Q' ? acc : col, top = l.case === 'Q' ? y - 61 : y - 46;
+    if (l.type === 'point') { const x = X(x0 + l.a * 1000); g += `<line x1="${x}" y1="${y - 64}" x2="${x}" y2="${y - 34}" stroke="${c}" stroke-width="1.4"/><path d="M${x} ${y - 32} l-4 -7 h8 z" fill="${c}"/><text x="${x + 3}" y="${y - 66}" font-size="9" fill="${c}">${l.case} ${f1(l.P)}</text>`; }
+    else { const a = l.type === 'udl' ? 0 : l.a * 1000, b = l.type === 'udl' ? P.spans[l.span].L : Math.min(P.spans[l.span].L, (l.a + l.b) * 1000); g += `<rect x="${X(x0 + a)}" y="${top}" width="${X(x0 + b) - X(x0 + a)}" height="12" fill="none" stroke="${c}" stroke-width="0.9"/>`;
+      if (l.type === 'udl') { const k = l.span + l.case; full[k] = full[k] || { x: X(x0) + 3, y: top + 9.5, c, w: 0, cs: l.case }; full[k].w += l.w; }
+      else g += `<text x="${X(x0 + a) + 3}" y="${top + 9.5}" font-size="9" fill="${c}">${f1(l.w)}</text>`; }
   }
+  Object.values(full).forEach(f => { g += `<text x="${f.x}" y="${f.y}" font-size="9" fill="${f.c}">${f.cs} ${f1(f.w)}</text>`; });
   // bars: top over supports (extent of the longer bars), bottom per span, labels
   D.supZ.forEach((z, j) => { if (!z) return; const cs = D.curt.sup[j] || []; let xl = Lo.x0[j], xr = Lo.x0[j];
     cs.forEach(c => { if (c.side === 'L') xl = Lo.x0[j] - Math.max(c.all, 300); else xr = Lo.x0[j] + Math.max(c.all, 300); });
@@ -2353,7 +2357,7 @@ function svgElev(D, inp, light) {
     g += `<line x1="${X(xl)}" y1="${y + 3}" x2="${X(xr)}" y2="${y + 3}" stroke="${st}" stroke-width="2"/><text x="${endR ? xs - wc : xs + wc}" y="${y - 4}" font-size="9" text-anchor="${endR ? 'end' : 'start'}" fill="${st}">${z.top.n}H${z.top.phi}${z.comp ? ` + ${z.comp.n}H${z.comp.phi} btm` : ''}</text>`; });
   D.spanZ.forEach((z, i) => { const x0 = Lo.x0[i], L = z.s.L; g += `<line x1="${X(x0 + 40)}" y1="${y + hb - 3}" x2="${X(x0 + L - 40)}" y2="${y + hb - 3}" stroke="${st}" stroke-width="2"/><text x="${X(x0 + L / 2)}" y="${y + hb + 11}" font-size="9" text-anchor="middle" fill="${st}">${z.bot.n}H${z.bot.phi}</text>`;
     g += `<text x="${X(x0 + L / 2)}" y="${y + hb + 24}" font-size="9" text-anchor="middle" fill="${mut}">${f1(L / 1000)} m</text>`; });
-  g += `<text x="${PADL}" y="10" font-size="9.5" fill="${mut}">G ▭</text><text x="${PADL + 34}" y="10" font-size="9.5" fill="${acc}">Q ▭</text><text x="${PADL + 70}" y="10" font-size="9.5" fill="${st}">bars (top lengths from the curtailment)</text>`;
+  g += `<text x="${PADL}" y="10" font-size="9.5" fill="${mut}">G ▭</text><text x="${PADL + 34}" y="10" font-size="9.5" fill="${acc}">Q ▭</text><text x="${PADL + 70}" y="10" font-size="9.5" fill="${mut}">characteristic, kN/m and kN</text><text x="${PADL + 214}" y="10" font-size="9.5" fill="${st}">bars (top lengths from the curtailment)</text>`;
   return `<svg class="${light ? 'rsvg' : 'elev'}" viewBox="0 0 ${W} 172">${g}</svg>`;
 }
 function svgEnv(D, kind, light) {

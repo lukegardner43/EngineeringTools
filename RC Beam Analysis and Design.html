@@ -246,7 +246,7 @@ svg.elev,svg.env{width:100%;height:auto;display:block;margin:2px 0 10px;}
       </div>
       <button class="btn" id="calc">Calculate</button>
     </div>
-    <div><div class="card" id="results"><div class="placeholder">Set up the spans, supports and loads, then Calculate (or Suggest bars).</div></div></div>
+    <div><div class="card" id="results"><div id="drawings"></div><div class="placeholder">The drawings follow the inputs. Calculate (or Suggest bars) for the checks, the tables and the A4 sheet.</div></div></div>
   </div>
 </div>
 <div id="report"></div>
@@ -1432,7 +1432,7 @@ const DrawRCBeam = (() => {
       [`M ${r0(z.M / 1e6)} / M_Rd ${r0(R.res.MRd / 1e6)} kNm`],
       [`d ${r0(R.d)}, x ${r0(x)} mm`, { color: MUTE }],
       ...(extra || []),
-      [`flexure util ${u.toFixed(3)}`, { weight: 700, color: col }]];
+      [`utilisation ${Number.isFinite(u) ? u.toFixed(3) : '>99'}`, { weight: 700, color: col }]];
     let yy = yT;   // a line under a subscript gets more room, so its halo does not clip the subscript
     lines.forEach(([t, o], i) => { if (i) yy += /_/.test(lines[i - 1][0]) ? 17 : 14; g += text(cx, yy, t, Object.assign({ size: 9.5, anchor: 'middle' }, o || {})); });
     if (flanged && sec.b > bD + 1) g += text(cx, y0 - 4, `b_eff ${r0(sec.b)}`, { size: 9, anchor: 'middle', color: MUTE });
@@ -1584,7 +1584,7 @@ const W = 760, PADL = 40, PADR = 24;
 function layout(P) { const x0 = [0]; P.spans.forEach(s => x0.push(x0[x0.length - 1] + s.L)); const Lt = x0[x0.length - 1], sc = (W - PADL - PADR) / Lt; return { x0, Lt, X: x => PADL + x * sc }; }
 function svgElev(D, inp, light) {
   const A = D.A, P = A.P, Lo = layout(P), X = Lo.X, y = 96, hb = 18;
-  const col = light ? '#000' : 'var(--txt)', mut = light ? '#666' : 'var(--mut)', acc = light ? '#b06000' : 'var(--faint)', st = light ? '#1b67b0' : 'var(--accent)', con = light ? '#eee' : '#eceef1';
+  const col = light ? '#000' : 'var(--txt)', mut = light ? '#666' : 'var(--mut)', acc = light ? '#b06000' : '#a15c07', st = light ? '#1b67b0' : 'var(--accent)', con = light ? '#eee' : '#eceef1';
   let g = `<rect x="${X(0)}" y="${y}" width="${X(Lo.Lt) - X(0)}" height="${hb}" fill="${con}" stroke="${col}" stroke-width="1"/>`;
   P.supports.forEach((s, j) => {
     const x = X(Lo.x0[j]), w = Math.max(6, (X(s.width) - X(0)));
@@ -1594,11 +1594,15 @@ function svgElev(D, inp, light) {
     if (s.kind !== 'free') g += `<text x="${x}" y="${y + hb + 48}" font-size="9" text-anchor="middle" fill="${mut}">${j + 1}</text>`;
   });
   // loads (characteristic, above the beam)
+  const full = {};   // full-span UDLs summed per span and case, labelled once
   for (const l of inp.loads) {
-    const x0 = Lo.x0[l.span], c = l.case === 'Q' ? acc : col, top = l.case === 'Q' ? y - 58 : y - 44;
-    if (l.type === 'point') { const x = X(x0 + l.a * 1000); g += `<line x1="${x}" y1="${y - 64}" x2="${x}" y2="${y - 34}" stroke="${c}" stroke-width="1.4"/><path d="M${x} ${y - 32} l-4 -7 h8 z" fill="${c}"/><text x="${x + 3}" y="${y - 66}" font-size="9" fill="${c}">${f1(l.P)}</text>`; }
-    else { const a = l.type === 'udl' ? 0 : l.a * 1000, b = l.type === 'udl' ? P.spans[l.span].L : Math.min(P.spans[l.span].L, (l.a + l.b) * 1000); g += `<rect x="${X(x0 + a)}" y="${top}" width="${X(x0 + b) - X(x0 + a)}" height="9" fill="none" stroke="${c}" stroke-width="0.9"/>`; }
+    const x0 = Lo.x0[l.span], c = l.case === 'Q' ? acc : col, top = l.case === 'Q' ? y - 61 : y - 46;
+    if (l.type === 'point') { const x = X(x0 + l.a * 1000); g += `<line x1="${x}" y1="${y - 64}" x2="${x}" y2="${y - 34}" stroke="${c}" stroke-width="1.4"/><path d="M${x} ${y - 32} l-4 -7 h8 z" fill="${c}"/><text x="${x + 3}" y="${y - 66}" font-size="9" fill="${c}">${l.case} ${f1(l.P)}</text>`; }
+    else { const a = l.type === 'udl' ? 0 : l.a * 1000, b = l.type === 'udl' ? P.spans[l.span].L : Math.min(P.spans[l.span].L, (l.a + l.b) * 1000); g += `<rect x="${X(x0 + a)}" y="${top}" width="${X(x0 + b) - X(x0 + a)}" height="12" fill="none" stroke="${c}" stroke-width="0.9"/>`;
+      if (l.type === 'udl') { const k = l.span + l.case; full[k] = full[k] || { x: X(x0) + 3, y: top + 9.5, c, w: 0, cs: l.case }; full[k].w += l.w; }
+      else g += `<text x="${X(x0 + a) + 3}" y="${top + 9.5}" font-size="9" fill="${c}">${f1(l.w)}</text>`; }
   }
+  Object.values(full).forEach(f => { g += `<text x="${f.x}" y="${f.y}" font-size="9" fill="${f.c}">${f.cs} ${f1(f.w)}</text>`; });
   // bars: top over supports (extent of the longer bars), bottom per span, labels
   D.supZ.forEach((z, j) => { if (!z) return; const cs = D.curt.sup[j] || []; let xl = Lo.x0[j], xr = Lo.x0[j];
     cs.forEach(c => { if (c.side === 'L') xl = Lo.x0[j] - Math.max(c.all, 300); else xr = Lo.x0[j] + Math.max(c.all, 300); });
@@ -1606,7 +1610,7 @@ function svgElev(D, inp, light) {
     g += `<line x1="${X(xl)}" y1="${y + 3}" x2="${X(xr)}" y2="${y + 3}" stroke="${st}" stroke-width="2"/><text x="${endR ? xs - wc : xs + wc}" y="${y - 4}" font-size="9" text-anchor="${endR ? 'end' : 'start'}" fill="${st}">${z.top.n}H${z.top.phi}${z.comp ? ` + ${z.comp.n}H${z.comp.phi} btm` : ''}</text>`; });
   D.spanZ.forEach((z, i) => { const x0 = Lo.x0[i], L = z.s.L; g += `<line x1="${X(x0 + 40)}" y1="${y + hb - 3}" x2="${X(x0 + L - 40)}" y2="${y + hb - 3}" stroke="${st}" stroke-width="2"/><text x="${X(x0 + L / 2)}" y="${y + hb + 11}" font-size="9" text-anchor="middle" fill="${st}">${z.bot.n}H${z.bot.phi}</text>`;
     g += `<text x="${X(x0 + L / 2)}" y="${y + hb + 24}" font-size="9" text-anchor="middle" fill="${mut}">${f1(L / 1000)} m</text>`; });
-  g += `<text x="${PADL}" y="10" font-size="9.5" fill="${mut}">G ▭</text><text x="${PADL + 34}" y="10" font-size="9.5" fill="${acc}">Q ▭</text><text x="${PADL + 70}" y="10" font-size="9.5" fill="${st}">bars (top lengths from the curtailment)</text>`;
+  g += `<text x="${PADL}" y="10" font-size="9.5" fill="${mut}">G ▭</text><text x="${PADL + 34}" y="10" font-size="9.5" fill="${acc}">Q ▭</text><text x="${PADL + 70}" y="10" font-size="9.5" fill="${mut}">characteristic, kN/m and kN</text><text x="${PADL + 214}" y="10" font-size="9.5" fill="${st}">bars (top lengths from the curtailment)</text>`;
   return `<svg class="${light ? 'rsvg' : 'elev'}" viewBox="0 0 ${W} 172">${g}</svg>`;
 }
 function svgEnv(D, kind, light) {
@@ -1667,23 +1671,35 @@ function shearSteps(s) {
     { ref: '6.2.3', text: `z = 0.9d = ${f1(s.des.z)} mm, cot θ = ${s.cot.toFixed(3)} (strut from V at the face), V_Rd,max = ${f1(s.des.VRdmax / 1e3)} kN; A_sw/s required ${s.des.AswS.toFixed(3)} (min ${s.des.AswSmin.toFixed(3)}) mm²/mm → s ≤ ${f0(s.sReq)} mm` },
     { ref: '6.2.3(3)', text: `provided ${s.link.legs} legs H${s.link.phi} @ ${s.link.s}: A_sw/s = ${s.AswS.toFixed(3)} mm²/mm, V_Rd = ${f1(s.resV.VRd / 1e3)} kN (cot θ ${s.resV.cot.toFixed(3)})` }];
 }
+// ---------- drawings: live from the inputs, and with the results ----------
+const drawBeam = (D, inp) => `<div class="dlabel">Elevation, loads and bars</div>${svgElev(D, inp, false)}<div class="dlabel">Bending moment</div>${svgEnv(D, 'M', false)}<div class="dlabel">Shear force</div>${svgEnv(D, 'V', false)}${DrawRCBeam.html(D, inp)}`;
+let drawT = 0;
+function redraw() {
+  const el = $('drawings'); if (!el) return;
+  try { const inp = model(); el.innerHTML = drawBeam(RCBeamDesign.design(inp), inp); }
+  catch (e) { el.innerHTML = `<div class="note">The drawings will appear when the inputs are complete: ${esc(e.message)}</div>`; }
+}
+const queueDraw = () => { clearTimeout(drawT); drawT = setTimeout(redraw, 200); };
+$('inputs').addEventListener('input', queueDraw); $('inputs').addEventListener('change', queueDraw);
+$('inputs').addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.classList.contains('btn') && !b.classList.contains('btn2')) queueDraw(); });   // add / remove rows
 let last = null;
 function run() {
   try { localStorage.setItem(STORE, JSON.stringify(collect())); } catch (e) { /* storage unavailable */ }
+  clearTimeout(drawT);
   try {
     const inp = model(), D = RCBeamDesign.design(inp); last = { D, inp };
     const fails = D.checks.filter(k => k.util > 1), W = worst(D.checks).sort((a, b) => b.util - a.util);
     const verdict = `<div class="verdict ${D.utilMax > 1 ? 'fail' : ''}"><div><div class="big">${D.utilMax > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(D.utilMax)}</div><div class="sub">${W.length ? `Governs: ${esc(W[0].where)}, ${esc(W[0].name.toLowerCase())} (${esc(W[0].ref)})<br>` : ''}${D.A.P.n} span${D.A.P.n > 1 ? 's' : ''}, C${inp.fck}/${D.c.fckCube}, ${inp.rule === '6.10' ? 'EN 1990 6.10' : '6.10a/b'}, ${D.A.cases.length - 1} ULS arrangements${fails.length ? ` · ${fails.length} check${fails.length > 1 ? 's' : ''} over 1.0` : ''}</div></div></div>`;
-    $('results').innerHTML = verdict + `<div class="dlabel">Elevation, loads and bars</div>${svgElev(D, inp, false)}<div class="dlabel">Bending moment</div>${svgEnv(D, 'M', false)}<div class="dlabel">Shear force</div>${svgEnv(D, 'V', false)}${DrawRCBeam.html(D, inp)}`
+    $('results').innerHTML = verdict + `<div id="drawings">${drawBeam(D, inp)}</div>`
       + `<div class="dlabel">Governing checks</div><div class="checks">${W.slice(0, 14).map(bar).join('')}</div>${W.length > 14 ? `<div class="help">${W.length - 14} more checks below 1.0 in the zone details.</div>` : ''}`
       + `<div class="dlabel">Results</div>${tables(D, inp)}<div class="dlabel">Curtailment</div>${curtHTML(D)}<div class="dlabel">Zones (open for the calculation)</div>${zonesHTML(D)}`
       + `<div class="help">Self-weight ${D.sw.map(w => f1(w)).join(' / ')} kN/m added as G. Column moments: elastic ULS envelope at the beam (sub-frame), for the column design.</div><button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
     $('printBtn').onclick = () => { $('report').innerHTML = report(D, inp); window.print(); };
-  } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+  } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div><div id="drawings"></div>`; redraw(); }
 }
 function suggest() {
   try { const inp = model(), B = RCBeamDesign.suggest(inp); barState = B; renderBars(); run(); }
-  catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+  catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div><div id="drawings"></div>`; redraw(); }
 }
 // ---------- A4 sheet ----------
 const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
@@ -1708,6 +1724,7 @@ $('calc').onclick = run; $('suggest').onclick = suggest;
 (function init() {
   let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
   if (s && s.v === 1 && Array.isArray(s.spans) && s.spans.length) restore(s); else defaults();
+  redraw();
 })();
 </script>
 <footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent engineer to check and approve all calculations before they are used.</footer>

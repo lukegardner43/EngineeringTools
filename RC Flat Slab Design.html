@@ -256,7 +256,7 @@ a.lnk{color:var(--accent);font-weight:500;white-space:nowrap;text-decoration:non
       </div>
       <button class="btn" id="calc">Calculate</button>
     </div>
-    <div><div class="card" id="results"><div class="placeholder">Set up the slab and columns, then Calculate.</div></div></div>
+    <div><div class="card" id="results"><div id="drawings"></div><div class="placeholder">The drawings follow the inputs. Calculate for the checks, the strip and punching tables and the A4 sheet.</div></div></div>
   </div>
 </div>
 <div id="report"></div>
@@ -1765,15 +1765,29 @@ function punchLink(R, p) {
   return 'RC%20Punching%20Shear.html#in=' + encodeURIComponent(JSON.stringify(st));
 }
 function verdict(util, sub) { return `<div class="verdict ${util > 1 ? 'fail' : ''}"><div><div class="big">${util > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(util)}</div><div class="sub">${sub}</div></div></div>`; }
+// ---------- drawings: live from the inputs, and with the results ----------
+const critOf = R => R.punch.filter(p => p.R).sort((a, b) => b.R.util - a.R.util)[0];
+function drawFlat(R, inp) {
+  const crit = critOf(R);
+  return `<div class="dlabel">Elevation and loads</div>${svgElev(R, inp, false)}<div class="dlabel">Bending moment</div>${svgEnv(R, false)}<div class="dlabel">Plan of the strip</div>${svgPlan(R, inp, false)}`
+    + (crit ? DrawPunch.html(crit.R, crit.inp, `Punching at column ${crit.j + 1} (${crit.type}), the most critical`) : '');
+}
+let drawT = 0;
+function redraw() {
+  const el = $('drawings'); if (!el) return;
+  try { const inp = flatInput(); el.innerHTML = drawFlat(FlatSlab.design(inp), inp); }
+  catch (e) { el.innerHTML = `<div class="note">The drawings will appear when the inputs are complete: ${esc(e.message)}</div>`; }
+}
+const queueDraw = () => { clearTimeout(drawT); drawT = setTimeout(redraw, 200); };
+$('inputs').addEventListener('input', queueDraw); $('inputs').addEventListener('change', queueDraw);
+$('inputs').addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.classList.contains('btn') && !b.classList.contains('btn2')) queueDraw(); });   // add / remove spans
 function runFlat() {
   const inp = flatInput(), R = FlatSlab.design(inp), Wc = worst(R.checks); last = { kind: 'flat', R, inp };
   const g = Wc[0], gov = g ? `Governs: ${esc(g.where)}, ${esc(g.name.charAt(0).toLowerCase() + g.name.slice(1))} (${esc(g.ref)})<br>` : '';
-  const crit = R.punch.filter(p => p.R).sort((a, b) => b.R.util - a.R.util)[0];
   $('results').innerHTML = verdict(R.utilMax, `${gov}${inp.spans.length} span${inp.spans.length > 1 ? 's' : ''}, ${inp.bay} bay, h ${inp.h} mm, b ${inp.b} mm, g ${f2(R.gTot)} + q ${f2(R.qk)} kN/m², C${inp.fck}/${R.c.fckCube}`)
-    + `<div class="dlabel">Elevation and loads</div>${svgElev(R, inp, false)}<div class="dlabel">Bending moment</div>${svgEnv(R, false)}<div class="dlabel">Plan of the strip</div>${svgPlan(R, inp, false)}`
+    + `<div id="drawings">${drawFlat(R, inp)}</div>`
     + `<div class="dlabel">Governing checks</div><div class="checks">${Wc.slice(0, 12).map(bar).join('')}</div>${Wc.length > 12 ? `<div class="help">${Wc.length - 12} more checks, all lower.</div>` : ''}`
     + `<div class="dlabel">Column and middle strips (Table I.1)</div>${stripTable(R)}<div class="dlabel">Punching shear at the columns</div>${punchTable(R, true)}`
-    + (crit ? DrawPunch.html(crit.R, crit.inp, `Punching at column ${crit.j + 1} (${crit.type}), the most critical`) : '')
     + (R.info.length ? `<div class="help">Moment transfer to the end columns (I.1.2(5)): ${R.info.map(x => esc(x.text)).join('; ')}.</div>` : '')
     + `<div class="note">Moments from the equivalent frame (Annex I) over the full panel width with the columns above and below; redistribution by the limited method at internal columns; the moment transferred to the end columns limited to M<sub>t,max</sub> = 0.17 b<sub>e</sub> d² f<sub>ck</sub> (I.1.2(5)) with b<sub>e</sub> from Figure 9.9. Punching uses the largest ULS reaction and the top steel over the column for ρ<sub>l</sub> (assumed the same both ways). Check the frame in the other direction as well.</div>`
     + `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
@@ -1781,7 +1795,8 @@ function runFlat() {
 }
 function run() {
   try { localStorage.setItem(STORE, JSON.stringify(collect())); } catch (e) { /* storage unavailable */ }
-  try { runFlat(); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+  clearTimeout(drawT);
+  try { runFlat(); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div><div id="drawings"></div>`; redraw(); }
 }
 // ---------- A4 sheet ----------
 const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
@@ -1808,6 +1823,7 @@ $('calc').onclick = run;
 (function init() {
   let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
   if (s && s.v === 1 && Array.isArray(s.spans) && s.spans.length) restore(s); else defaults();
+  redraw();
 })();
 </script>
 <footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent engineer to check and approve all calculations before they are used.</footer>

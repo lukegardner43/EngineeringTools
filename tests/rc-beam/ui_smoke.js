@@ -11,8 +11,10 @@ function page(store) {
 const w = page(), d = w.document, $ = id => d.getElementById(id), res = () => $('results').textContent, rows = id => d.querySelectorAll(`#${id} .row`);
 const change = el => el.dispatchEvent(new w.Event('change', { bubbles: true }));
 truth('page loads without script errors', w.errs.length === 0);
+truth('drawings on load, before Calculate: elevation, BM, SF and the design sections', !!$('drawings').querySelector('svg.elev') && $('drawings').querySelectorAll('svg.env').length === 2 && /Sections at the supports and mid-spans/.test($('drawings').textContent) && /G 30/.test($('drawings').querySelector('svg.elev').textContent) && !/PASS|FAIL/.test(res()));
 truth('default beam: 3 spans, 4 supports, 7 loads, bar rows for 4 supports and 3 spans (+ links)', rows('spanRows').length === 3 && rows('supRows').length === 4 && rows('loadRows').length === 7 && rows('barRows').length === 4 + 3 + 3);
 $('calc').click();
+truth('Calculate keeps the drawings with the verdict', /PASS|FAIL/.test(res()) && !!$('drawings') && !!$('drawings').querySelector('svg.dk'));
 truth('calculates: verdict, elevation, BM and SF envelopes, tables', /PASS|FAIL/.test(res()) && !!$('results').querySelector('svg.elev') && $('results').querySelectorAll('svg.env').length === 2 && $('results').querySelectorAll('table').length === 4 && !$('results').querySelector('.err'));
 truth('results list support, span and shear rows and curtailment', /4 column/.test(res()) && /Span 2 left/.test(res()) && /Support 2 top, into span 1/.test(res()) && /50% may stop/.test(res()));
 truth('zones open to the calculation steps', d.querySelectorAll('#results details.zone').length >= 3 + 4 + 6 && /5\.3\.2\.2/.test(res()));
@@ -41,5 +43,19 @@ s4.querySelector('.kind').value = 'knife'; change(s4.querySelector('.kind')); $(
 $('printBtn').click(); truth('print: A4 sheet with elevation, envelopes, zones, design sections and summary', w.printed && $('report').querySelectorAll('svg').length === 4 && /Sections at the supports and mid-spans/.test($('report').textContent) && /Summary/.test($('report').textContent) && /Basis/.test($('report').textContent));
 const w2 = page(w.localStorage.getItem('et-rc-beam-v1')), d2 = w2.document;
 truth('inputs restored', d2.querySelectorAll('#spanRows .row').length === 4 && d2.getElementById('rule').value === '6.10ab' && d2.querySelectorAll('#supRows .kind')[0].value === 'free' && d2.querySelectorAll('#loadRows .row').length === 8);
-truth('no script errors', w.errs.length === 0 && w2.errs.length === 0);
-console.log(`\n${n - fails}/${n} passed`); if (fails) process.exit(1);
+// the drawings follow the inputs
+const w3 = page(), $3 = id => w3.document.getElementById(id), ev = (el, t) => el.dispatchEvent(new w3.Event(t, { bubbles: true }));
+const L0 = w3.document.querySelector('#spanRows .row .L'); L0.value = '8'; ev(L0, 'input');
+setTimeout(() => {
+  truth('live: the elevation follows an edited span', /8 m/.test($3('drawings').querySelector('svg.elev').textContent));
+  w3.document.getElementById('addSpan').click();
+  setTimeout(() => {
+    truth('live: an added span is drawn', ($3('drawings').querySelector('svg.elev').textContent.match(/\d m/g) || []).length === 4);
+    L0.value = ''; ev(L0, 'input');
+    setTimeout(() => {
+      truth('live: incomplete inputs give a note, not an error', /drawings will appear when the inputs are complete/.test($3('drawings').textContent));
+      truth('no script errors', w.errs.length === 0 && w2.errs.length === 0 && w3.errs.length === 0);
+      console.log(`\n${n - fails}/${n} passed`); if (fails) process.exit(1);
+    }, 350);
+  }, 350);
+}, 350);

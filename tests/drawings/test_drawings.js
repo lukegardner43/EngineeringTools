@@ -284,5 +284,31 @@ async function sweep(f, cases, expect) {
     ['pinned at the slab', w => set(w, 'fixBase', 'pinned', 'change')], ['water to the ground', w => set(w, 'hw', '3300')], ['no water, active', w => { set(w, 'hw', '0'); set(w, 'K', 'active', 'change'); }],
     ['tall wall, low prop', w => { set(w, 'H', '4500'); set(w, 'hProp', '3000'); }], ['big wall loads', w => { set(w, 'wallG', '300'); set(w, 'wallQ', '150'); }], ['no toe', w => set(w, 'bt', '0')],
   ], 2);
+  // ---------- RC beam, slab and flat slab: drawn live from the inputs, before any Calculate ----------
+  const q = (w, sel, v, ev = 'input') => { const e = w.document.querySelector(sel); e.value = v; e.dispatchEvent(new w.Event(ev, { bubbles: true })); };
+  const qa = (w, sel, v, ev = 'change') => w.document.querySelectorAll(sel).forEach(e => { e.value = v; e.dispatchEvent(new w.Event(ev, { bubbles: true })); });
+  await sweep('RC Beam Analysis and Design.html', [
+    ['span 2 at 9 m', w => q(w, '#spanRows .row:nth-child(2) .L', '9')], ['rectangular spans', w => qa(w, '#spanRows .shape', 'R')],
+    ['6.10a/b, adjacent patterns', w => { set(w, 'rule', '6.10ab', 'change'); set(w, 'pat', 'adj', 'change'); }],
+    ['a partial UDL', w => { w.document.getElementById('addLoad').click(); const r = [...w.document.querySelectorAll('#loadRows .row')].pop(); q(w, '#loadRows .row:last-child .type', 'part', 'change'); r.querySelector('.a').value = '1'; q(w, '#loadRows .row:last-child .b', '2'); }],
+    ['cantilever at the left', w => { q(w, '#supRows .row:first-child .kind', 'free', 'change'); q(w, '#spanRows .row:first-child .L', '2'); }],
+    ['four spans', w => w.document.getElementById('addSpan').click()], ['knife-edge supports', w => qa(w, '#supRows .row:not(:first-child) .kind', 'knife')],
+    ['two layers of bottom bars', w => qa(w, '#barRows .row[data-kind="span"] .lay', '2')],
+  ], 1);
+  await sweep('RC Slab Design.html', [
+    ['span 2 at 7 m', w => q(w, '#spanRows .row:nth-child(2) .L', '7')], ['h 250 throughout', w => qa(w, '#spanRows .h', '250', 'input')],
+    ['encastré ends', w => { q(w, '#supRows .row:first-child .kind', 'fixed', 'change'); q(w, '#supRows .row:last-child .kind', 'fixed', 'change'); }],
+    ['cantilever at the right', w => { q(w, '#supRows .row:last-child .kind', 'free', 'change'); q(w, '#spanRows .row:last-child .L', '1.5'); }],
+    ['a line load', w => { w.document.getElementById('addLoad').click(); q(w, '#loadRows .row:last-child .type', 'line', 'change'); q(w, '#loadRows .row:last-child .val', '8'); }],
+    ['two-way panel', w => w.document.querySelector('#modes [data-m="two"]').click()],
+    ['two-way, all edges continuous', w => ['eL1', 'eL2', 'eS1', 'eS2'].forEach(id => { const e = w.document.getElementById(id); e.checked = true; e.dispatchEvent(new w.Event('change', { bubbles: true })); })],
+    ['two-way, simply supported', w => ['eL1', 'eL2', 'eS1', 'eS2'].forEach(id => { const e = w.document.getElementById(id); e.checked = false; e.dispatchEvent(new w.Event('change', { bubbles: true })); })],
+    ['two-way, l_y/l_x beyond 2', w => set(w, 'ly', '15')],
+  ], 1);
+  await sweep('RC Flat Slab Design.html', [
+    ['span 1 at 9 m', w => q(w, '#spanRows .row:first-child .L', '9')], ['h 300', w => set(w, 'h', '300')],
+    ['edge bay', w => { set(w, 'bay', 'edge', 'change'); set(w, 'b', '4050'); }], ['circular column 3', w => { q(w, '#colRows .row:nth-child(3) .shape', 'circ', 'change'); q(w, '#colRows .row:nth-child(3) .c1', '500'); }],
+    ['four spans', w => w.document.getElementById('addSpan').click()], ['heavy imposed load', w => set(w, 'qk', '10')],
+  ], 3);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();

@@ -12,6 +12,7 @@ const w = page(), d = w.document, $ = id => d.getElementById(id), res = () => $(
 const change = el => el.dispatchEvent(new w.Event('change', { bubbles: true }));
 const shown = el => !el.classList.contains('hidden');
 truth('page loads without script errors', w.errs.length === 0);
+truth('drawings on load, before Calculate: elevation, BM, plan and punching', !!$('drawings').querySelector('svg.elev') && !!$('drawings').querySelector('svg.env') && !!$('drawings').querySelector('svg.plan') && $('drawings').querySelectorAll('svg.dk').length === 3 && /Punching at column 2/.test($('drawings').textContent) && !/PASS|FAIL/.test(res()));
 truth('no single-column mode here (it is RC Punching Shear)', !$('modes') && !$('pane-punch'));
 truth('default frame: 3 spans, 4 columns, δ fixed at the end columns', rows('spanRows').length === 3 && rows('colRows').length === 4 && rows('colRows')[0].querySelector('.delta').disabled && rows('colRows')[3].querySelector('.delta').disabled && !rows('colRows')[1].querySelector('.delta').disabled);
 $('calc').click();
@@ -35,5 +36,15 @@ truth('a circular column calculates', /PASS|FAIL/.test(res()) && !$('results').q
 $('printBtn').click(); truth('print: frame drawings, moments, strips, punching, summary', w.printed && $('report').querySelectorAll('svg').length === 6 && /Support and span moments/.test($('report').textContent) && /Summary/.test($('report').textContent) && !$('report').querySelector('a.lnk'));
 const w2 = page(w.localStorage.getItem('et-rc-flat-v1')), $2 = id => w2.document.getElementById(id);
 truth('inputs restored', w2.document.querySelectorAll('#colRows .row')[2].querySelector('.shape').value === 'circ' && $2('b').value === '7500');
-truth('no script errors', w.errs.length === 0 && w2.errs.length === 0);
-console.log(`\n${n - fails}/${n} passed`); if (fails) process.exit(1);
+// the drawings follow the inputs
+const w3 = page(), $3 = id => w3.document.getElementById(id), ev = (el, t) => el.dispatchEvent(new w3.Event(t, { bubbles: true }));
+const L0 = w3.document.querySelector('#spanRows .row .L'); L0.value = '8'; ev(L0, 'input');
+setTimeout(() => {
+  truth('live: the elevation follows an edited span', /8 m/.test($3('drawings').querySelector('svg.elev').textContent));
+  $3('h').value = ''; ev($3('h'), 'input');
+  setTimeout(() => {
+    truth('live: incomplete inputs give a note, not an error', /drawings will appear when the inputs are complete/.test($3('drawings').textContent));
+    truth('no script errors', w.errs.length === 0 && w2.errs.length === 0 && w3.errs.length === 0);
+    console.log(`\n${n - fails}/${n} passed`); if (fails) process.exit(1);
+  }, 350);
+}, 350);
