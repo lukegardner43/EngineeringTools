@@ -1,0 +1,1737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Raft Foundation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* Engineering Tools: shared light style (tasteskill app sheet "Achromatic ledger", seed 959138263).
+   Ink chrome on a blue-grey drawing-office ground; the one hue (#1d5fbf) goes on the main data element
+   (envelopes, utilisation bars); status colour only on the verdict and on a check that is over. */
+:root{
+  --bg:#f2f4f7; --surf:#ffffff; --surf2:#f7f8fa; --bdr:#e3e5e8; --bdr2:#d1d5db; --rule:#eceef1;
+  --txt:#111111; --lbl:#33363a; --mut:#5f6368; --faint:#6b6b6b;
+  --accent:#1d5fbf; --accent-dim:#e3ebf8;
+  --primary:#1d1f20;
+  --pass:#247b50; --warn:#b45309; --fail:#c4242a;
+  --pass-bg:#dcfae5; --pass-ink:#04250e; --fail-bg:#ffedea; --fail-ink:#831c1e;
+  --r:6px; --rc:8px;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:var(--sans);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5;min-height:100svh;padding:28px 32px 40px;
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;}
+.container{max-width:1376px;margin:0 auto;}
+/* title row: a photograph of the member's material (img/<material>.jpg beside the page, set by <body data-material>)
+   under a neutral scrim, with the breadcrumb, the tool's name and one line of scope. Without the photo it is a plain ink band. */
+.page-hdr{position:relative;isolation:isolate;overflow:hidden;border-radius:var(--rc);min-height:164px;padding:18px 24px 20px;margin-bottom:12px;
+  display:flex;flex-direction:column;justify-content:flex-end;color:#fff;background:#2c3036 var(--photo,none) center/cover no-repeat;}
+.page-hdr::before{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.55) 45%,rgba(0,0,0,.18) 100%);} /* taste-skill-ignore: neutral scrim under text on a photograph */
+.page-hdr::after{content:var(--credit,'');position:absolute;right:10px;bottom:8px;font-size:11px;color:rgba(255,255,255,.9);background:rgba(0,0,0,.4);padding:1px 6px;border-radius:4px;}
+.home-lnk{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:rgba(255,255,255,.88);text-decoration:none;font-weight:500;margin-bottom:auto;align-self:flex-start;padding-bottom:12px;}
+.home-lnk:hover{color:#fff;text-decoration:underline;}
+.home-lnk svg{width:14px;height:14px;}
+.page-hdr h1{font-size:26px;font-weight:600;line-height:1.25;letter-spacing:-0.01em;margin-bottom:4px;color:#fff;}
+.page-hdr p{font-size:14px;color:rgba(255,255,255,.92);max-width:900px;}
+body[data-material="steel"]{--photo:url(img/steel.jpg);--credit:'Photo: Chevsapher, CC0';}
+body[data-material="concrete"]{--photo:url(img/concrete.jpg);--credit:'Photo: MassDOT, public domain';}
+body[data-material="masonry"]{--photo:url(img/masonry.jpg);--credit:'Photo: Håkan Svensson, CC BY 2.5';}
+body[data-material="timber"]{--photo:url(img/timber.jpg);--credit:'Photo: Sebastian Wallroth, public domain';}
+body[data-material="frame"]{--photo:url(img/frame.jpg);--credit:'Photo: Wikideas1, CC0';}
+body[data-material="ground"]{--photo:url(img/ground.jpg);--credit:'Photo: Fons Heijnsbroek, CC0';}
+@media print{.page-hdr{display:none;}}
+/* inputs on the left, the answer on the right: (1376 - 12) x 6/13 = 630 | 734 */
+.main-grid{display:grid;grid-template-columns:minmax(380px,6fr) 7fr;gap:12px;align-items:start;}
+@media(max-width:1100px){.main-grid{grid-template-columns:1fr;}}
+.main-grid > div{min-width:0;}
+#results table.t{display:block;overflow-x:auto;white-space:nowrap;}
+.card{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rc);padding:20px 24px;margin-bottom:12px;}
+.section-title{font-size:16px;font-weight:600;color:var(--txt);margin:0 0 14px;display:flex;justify-content:space-between;align-items:baseline;gap:12px;line-height:1.3;}
+.section-title .aux{color:var(--mut);font-size:13px;font-weight:400;text-align:right;}
+.form-group{margin-bottom:14px;}
+.form-group label,.lbl{display:block;font-size:13px;margin-bottom:5px;color:var(--lbl);font-weight:500;line-height:1.35;}
+input[type="number"],input[type="text"],select{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);padding:0 10px;height:36px;border-radius:var(--r);font-family:var(--sans);font-size:14px;width:100%;font-variant-numeric:tabular-nums;transition:border-color .12s;}
+input::placeholder{color:var(--faint);}
+input:hover,select:hover{border-color:#b9bec6;}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);}
+input:disabled,select:disabled{background:var(--surf2);color:var(--mut);}
+select option{background:var(--surf);color:var(--txt);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.grid2 > .form-group,.grid3 > .form-group{display:flex;flex-direction:column;justify-content:flex-end;}
+.chk{display:block;position:relative;padding-left:26px;font-size:13px;color:var(--lbl);margin:8px 0;cursor:pointer;line-height:1.45;}
+.chk input{position:absolute;left:0;top:1px;width:16px;height:16px;accent-color:var(--primary);}
+.help{font-size:13px;color:var(--mut);margin-top:4px;line-height:1.45;}
+/* segmented control: grey track, white pill on the chosen option */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#e9ecf0;border-radius:var(--rc);margin-bottom:14px;}
+.seg button{background:transparent;color:var(--mut);border:1px solid transparent;border-radius:var(--r);height:32px;padding:0 10px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;}
+.seg button:hover{color:var(--txt);}
+.seg button.on{background:var(--surf);color:var(--txt);border-color:var(--bdr);}
+/* repeating rows: spans, supports, loads */
+.rows{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+.row{display:grid;gap:8px;align-items:end;background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--r);padding:10px;}
+.row label{font-size:12px;color:var(--mut);margin-bottom:3px;display:block;font-weight:500;line-height:1.3;}
+.row input,.row select{height:32px;font-size:13px;padding:0 8px;}
+.row.span{grid-template-columns:1fr 1.6fr 1fr 32px;}
+.row.load{grid-template-columns:52px 64px 1.1fr 1.1fr 32px;}
+.row.load .vals{grid-column:1 / span 3;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.xbtn{height:32px;width:32px;background:var(--surf);border:1px solid var(--bdr2);color:var(--mut);border-radius:var(--r);cursor:pointer;font-size:16px;line-height:1;}
+.xbtn:hover{color:var(--fail);border-color:var(--fail);}
+.addbtn{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);border-radius:var(--r);height:36px;padding:0 12px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;width:100%;}
+.addbtn:hover{border-color:#9aa0a8;background:var(--surf2);}
+/* the one primary action, near-black; secondary actions white and outlined */
+.btn{height:44px;padding:0 16px;border:none;border-radius:var(--r);font-weight:600;cursor:pointer;font-family:var(--sans);font-size:15px;width:100%;background:var(--primary);color:#fff;}
+.btn:hover{background:#000;}
+.btn:focus-visible,.btn2:focus-visible,.addbtn:focus-visible,.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.btn2{width:100%;height:38px;padding:0 12px;background:var(--surf);border:1px solid var(--bdr2);border-radius:var(--r);font-size:14px;font-weight:500;color:var(--txt);cursor:pointer;font-family:var(--sans);margin-top:8px;}
+.btn2:hover{border-color:#9aa0a8;background:var(--surf2);}
+.hidden{display:none!important;}
+/* results */
+.placeholder{display:flex;align-items:center;justify-content:center;min-height:160px;color:var(--mut);font-size:14px;text-align:center;padding:0 24px;}
+.verdict{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--bdr);border-radius:var(--rc);background:var(--surf2);margin-bottom:16px;}
+.verdict .big{font-size:24px;font-weight:600;line-height:1.2;color:var(--pass);letter-spacing:-0.01em;}
+.verdict.fail .big{color:var(--fail);}
+.verdict .sub{font-size:13px;color:var(--mut);margin-top:2px;}
+/* the utilisation ledger: check, clause, bar to scale (full track = 1.2, ink tick at the 1.0 limit), figure */
+.checks{display:flex;flex-direction:column;margin-bottom:8px;}
+.ck{display:grid;grid-template-columns:1.25fr 2fr 56px;gap:14px;align-items:center;font-size:13px;padding:7px 0;border-bottom:1px solid var(--rule);}
+.ck:last-child{border-bottom:none;}
+.ck .nm{color:var(--txt);line-height:1.35;} .ck .nm small{display:block;color:var(--mut);font-size:12px;}
+.bar{height:8px;background:#e8ebef;border-radius:4px;position:relative;}
+.bar::after{content:'';position:absolute;left:83.333%;top:-4px;bottom:-4px;width:1.5px;background:var(--txt);border-radius:1px;}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:4px;}
+.bar i.over{background:var(--fail);} /* 0.9-1.0 stays blue: a well-used member is not a warning; the tick shows how close it is */
+.ck .u{text-align:right;font-weight:600;font-size:14px;}
+.ck .u.over{color:var(--fail);}
+.diag{width:100%;height:auto;display:block;margin-bottom:6px;}
+/* screen drawings: the smallest labels lifted to the 11px floor (the print sheet keeps its own sizes) */
+.container svg text[font-size="8"],.container svg text[font-size="8.5"],.container svg text[font-size="9"],.container svg text[font-size="9.5"],
+.container svg text[font-size="10"],.container svg text[font-size="10.5"]{font-size:11px;}
+.dlabel{font-size:14px;font-weight:600;color:var(--txt);margin:20px 0 6px;line-height:1.3;}
+table.t{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px;font-variant-numeric:tabular-nums;}
+table.t th{color:var(--mut);font-weight:500;text-align:right;padding:6px 8px;border-bottom:1px solid var(--bdr);font-size:12px;}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--rule);text-align:right;}
+table.t th:first-child,table.t td:first-child{text-align:left;}
+.note{font-size:13px;color:var(--mut);background:var(--surf2);border:1px solid var(--rule);border-radius:var(--r);padding:10px 12px;margin-top:10px;line-height:1.5;}
+.err{color:var(--fail-ink);background:var(--fail-bg);font-size:13px;padding:10px 12px;border-radius:var(--r);margin-bottom:12px;}
+.busy{opacity:.55;pointer-events:none;}
+a{color:var(--txt);}
+sub,sup{font-size:max(11px,.75em);line-height:0;}
+@media(max-width:560px){body{padding:16px 16px 32px;} .card{padding:16px;} .ck{grid-template-columns:1fr 1fr 48px;gap:10px;} .grid3{grid-template-columns:1fr 1fr;}
+  .row.span{grid-template-columns:1fr 32px;} .row.span > div:nth-child(2),.row.span > div:nth-child(3){display:none;} .row.load .vals{grid-template-columns:1fr 1fr;}
+  .page-hdr{min-height:150px;padding:14px 16px 16px;} .page-hdr h1{font-size:22px;} .page-hdr::after{top:10px;bottom:auto;} .page-hdr::before{background:rgba(0,0,0,.6);} .verdict .big{font-size:22px;}}
+/* disclaimer: on screen at the foot of the page, and printed at the end of the calculation sheet */
+.disclaimer{max-width:1376px;margin:24px auto 0;padding-top:14px;border-top:1px solid var(--bdr,#e3e5e8);font-size:13px;line-height:1.55;color:var(--mut,#5f6368);}
+.disclaimer b{color:var(--txt,#111);font-weight:600;}
+@media print{.disclaimer{display:block!important;max-width:none;margin:4mm 0 0;padding-top:1.5mm;border-top:0.4pt solid #888;font-family:Arial,Helvetica,sans-serif;font-size:7.5pt;color:#000;break-inside:avoid;} .disclaimer b{color:#000;}}
+/* ---------- print: A4 calculation sheet ---------- */
+#report{display:none;}
+@media print{
+  @page{size:A4;margin:12mm 12mm 14mm;}
+  body{background:#fff;color:#000;padding:0;background-image:none;font-size:9.5pt;}
+  .container{display:none;}
+  #report{display:block;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  #report table.wrap{width:100%;border-collapse:collapse;}
+  #report thead td{padding:0 0 3mm;}
+  .rh{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;border:0.6pt solid #000;font-size:8pt;}
+  .rh div{padding:1.2mm 2mm;border-right:0.6pt solid #000;}
+  .rh div:last-child{border-right:none;}
+  .rh b{display:block;font-size:6.5pt;color:#444;font-weight:normal;text-transform:uppercase;letter-spacing:.3pt;}
+  .rh .ttl{grid-column:1 / -1;border-top:0.6pt solid #000;border-right:none;font-weight:bold;font-size:10pt;}
+  .rs{margin:0 0 3.5mm;}
+  .rs h2,.rs h3{break-after:avoid;}
+  .rl,.rt,.rsvg,.rp,.rt tr{break-inside:avoid;}
+  .rs h2{font-size:10pt;margin:3mm 0 1.5mm;padding-bottom:0.8mm;border-bottom:0.8pt solid #000;}
+  .rs h3{font-size:9pt;margin:2mm 0 1mm;}
+  .rl{display:grid;grid-template-columns:1fr 92px 132px;gap:2mm;padding:0.5mm 0;font-size:8.6pt;}
+  .rl .cl{text-align:right;color:#444;font-size:7.5pt;}
+  .rl .rv{text-align:right;font-weight:bold;}
+  .ok{color:#0a7a3e;} .ng{color:#c00;}
+  .rt{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;}
+  .rt th,.rt td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;}
+  .rt th{background:#eee;font-weight:bold;}
+  .rt td:first-child,.rt th:first-child,.rt.lft td,.rt.lft th{text-align:left;}
+  .rp{font-size:8.3pt;line-height:1.45;margin:1mm 0;}
+  .rsvg{width:100%;height:auto;}
+  .rsvg *{vector-effect:non-scaling-stroke;}
+}
+
+[hidden]{display:none!important;}
+.steps{font-size:12px;color:var(--mut);line-height:1.5;margin-bottom:12px;}
+.steps .st{display:grid;grid-template-columns:96px 1fr;gap:8px;padding:3px 0;border-bottom:1px solid var(--bdr);}
+.steps .st span:first-child{font-size:12px;color:var(--faint);}
+.row.col6{grid-template-columns:repeat(6,1fr) 32px;}
+.ctab{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:12px;}
+.ctab th{font-size:12px;font-weight:500;color:var(--mut);text-align:right;padding:4px 6px;border-bottom:1px solid var(--rule);}
+.ctab th:first-child,.ctab td:first-child{text-align:left;}
+.ctab td{text-align:right;padding:4px 6px;border-bottom:1px solid #f0f0f0;font-variant-numeric:tabular-nums;}
+.ctab td.over{color:var(--fail);font-weight:600;}
+.tscroll{overflow-x:auto;}
+</style>
+</head>
+<body data-material="concrete" style="--photo:url(img/concrete.jpg);--credit:'Photo: MassDOT, public domain'">
+<div class="container">
+  <div class="page-hdr">
+    <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
+    <h1>Raft Foundation</h1>
+    <p>A reinforced concrete raft on the ground under columns, walls and a floor load &nbsp;·&nbsp; plate finite elements on a bed of springs that only push &nbsp;·&nbsp; contact pressure and settlement &nbsp;·&nbsp; bending (Wood–Armer), crack control, shear and punching to BS EN 1992-1-1 and the UK NA</p><!-- @@VERIFY: verification tag (scratchpad/verify/tags.py; the ROADMAP's Verification status) --><div class="vt" role="note"><span class="vt-pill vt-part">Partly verified</span><span class="vt-why">The analysis reproduces closed forms (a uniformly loaded raft and Hetényi’s beam on an elastic foundation) and the section checks are those of the verified RC tools; no published raft worked example yet.</span></div><style id="vt-style">.vt{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;margin:2px 0 8px;max-width:900px;}.vt-pill{flex:none;font-size:12px;font-weight:600;line-height:1.5;padding:1px 10px;border-radius:999px;background:#f2b33d;color:#221500;}.vt-part{background:#fbe3b0;color:#3d2a00;}.vt-why{font-size:13px;line-height:1.45;color:rgba(255,255,255,.92);flex:1 1 320px;}@media print{#report::before{content:"Partly verified: The analysis reproduces closed forms (a uniformly loaded raft and Hetényi’s beam on an elastic foundation) and the section checks are those of the verified RC tools; no published raft worked example yet.";display:block;font-family:Arial,Helvetica,sans-serif;font-size:8.5pt;line-height:1.35;color:#5a3b00;border:1px solid #e0a83a;border-radius:2mm;padding:2mm 3mm;margin:0 0 3mm;}}</style><!-- /@@VERIFY -->
+  </div>
+  <div class="main-grid">
+    <div id="inputs">
+      <div class="card">
+        <div class="section-title">Project</div>
+        <div class="form-group"><label>Project</label><input type="text" id="pName" placeholder="Project name"></div>
+        <div class="grid3"><div class="form-group"><label>Job no.</label><input type="text" id="pJob"></div><div class="form-group"><label>By</label><input type="text" id="pBy"></div><div class="form-group"><label>Ref.</label><input type="text" id="pRef" placeholder="e.g. Raft R1"></div></div>
+      </div>
+      <div class="card">
+        <div class="section-title">Raft</div>
+        <div class="grid3">
+          <div class="form-group"><label>Length L<sub>x</sub> (m)</label><input type="number" id="Lx" value="11" step="0.1"></div>
+          <div class="form-group"><label>Width L<sub>y</sub> (m)</label><input type="number" id="Ly" value="9" step="0.1"></div>
+          <div class="form-group"><label>Thickness (mm)</label><input type="number" id="h" value="350" step="25"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Concrete</label><select id="fck"><option value="25">C25/30</option><option value="28">C28/35</option><option value="30">C30/37</option><option value="32" selected>C32/40</option><option value="35">C35/45</option><option value="40">C40/50</option></select></div>
+          <div class="form-group"><label>Bottom cover (mm)</label><input type="number" id="cBtm" value="50" step="5"></div>
+          <div class="form-group"><label>Top cover (mm)</label><input type="number" id="cTop" value="40" step="5"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Bottom bars, both ways</label><select id="phiB"><option>10</option><option>12</option><option selected>16</option><option>20</option><option>25</option></select></div>
+          <div class="form-group"><label>at (mm)</label><input type="number" id="sB" value="200" step="25"></div>
+          <div class="form-group"><label>Crack width w<sub>k</sub></label><select id="wk"><option value="0.3" selected>0.3 mm</option><option value="0.2">0.2 mm</option></select></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Top bars, both ways</label><select id="phiT"><option>10</option><option selected>12</option><option>16</option><option>20</option><option>25</option></select></div>
+          <div class="form-group"><label>at (mm)</label><input type="number" id="sT" value="200" step="25"></div>
+        </div>
+        <div class="help">x runs along L<sub>x</sub>, y along L<sub>y</sub>, from the bottom left corner. The x bars are the outer layer top and bottom. Bottom cover on blinding: 40 to 50 mm; against the ground: 75 mm.</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Ground</div>
+        <div class="grid3">
+          <div class="form-group"><label>k<sub>s</sub> (kN/m³)</label><input type="number" id="ks" value="15000" step="1000"></div>
+          <div class="form-group"><label>Allowable pressure (kPa)</label><input type="number" id="qa" value="100" step="10" placeholder="optional"></div>
+          <div class="form-group"><label>Settlement limit (mm)</label><input type="number" id="wlim" value="25" step="5"></div>
+        </div>
+        <div class="help">The modulus of subgrade reaction: the pressure per unit settlement for a raft of this size, from the ground investigation (for example the allowable pressure over the settlement it gives). Rough values: soft clay 5 000 to 15 000, firm to stiff clay 15 000 to 40 000, medium dense sand 20 000 to 60 000 kN/m³. Try a range: the moments depend on it.</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Loads (characteristic)</div>
+        <div class="grid3">
+          <div class="form-group"><label>Floor g<sub>k</sub> (kPa)</label><input type="number" id="gk" value="1.5" step="0.5"></div>
+          <div class="form-group"><label>Floor q<sub>k</sub> (kPa)</label><input type="number" id="qk" value="2.5" step="0.5"></div>
+          <div class="form-group"><label>ψ<sub>2</sub></label><input type="number" id="psi2" value="0.3" step="0.1"></div>
+        </div>
+        <div class="dlabel" style="margin-top:8px">Columns</div>
+        <div class="rows" id="colRows"></div>
+        <button class="addbtn" id="addCol" type="button">+ Add a column</button>
+        <div class="dlabel" style="margin-top:12px">Walls</div>
+        <div class="rows" id="wallRows"></div>
+        <button class="addbtn" id="addWall" type="button">+ Add a wall</button>
+        <div class="help">Columns: the centre (m), the size each way (mm) and the loads they bring down (kN). Walls: the ends of a line along x or y (m) and the load per metre (kN/m). The raft's own weight is added (25 kN/m³).</div>
+      </div>
+      <button class="btn" id="calc">Check raft</button>
+    </div>
+    <div><div class="card" id="results"><div class="placeholder">Set out the raft, the ground and the loads, then Check.</div><div id="drawings"></div></div></div>
+  </div>
+</div>
+<div id="report"></div>
+<script id="engine">
+/* ===== EC2 DESIGN CORE (EngineeringTools) =====
+   Clean-room implementation from BS EN 1992-1-1:2004 + A1:2014 and the UK National Annex (NA to BS EN 1992-1-1:2004+A1:2014),
+   cross-read with The Concrete Centre "How to design concrete structures using Eurocode 2". Units: N, mm (stresses N/mm2).
+   - materials (Table 3.1, 3.1.7(3), UK NA alpha_cc = 0.85 flexure / 1.0 shear and torsion, gamma_c 1.5, gamma_s 1.15);
+   - bending of rectangular and flanged sections by the rectangular stress block: required steel (singly or doubly
+     reinforced, x/d limit from ductility or redistribution, 5.5(4) with the UK NA) and the resistance of a given
+     arrangement by strain compatibility;
+   - shear 6.2.2 / 6.2.3 (vertical links, variable strut, fck limited to 50 N/mm2 in shear as the UK NA);
+   - torsion 6.3 (thin-walled closed section, interaction 6.29 / 6.31);
+   - SLS: cracked elastic section, crack control by Tables 7.2N / 7.3N or the calculated crack width 7.3.4, minimum
+     steel 7.3.2, span / effective depth 7.4.2 with the UK NA modifiers;
+   - detailing: 9.2.1.1 min / max steel, bar spacing 8.2, anchorage 8.4 and laps 8.7 (simplified alpha = 1), flange
+     width 5.3.2.1. */
+const EC2 = (() => {
+  'use strict';
+  const GC = 1.5, GS = 1.15, ES = 200000, ACC = 0.85, ACC_V = 1.0;
+  const CUBE = { 12: 15, 16: 20, 20: 25, 25: 30, 28: 35, 30: 37, 32: 40, 35: 45, 40: 50, 45: 55, 50: 60, 55: 67, 60: 75, 70: 85, 80: 95, 90: 105 };
+  const area = (n, phi) => n * Math.PI * phi * phi / 4;
+  // ---------- materials ----------
+  function concrete(fck) {
+    if (!(fck >= 12 && fck <= 90)) throw new Error('f_ck must be between 12 and 90 N/mm²');
+    const fcm = fck + 8, hi = fck > 50;
+    const fctm = hi ? 2.12 * Math.log(1 + fcm / 10) : 0.30 * fck ** (2 / 3);
+    const ec2 = hi ? (2.0 + 0.085 * (fck - 50) ** 0.53) * 1e-3 : 2.0e-3, ecu2 = hi ? (2.6 + 35 * ((90 - fck) / 100) ** 4) * 1e-3 : 3.5e-3;
+    const ec3 = hi ? (1.75 + 0.55 * (fck - 50) / 40) * 1e-3 : 1.75e-3, n = hi ? 1.4 + 23.4 * ((90 - fck) / 100) ** 4 : 2;
+    const lambda = hi ? 0.8 - (fck - 50) / 400 : 0.8, eta = hi ? 1 - (fck - 50) / 200 : 1;
+    const fv = Math.min(fck, 50);                                  // UK NA: shear and torsion with f_ck not above C50/60
+    return { fck, fckCube: CUBE[fck] ?? null, fcm, fctm, fctk05: 0.7 * fctm, fctk95: 1.3 * fctm, Ecm: 22000 * (fcm / 10) ** 0.3,
+      ec2, ecu2, ec3, ecu3: ecu2, n, lambda, eta, fcd: ACC * fck / GC, fcdV: ACC_V * fv / GC, fv, fctd: 1.0 * 0.7 * fctm / GC,
+      nu: 0.6 * (1 - fv / 250) };
+  }
+  const steel = (fyk = 500) => ({ fyk, fyd: fyk / GS, Es: ES, eyd: fyk / GS / ES });
+  // ---------- flexure: rectangular stress block (3.1.7(3)) ----------
+  // section: { b (width of the compression flange or rectangle), bw (web), hf (flange depth; 0 = rectangular), h }
+  // compression-zone force and its depth to the centroid for a block depth s = lambda x
+  function block(sec, s) {
+    const bw = sec.bw ?? sec.b, hf = sec.hf > 0 ? sec.hf : Infinity;
+    if (s <= hf || sec.b === bw) return { A: sec.b * s, y: s / 2 };
+    const Af = (sec.b - bw) * hf, Aw = bw * s;
+    return { A: Af + Aw, y: (Af * hf / 2 + Aw * s / 2) / (Af + Aw) };
+  }
+  // x/d limit: 5.5(4) with the UK NA (k1 = 0.4, k2 = 0.6 + 0.0014/eps_cu2; fck > 50: k3 = 0.4, k4 = 0.6 + 0.0014/eps_cu2)
+  // and an optional practical ductility limit (0.45 for fck <= 50 is the usual UK choice)
+  function xdLimit(c, delta = 1, practical = 0.45) {
+    const k2 = 0.6 + 0.0014 / c.ecu2, red = c.fck <= 50 ? (delta - 0.4) / k2 : (delta - 0.4) / k2;
+    return Math.min(red, practical ?? Infinity);
+  }
+  // required reinforcement for M (>= 0) on effective depth d; d2 to the compression steel
+  function bendingDesign({ sec, d, d2 = 50, M, c, s: st, delta = 1, xdMax = 0.45, zMax = 0.95 }) {
+    const a = c.eta * c.fcd, L = c.lambda, xlim = xdLimit(c, delta, xdMax) * d;
+    const Mx = x => { const bl = block(sec, L * x); return a * bl.A * (d - bl.y); };
+    const out = { M, d, xlim, K: M / (sec.b * d * d * c.fck) };
+    if (!(M > 0)) return { ...out, As: 0, As2: 0, x: 0, z: zMax * d, Kp: null };
+    const Mlim = Mx(xlim);
+    out.Kp = Mlim / (sec.b * d * d * c.fck); out.Mlim = Mlim;
+    if (M <= Mlim) {
+      let lo = 0, hi = xlim; for (let i = 0; i < 100; i++) { const m = (lo + hi) / 2; if (Mx(m) < M) lo = m; else hi = m; }
+      const x = (lo + hi) / 2, bl = block(sec, L * x), z = Math.min(d - bl.y, zMax * d);
+      return { ...out, x, z, zCap: d - bl.y > zMax * d, As: M / (st.fyd * z), As2: 0, inFlange: !(sec.hf > 0) || L * x <= sec.hf };
+    }
+    // compression steel at the x/d limit
+    const bl = block(sec, L * xlim), z = Math.min(d - bl.y, zMax * d), esc = c.ecu2 * (xlim - d2) / xlim;
+    // compression steel stress from the strain diagram, net of the concrete it displaces (inside the stress block)
+    const fscG = Math.min(st.fyd, st.Es * esc), fsc = fscG - (d2 < L * xlim ? a : 0);
+    if (!(fsc > 0)) throw new Error('Compression steel would be in tension at the limiting neutral axis (d2 too large)');
+    const As2 = (M - Mlim) / (fsc * (d - d2));
+    return { ...out, x: xlim, z, As2, fsc, fscGross: fscG, As: Mlim / (st.fyd * z) + As2 * fsc / st.fyd, doubly: true, inFlange: !(sec.hf > 0) || L * xlim <= sec.hf };
+  }
+  // resistance of a given arrangement by strain compatibility (eps_cu2 at the top, rectangular block; bilinear steel
+  // with a horizontal top branch). layers: [{ As, d }] measured from the compression face (any layer may be in compression)
+  function bendingResistance({ sec, layers, c, s: st, N = 0 }) {
+    const a = c.eta * c.fcd, L = c.lambda, h = sec.h, ecu = c.ecu2;
+    const sig = (x, di) => { const e = ecu * (x - di) / x; return Math.max(-st.fyd, Math.min(st.fyd, st.Es * e)); };   // compression +
+    const F = x => { const bl = block(sec, Math.min(L * x, h)); return a * bl.A + layers.reduce((t, l) => t + l.As * (sig(x, l.d) - (L * x > l.d ? a : 0)), 0) - N; };
+    let lo = 1e-6, hi = 2 * h;
+    if (F(lo) > 0) lo = 1e-9;
+    for (let i = 0; i < 200; i++) { const m = (lo + hi) / 2; if (F(m) > 0) hi = m; else lo = m; }
+    const x = (lo + hi) / 2, bl = block(sec, Math.min(L * x, h));
+    // moment about the compression face, then shifted to the section's mid-depth reference (N acts at h/2)
+    let Mtop = 0; Mtop += -a * bl.A * bl.y;
+    for (const l of layers) Mtop += -l.As * (sig(x, l.d) - (L * x > l.d ? a : 0)) * l.d;
+    // M about mid-depth (where N acts) = moment of the internal forces about the top + N h/2; N = 0 gives pure bending
+    const MRd = Mtop + N * h / 2;
+    const dt = Math.max(...layers.map(l => l.d));
+    return { x, xd: x / dt, MRd, eps: layers.map(l => ecu * (x - l.d) / x), sig: layers.map(l => sig(x, l.d)),
+      yielded: layers.map(l => ecu * (l.d - x) / x >= st.eyd) };
+  }
+  // ---------- shear, 6.2.2 / 6.2.3 (vertical links) ----------
+  function shearConcrete({ bw, d, Asl, c, NEd = 0, Ac = null }) {
+    const k = Math.min(2, 1 + Math.sqrt(200 / d)), rho = Math.min(0.02, Asl / (bw * d));
+    const scp = Ac ? Math.min(Math.max(NEd, 0) / Ac, 0.2 * c.fcd) : 0;
+    const vmin = 0.035 * k ** 1.5 * Math.sqrt(c.fv);
+    const v = 0.18 / GC * k * (100 * rho * c.fv) ** (1 / 3);
+    const VRdc = Math.max(v + 0.15 * scp, vmin + 0.15 * scp) * bw * d;
+    return { k, rho, scp, vmin, v, VRdc, governs: v >= vmin ? 'formula' : 'vmin' };
+  }
+  const acw = (scp, fcd) => scp <= 0 ? 1 : scp <= 0.25 * fcd ? 1 + scp / fcd : scp <= 0.5 * fcd ? 1.25 : 2.5 * (1 - scp / fcd);
+  function vrdMax(bw, z, c, cot, scp = 0) { const t = 1 / cot; return acw(scp, c.fcdV) * bw * z * c.nu * c.fcdV / (cot + t); }
+  // design of vertical links for V_Ed: strut angle (cot theta 1..2.5), Asw/s, minimum, maximum spacing
+  // VEdStrut (default VEd): the shear that sets the strut angle, normally V_Ed at the support face, so that one truss
+  // angle serves both the V_Rd,max check at the face and the links designed for V_Ed at d from the face
+  function shearDesign({ bw, d, VEd, VEdStrut = null, c, fywk = 500, z = null, scp = 0 }) {
+    z = z ?? 0.9 * d; const fywd = fywk / GS, Vs = Math.max(VEd, VEdStrut ?? 0);
+    const Vmax25 = vrdMax(bw, z, c, 2.5, scp), Vmax45 = vrdMax(bw, z, c, 1, scp);
+    let cot = 2.5, ok = true;
+    if (Vs > Vmax25) {
+      const s2 = 2 * Vs / (acw(scp, c.fcdV) * bw * z * c.nu * c.fcdV);
+      if (s2 > 1) { ok = false; cot = 1; } else { const th = 0.5 * Math.asin(s2); cot = 1 / Math.tan(th); }
+    }
+    const AswS = VEd / (z * fywd * cot), AswSmin = 0.08 * Math.sqrt(c.fck) / fywk * bw;
+    return { z, fywd, cot, theta: Math.atan(1 / cot) * 180 / Math.PI, VRdmax: vrdMax(bw, z, c, cot, scp), Vmax25, Vmax45, ok, AswS, AswSmin, AswSreq: Math.max(AswS, AswSmin),
+      slMax: 0.75 * d, stMax: Math.min(0.75 * d, 600), dFtd: 0.5 * VEd * cot };
+  }
+  // resistance of provided links: the best strut angle in 1 <= cot <= 2.5 (V_Rd,s = V_Rd,max where possible)
+  function shearResistance({ bw, d, AswS, c, fywk = 500, z = null, scp = 0 }) {
+    z = z ?? 0.9 * d; const fywd = fywk / GS, Vs = cot => AswS * z * fywd * cot;
+    let cot;
+    if (Vs(2.5) <= vrdMax(bw, z, c, 2.5, scp)) cot = 2.5;
+    else if (Vs(1) >= vrdMax(bw, z, c, 1, scp)) cot = 1;
+    else { let lo = 1, hi = 2.5; for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; if (Vs(m) > vrdMax(bw, z, c, m, scp)) hi = m; else lo = m; } cot = (lo + hi) / 2; }
+    const VRds = Vs(cot), VRdmax = vrdMax(bw, z, c, cot, scp);
+    return { cot, VRds, VRdmax, VRd: Math.min(VRds, VRdmax), z, fywd };
+  }
+  // ---------- torsion, 6.3 (rectangular solid section treated as thin-walled closed) ----------
+  function torsion({ b, h, cEdge, c, TEd, VEd = 0, bw = b, d, cot = null, VRdc = null, VRdmax = null, fywk = 500, fyk = 500 }) {
+    const A = b * h, u = 2 * (b + h), tef = Math.max(A / u, 2 * cEdge);
+    if (!(tef < Math.min(b, h) / 2)) throw new Error('Torsion: the effective wall thickness exceeds half the section');
+    const Ak = (b - tef) * (h - tef), uk = 2 * ((b - tef) + (h - tef));
+    const TRdc = 2 * Ak * tef * c.fctd;
+    cot = cot ?? 2.5; const sn = 1 / Math.sqrt(1 + cot * cot), cs = cot * sn;
+    const TRdmax = 2 * c.nu * 1.0 * c.fcdV * Ak * tef * sn * cs;
+    const AswS1 = TEd / (2 * Ak * (fywk / GS) * cot), Asl = TEd * uk * cot / (2 * Ak * (fyk / GS));
+    const crackFree = VRdc ? TEd / TRdc + VEd / VRdc <= 1 : null;
+    const inter = VRdmax ? TEd / TRdmax + VEd / VRdmax : TEd / TRdmax;
+    return { A, u, tef, Ak, uk, TRdc, TRdmax, cot, AswS1, Asl, crackFree, inter, sMax: Math.min(uk / 8, b, h) };
+  }
+  // ---------- SLS sections ----------
+  // cracked elastic section (no concrete in tension): neutral axis and stresses for moment M, modular ratio ae
+  function cracked({ sec, As, d, As2 = 0, d2 = 50, ae, M = 0 }) {
+    const bw = sec.bw ?? sec.b, hf = sec.hf > 0 ? sec.hf : Infinity;
+    const Q = x => {   // first moment of the transformed area about the neutral axis (compression +)
+      const xc = Math.min(x, hf), q1 = sec.b * xc * (x - xc / 2), q2 = x > hf ? bw * (x - hf) * (x - hf) / 2 : 0;
+      return q1 + q2 + (ae - 1) * As2 * (x - d2) - ae * As * (d - x);
+    };
+    let lo = 0, hi = d; for (let i = 0; i < 100; i++) { const m = (lo + hi) / 2; if (Q(m) > 0) hi = m; else lo = m; }
+    const x = (lo + hi) / 2, xc = Math.min(x, hf);
+    // second moment about the neutral axis: flange part [0, xc], web part [hf, x], transformed steel
+    const Icr = sec.b * (x ** 3 - (x - xc) ** 3) / 3 + (x > hf ? bw * (x - hf) ** 3 / 3 : 0) + (ae - 1) * As2 * (x - d2) ** 2 + ae * As * (d - x) ** 2;
+    return { x, Icr, sc: M * x / Icr, ss: ae * M * (d - x) / Icr, ss2: ae * M * (x - d2) / Icr };
+  }
+  function uncracked({ sec, h, As = 0, d = 0, As2 = 0, d2 = 0, ae = 0 }) {
+    const bw = sec.bw ?? sec.b, hf = sec.hf > 0 ? Math.min(sec.hf, h) : 0;
+    const parts = [[bw * h, h / 2, bw * h ** 3 / 12], [(sec.b - bw) * hf, hf / 2, (sec.b - bw) * hf ** 3 / 12], [(ae - 1) * As, d, 0], [(ae - 1) * As2, d2, 0]];
+    const A = parts.reduce((t, p) => t + p[0], 0), y = parts.reduce((t, p) => t + p[0] * p[1], 0) / A;
+    const I = parts.reduce((t, p) => t + p[2] + p[0] * (p[1] - y) ** 2, 0);
+    return { A, y, I };
+  }
+  // ---------- crack control, 7.3 ----------
+  const T72 = { s: [160, 200, 240, 280, 320, 360, 400, 450], 0.4: [40, 32, 20, 16, 12, 10, 8, 6], 0.3: [32, 25, 16, 12, 10, 8, 6, 5], 0.2: [25, 16, 12, 8, 6, 5, 4, null] };
+  const T73 = { s: [160, 200, 240, 280, 320, 360], 0.4: [300, 300, 250, 200, 150, 100], 0.3: [300, 250, 200, 150, 100, 50], 0.2: [200, 150, 100, 50, null, null] };
+  function tableLookup(T, wk, ss) {
+    const col = T[wk]; if (!col) throw new Error('w_k must be 0.2, 0.3 or 0.4 mm for Tables 7.2N / 7.3N');
+    const s = T.s;
+    if (ss <= s[0]) return col[0];
+    for (let i = 1; i < s.length; i++) if (ss <= s[i]) { const a = col[i - 1], b = col[i]; if (a == null || b == null) return null; return a + (b - a) * (ss - s[i - 1]) / (s[i] - s[i - 1]); }
+    return null;   // stress beyond the table
+  }
+  // quasi-permanent steel stress by the ratio method (How to guide): fyd x (M_qp/M_Ed) x (As,req/As,prov) / delta
+  const sigmaQP = ({ fyd, Mqp, MEd, AsReq, AsProv, delta = 1 }) => fyd * (Mqp / MEd) * (AsReq / AsProv) / delta;
+  function crackTables({ ss, wk = 0.3, h, d, fctEff, kc = 0.4, hcr = null, tension = false }) {
+    const phiStar = tableLookup(T72, wk, ss), sMax = tableLookup(T73, wk, ss);
+    hcr = hcr ?? h / 2;
+    const mod = tension ? (fctEff / 2.9) * hcr / (8 * (h - d)) : (fctEff / 2.9) * kc * hcr / (2 * (h - d));
+    return { phiStar, phiMax: phiStar == null ? null : phiStar * mod, mod, sMax };
+  }
+  function crackWidth({ sec, h, As, d, phi, cover, spacing, ss, x, c, fctEff = null, kt = 0.4, k2 = 0.5 }) {
+    fctEff = fctEff ?? c.fctm; const ae = ES / c.Ecm, bw = sec.bw ?? sec.b;
+    const hcef = Math.min(2.5 * (h - d), (h - x) / 3, h / 2), Aceff = bw * hcef, rho = As / Aceff;
+    const de = Math.max((ss - kt * fctEff / rho * (1 + ae * rho)) / ES, 0.6 * ss / ES);
+    const close = spacing <= 5 * (cover + phi / 2);
+    const sr = close ? 3.4 * cover + 0.8 * k2 * 0.425 * phi / rho : 1.3 * (h - x);
+    return { hcef, Aceff, rho, ae, de, sr, close, wk: sr * de };
+  }
+  function asMinCrack({ kc = 0.4, k = 1.0, fctEff, Act, ss }) { return kc * k * fctEff * Act / ss; }
+  // k for 7.3.2: 1.0 for h <= 300, 0.65 for h >= 800, linear between
+  const kSize = h => h <= 300 ? 1.0 : h >= 800 ? 0.65 : 1.0 - 0.35 * (h - 300) / 500;
+  // ---------- deflection: span / effective depth, 7.4.2 with the UK NA ----------
+  const KSYS = { ss: 1.0, end: 1.3, interior: 1.5, flat: 1.2, cantilever: 0.4 };
+  function spanDepth({ fck, rho, rho2 = 0, system = 'ss', fyk = 500, AsReq, AsProv, flangeRatio = 1, span, brittle = true, flat = false }) {
+    const K = KSYS[system], r0 = 1e-3 * Math.sqrt(fck), sf = Math.sqrt(fck);
+    const base = rho <= r0 ? K * (11 + 1.5 * sf * r0 / rho + 3.2 * sf * (r0 / rho - 1) ** 1.5)
+      : K * (11 + 1.5 * sf * r0 / (rho - rho2) + sf / 12 * Math.sqrt(rho2 / r0));
+    const fs = Math.min(1.5, (500 / fyk) * (AsProv / AsReq));                         // 310/sigma_s ~ 500/(fyk As,req/As,prov), UK NA limit 1.5
+    const ff = flangeRatio > 3 ? 0.8 : 1;
+    const lim = flat ? 8500 : 7000, fl = brittle && span > lim && system !== 'cantilever' ? lim / span : 1;
+    return { K, rho0: r0, rho, base, fs, ff, fl, allowed: base * fs * ff * fl };
+  }
+  // ---------- detailing ----------
+  function asMin({ fctm, fyk = 500, bt, d }) { return Math.max(0.26 * fctm / fyk * bt * d, 0.0013 * bt * d); }
+  const clearMin = (phi, dg = 20) => Math.max(phi, dg + 5, 20);
+  // anchorage and laps, 8.4 / 8.7: straight or bent bars in tension, compression bars; alpha1 (shape), alpha2 (cover cd),
+  // alpha3 = alpha4 = alpha5 = 1 (conservative), alpha2 alpha3 alpha5 >= 0.7; alpha6 from the proportion lapped (Table 8.3)
+  function anchorage({ phi, c, ss = null, good = true, fyk = 500, tension = true, bent = false, cd = null, lappedPct = 100 }) {
+    const fbd = 2.25 * (good ? 1 : 0.7) * (phi <= 32 ? 1 : (132 - phi) / 100) * c.fctd;
+    const sd = ss ?? fyk / GS, lbrqd = phi / 4 * sd / fbd;
+    let a1 = 1, a2 = 1;
+    if (tension) {
+      cd = cd ?? 3 * phi;
+      if (bent) { a1 = cd > 3 * phi ? 0.7 : 1; a2 = Math.min(1, Math.max(0.7, 1 - 0.15 * (cd - 3 * phi) / phi)); }
+      else a2 = Math.min(1, Math.max(0.7, 1 - 0.15 * (cd - phi) / phi));
+    }
+    const a235 = Math.max(0.7, a2), lbmin = tension ? Math.max(0.3 * lbrqd, 10 * phi, 100) : Math.max(0.6 * lbrqd, 10 * phi, 100);
+    const lbd = Math.max(a1 * a235 * lbrqd, lbmin);
+    const a6 = tension ? Math.min(1.5, Math.max(1, Math.sqrt(lappedPct / 25))) : 1;
+    const l0min = Math.max(0.3 * a6 * lbrqd, 15 * phi, 200), l0 = Math.max(a1 * a235 * a6 * lbrqd, l0min);
+    return { fbd, sd, lbrqd, a1, a2, a6, lbmin, lbd, l0min, l0 };
+  }
+  // effective flange width, 5.3.2.1: bi = half clear distance to the next web (each side), l0 distance between zero moments
+  function flangeWidth({ bw, b1, b2, l0, bMax = Infinity }) {
+    const bi = b => Math.max(0, Math.min(0.2 * b + 0.1 * l0, 0.2 * l0, b));
+    return Math.min(bw + bi(b1) + bi(b2), bMax, bw + b1 + b2);
+  }
+  // l0 for 5.3.2.1 Figure 5.2: 0.85 L end span, 0.7 L interior span, 0.15 (L1 + L2) over an internal support, 0.15 L2 + L3 at a cantilever root
+  return { GC, GS, ES, CUBE, area, concrete, steel, block, xdLimit, bendingDesign, bendingResistance, shearConcrete, shearDesign, shearResistance, vrdMax, acw,
+    torsion, cracked, uncracked, T72, T73, tableLookup, sigmaQP, crackTables, crackWidth, asMinCrack, kSize, KSYS, spanDepth, asMin, clearMin, anchorage, flangeWidth };
+})();
+if (typeof module !== 'undefined') module.exports = { EC2 };
+
+/* ===== PUNCHING SHEAR (EngineeringTools) =====
+   Punching of slabs at columns to BS EN 1992-1-1:2004+A1:2014, 6.4 and 9.4.3, with the UK National Annex:
+   - loaded areas: internal, edge and corner columns, rectangular or circular, with the column set back from the free
+     edge(s) if wanted; control perimeters at any distance r from the face as Figure 6.13 (internal) and Figure 6.15 (near an
+     edge, used where shorter than the full perimeter, 6.4.2(4));
+   - openings within 6d of the face (6.4.2(3), Figure 6.14): the part of each perimeter between the tangents drawn from the
+     centre of the column to the opening is ineffective; where the opening's radial depth l1 exceeds its width l2 across
+     the radius, the width is taken as sqrt(l1 l2);
+   - beta: the UK NA approximate values (Figure 6.21N: 1.15 internal, 1.4 edge, 1.5 corner) or calculated, 6.4.3(3)-(5)
+     (6.39 with W1 from 6.41, Table 6.1 k; 6.42 circular; 6.43 biaxial internal; 6.44 edge with u1* (Figure 6.20) and W1
+     from 6.45; 6.46 corner);
+   - at the column face: vEd,0 = beta VEd / (u0 d) <= vRd,max = 0.5 nu fcd (UK NA 6.4.5(3)), u0 per 6.4.5(3) (corner: each
+     face counted up to 1.5d, so u0 <= 3d and <= c1 + c2, consistent with the edge case c2 + 3d <= c2 + 2c1);
+   - at u1 (2d): vRd,c (6.47), CRd,c = 0.18/gamma_c, k = 1 + sqrt(200/d) <= 2, rho_l = sqrt(rho_ly rho_lz) <= 0.02, vmin;
+     vEd <= kmax vRd,c with kmax = 2.0 (UK NA 6.4.5(1), A1:2014);
+   - shear reinforcement 6.4.5: Asw/sr = (vEd - 0.75 vRd,c) u1 / (1.5 fywd,ef), fywd,ef = 250 + 0.25 d <= fywd (6.52);
+     uout,ef = beta VEd / (vRd,c d) (6.54); perimeters of links from 0.3d-0.5d to within 1.5d of uout at sr <= 0.75d,
+     at least two, tangential spacing <= 1.5d inside 2d and <= 2d outside, each leg not less than Asw,min (9.11).
+   Optionally a uniform load q (kN/m2) inside each perimeter is deducted from VEd. Units N and mm. */
+const Punching = (() => {
+  'use strict';
+  const AREA = phi => Math.PI * phi * phi / 4, GC = 1.5, GS = 1.15;
+  const kTable = r => r <= 0.5 ? 0.45 : r <= 1 ? 0.45 + 0.15 * (r - 0.5) / 0.5 : r <= 2 ? 0.6 + 0.1 * (r - 1) : r <= 3 ? 0.7 + 0.1 * (r - 2) : 0.8;   // Table 6.1
+  const FACTORS = { internal: 1.15, edge: 1.4, corner: 1.5 };   // UK NA Figure 6.21N
+
+  /* geometry, column centre at the origin. Rectangular columns: ax, ay = half-dimensions in x and y. Free edges: an edge
+     column has the slab edge along y = -(ay + ey) (the column's x side runs along the edge); a corner column also has an
+     edge along x = -(ax + ex). For circular columns ax = ay = D/2. Returns the perimeter at distance r as a polyline. */
+  function path(G, r, seg = 2) {
+    const { type, circ, ax, ay } = G, pts = [];
+    const arc = (cx, cy, R, a0, a1) => { const n = Math.max(2, Math.ceil(Math.abs(a1 - a0) * R / seg)); for (let k = 0; k <= n; k++) { const a = a0 + (a1 - a0) * k / n; pts.push([cx + R * Math.cos(a), cy + R * Math.sin(a)]); } };
+    const line = (x0, y0, x1, y1) => { const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / seg)); for (let k = 0; k <= n; k++) pts.push([x0 + (x1 - x0) * k / n, y0 + (y1 - y0) * k / n]); };
+    const PI = Math.PI;
+    if (type === 'internal') {
+      if (circ) arc(0, 0, ax + r, 0, 2 * PI);
+      else { line(ax + r, -ay, ax + r, ay); arc(ax, ay, r, 0, PI / 2); line(ax, ay + r, -ax, ay + r); arc(-ax, ay, r, PI / 2, PI); line(-ax - r, ay, -ax - r, -ay); arc(-ax, -ay, r, PI, 1.5 * PI); line(-ax, -ay - r, ax, -ay - r); arc(ax, -ay, r, 1.5 * PI, 2 * PI); }
+      return { pts, closed: true };
+    }
+    const yE = -(ay + G.ey);
+    if (type === 'edge') {
+      if (circ) { line(-ax - r, yE, -ax - r, 0); arc(0, 0, ax + r, PI, 0); line(ax + r, 0, ax + r, yE); }
+      else { line(-ax - r, yE, -ax - r, ay); arc(-ax, ay, r, PI, PI / 2); line(-ax, ay + r, ax, ay + r); arc(ax, ay, r, PI / 2, 0); line(ax + r, ay, ax + r, yE); }
+      return { pts, closed: false };
+    }
+    const xE = -(ax + G.ex);   // corner
+    if (circ) { line(xE, ax + r, 0, ax + r); arc(0, 0, ax + r, PI / 2, 0); line(ax + r, 0, ax + r, yE); }
+    else { line(xE, ay + r, ax, ay + r); arc(ax, ay, r, PI / 2, 0); line(ax + r, ay, ax + r, yE); }
+    return { pts, closed: false };
+  }
+  // closed-form lengths (the polyline is used for openings and the drawing)
+  function uGross(G, r) {
+    const { type, circ, ax, ay } = G, PI = Math.PI;
+    const full = circ ? 2 * PI * (ax + r) : 4 * (ax + ay) + 2 * PI * r;
+    if (type === 'internal') return full;
+    const near = type === 'edge' ? (circ ? PI * (ax + r) + 2 * (ax + G.ey) : 2 * ax + 2 * (2 * ay + G.ey) + PI * r)
+      : (circ ? PI * (ax + r) / 2 + 2 * ax + G.ex + G.ey : 2 * ax + G.ex + 2 * ay + G.ey + PI * r / 2);
+    return Math.min(full, near);   // 6.4.2(4): Figure 6.15 where it gives the smaller perimeter
+  }
+  const usesFull = (G, r) => G.type !== 'internal' && uGross({ ...G, type: 'internal' }, r) <= uGross(G, r) + 1e-9;
+  // openings: angular shadows seen from the column centre (Figure 6.14), only those within 6d of the face
+  function shadows(G, d) {
+    const out = [];
+    for (const h of G.holes || []) {
+      if (!(h.a > 0 && h.b > 0)) continue;
+      const dx = Math.max(0, Math.abs(h.x) - h.a / 2 - G.ax), dy = Math.max(0, Math.abs(h.y) - h.b / 2 - G.ay), gap = G.circ ? Math.max(0, Math.hypot(h.x, h.y) - G.ax - Math.hypot(h.a, h.b) / 2) : Math.hypot(dx, dy);
+      if (gap > 6 * d + 1e-9) { out.push({ h, gap, active: false }); continue; }
+      const phi = Math.atan2(h.y, h.x), c = Math.cos(phi), s = Math.sin(phi);
+      const lr = Math.abs(h.a * c) + Math.abs(h.b * s), lt = Math.abs(h.a * s) + Math.abs(h.b * c);   // extents along / across the radius
+      const corners = [[h.x - h.a / 2, h.y - h.b / 2], [h.x + h.a / 2, h.y - h.b / 2], [h.x + h.a / 2, h.y + h.b / 2], [h.x - h.a / 2, h.y + h.b / 2]];
+      const rel = ([x, y]) => { let a = Math.atan2(y, x) - phi; while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
+      let lo = Math.min(...corners.map(rel)), hi = Math.max(...corners.map(rel));
+      const dn = Math.hypot(h.x, h.y) - lr / 2;
+      if (lr > lt && dn > 0) { const half = Math.atan(Math.sqrt(lr * lt) / 2 / dn); lo = Math.min(lo, -half); hi = Math.max(hi, half); }
+      out.push({ h, gap, active: true, phi, lo, hi, lr, lt });
+    }
+    return out;
+  }
+  const inShadow = (S, x, y) => S.some(s => { if (!s.active) return false; let a = Math.atan2(y, x) - s.phi; while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a >= s.lo - 1e-12 && a <= s.hi + 1e-12; });
+  // perimeter at r: gross length, the length lost to openings, net
+  function perimeter(G, r, S) {
+    const gross = uGross(G, r);
+    if (!S.some(s => s.active)) return { gross, lost: 0, net: gross };
+    const g = usesFull(G, r) ? { ...G, type: 'internal' } : G, P = path(g, r, 1).pts;
+    let L = 0, lost = 0, prev = inShadow(S, P[0][0], P[0][1]);
+    for (let k = 1; k < P.length; k++) {
+      const a = P[k - 1], b = P[k], l = Math.hypot(b[0] - a[0], b[1] - a[1]), cur = inShadow(S, b[0], b[1]); L += l;
+      if (prev && cur) lost += l;
+      else if (prev !== cur) {   // the segment crosses a tangent: find the crossing
+        let lo = 0, hi = 1;
+        for (let m = 0; m < 30; m++) { const t = (lo + hi) / 2; if (inShadow(S, a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t) === prev) lo = t; else hi = t; }
+        lost += prev ? lo * l : (1 - lo) * l;
+      }
+      prev = cur;
+    }
+    lost *= gross / L;   // the polyline is a fine approximation of the exact length; scale to it
+    return { gross, lost, net: gross - lost };
+  }
+  // area inside the perimeter at r (for a deducted load q), on the slab
+  function areaIn(G, r) {
+    const { type, circ, ax, ay } = G, PI = Math.PI;
+    if (type === 'internal') return circ ? PI * (ax + r) ** 2 : 4 * ax * ay + 4 * r * (ax + ay) + PI * r * r;
+    if (type === 'edge') return circ ? PI * (ax + r) ** 2 / 2 + 2 * (ax + r) * (ax + G.ey) : (2 * ax + 2 * r) * (2 * ay + G.ey) + 2 * ax * r + PI * r * r / 2;
+    return circ ? PI * (ax + r) ** 2 / 4 + (ax + r) * (ax + G.ex) + (ax + r) * (ax + G.ey) + (ax + G.ex) * (ax + G.ey)
+      : (2 * ax + G.ex + r) * (2 * ay + G.ey + r) - r * r + PI * r * r / 4;
+  }
+  // u0, the column-face perimeter for vRd,max (6.4.5(3))
+  function u0of(G, d) {
+    const { type, circ, ax, ay } = G;
+    if (type === 'internal') return circ ? 2 * Math.PI * ax : 4 * (ax + ay);
+    const c1 = 2 * ay, c2 = 2 * ax;   // edge: c2 along the edge, c1 into the slab
+    if (type === 'edge') return circ ? Math.min(Math.PI * ax, 2 * ax + 3 * d) : Math.min(c2 + 3 * d, c2 + 2 * c1);
+    return circ ? Math.min(Math.PI * ax / 2, 3 * d) : Math.min(1.5 * d, c1) + Math.min(1.5 * d, c2);   // 3d <= c1 + c2, taken face by face (each face at most 1.5d), as the edge case
+  }
+  // beta, 6.4.3
+  function betaOf(G, d, VEd, beta, u1) {
+    if (beta.method !== 'calc') return { beta: FACTORS[G.type], how: 'UK NA approximate value (Figure 6.21N)' };
+    const Mx = Math.abs(beta.Mx || 0) * 1e6, My = Math.abs(beta.My || 0) * 1e6;   // Mx: moment about the x axis (eccentricity along y)
+    const { type, circ, ax, ay } = G, PI = Math.PI;
+    if (!(VEd > 0)) return { beta: 1, how: 'no load' };
+    if (type === 'internal') {
+      if (circ) { const e = Math.hypot(Mx, My) / VEd; return { beta: 1 + 0.6 * PI * e / (2 * ax + 4 * d), how: '(6.42), circular internal column', e }; }
+      const ey = Mx / VEd, ex = My / VEd;   // eccentricities along y and x
+      if (ex > 0 && ey > 0) { const by = 2 * ay + 4 * d, bx = 2 * ax + 4 * d; return { beta: 1 + 1.8 * Math.sqrt((ex / bx) ** 2 + (ey / by) ** 2), how: '(6.43), biaxial', ex, ey, bx, by }; }
+      const along = ex > 0 ? 'x' : 'y', e = Math.max(ex, ey), c1 = along === 'x' ? 2 * ax : 2 * ay, c2 = along === 'x' ? 2 * ay : 2 * ax;
+      const W1 = c1 * c1 / 2 + c1 * c2 + 4 * c2 * d + 16 * d * d + 2 * PI * d * c1, k = kTable(c1 / c2);
+      return { beta: 1 + k * e * u1 / W1, how: '(6.39) with W1 from (6.41)', k, W1, e };
+    }
+    // edge and corner: u1* (Figure 6.20), eccentricity towards the interior assumed for the moment across the edge
+    if (type === 'edge') {
+      const c1 = 2 * ay, c2 = 2 * ax, a = Math.min(0.5 * c1, 1.5 * d), u1s = circ ? PI * (ax + 2 * d) + 2 * Math.min(ax, 1.5 * d) : c2 + 2 * a + 2 * PI * d;
+      const epar = My / VEd, W1 = c2 * c2 / 4 + c1 * c2 + 4 * c1 * d + 8 * d * d + PI * d * c2, k = kTable(c1 / (2 * c2));
+      return { beta: u1 / u1s + k * u1 / W1 * epar, how: '(6.44) with u1* (Figure 6.20) and W1 from (6.45)', u1s, k, W1, e: epar };
+    }
+    const c1 = 2 * ay, c2 = 2 * ax, u1s = circ ? PI * (ax + 2 * d) / 2 + 2 * Math.min(ax, 1.5 * d) : Math.min(0.5 * c1, 1.5 * d) + Math.min(0.5 * c2, 1.5 * d) + PI * d;
+    return { beta: u1 / u1s, how: '(6.46) with u1* (Figure 6.20)', u1s };
+  }
+  // the distance from the face at which the net perimeter reaches a target length
+  function rFor(G, S, target, rmax) {
+    let lo = 0, hi = Math.max(rmax, 1);
+    while (perimeter(G, hi, S).net < target && hi < 1e6) hi *= 2;
+    for (let k = 0; k < 60; k++) { const m = (lo + hi) / 2; if (perimeter(G, m, S).net < target) lo = m; else hi = m; }
+    return (lo + hi) / 2;
+  }
+
+  /* inp: { type 'internal'|'edge'|'corner', shape 'rect'|'circ', c1, c2 (mm) or D, ex, ey (column face to free edge, mm),
+            h, cover (to the outer layer), phiX, sX (bars running in x), phiY, sY, outer 'x'|'y' (which layer is outside),
+            dX, dY (optional: effective depths given directly), fck, fyk, fywk, VEd (kN), q (kN/m2 deducted, optional),
+            beta: { method 'factors'|'calc', Mx, My (kNm) }, holes: [{ x, y, a, b }] (centre from the column centre, sizes, mm),
+            link: { phi (mm) | 'auto', sr (mm, optional), s0 (mm, optional) } }
+     For an edge column c1 is the column dimension perpendicular to the edge (y) and c2 along it (x). */
+  function design(inp) {
+    const circ = inp.shape === 'circ', type = inp.type || 'internal';
+    const ax = circ ? inp.D / 2 : inp.c2 / 2, ay = circ ? inp.D / 2 : inp.c1 / 2;
+    if (!(ax > 0 && ay > 0)) throw new Error('Give the column dimensions');
+    if (!(inp.h > 0)) throw new Error('Give the slab depth h');
+    const G = { type, circ, ax, ay, ex: Math.max(0, inp.ex || 0), ey: Math.max(0, inp.ey || 0), holes: inp.holes || [] };
+    G.holes.forEach((o, i) => { if (o.a > 0 && o.b > 0 && Math.abs(o.x) < ax + o.a / 2 - 1e-9 && Math.abs(o.y) < ay + o.b / 2 - 1e-9) throw new Error(`Opening ${i + 1} overlaps the column`); });
+    // effective depths: the outer layer and the inner layer (6.32: d = (dy + dz) / 2)
+    const outer = inp.outer === 'y' ? 'y' : 'x';
+    let dX = inp.dX, dY = inp.dY;
+    if (!(dX > 0 && dY > 0)) {
+      const dOut = inp.h - inp.cover - (outer === 'x' ? inp.phiX : inp.phiY) / 2, dIn = inp.h - inp.cover - (outer === 'x' ? inp.phiX : inp.phiY) - (outer === 'x' ? inp.phiY : inp.phiX) / 2;
+      dX = outer === 'x' ? dOut : dIn; dY = outer === 'x' ? dIn : dOut;
+    }
+    if (!(dX > 0 && dY > 0)) throw new Error('The effective depth is not positive: check h, the cover and the bars');
+    const d = inp.d > 0 ? inp.d : (dX + dY) / 2;   // inp.d: the mean effective depth given (e.g. rounded)
+    const fck = inp.fck, fv = Math.min(fck, 50), fyk = inp.fyk || 500, fywk = inp.fywk || fyk, fywd = fywk / GS;
+    const AsX = inp.AsX > 0 ? inp.AsX : AREA(inp.phiX) * 1000 / inp.sX, AsY = inp.AsY > 0 ? inp.AsY : AREA(inp.phiY) * 1000 / inp.sY;   // mm2/m
+    const rhoX = AsX / (1000 * dX), rhoY = AsY / (1000 * dY), rhoL = Math.min(0.02, Math.sqrt(rhoX * rhoY));
+    const k = Math.min(2, 1 + Math.sqrt(200 / d));
+    const vRdc = Math.max(0.18 / GC * k * (100 * rhoL * fv) ** (1 / 3), 0.035 * k ** 1.5 * Math.sqrt(fv));
+    const nu = 0.6 * (1 - fv / 250), fcd = fv / GC, vRdmax = 0.5 * nu * fcd;   // UK NA 6.4.5(3)
+    const S = shadows(G, d);
+    const VEd = inp.VEd * 1e3, q = (inp.q || 0) * 1e-3;   // N, N/mm2
+    const Vred = r => Math.max(0, VEd - q * areaIn(G, r));
+    // u1 at 2d
+    const p1 = perimeter(G, 2 * d, S), u1 = p1.net;
+    if (!(u1 > 0)) throw new Error('The openings remove the whole basic control perimeter');
+    const B = betaOf(G, d, VEd, inp.beta || { method: 'factors' }, u1), beta = B.beta;
+    // column face
+    const u0g = u0of(G, d), lost0 = S.some(s => s.active) ? perimeter(G, 1e-6, S).lost * (u0g / uGross(G, 1e-6)) : 0, u0 = Math.max(1e-9, u0g - lost0);
+    const vEd0 = beta * Vred(0) / (u0 * d);
+    const vEd1 = beta * Vred(2 * d) / (u1 * d);
+    const fywdef = Math.min(250 + 0.25 * d, fywd);
+    const out = { G, S, d, dX, dY, AsX, AsY, rhoX, rhoY, rhoL, k, vRdc, nu, fcd, vRdmax, beta, B, u0, u0g, lost0, vEd0, u1, u1g: p1.gross, lost1: p1.lost,
+      vEd1, VEd, Vred0: Vred(0), Vred1: Vred(2 * d), q, fywdef, kmax: 2, checks: [] };
+    out.checks.push({ id: 'max', name: 'Column face: vEd,0 ≤ vRd,max', ref: '6.4.5(3), UK NA', util: vEd0 / vRdmax, note: `${vEd0.toFixed(2)} / ${vRdmax.toFixed(2)} N/mm²` });
+    out.needLinks = vEd1 > vRdc;
+    out.checks.push({ id: 'c', name: out.needLinks ? 'Basic control perimeter: vEd ≤ kmax vRd,c (links)' : 'Basic control perimeter: vEd ≤ vRd,c', ref: out.needLinks ? '6.4.5(1), UK NA kmax = 2' : '6.4.4(1), (6.47)',
+      util: out.needLinks ? vEd1 / (2 * vRdc) : vEd1 / vRdc, note: `${vEd1.toFixed(3)} / ${(out.needLinks ? 2 * vRdc : vRdc).toFixed(3)} N/mm²` });
+    // outer perimeter where links are no longer needed (6.54)
+    const uout = beta * VEd / (vRdc * d);
+    out.uout = uout; out.rout = rFor(G, S, uout, 2 * d);   // distance from the face (net perimeter, VEd not reduced: conservative)
+    if (!out.needLinks) { out.links = null; out.util = Math.max(...out.checks.map(c => c.util)); return out; }
+    // ---------- shear reinforcement ----------
+    const AswSr = Math.max(0, (vEd1 - 0.75 * vRdc) * u1 / (1.5 * fywdef));   // mm2/mm per perimeter
+    const L = inp.link || {}, srMax = 0.75 * d;
+    const s0 = L.s0 > 0 ? L.s0 : Math.max(0.3 * d, Math.floor(0.5 * d / 5) * 5);   // first perimeter 0.3d-0.5d from the face
+    const sr = L.sr > 0 ? Math.min(L.sr, srMax) : Math.floor(srMax / 5) * 5;
+    const rLast = Math.max(s0 + sr, out.rout - 1.5 * d);   // outermost perimeter not more than 1.5d inside uout (9.4.3(4) / 6.4.5(4))
+    const nPer = Math.max(2, Math.ceil((rLast - s0) / sr - 1e-9) + 1);
+    const minPerLeg = 0.08 * Math.sqrt(fv) / fywk / 1.5;   // Asw,min per leg / (sr st), 9.11 with vertical legs
+    const pick = phi => {
+      const A = AREA(phi), Asw = AswSr * sr, per = [];
+      for (let i = 0; i < nPer; i++) {
+        const r = s0 + i * sr, P = perimeter(G, r, S), stMax = r <= 2 * d + 1e-9 ? 1.5 * d : 2 * d;
+        let n = Math.max(Math.ceil(Asw / A - 1e-9), Math.ceil(P.net / stMax - 1e-9), 2);
+        const st = P.net / n; if (A < minPerLeg * sr * st) n = Math.max(n, Math.ceil(P.net * minPerLeg * sr / A));
+        per.push({ i: i + 1, r, len: P.net, n, st: P.net / n, Asw: n * A, stMax });
+      }
+      return { phi, A, per, legs: per.reduce((s, p) => s + p.n, 0) };
+    };
+    // link size: as given, or the smallest bar whose legs are not closer than min(100 mm, 0.5d) along any perimeter
+    let lay = null;
+    if (L.phi > 0) lay = pick(L.phi);
+    else for (const phi of [8, 10, 12, 16]) { lay = pick(phi); if (lay.per.every(p => p.st >= Math.min(100, 0.5 * d) - 1e-9)) break; }
+    const AswProv = Math.min(...lay.per.map(p => p.Asw)), vRdcs = 0.75 * vRdc + 1.5 * (d / sr) * AswProv * fywdef / (u1 * d);
+    out.links = { AswSr, sr, s0, srMax, rLast, nPer, minPerLeg, ...lay, AswProv, vRdcs, mass: lay.legs * lay.A * (inp.h - 2 * inp.cover) * 7.85e-6 };
+    out.checks.push({ id: 'cs', name: 'Basic control perimeter with links: vEd ≤ vRd,cs', ref: '6.4.5(1), (6.52)', util: vEd1 / vRdcs, note: `${vEd1.toFixed(3)} / ${vRdcs.toFixed(3)} N/mm²` });
+    out.util = Math.max(...out.checks.map(c => c.util));
+    return out;
+  }
+  return { design, path, uGross, perimeter, shadows, areaIn, u0of, betaOf, kTable, FACTORS, rFor };
+})();
+if (typeof module !== 'undefined') module.exports = { Punching };
+
+/* ===== PLATE FEM: MITC4 MINDLIN–REISSNER PLATE (EngineeringTools) =====
+   Linear plate bending on an axis-aligned rectangular mesh, units kN and m.
+   - Element: 4-node Mindlin–Reissner quadrilateral, bending by 2 x 2 Gauss, transverse shear by the MITC4 assumed
+     strains (Bathe and Dvorkin 1985): gamma_xz tied at the mid-points of the edges parallel to x, gamma_yz at those
+     parallel to y, so the element neither locks in thin plates nor has spurious zero-energy modes.
+   - DOFs per node: w (along the load, positive down), bx, by (in the thin limit bx = dw/dx, by = dw/dy).
+     Curvatures k = -[d bx/dx, d by/dy, d bx/dy + d by/dx]; moments m = Db k, positive sagging (tension at the bottom);
+     shear strains g = [dw/dx - bx, dw/dy - by], shear forces q = Ds g.
+   - Constraints: fixed DOFs, linear multi-point constraints (slave = sum c x master, used for rigid column footprints)
+     eliminated exactly during assembly, rotational springs.
+   - Solver: equations ordered by geometric nested dissection, sparse LDL^T (Davis 2005), any number of load vectors.
+   References: Bathe, Finite Element Procedures (2014) 5.4.2 and 8.2.3; Timoshenko & Woinowsky-Krieger, Theory of Plates
+   and Shells (1959) for the checks. */
+const PlateFEM = (() => {
+  'use strict';
+  const G2 = [-1 / Math.sqrt(3), 1 / Math.sqrt(3)];
+  const iso = (D, nu) => [D, nu * D, 0, nu * D, D, 0, 0, 0, (1 - nu) / 2 * D];
+  const N4 = (xi, eta) => [(1 - xi) * (1 - eta) / 4, (1 + xi) * (1 - eta) / 4, (1 + xi) * (1 + eta) / 4, (1 - xi) * (1 + eta) / 4];
+  const dXi = eta => [-(1 - eta) / 4, (1 - eta) / 4, (1 + eta) / 4, -(1 + eta) / 4];
+  const dEta = xi => [-(1 - xi) / 4, -(1 + xi) / 4, (1 + xi) / 4, (1 - xi) / 4];
+
+  // rows of the shear strain operator at a tying point: gx = sum dNi/dx w_i - Ni bx_i, gy = sum dNi/dy w_i - Ni by_i
+  function gammaX(xi, eta, a) { const N = N4(xi, eta), d = dXi(eta), r = new Float64Array(12); for (let i = 0; i < 4; i++) { r[3 * i] = d[i] * 2 / a; r[3 * i + 1] = -N[i]; } return r; }
+  function gammaY(xi, eta, b) { const N = N4(xi, eta), d = dEta(xi), r = new Float64Array(12); for (let i = 0; i < 4; i++) { r[3 * i] = d[i] * 2 / b; r[3 * i + 2] = -N[i]; } return r; }
+  // MITC4 shear operator (2 x 12) at (xi, eta) on an a x b rectangle
+  function bShear(xi, eta, a, b) {
+    const gB = gammaX(0, -1, a), gD = gammaX(0, 1, a), gA = gammaY(-1, 0, b), gC = gammaY(1, 0, b), B = new Float64Array(24);
+    for (let k = 0; k < 12; k++) { B[k] = (1 - eta) / 2 * gB[k] + (1 + eta) / 2 * gD[k]; B[12 + k] = (1 - xi) / 2 * gA[k] + (1 + xi) / 2 * gC[k]; }
+    return B;
+  }
+  function bBend(xi, eta, a, b) {
+    const dx = dXi(eta).map(v => v * 2 / a), dy = dEta(xi).map(v => v * 2 / b), B = new Float64Array(36);
+    for (let i = 0; i < 4; i++) { B[3 * i + 1] = -dx[i]; B[12 + 3 * i + 2] = -dy[i]; B[24 + 3 * i + 1] = -dy[i]; B[24 + 3 * i + 2] = -dx[i]; }
+    return B;
+  }
+  /* element stiffness (12 x 12, row-major) of an a x b rectangle; node order (-,-), (+,-), (+,+), (-,+); Db 3 x 3 row-major,
+     Ds the shear rigidity kappa G h (kN/m) */
+  const bCache = new Map();
+  function bMats(a, b) {   // bending and MITC4 shear operators at the 2 x 2 Gauss points, cached by element size
+    const key = a.toFixed(9) + ',' + b.toFixed(9); let v = bCache.get(key);
+    if (!v) { v = { Bb: [], Bs: [] }; for (const xi of G2) for (const eta of G2) { v.Bb.push(bBend(xi, eta, a, b)); v.Bs.push(bShear(xi, eta, a, b)); } if (bCache.size > 5000) bCache.clear(); bCache.set(key, v); }
+    return v;
+  }
+  function ke(a, b, Db, Ds) {
+    const K = new Float64Array(144), det = a * b / 4, Bm = bMats(a, b);
+    for (let g = 0; g < 4; g++) {
+      const Bb = Bm.Bb[g], Bs = Bm.Bs[g];
+      for (let r = 0; r < 12; r++) {
+        const b0 = Bb[r], b1 = Bb[12 + r], b2 = Bb[24 + r], s0 = Bs[r], s1 = Bs[12 + r];
+        const t0 = (b0 * Db[0] + b1 * Db[3] + b2 * Db[6]) * det, t1 = (b0 * Db[1] + b1 * Db[4] + b2 * Db[7]) * det, t2 = (b0 * Db[2] + b1 * Db[5] + b2 * Db[8]) * det;
+        const u0 = s0 * Ds * det, u1 = s1 * Ds * det;
+        for (let c = r; c < 12; c++) K[r * 12 + c] += t0 * Bb[c] + t1 * Bb[12 + c] + t2 * Bb[24 + c] + u0 * Bs[c] + u1 * Bs[12 + c];
+      }
+    }
+    for (let r = 0; r < 12; r++) for (let c = 0; c < r; c++) K[r * 12 + c] = K[c * 12 + r];
+    return K;
+  }
+  // equivalent nodal loads of an initial curvature k0 (3) over the element: f = int Bb^T Db k0 dA
+  function curvatureLoad(a, b, Db, k0) {
+    const f = new Float64Array(12), det = a * b / 4, m0 = [Db[0] * k0[0] + Db[1] * k0[1] + Db[2] * k0[2], Db[3] * k0[0] + Db[4] * k0[1] + Db[5] * k0[2], Db[6] * k0[0] + Db[7] * k0[1] + Db[8] * k0[2]];
+    for (const Bb of bMats(a, b).Bb) for (let c = 0; c < 12; c++) f[c] += (Bb[c] * m0[0] + Bb[12 + c] * m0[1] + Bb[24 + c] * m0[2]) * det;
+    return f;
+  }
+
+  /* mesh: grid lines xs (nx + 1), ys (ny + 1); elements listed by cell (i, j), only the active ones.
+     Node n = j * (nx + 1) + i. Element e has cell ci[e], cj[e] and nodes n0..n3. */
+  function mesh(xs, ys, activeCell) {
+    const nx = xs.length - 1, ny = ys.length - 1, ci = [], cj = [];
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) if (!activeCell || activeCell(i, j)) { ci.push(i); cj.push(j); }
+    const nEl = ci.length, nodes = new Int32Array(4 * nEl), used = new Uint8Array((nx + 1) * (ny + 1));
+    for (let e = 0; e < nEl; e++) {
+      const i = ci[e], j = cj[e], n0 = j * (nx + 1) + i;
+      nodes.set([n0, n0 + 1, n0 + nx + 2, n0 + nx + 1], 4 * e); used[n0] = used[n0 + 1] = used[n0 + nx + 2] = used[n0 + nx + 1] = 1;
+    }
+    const cellEl = new Int32Array(nx * ny).fill(-1); for (let e = 0; e < nEl; e++) cellEl[cj[e] * nx + ci[e]] = e;
+    return { xs: Float64Array.from(xs), ys: Float64Array.from(ys), nx, ny, nn: (nx + 1) * (ny + 1), nEl, ci: Int32Array.from(ci), cj: Int32Array.from(cj), nodes, used, cellEl,
+      X: n => xs[n % (nx + 1)], Y: n => ys[Math.floor(n / (nx + 1))] };
+  }
+
+  /* system: { mesh, Db(e) -> [9] or one array, Ds(e) or number, fixed: Uint8Array(3 nn), mpc: [{ s, m: [[dof, c]] }],
+     springs: [[dof, k]] }. Masters of a constraint must be free DOFs (not fixed, not slaves). With reuse = an earlier
+     system on the same mesh and constraints, only the stiffness values and the numeric factor are recomputed. */
+  function assemble(S, reuse) {
+    const M = S.mesh, sym = reuse ? reuse.sym : symbolic(S);
+    const { neq, Ap, elPtr, elPos, elK, elC, spPos, spC } = sym, Ax = new Float64Array(Ap[neq]);
+    const dbOf = typeof S.Db === 'function' ? S.Db : () => S.Db, dsOf = typeof S.Ds === 'function' ? S.Ds : () => S.Ds;
+    const kes = new Array(M.nEl);
+    for (let e = 0; e < M.nEl; e++) {
+      const a = M.xs[M.ci[e] + 1] - M.xs[M.ci[e]], b = M.ys[M.cj[e] + 1] - M.ys[M.cj[e]], k12 = ke(a, b, dbOf(e), dsOf(e)); kes[e] = k12;
+      for (let t = elPtr[e]; t < elPtr[e + 1]; t++) Ax[elPos[t]] += elC[t] * k12[elK[t]];
+    }
+    (S.springs || []).forEach(([, k], i) => { for (let t = spPos[i]; t < spPos[i + 1]; t++) Ax[spC[2 * t]] += spC[2 * t + 1] * k; });
+    const Fct = ldlNumeric(sym, Ax, S.mechanismMessage);
+    return { S, M, sym, neq, eqOf: sym.eqOf, exp: sym.exp, perm: sym.perm, inv: sym.inv, F: Fct, kes, fixed: sym.fixed, slave: sym.slave };
+  }
+  function symbolic(S) {
+    const M = S.mesh, nd = 3 * M.nn, fixed = S.fixed || new Uint8Array(nd);
+    // equations: free DOFs of used nodes that are neither fixed nor slaves
+    const slave = new Map(); for (const c of S.mpc || []) if (!fixed[c.s]) slave.set(c.s, c.m);
+    const eqOf = new Int32Array(nd).fill(-1); let neq = 0;
+    for (let n = 0; n < M.nn; n++) if (M.used[n]) for (let k = 0; k < 3; k++) { const d = 3 * n + k; if (!fixed[d] && !slave.has(d)) eqOf[d] = neq++; }
+    // expansion of every nodal DOF onto equations
+    const expOf = d => { if (fixed[d]) return []; if (slave.has(d)) return slave.get(d).filter(([m]) => eqOf[m] >= 0).map(([m, c]) => [eqOf[m], c]); return eqOf[d] >= 0 ? [[eqOf[d], 1]] : []; };
+    const exp = new Array(nd); for (let d = 0; d < nd; d++) exp[d] = M.used[Math.floor(d / 3)] ? expOf(d) : [];
+    // equation graph
+    const adj = Array.from({ length: neq }, () => new Set());
+    for (let e = 0; e < M.nEl; e++) {
+      const st = new Set(); for (let a = 0; a < 4; a++) for (let k = 0; k < 3; k++) for (const [q] of exp[3 * M.nodes[4 * e + a] + k]) st.add(q);
+      const L = [...st]; for (const p of L) for (const q of L) if (p !== q) adj[p].add(q);
+    }
+    // nested dissection on the node coordinates (each equation sits at a node; masters at the column centre)
+    const ex = new Float64Array(neq), ey = new Float64Array(neq);
+    for (let d = 0; d < nd; d++) if (eqOf[d] >= 0) { const n = Math.floor(d / 3); ex[eqOf[d]] = M.X(n); ey[eqOf[d]] = M.Y(n); }
+    const perm = nestedDissection(ex, ey, neq), inv = new Int32Array(neq); perm.forEach((q, i) => { inv[q] = i; });
+    // upper triangle (row <= column) in compressed columns, new numbering
+    const cnt = new Int32Array(neq + 1);
+    for (let q = 0; q < neq; q++) { const j = inv[q]; cnt[j + 1]++; for (const p of adj[q]) if (inv[p] < j) cnt[j + 1]++; }
+    const Ap = new Int32Array(neq + 1); for (let j = 0; j < neq; j++) Ap[j + 1] = Ap[j] + cnt[j + 1];
+    const Ai = new Int32Array(Ap[neq]);
+    for (let q = 0; q < neq; q++) { const j = inv[q], rows = [j]; for (const p of adj[q]) if (inv[p] < j) rows.push(inv[p]); rows.sort((a, b) => a - b); Ai.set(rows, Ap[j]); }
+    const at = (i, j) => { let lo = Ap[j], hi = Ap[j + 1] - 1; while (lo <= hi) { const m = (lo + hi) >> 1, v = Ai[m]; if (v === i) return m; if (v < i) lo = m + 1; else hi = m - 1; } throw new Error('sparsity'); };
+    // where each element stiffness term goes
+    const P_ = [], K_ = [], C_ = [], elPtr = new Int32Array(M.nEl + 1);
+    for (let e = 0; e < M.nEl; e++) {
+      const exl = []; for (let r = 0; r < 4; r++) for (let k = 0; k < 3; k++) exl.push(exp[3 * M.nodes[4 * e + r] + k]);
+      for (let r = 0; r < 12; r++) for (const [p, cp] of exl[r]) { const i = inv[p]; for (let c = 0; c < 12; c++) for (const [q, cq] of exl[c]) { const j = inv[q]; if (i <= j) { P_.push(at(i, j)); K_.push(r * 12 + c); C_.push(cp * cq); } } }
+      elPtr[e + 1] = P_.length;
+    }
+    const spPos = [0], spC = [];
+    for (const [d] of S.springs || []) { for (const [p, c] of exp[d]) { const i = inv[p]; spC.push(at(i, i), c * c); } spPos.push(spC.length / 2); }
+    const sym = { neq, eqOf, exp, perm, inv, Ap, Ai, fixed, slave, elPtr, elPos: Int32Array.from(P_), elK: Int32Array.from(K_), elC: Float64Array.from(C_), spPos, spC };
+    Object.assign(sym, ldlSymbolic(neq, Ap, Ai));
+    return sym;
+  }
+  // geometric nested dissection: split by the median line of the longer extent, the line's equations last
+  function nestedDissection(x, y, n) {
+    const order = [];
+    const rec = ids => {
+      if (ids.length <= 48) { ids.sort((a, b) => (x[a] - x[b]) || (y[a] - y[b]) || (a - b)); for (const i of ids) order.push(i); return; }
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (const i of ids) { if (x[i] < x0) x0 = x[i]; if (x[i] > x1) x1 = x[i]; if (y[i] < y0) y0 = y[i]; if (y[i] > y1) y1 = y[i]; }
+      const c = x1 - x0 >= y1 - y0 ? x : y, vals = [...new Set(ids.map(i => c[i]))].sort((a, b) => a - b);
+      if (vals.length < 3) { ids.sort((a, b) => a - b); for (const i of ids) order.push(i); return; }
+      const med = vals[vals.length >> 1], A = [], B = [], Sep = [];
+      for (const i of ids) (c[i] < med - 1e-9 ? A : c[i] > med + 1e-9 ? B : Sep).push(i);
+      rec(A); rec(B); for (const i of Sep) order.push(i);
+    };
+    rec(Array.from({ length: n }, (_, i) => i));
+    return order;
+  }
+  /* sparse LDL^T, up-looking (T. A. Davis, "Algorithm 849: a concise sparse Cholesky factorization package", ACM TOMS
+     31, 2005): the elimination tree and column counts once, then the factor row by row */
+  function ldlSymbolic(n, Ap, Ai) {
+    const Parent = new Int32Array(n), Lnz = new Int32Array(n), Flag = new Int32Array(n), Lp = new Int32Array(n + 1);
+    for (let k = 0; k < n; k++) {
+      Parent[k] = -1; Flag[k] = k; Lnz[k] = 0;
+      for (let p = Ap[k]; p < Ap[k + 1]; p++) { let i = Ai[p]; if (i < k) for (; Flag[i] !== k; i = Parent[i]) { if (Parent[i] === -1) Parent[i] = k; Lnz[i]++; Flag[i] = k; } }
+    }
+    for (let k = 0; k < n; k++) Lp[k + 1] = Lp[k] + Lnz[k];
+    if (Lp[n] > 4e7) throw new Error('The model is too large for the browser: use larger elements');
+    return { Parent, Lp };
+  }
+  function ldlNumeric(sym, Ax, msg) {
+    const { neq: n, Ap, Ai, Parent, Lp } = sym, Lnz = new Int32Array(n), Flag = new Int32Array(n);
+    const Li = new Int32Array(Lp[n]), Lx = new Float64Array(Lp[n]), D = new Float64Array(n), Y = new Float64Array(n), Pattern = new Int32Array(n);
+    for (let k = 0; k < n; k++) {
+      Y[k] = 0; let top = n; Flag[k] = k; Lnz[k] = 0; let diag0 = 0;
+      for (let p = Ap[k]; p < Ap[k + 1]; p++) {
+        let i = Ai[p]; Y[i] += Ax[p]; if (i === k) diag0 = Ax[p];
+        let len = 0; for (; Flag[i] !== k; i = Parent[i]) { Pattern[len++] = i; Flag[i] = k; }
+        while (len > 0) Pattern[--top] = Pattern[--len];
+      }
+      let dk = Y[k]; Y[k] = 0;
+      for (; top < n; top++) {
+        const i = Pattern[top], yi = Y[i]; Y[i] = 0; const p2 = Lp[i] + Lnz[i];
+        for (let p = Lp[i]; p < p2; p++) Y[Li[p]] -= Lx[p] * yi;
+        const l = yi / D[i]; dk -= l * yi; Li[p2] = k; Lx[p2] = l; Lnz[i]++;
+      }
+      if (!(dk > 1e-10 * Math.max(diag0, 1e-30))) throw new Error(msg || 'The slab can move without straining (a mechanism): add supports or columns');
+      D[k] = dk;
+    }
+    return { n, Lp, Li, Lx, D, nnz: Lp[n] };
+  }
+  // nodal load vector (3 nn) -> displacements (3 nn), constraints applied
+  function solve(sys, F) {
+    const { neq, inv, exp } = sys, { Lp, Li, Lx, D } = sys.F, x = new Float64Array(neq);
+    for (let d = 0; d < F.length; d++) if (F[d]) for (const [p, c] of exp[d]) x[inv[p]] += c * F[d];
+    for (let j = 0; j < neq; j++) { const xj = x[j]; if (xj) for (let p = Lp[j]; p < Lp[j + 1]; p++) x[Li[p]] -= Lx[p] * xj; }
+    for (let j = 0; j < neq; j++) x[j] /= D[j];
+    for (let j = neq - 1; j >= 0; j--) { let s = x[j]; for (let p = Lp[j]; p < Lp[j + 1]; p++) s -= Lx[p] * x[Li[p]]; x[j] = s; }
+    const u = new Float64Array(F.length);
+    for (let d = 0; d < F.length; d++) { let v = 0; for (const [p, c] of exp[d]) v += c * x[inv[p]]; u[d] = v; }
+    return u;
+  }
+  // internal nodal forces from the elements (and springs) minus the applied loads: the support reactions at constrained DOFs
+  function residual(sys, u, F) {
+    const M = sys.M, r = new Float64Array(3 * M.nn);
+    for (let e = 0; e < M.nEl; e++) {
+      const k12 = sys.kes[e], ue = new Float64Array(12);
+      for (let a = 0; a < 4; a++) for (let k = 0; k < 3; k++) ue[3 * a + k] = u[3 * M.nodes[4 * e + a] + k];
+      for (let rr = 0; rr < 12; rr++) { let s = 0; for (let c = 0; c < 12; c++) s += k12[rr * 12 + c] * ue[c]; r[3 * M.nodes[4 * e + (rr / 3 | 0)] + rr % 3] += s; }
+    }
+    for (const [d, k] of sys.S.springs || []) r[d] += k * u[d];
+    if (F) for (let d = 0; d < r.length; d++) r[d] -= F[d];
+    return r;
+  }
+  // stress resultants at element centres: mx, my, mxy (kNm/m), qx, qy (kN/m), w at the centre
+  function results(sys, u) {
+    const M = sys.M, out = new Float64Array(6 * M.nEl), S = sys.S, dbOf = typeof S.Db === 'function' ? S.Db : () => S.Db, dsOf = typeof S.Ds === 'function' ? S.Ds : () => S.Ds;
+    const k0Of = S.k0 || null;
+    for (let e = 0; e < M.nEl; e++) {
+      const a = M.xs[M.ci[e] + 1] - M.xs[M.ci[e]], b = M.ys[M.cj[e] + 1] - M.ys[M.cj[e]], ue = new Float64Array(12);
+      for (let n = 0; n < 4; n++) for (let k = 0; k < 3; k++) ue[3 * n + k] = u[3 * M.nodes[4 * e + n] + k];
+      const Bb = bBend(0, 0, a, b), Bs = bShear(0, 0, a, b), kap = [0, 0, 0], g = [0, 0];
+      for (let c = 0; c < 12; c++) { kap[0] += Bb[c] * ue[c]; kap[1] += Bb[12 + c] * ue[c]; kap[2] += Bb[24 + c] * ue[c]; g[0] += Bs[c] * ue[c]; g[1] += Bs[12 + c] * ue[c]; }
+      if (k0Of) { const k0 = k0Of(e); if (k0) for (let i = 0; i < 3; i++) kap[i] -= k0[i]; }
+      const D = dbOf(e), ds = dsOf(e);
+      out[6 * e] = D[0] * kap[0] + D[1] * kap[1] + D[2] * kap[2]; out[6 * e + 1] = D[3] * kap[0] + D[4] * kap[1] + D[5] * kap[2]; out[6 * e + 2] = D[6] * kap[0] + D[7] * kap[1] + D[8] * kap[2];
+      out[6 * e + 3] = ds * g[0]; out[6 * e + 4] = ds * g[1]; out[6 * e + 5] = (ue[0] + ue[3] + ue[6] + ue[9]) / 4;
+    }
+    return out;
+  }
+  // nodal load helpers
+  function udl(M, F, q, inside) {   // q (kN/m2) on every element whose centre passes inside(x, y)
+    for (let e = 0; e < M.nEl; e++) {
+      const x0 = M.xs[M.ci[e]], x1 = M.xs[M.ci[e] + 1], y0 = M.ys[M.cj[e]], y1 = M.ys[M.cj[e] + 1];
+      if (inside && !inside((x0 + x1) / 2, (y0 + y1) / 2)) continue;
+      const f = q * (x1 - x0) * (y1 - y0) / 4; for (let a = 0; a < 4; a++) F[3 * M.nodes[4 * e + a]] += f;
+    }
+  }
+  function nearestNode(M, x, y, usedOnly = true) {
+    let best = -1, bd = Infinity; const i0 = nearestIdx(M.xs, x), j0 = nearestIdx(M.ys, y);
+    for (let j = Math.max(0, j0 - 1); j <= Math.min(M.ny, j0 + 1); j++) for (let i = Math.max(0, i0 - 1); i <= Math.min(M.nx, i0 + 1); i++) {
+      const n = j * (M.nx + 1) + i; if (usedOnly && !M.used[n]) continue; const dd = Math.hypot(M.xs[i] - x, M.ys[j] - y); if (dd < bd) { bd = dd; best = n; }
+    }
+    return best;
+  }
+  function nearestIdx(a, v) { let lo = 0, hi = a.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (a[m] <= v) lo = m; else hi = m; } return Math.abs(a[lo] - v) <= Math.abs(a[hi] - v) ? lo : hi; }
+  // line load q (kN/m) along a mesh line from (x0, y0) to (x1, y1), horizontal or vertical
+  function lineLoad(M, F, q, x0, y0, x1, y1) {
+    if (Math.abs(y1 - y0) < 1e-9) {
+      const j = nearestIdx(M.ys, y0), a = Math.min(x0, x1), b = Math.max(x0, x1);
+      for (let i = 0; i < M.nx; i++) { const s0 = Math.max(a, M.xs[i]), s1 = Math.min(b, M.xs[i + 1]); if (s1 <= s0) continue; const n0 = j * (M.nx + 1) + i; if (!M.used[n0] || !M.used[n0 + 1]) continue; const L = M.xs[i + 1] - M.xs[i], t0 = (s0 - M.xs[i]) / L, t1 = (s1 - M.xs[i]) / L, P = q * (s1 - s0), c = (t0 + t1) / 2; F[3 * n0] += P * (1 - c); F[3 * (n0 + 1)] += P * c; }
+    } else {
+      const i = nearestIdx(M.xs, x0), a = Math.min(y0, y1), b = Math.max(y0, y1);
+      for (let j = 0; j < M.ny; j++) { const s0 = Math.max(a, M.ys[j]), s1 = Math.min(b, M.ys[j + 1]); if (s1 <= s0) continue; const n0 = j * (M.nx + 1) + i, n1 = n0 + M.nx + 1; if (!M.used[n0] || !M.used[n1]) continue; const L = M.ys[j + 1] - M.ys[j], t0 = (s0 - M.ys[j]) / L, t1 = (s1 - M.ys[j]) / L, P = q * (s1 - s0), c = (t0 + t1) / 2; F[3 * n0] += P * (1 - c); F[3 * n1] += P * c; }
+    }
+  }
+  // grid lines: the given hard lines, each interval split into equal parts no longer than h
+  function lines(hard, h) {
+    const s = [...hard].sort((a, b) => a - b), u = [];
+    for (const v of s) if (!u.length || v - u[u.length - 1] > 1e-6) u.push(v);
+    const out = [u[0]];
+    for (let k = 1; k < u.length; k++) { const L = u[k] - u[k - 1], n = Math.max(1, Math.ceil(L / h - 1e-9)); for (let m = 1; m <= n; m++) out.push(u[k - 1] + L * m / n); }
+    return out;
+  }
+  // Wood–Armer design moments (Wood 1968, Armer 1968), m positive sagging: bottom x, bottom y (>= 0), top x, top y (<= 0)
+  function woodArmer(mx, my, mxy) {
+    const t = Math.abs(mxy);
+    let bx = mx + t, by = my + t;
+    if (bx < 0 && by < 0) { bx = 0; by = 0; }
+    else if (bx < 0) { bx = 0; by = Math.max(0, my + (mx !== 0 ? mxy * mxy / Math.abs(mx) : t)); }
+    else if (by < 0) { by = 0; bx = Math.max(0, mx + (my !== 0 ? mxy * mxy / Math.abs(my) : t)); }
+    let tx = mx - t, ty = my - t;
+    if (tx > 0 && ty > 0) { tx = 0; ty = 0; }
+    else if (tx > 0) { tx = 0; ty = Math.min(0, my - (mx !== 0 ? mxy * mxy / Math.abs(mx) : t)); }
+    else if (ty > 0) { ty = 0; tx = Math.min(0, mx - (my !== 0 ? mxy * mxy / Math.abs(my) : t)); }
+    return [bx, by, tx, ty];
+  }
+  return { iso, ke, curvatureLoad, mesh, assemble, solve, residual, results, udl, lineLoad, nearestNode, nearestIdx, lines, woodArmer, bShear, bBend };
+})();
+if (typeof module !== 'undefined') module.exports = { PlateFEM };
+
+/* ===== RAFT FOUNDATION ENGINE (EngineeringTools) =====
+   A rectangular reinforced concrete raft of uniform thickness on the ground, carrying columns, walls and a floor load:
+   analysed as a Mindlin plate (the RC Slab FE engine's MITC4 element, PlateFEM) on a Winkler bed of springs that act in
+   compression only, and designed to BS EN 1992-1-1 + UK NA. kN, m and kPa outside the section checks (N and mm inside).
+   - The bed: a modulus of subgrade reaction k_s (kN/m³), lumped at the nodes over each node's share of the raft; a node
+     whose spring would pull is released and the plate solved again until no spring pulls (the raft may lift at its edges).
+   - Loads: the raft's self-weight and a floor load g_k, q_k over the whole raft; each column's G and Q spread over its
+     footprint; each wall's G and Q (kN/m) along its line. Combinations: ULS 1.35 G + 1.5 Q (6.10); characteristic G + Q
+     for the contact pressure and settlement; quasi-permanent G + ψ₂Q for crack control. The concrete at E_cm.
+   - Ground: the characteristic contact pressure k_s w against an allowable bearing pressure, the settlement w against a
+     limit; both only as good as k_s (from the ground investigation: the pressure that gives the expected settlement).
+   - Bending: Wood–Armer moments from the ULS m_x, m_y, m_xy at every element outside the column footprints; the steel needed
+     in each of the four layers (bottom x and y, top x and y) by the rectangular block (3.1.7) against the meshes given;
+     the minimum steel (9.3.1.1, 9.2.1.1(1)); crack control at the quasi-permanent moments by Tables 7.2N / 7.3N (σ_s from
+     the cracked section, z from the ULS design).
+   - Shear: v_Ed from the ULS q_x, q_y against V_Rd,c (6.2.2) away from the columns (beyond 2d from their faces) and the
+     walls (beyond d). Punching at each column by the flat slab punching module (6.4, UK NA β factors; internal, edge or
+     corner from the raft edges within 3d of its faces) with the net upward ground pressure inside each control perimeter
+     deducted (6.4.4(2)): the ULS contact pressure around the column less the factored self-weight and floor load. */
+const RaftFoundation = (() => {
+  'use strict';
+  const P = PlateFEM, AREA = phi => Math.PI * phi * phi / 4;
+  const fin = (v, nm) => { v = typeof v === 'string' && v.trim() !== '' ? +v : v; if (!Number.isFinite(v)) throw new Error(`${nm}: give a number`); return v; };
+  const pos = (v, nm) => { v = fin(v, nm); if (!(v > 0)) throw new Error(`${nm} must be greater than 0`); return v; };
+  const nonneg = (v, nm) => { v = fin(v, nm); if (v < 0) throw new Error(`${nm} cannot be negative`); return v; };
+  const opt = (v, d) => (v === undefined || v === null || v === '' || (typeof v === 'number' && Number.isNaN(v)) ? d : v);
+
+  function design(inp) {
+    const Lx = pos(inp.Lx, 'Raft length L_x'), Ly = pos(inp.Ly, 'Raft width L_y'), h = pos(inp.h, 'Raft thickness'), hm = h / 1000;
+    if (h < 150 || h > 2000) throw new Error('Raft thickness: 150 to 2000 mm');
+    const c = EC2.concrete(fin(opt(inp.fck, 32), 'f_ck')), st = EC2.steel(fin(opt(inp.fyk, 500), 'f_yk')), nu = 0.2, rc = pos(opt(inp.rc, 25), 'Concrete density');
+    const ks = pos(inp.ks, 'Modulus of subgrade reaction'), qa = nonneg(opt(inp.qa, 0), 'Allowable bearing pressure'), wlim = pos(opt(inp.wlim, 25), 'Settlement limit');
+    const gk = nonneg(opt(inp.gk, 0), 'Floor load g_k'), qk = nonneg(opt(inp.qk, 0), 'Floor load q_k'), psi2 = nonneg(opt(inp.psi2, 0.3), 'ψ₂'), wk = pos(opt(inp.wk, 0.3), 'Crack width w_k');
+    const cB = pos(opt(inp.cBtm, 50), 'Bottom cover'), cT = pos(opt(inp.cTop, 40), 'Top cover');
+    const mB = { phi: pos(inp.phiB, 'Bottom bar size'), s: pos(inp.sB, 'Bottom bar spacing') }, mT = { phi: pos(inp.phiT, 'Top bar size'), s: pos(inp.sT, 'Top bar spacing') };
+    mB.As = AREA(mB.phi) * 1000 / mB.s; mT.As = AREA(mT.phi) * 1000 / mT.s;
+    const cols = (inp.columns || []).map((p, i) => {
+      const o = { i, x: fin(p.x, `Column ${i + 1} x`), y: fin(p.y, `Column ${i + 1} y`), cx: pos(p.cx, `Column ${i + 1} size along x`) / 1000, cy: pos(p.cy, `Column ${i + 1} size along y`) / 1000, G: nonneg(opt(p.G, 0), `Column ${i + 1} G`), Q: nonneg(opt(p.Q, 0), `Column ${i + 1} Q`) };
+      if (o.x - o.cx / 2 < -1e-9 || o.x + o.cx / 2 > Lx + 1e-9 || o.y - o.cy / 2 < -1e-9 || o.y + o.cy / 2 > Ly + 1e-9) throw new Error(`Column ${i + 1} is not wholly on the raft`);
+      return o;
+    });
+    const walls = (inp.walls || []).map((w, i) => {
+      const o = { i, x0: fin(w.x0, `Wall ${i + 1} x₀`), y0: fin(w.y0, `Wall ${i + 1} y₀`), x1: fin(w.x1, `Wall ${i + 1} x₁`), y1: fin(w.y1, `Wall ${i + 1} y₁`), G: nonneg(opt(w.G, 0), `Wall ${i + 1} G`), Q: nonneg(opt(w.Q, 0), `Wall ${i + 1} Q`) };
+      if (Math.abs(o.x1 - o.x0) > 1e-9 && Math.abs(o.y1 - o.y0) > 1e-9) throw new Error(`Wall ${i + 1}: walls run along x or along y`);
+      if (!(Math.hypot(o.x1 - o.x0, o.y1 - o.y0) > 0)) throw new Error(`Wall ${i + 1} has no length`);
+      if ([o.x0, o.x1].some(v => v < -1e-9 || v > Lx + 1e-9) || [o.y0, o.y1].some(v => v < -1e-9 || v > Ly + 1e-9)) throw new Error(`Wall ${i + 1} runs off the raft`);
+      return o;
+    });
+    if (!cols.length && !walls.length && !(gk + qk > 0)) throw new Error('Give the raft some load: columns, walls or a floor load');
+    // effective depths: bottom x outer, bottom y inner, top x outer, top y inner
+    const dL = [h - cB - mB.phi / 2, h - cB - 1.5 * mB.phi, h - cT - mT.phi / 2, h - cT - 1.5 * mT.phi];
+    if (dL.some(d => !(d > 0))) throw new Error('The effective depth is not positive: check the thickness, covers and bars');
+    const dMean = dL.reduce((s, d) => s + d, 0) / 4;
+    const warnings = [];
+
+    // ---- mesh ----
+    let el = inp.mesh > 0 ? inp.mesh : Math.max(0.15, Math.min(0.5, Math.min(Lx, Ly) / 24));
+    if (Lx * Ly / (el * el) > 6000) el = Math.sqrt(Lx * Ly / 6000);
+    const hx = [0, Lx], hy = [0, Ly];
+    for (const p of cols) { hx.push(p.x - p.cx / 2, p.x, p.x + p.cx / 2); hy.push(p.y - p.cy / 2, p.y, p.y + p.cy / 2); }
+    for (const w of walls) { hx.push(w.x0, w.x1); hy.push(w.y0, w.y1); }
+    const clip = (a, hi) => a.map(v => Math.min(hi, Math.max(0, v)));
+    const xs = P.lines(clip(hx, Lx), el), ys = P.lines(clip(hy, Ly), el), M = P.mesh(xs, ys), nE = M.nEl;
+    const E = c.Ecm * 1000, D0 = E * hm ** 3 / (12 * (1 - nu * nu)), Ds0 = 5 / 6 * E / (2 * (1 + nu)) * hm, Db = P.iso(D0, nu);
+    const elC = new Float64Array(2 * nE), elA = new Float64Array(nE);
+    for (let e = 0; e < nE; e++) { const x0 = M.xs[M.ci[e]], x1 = M.xs[M.ci[e] + 1], y0 = M.ys[M.cj[e]], y1 = M.ys[M.cj[e] + 1]; elC[2 * e] = (x0 + x1) / 2; elC[2 * e + 1] = (y0 + y1) / 2; elA[e] = (x1 - x0) * (y1 - y0); }
+    // the bed: each node's share of the raft
+    const trib = new Float64Array(M.nn); for (let e = 0; e < nE; e++) for (let a = 0; a < 4; a++) trib[M.nodes[4 * e + a]] += elA[e] / 4;
+    const bedNodes = []; for (let n = 0; n < M.nn; n++) if (M.used[n]) bedNodes.push(n);
+    const inside = (p, x, y) => Math.abs(x - p.x) < p.cx / 2 - 1e-9 && Math.abs(y - p.y) < p.cy / 2 - 1e-9;
+    const inFoot = new Uint8Array(nE); for (let e = 0; e < nE; e++) if (cols.some(p => inside(p, elC[2 * e], elC[2 * e + 1]))) inFoot[e] = 1;
+
+    // ---- loads: G and Q vectors on the w DOFs ----
+    const nd = 3 * M.nn, FG = new Float64Array(nd), FQ = new Float64Array(nd);
+    const sw = rc * hm;
+    P.udl(M, FG, sw + gk); if (qk > 0) P.udl(M, FQ, qk);
+    for (const p of cols) {
+      const A = p.cx * p.cy, inF = (x, y) => inside(p, x, y);
+      if (p.G > 0) P.udl(M, FG, p.G / A, inF); if (p.Q > 0) P.udl(M, FQ, p.Q / A, inF);
+    }
+    for (const w of walls) { const L = Math.hypot(w.x1 - w.x0, w.y1 - w.y0); if (w.G > 0) P.lineLoad(M, FG, w.G, w.x0, w.y0, w.x1, w.y1); if (w.Q > 0) P.lineLoad(M, FQ, w.Q, w.x0, w.y0, w.x1, w.y1); w.L = L; }
+    const sumW = F => { let s = 0; for (let n = 0; n < M.nn; n++) s += F[3 * n]; return s; };
+    const totG = sumW(FG), totQ = sumW(FQ);
+
+    // ---- the bed in compression only: solve, release the springs that pull, repeat ----
+    let base = null;
+    function solveCombo(gG, gQ) {
+      const F = new Float64Array(nd); for (let d = 0; d < nd; d++) F[d] = gG * FG[d] + gQ * FQ[d];
+      const on = new Uint8Array(M.nn); bedNodes.forEach(n => { on[n] = 1; });
+      let u = null, it = 0;
+      for (; it < 30; it++) {
+        const springs = bedNodes.map(n => [3 * n, on[n] ? ks * trib[n] : ks * trib[n] * 1e-9]);
+        const sys = P.assemble({ mesh: M, Db, Ds: Ds0, springs, mechanismMessage: 'The raft lifts off the ground: it cannot be held by the bed alone' }, base);
+        if (!base) base = sys;
+        u = P.solve(sys, F);
+        let changed = false;
+        for (const n of bedNodes) { const w = u[3 * n]; if (on[n] && w < -1e-12) { on[n] = 0; changed = true; } else if (!on[n] && w > 1e-12) { on[n] = 1; changed = true; } }
+        if (!changed) { const R = P.results(sys, u); return { u, R, on, it: it + 1, F }; }
+      }
+      throw new Error('The contact with the ground did not settle (30 passes): check the loads and k_s');
+    }
+    const U = solveCombo(1.35, 1.5), K = solveCombo(1, 1), Qp = solveCombo(1, psi2);
+    const pres = S => { const p = new Float64Array(M.nn); for (const n of bedNodes) p[n] = S.on[n] ? ks * Math.max(0, S.u[3 * n]) : 0; return p; };
+    const pK = pres(K), pU = pres(U);
+    let pMax = 0, nP = -1, wMax = 0, nW = -1, lifted = 0, liftedA = 0;
+    for (const n of bedNodes) { if (pK[n] > pMax) { pMax = pK[n]; nP = n; } if (K.u[3 * n] > wMax) { wMax = K.u[3 * n]; nW = n; } if (!K.on[n]) { lifted++; liftedA += trib[n]; } }
+    // equilibrium: the bed carries the load
+    let bedK = 0; for (const n of bedNodes) bedK += pK[n] * trib[n];
+
+    // ---- bending: Wood–Armer, steel needed in the four layers ----
+    const WA = new Float64Array(4 * nE), WAq = new Float64Array(4 * nE);
+    for (let e = 0; e < nE; e++) { WA.set(P.woodArmer(U.R[6 * e], U.R[6 * e + 1], U.R[6 * e + 2]), 4 * e); WAq.set(P.woodArmer(Qp.R[6 * e], Qp.R[6 * e + 1], Qp.R[6 * e + 2]), 4 * e); }
+    const prov = [mB.As, mB.As, mT.As, mT.As], meshOf = [mB, mB, mT, mT];
+    const AsMin = dL.map(d => EC2.asMin({ fctm: c.fctm, fyk: st.fyk, bt: 1000, d }));
+    const LAY = ['bottom, x', 'bottom, y', 'top, x', 'top, y'];
+    const layer = LAY.map((name, k) => ({ name, k, d: dL[k], As: prov[k], mesh: meshOf[k], AsMin: AsMin[k], worst: { util: 0, e: -1, m: 0, req: 0 }, crack: { util: 0, e: -1 } }));
+    const Mcr = c.fctm * 1000 * h * h / 6;
+    const zArm = new Float64Array(4 * nE), utilEl = new Float64Array(nE);
+    for (let e = 0; e < nE; e++) {
+      if (inFoot[e]) continue;
+      for (let k = 0; k < 4; k++) {
+        const m = Math.abs(WA[4 * e + k]) * 1e6, d = dL[k]; let As = 0, z = 0.95 * d;
+        if (m > 0) { const R = EC2.bendingDesign({ sec: { b: 1000, bw: 1000, hf: 0, h }, d, M: m, c, s: st }); As = R.As; z = R.z; }
+        zArm[4 * e + k] = z;
+        const util = As / prov[k];
+        if (util > utilEl[e]) utilEl[e] = util;
+        if (util > layer[k].worst.util) layer[k].worst = { util, e, m: m / 1e6, req: As, x: elC[2 * e], y: elC[2 * e + 1] };
+        // crack control, quasi-permanent
+        const mq = (k < 2 ? Math.max(0, WAq[4 * e + k]) : Math.max(0, -WAq[4 * e + k])) * 1e6;
+        if (mq > Mcr) {
+          const ss = mq / (prov[k] * z), ct = EC2.crackTables({ ss, wk, h, d, fctEff: c.fctm });
+          const uS = ct.sMax != null ? meshOf[k].s / ct.sMax : Infinity, uP = ct.phiMax != null ? meshOf[k].phi / ct.phiMax : Infinity, u = Math.min(uS, uP);
+          if (u > layer[k].crack.util) layer[k].crack = { util: u, e, ss, sMax: ct.sMax, phiMax: ct.phiMax, x: elC[2 * e], y: elC[2 * e + 1] };
+        }
+      }
+    }
+    // ---- one-way shear away from the columns and walls ----
+    const nearCol = e => cols.some(p => Math.max(Math.abs(elC[2 * e] - p.x) - p.cx / 2, Math.abs(elC[2 * e + 1] - p.y) - p.cy / 2) < 2 * dMean / 1000);
+    const nearWall = e => walls.some(w => Math.hypot(Math.max(Math.min(w.x0, w.x1) - elC[2 * e], 0, elC[2 * e] - Math.max(w.x0, w.x1)), Math.max(Math.min(w.y0, w.y1) - elC[2 * e + 1], 0, elC[2 * e + 1] - Math.max(w.y0, w.y1))) < dMean / 1000);
+    let shear = { util: 0 };
+    for (let e = 0; e < nE; e++) {
+      if (inFoot[e] || nearCol(e) || nearWall(e)) continue;
+      for (const [q, dir] of [[Math.abs(U.R[6 * e + 3]), 'x'], [Math.abs(U.R[6 * e + 4]), 'y']]) {
+        const sag = dir === 'x' ? U.R[6 * e] >= 0 : U.R[6 * e + 1] >= 0, k = (dir === 'x' ? 0 : 1) + (sag ? 0 : 2), d = dL[k];
+        const V = EC2.shearConcrete({ bw: 1000, d, Asl: prov[k], c }).VRdc / 1000, u = q / V;
+        if (u > shear.util) shear = { util: u, e, q, V, dir, x: elC[2 * e], y: elC[2 * e + 1] };
+      }
+    }
+    // ---- punching at the columns ----
+    const swU = 1.35 * (sw + gk) + 1.5 * qk;   // the downward load on the raft inside a perimeter (kN/m²)
+    const punch = cols.map(p => {
+      const d = dMean, dm = d / 1000;
+      const dist = { L: p.x - p.cx / 2, R: Lx - p.x - p.cx / 2, B: p.y - p.cy / 2, T: Ly - p.y - p.cy / 2 };
+      const nx_ = dist.L < 3 * dm || dist.R < 3 * dm ? (dist.L <= dist.R ? 'L' : 'R') : null, ny_ = dist.B < 3 * dm || dist.T < 3 * dm ? (dist.B <= dist.T ? 'B' : 'T') : null;
+      const type = nx_ && ny_ ? 'corner' : nx_ || ny_ ? 'edge' : 'internal';
+      const swap = type === 'edge' && !!nx_;   // the edge runs along y: the local x is the global y
+      // the ULS contact pressure around the column: nodes within 2d of its faces
+      let sp = 0, sa = 0;
+      for (const n of bedNodes) { const x = M.X(n), y = M.Y(n); if (Math.max(Math.abs(x - p.x) - p.cx / 2, Math.abs(y - p.y) - p.cy / 2) <= 2 * dm + 1e-9) { sp += pU[n] * trib[n]; sa += trib[n]; } }
+      const pAv = sa > 0 ? sp / sa : 0, q = Math.max(0, pAv - swU);
+      const pin = { type, shape: 'rect', c1: (swap ? p.cx : p.cy) * 1000, c2: (swap ? p.cy : p.cx) * 1000, h, cover: cB, dX: swap ? dL[1] : dL[0], dY: swap ? dL[0] : dL[1],
+        AsX: mB.As, AsY: mB.As, phiX: mB.phi, sX: mB.s, phiY: mB.phi, sY: mB.s,
+        ey: type === 'internal' ? 0 : Math.max(0, (type === 'corner' ? dist[ny_] : nx_ ? dist[nx_] : dist[ny_]) * 1000), ex: type === 'corner' ? Math.max(0, dist[nx_] * 1000) : 0,
+        fck: c.fck, fyk: st.fyk, VEd: 1.35 * p.G + 1.5 * p.Q, q, beta: { method: 'factors' }, link: {} };
+      let R = null, err = null; try { R = Punching.design(pin); } catch (x) { err = x.message; }
+      const util = R ? Math.max(R.vEd0 / R.vRdmax, R.vEd1 / R.vRdc) : Infinity;   // without links
+      return { i: p.i, x: p.x, y: p.y, type, VEd: pin.VEd, pAv, q, R, err, util, pin };
+    });
+
+    // ---- checks ----
+    const checks = [], add = (id, name, ref, util, note, o = {}) => checks.push({ id, name, ref, util: Math.max(0, util), note, ...o });
+    const f0 = v => Math.round(v).toString(), f1 = v => v.toFixed(1), f2 = v => v.toFixed(2), f3 = v => v.toFixed(3), at = (x, y) => `at (${f2(x)}, ${f2(y)})`;
+    if (qa > 0) add('bear', 'Contact pressure against the allowable', 'characteristic, k_s w', pMax / qa, `p_max ${f1(pMax)} ≤ ${f1(qa)} kPa ${at(M.X(nP), M.Y(nP))}`);
+    else warnings.push('No allowable bearing pressure given: the contact pressure is reported but not checked.');
+    add('settle', 'Settlement against the limit', 'characteristic, Winkler bed', wMax * 1000 / wlim, `w_max ${f1(wMax * 1000)} ≤ ${f1(wlim)} mm ${at(M.X(nW), M.Y(nW))} (k_s ${f0(ks)} kN/m³)`);
+    layer.forEach(L => {
+      const W = L.worst, nm = `Bending steel, ${L.name}`;
+      add(`bend${L.k}`, nm, 'BS EN 1992-1-1 6.1, Wood–Armer', W.util, W.e >= 0 ? `m_Ed ${f1(W.m)} kNm/m needs ${f0(W.req)} ≤ H${L.mesh.phi}@${L.mesh.s} ${f0(L.As)} mm²/m ${at(W.x, W.y)}` : `no ${L.name.split(',')[0]} moment`);
+    });
+    const minU = Math.max(...layer.map(L => L.AsMin / L.As)), minL = layer.reduce((a, b) => (b.AsMin / b.As > a.AsMin / a.As ? b : a));
+    add('min', 'Minimum steel', 'BS EN 1992-1-1 9.3.1.1, 9.2.1.1', minU, `A_s,min ${f0(minL.AsMin)} ≤ ${f0(minL.As)} mm²/m (${minL.name})`);
+    const cr = layer.reduce((a, b) => (b.crack.util > a.crack.util ? b : a));
+    add('crack', 'Crack control, quasi-permanent', `BS EN 1992-1-1 7.3.3, w_k ${f2(wk)} mm`, cr.crack.util, cr.crack.e >= 0 ? `σ_s ${f0(cr.crack.ss)} N/mm², H${cr.mesh.phi}@${cr.mesh.s} ${cr.name}: s_max ${cr.crack.sMax != null ? f0(cr.crack.sMax) : '–'}, φ_max ${cr.crack.phiMax != null ? f0(cr.crack.phiMax) : '–'} mm ${at(cr.crack.x, cr.crack.y)}` : 'uncracked at the quasi-permanent load');
+    add('shear', 'Shear without links', 'BS EN 1992-1-1 6.2.2', shear.util, shear.e != null && shear.util > 0 ? `v_Ed ${f1(shear.q)} ≤ V_Rd,c ${f1(shear.V)} kN/m (${shear.dir}) ${at(shear.x, shear.y)}` : 'no shear outside the column and wall zones');
+    if (punch.length) {
+      const bad = punch.find(p => p.err);
+      if (bad) add('punch', 'Punching at the columns', 'BS EN 1992-1-1 6.4', Infinity, `column ${bad.i + 1}: ${bad.err}`);
+      else {
+        const w = punch.reduce((a, b) => (b.util > a.util ? b : a));
+        add('punch', 'Punching at the columns, without links', 'BS EN 1992-1-1 6.4, 6.4.4(2)', w.util, `column ${w.i + 1} (${w.type}): V_Ed ${f1(w.VEd)} kN less ${f1(w.q)} kPa net upward; v_Ed ${f3(w.R.vEd1)} ≤ v_Rd,c ${f3(w.R.vRdc)} N/mm² at 2d; face ${f2(w.R.vEd0)} ≤ ${f2(w.R.vRdmax)}`);
+        if (punch.some(p => p.R.needLinks)) warnings.push('Punching: a column needs shear links at this thickness; a thicker raft, or a thickening under the column, is usually better.');
+      }
+    }
+    if (lifted) warnings.push(`The raft lifts off ${f1(liftedA)} m² of the ground under the characteristic load (${f0(100 * liftedA / (Lx * Ly))}% of its area).`);
+    const pAvg = (totG + totQ) / (Lx * Ly);
+    if (Math.abs(bedK - (totG + totQ)) > 1e-6 * (totG + totQ) + 1e-6) warnings.push('The bed does not balance the load exactly: refine the mesh.');
+
+    const steps = [
+      { ref: 'Raft', text: `${f2(Lx)} × ${f2(Ly)} m, ${f0(h)} mm C${c.fck}/${c.fckCube}, E_cm ${f0(c.Ecm)} N/mm²; ${cols.length} column${cols.length === 1 ? '' : 's'}, ${walls.length} wall${walls.length === 1 ? '' : 's'}; mesh ${M.nx} × ${M.ny} elements` },
+      { ref: 'Loads', text: `G ${f1(totG)} kN (self-weight ${f1(sw)} kPa), Q ${f1(totQ)} kN; the average pressure ${f1(pAvg)} kPa (characteristic)` },
+      { ref: 'Bed', text: `k_s ${f0(ks)} kN/m³ at ${bedNodes.length} nodes, compression only (${K.it} pass${K.it > 1 ? 'es' : ''} at the characteristic load): carries ${f1(bedK)} kN` },
+      { ref: 'Ground', text: `contact pressure up to ${f1(pMax)} kPa, settlement up to ${f1(wMax * 1000)} mm (characteristic)` },
+      { ref: 'Depths', text: `d: bottom ${f0(dL[0])} (x), ${f0(dL[1])} (y); top ${f0(dL[2])} (x), ${f0(dL[3])} (y) mm; meshes H${mB.phi}@${mB.s} bottom (${f0(mB.As)} mm²/m), H${mT.phi}@${mT.s} top (${f0(mT.As)} mm²/m)` },
+      ...punch.filter(p => p.R).map(p => ({ ref: `Column ${p.i + 1}`, text: `${p.type}: V_Ed ${f1(p.VEd)} kN, ground ${f1(p.pAv)} kPa less ${f1(swU)} kPa of raft and floor = ${f1(p.q)} kPa deducted; β ${f2(p.R.beta)}, u₁ ${f0(p.R.u1)} mm, v_Ed ${f3(p.R.vEd1)}, v_Rd,c ${f3(p.R.vRdc)} N/mm²` })),
+    ];
+    const utilMax = Math.max(...checks.map(x => x.util));
+    return { Lx, Ly, h, c, ks, qa, wlim, gk, qk, cols, walls, M, elC, elA, inFoot, trib, bedNodes, U, K, Qp, pK, pU, pMax, wMax, lifted, liftedA, totG, totQ, bedK, WA, utilEl, layer, dL, mB, mT, shear, punch,
+      checks, utilMax, steps, warnings, sw };
+  }
+  return { design };
+})();
+
+</script>
+<script id="drawing-code">
+/* ===== CONNECTION DIAGRAMS (EngineeringTools ConnectionCheck) =====
+   Parametric, to-scale drafting views of each joint, drawn from the current inputs: an elevation and a plan or section,
+   with bolts, welds, dimension chains, labels and the design actions. Pure functions returning SVG strings.
+   Model units mm; each view maps a model box onto a pixel box (x right, y up). */
+const JD = (() => {
+  'use strict';
+  const C = { steel: '#e7ecf1', web: '#eef2f5', edge: '#2f3b47', plate: '#f6d58c', plateEdge: '#94700f', pack: '#e3d3ae', bolt: '#3a424b', boltDark: '#1f252b',
+    weld: '#1a1f24', dim: '#1b67b0', txt: '#222a31', mute: '#7a8590', cl: '#97a2ac', load: '#cc3426', conc: '#f1efea', concEdge: '#8b8478', grout: '#ddd7ca', paper: '#ffffff' };
+  const FS = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"', FM = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"';
+  const W = 920, H = 520;
+  const DEFS = `<defs>
+<pattern id="jdCut" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect width="6" height="6" fill="#c7d0d9"/><line x1="0" y1="0" x2="0" y2="6" stroke="#6f7d8a" stroke-width="0.9"/></pattern>
+<pattern id="jdPlCut" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(-45)"><rect width="5" height="5" fill="#efc560"/><line x1="0" y1="0" x2="0" y2="5" stroke="#94700f" stroke-width="0.8"/></pattern>
+<pattern id="jdConc" patternUnits="userSpaceOnUse" width="26" height="26"><rect width="26" height="26" fill="${C.conc}"/><circle cx="5" cy="6" r="1.3" fill="#b3ab9d"/><circle cx="17" cy="15" r="1.7" fill="#c0b8aa"/><circle cx="9" cy="21" r="1" fill="#a9a091"/><path d="M19 4 l3 2 l-3 2 z" fill="#c5bdaf"/><path d="M2 14 l2.5 -2 l1.5 3 z" fill="#bdb5a7"/></pattern>
+<pattern id="jdGrout" patternUnits="userSpaceOnUse" width="8" height="8"><rect width="8" height="8" fill="${C.grout}"/><circle cx="2" cy="2" r="0.7" fill="#9e9687"/><circle cx="6" cy="6" r="0.7" fill="#9e9687"/></pattern>
+<marker id="jdLd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${C.load}"/></marker>
+</defs>`;
+  const num = v => { const a = Math.abs(v); return a >= 100 || Number.isInteger(+v.toFixed(1)) ? Math.round(v).toString() : v.toFixed(1); };
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // ---------- views ----------
+  function view(box, bb) {
+    const w = bb[2] - bb[0], h = bb[3] - bb[1], k = Math.min(box[2] / w, box[3] / h);
+    const ox = box[0] + (box[2] - w * k) / 2 - bb[0] * k, oy = box[1] + (box[3] - h * k) / 2 + bb[3] * k;
+    return { k, X: x => ox + x * k, Y: y => oy - y * k, box };
+  }
+  const ST = {
+    steel: `fill="${C.steel}" stroke="${C.edge}" stroke-width="1.1"`, web: `fill="${C.web}" stroke="${C.edge}" stroke-width="1.1"`,
+    cut: `fill="url(#jdCut)" stroke="${C.edge}" stroke-width="1.2"`, plate: `fill="${C.plate}" stroke="${C.plateEdge}" stroke-width="1.1"`,
+    plateCut: `fill="url(#jdPlCut)" stroke="${C.plateEdge}" stroke-width="1.1"`, pack: `fill="${C.pack}" stroke="${C.plateEdge}" stroke-width="0.9"`,
+    conc: `fill="url(#jdConc)" stroke="${C.concEdge}" stroke-width="1"`, grout: `fill="url(#jdGrout)" stroke="${C.concEdge}" stroke-width="0.8"`,
+    ghost: `fill="none" stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="6 3"`, outline: `fill="none" stroke="${C.edge}" stroke-width="1.1"`,
+    bg: `fill="${C.paper}" stroke="none"`,
+  };
+  const R = (v, x0, y0, x1, y1, st = 'steel') => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)); return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${(Math.abs(x1 - x0) * v.k).toFixed(1)}" height="${(Math.abs(y1 - y0) * v.k).toFixed(1)}" ${ST[st]}/>`; };
+  const P = (v, pts, st = 'steel') => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + v.X(p[0]).toFixed(1) + ' ' + v.Y(p[1]).toFixed(1)).join(' ')} Z" ${ST[st]}/>`;
+  const LS = { e: `stroke="${C.edge}" stroke-width="1.1"`, t: `stroke="${C.edge}" stroke-width="0.55"`, c: `stroke="${C.cl}" stroke-width="0.7" stroke-dasharray="14 3 2 3"`,
+    h: `stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="5 3"`, d: `stroke="${C.dim}" stroke-width="0.7"` };
+  const Ln = (v, x0, y0, x1, y1, k = 'e') => `<line x1="${v.X(x0).toFixed(1)}" y1="${v.Y(y0).toFixed(1)}" x2="${v.X(x1).toFixed(1)}" y2="${v.Y(y1).toFixed(1)}" ${LS[k]}/>`;
+  const lnP = (x0, y0, x1, y1, k = 'e') => `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" ${LS[k]}/>`;
+  function Tx(x, y, s, o = {}) {
+    const sz = o.size || 11, col = o.color || C.txt, anc = o.anchor || 'start', w = o.weight || 400, rot = o.rot ? ` transform="rotate(${o.rot} ${x.toFixed(1)} ${y.toFixed(1)})"` : '';
+    const body = esc(s).replace(/_\{([^}]*)\}|_([A-Za-z0-9]+)/g, (m, p1, p2) => `<tspan baseline-shift="sub" font-size="78%">${p1 || p2}</tspan>`);
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${sz}" fill="${col}" text-anchor="${anc}" font-weight="${w}" ${o.mono ? FM : FS} paint-order="stroke" stroke="${C.paper}" stroke-width="3" stroke-linejoin="round"${rot}>${body}</text>`;
+  }
+  const tw = (s, sz = 10) => String(s).replace(/_/g, '').length * sz * 0.6;
+  // ---------- dimensions (tick terminators) ----------
+  const tick = (x, y) => `<line x1="${(x - 3.5).toFixed(1)}" y1="${(y + 3.5).toFixed(1)}" x2="${(x + 3.5).toFixed(1)}" y2="${(y - 3.5).toFixed(1)}" stroke="${C.dim}" stroke-width="1.3"/>`;
+  // horizontal chain: xs (model), measured from model level y, dimension line at off px (negative: below)
+  function DH(v, xs, y, off, labels) {
+    const Yf = v.Y(y), Yd = Yf - off, s = Math.sign(off) || 1; let o = '';
+    xs.forEach(x => { o += lnP(v.X(x), Yf - s * 3, v.X(x), Yd - s * 4, 'd'); });
+    o += lnP(v.X(xs[0]) - 4, Yd, v.X(xs[xs.length - 1]) + 4, Yd, 'd');
+    xs.forEach(x => { o += tick(v.X(x), Yd); });
+    for (let i = 0; i < xs.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(xs[i + 1] - xs[i])); if (lab === '') continue;
+      const a = v.X(xs[i]), b = v.X(xs[i + 1]), wpx = Math.abs(b - a), tW = tw(lab);
+      const ty = off > 0 ? Yd - 4 : Yd + 11;
+      if (wpx > tW + 6) o += Tx((a + b) / 2, ty, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true });
+      else o += Tx(Math.max(a, b) + 3 + (i === xs.length - 2 ? 2 : 0), ty + (off > 0 ? -9 : 9) * (i % 2), lab, { size: 10, color: C.dim, mono: true });
+    }
+    return o;
+  }
+  function DV(v, ys, x, off, labels) {
+    const Xf = v.X(x), Xd = Xf + off, s = Math.sign(off) || 1; let o = '';
+    ys.forEach(y => { o += lnP(Xf + s * 3, v.Y(y), Xd + s * 4, v.Y(y), 'd'); });
+    o += lnP(Xd, v.Y(ys[0]) + 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), Xd, v.Y(ys[ys.length - 1]) - 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), 'd');
+    ys.forEach(y => { o += tick(Xd, v.Y(y)); });
+    for (let i = 0; i < ys.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(ys[i + 1] - ys[i])); if (lab === '') continue;
+      const a = v.Y(ys[i]), b = v.Y(ys[i + 1]), hpx = Math.abs(b - a), tW = tw(lab);
+      const tx = off > 0 ? Xd + 11 : Xd - 4;
+      if (hpx > tW + 6) o += Tx(tx, (a + b) / 2, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true, rot: -90 });
+      else o += Tx(off > 0 ? Xd + 5 : Xd - 5, (a + b) / 2 + 3.5, lab, { size: 10, color: C.dim, mono: true, anchor: off > 0 ? 'start' : 'end' });
+    }
+    return o;
+  }
+  // leader with a dot at a model point and text lines at a pixel offset
+  function LD(v, x, y, dx, dy, lines, o = {}) {
+    const px = v.X(x), py = v.Y(y), ex = px + dx, ey = py + dy, s = dx >= 0 ? 1 : -1;
+    let out = `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="1.9" fill="${C.txt}"/>` + lnP(px, py, ex, ey, 't') + lnP(ex, ey, ex + s * 8, ey, 't');
+    [].concat(lines).forEach((t, i) => { out += Tx(ex + s * 11, ey + 4 + i * 13 - ([].concat(lines).length - 1) * 6.5, t, { size: o.size || 10.5, anchor: s > 0 ? 'start' : 'end', weight: i === 0 && o.bold ? 600 : 400, color: i === 0 ? C.txt : '#4b545d' }); });
+    return out;
+  }
+  // load arrow ending at pixel point (px, py); (vx, vy) is the arrow vector in pixels; label near the tail
+  function LA(px, py, vx, vy, label, o = {}) {
+    const x0 = px - vx, y0 = py - vy, lx = x0 + (o.ldx ?? 0), ly = y0 + (o.ldy ?? -6);
+    return `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${px.toFixed(1)}" y2="${py.toFixed(1)}" stroke="${C.load}" stroke-width="2.4" marker-end="url(#jdLd)"/>` +
+      (label ? Tx(lx, ly, label, { size: 11, color: C.load, weight: 600, anchor: o.anchor || 'middle' }) : '');
+  }
+  function moment(px, py, rr, label, cw = true) {
+    const a0 = cw ? 200 : -20, a1 = cw ? 340 : 160, p = a => [px + rr * Math.cos(a * Math.PI / 180), py - rr * Math.sin(a * Math.PI / 180)], [x0, y0] = p(a0), [x1, y1] = p(a1);
+    return `<path d="M${x0.toFixed(1)} ${y0.toFixed(1)} A${rr} ${rr} 0 1 ${cw ? 1 : 0} ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="${C.load}" stroke-width="2.2" marker-end="url(#jdLd)"/>` + Tx(px, py - rr - 7, label, { size: 11, color: C.load, weight: 600, anchor: 'middle' });
+  }
+  // ---------- steel symbols ----------
+  function BE(v, x, y, d) {   // bolt seen end-on: washer ring, head, centre cross
+    const px = v.X(x), py = v.Y(y), r1 = Math.max(0.95 * d * v.k, 3.2), r2 = Math.max(0.55 * d * v.k, 1.9), c = r1 + 3;
+    return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r1.toFixed(1)}" fill="#fff" stroke="${C.boltDark}" stroke-width="1"/><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r2.toFixed(1)}" fill="${C.bolt}"/>` +
+      lnP(px - c, py, px + c, py, 't') + lnP(px, py - c, px, py + c, 't');
+  }
+  // bolt seen side-on with its axis along x (dir 'x') or y: shank a0..a1 at c, head at a0, nut at a1
+  function BS(v, a0, a1, c, d, dir = 'x') {
+    const sg = Math.sign(a1 - a0) || 1, hd = 0.65 * d, nt = 0.8 * d, wh = 0.8 * d, wa = 0.15 * d, pr = 0.45 * d;
+    const seg = (s0, s1, half, fill) => dir === 'x' ? R(v, s0, c - half, s1, c + half, fill) : R(v, c - half, s0, c + half, s1, fill);
+    let o = seg(a0, a1 + sg * (wa + nt + pr), d / 2, 'bolt');
+    o += seg(a0 - sg * wa, a0, d, 'bolt') + seg(a0 - sg * (wa + hd), a0 - sg * wa, wh, 'boltH');
+    o += seg(a1, a1 + sg * wa, d, 'bolt') + seg(a1 + sg * wa, a1 + sg * (wa + nt), wh, 'boltH');
+    o += dir === 'x' ? Ln(v, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), c, 'c') : Ln(v, c, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), 'c');
+    return o;
+  }
+  ST.bolt = `fill="#59626c" stroke="${C.boltDark}" stroke-width="0.6"`; ST.boltH = `fill="${C.bolt}" stroke="${C.boltDark}" stroke-width="0.6"`;
+  // fillet weld at the corner (x, y): legs along sx (x) and sy (y), sized a (mm) but at least 4 px
+  function WD(v, x, y, a, sx, sy) {
+    const L = Math.max(a * v.k, 4.5), px = v.X(x), py = v.Y(y);
+    return `<path d="M${px.toFixed(1)} ${py.toFixed(1)} L${(px + sx * L).toFixed(1)} ${py.toFixed(1)} L${px.toFixed(1)} ${(py - sy * L).toFixed(1)} Z" fill="${C.weld}"/>`;
+  }
+  // weld seen along its length (elevation): narrow strip
+  const WS = (v, x0, y0, x1, y1) => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)), w = Math.max(Math.abs(x1 - x0) * v.k, 2.5), h = Math.max(Math.abs(y1 - y0) * v.k, 2.5);
+    return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${C.weld}" fill-opacity="0.82"/>`; };
+  // zigzag break lines through a member
+  function BK(v, x, y0, y1) {   // vertical break at model x between y0 and y1
+    const px = v.X(x), a = v.Y(Math.max(y0, y1)) - 4, b = v.Y(Math.min(y0, y1)) + 4, m = (a + b) / 2;
+    return `<path d="M${px} ${a} L${px} ${m - 7} L${px - 5} ${m - 3} L${px + 5} ${m + 3} L${px} ${m + 7} L${px} ${b}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  function BKH(v, y, x0, x1) {
+    const py = v.Y(y), a = v.X(Math.min(x0, x1)) - 4, b = v.X(Math.max(x0, x1)) + 4, m = (a + b) / 2;
+    return `<path d="M${a} ${py} L${m - 7} ${py} L${m - 3} ${py - 5} L${m + 3} ${py + 5} L${m + 7} ${py} L${b} ${py}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  // white mask to fade member ends beyond a break
+  const mask = (v, x0, y0, x1, y1) => R(v, x0, y0, x1, y1, 'bg');
+  // I section cross-section (cut), centred at (cx, cy); 'v': web vertical (depth along y), 'h': depth along x
+  function ISec(v, cx, cy, s, o = 'v', st = 'cut') {
+    const b = s.b, h = s.h, tf = s.tf, t = s.tw, r = Math.min(s.r || 0, (b - t) / 2 - 1), pts = [];
+    const arc = (ux, uy, a0, a1) => { for (let i = 0; i <= 6; i++) { const a = (a0 + (a1 - a0) * i / 6) * Math.PI / 180; pts.push([ux + r * Math.cos(a), uy + r * Math.sin(a)]); } };
+    pts.push([-b / 2, h / 2], [b / 2, h / 2], [b / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, h / 2 - tf - r, 90, 180); else pts.push([t / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, -h / 2 + tf + r, 180, 270); else pts.push([t / 2, -h / 2 + tf]);
+    pts.push([b / 2, -h / 2 + tf], [b / 2, -h / 2], [-b / 2, -h / 2], [-b / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, -h / 2 + tf + r, 270, 360); else pts.push([-t / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, h / 2 - tf - r, 0, 90); else pts.push([-t / 2, h / 2 - tf]);
+    pts.push([-b / 2, h / 2 - tf]);
+    return P(v, pts.map(([u, w]) => o === 'v' ? [cx + u, cy + w] : [cx + w, cy + u]), st);
+  }
+  // I member in side elevation: length along 'x' (a0..a1) with the depth c0..c1 across, or along 'y'
+  function IEl(v, a0, a1, c0, c1, s, dir = 'x', o = {}) {
+    const lo = Math.min(c0, c1), hi = Math.max(c0, c1), rr = s.r || 0;
+    const ln = (c, k) => dir === 'x' ? Ln(v, a0, c, a1, c, k) : Ln(v, c, a0, c, a1, k);
+    let out = dir === 'x' ? R(v, a0, lo, a1, hi, 'steel') : R(v, lo, a0, hi, a1, 'steel');
+    out += dir === 'x' ? R(v, a0, lo + s.tf, a1, hi - s.tf, 'web') : R(v, lo + s.tf, a0, hi - s.tf, a1, 'web');
+    out += ln(lo + s.tf, 'e') + ln(hi - s.tf, 'e');
+    if (rr > 0 && !o.noRoot) out += ln(lo + s.tf + rr, 't') + ln(hi - s.tf - rr, 't');
+    return out;
+  }
+  // I member seen on the flange face: width b, length along dir
+  const IFl = (v, a0, a1, cc, s, dir = 'y') => (dir === 'y' ? R(v, cc - s.b / 2, a0, cc + s.b / 2, a1, 'steel') + Ln(v, cc - s.tw / 2 - (s.r || 0), a0, cc - s.tw / 2 - (s.r || 0), a1, 'h') + Ln(v, cc + s.tw / 2 + (s.r || 0), a0, cc + s.tw / 2 + (s.r || 0), a1, 'h')
+    : R(v, a0, cc - s.b / 2, a1, cc + s.b / 2, 'steel'));
+  const title = (x, y, t, sub) => Tx(x, y, t, { size: 11.5, weight: 700, anchor: 'middle', color: C.txt }) + `<line x1="${(x - tw(t, 11.5) / 2).toFixed(1)}" y1="${(y + 3).toFixed(1)}" x2="${(x + tw(t, 11.5) / 2).toFixed(1)}" y2="${(y + 3).toFixed(1)}" stroke="${C.txt}" stroke-width="0.8"/>` + (sub ? Tx(x, y + 16, sub, { size: 10, anchor: 'middle', color: C.mute }) : '');
+  const svg = (body, h = H) => `<svg class="jd" viewBox="0 0 ${W} ${h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;background:${C.paper}" role="img">${DEFS}<rect width="${W}" height="${h}" fill="${C.paper}"/>${body}</svg>`;
+  const BOX = { L: [40, 46, 520, 400], Rt: [612, 46, 280, 400] };
+  const fv = x => { const n = parseFloat(x); return Number.isFinite(n) ? n : 0; };
+  const secName = x => x && x !== '0' ? x : '';   // a form without that selector reads as '0'
+  const BOLTD = { M12: 12, M16: 16, M20: 20, M24: 24, M27: 27, M30: 30, M36: 36 };
+  const bd = sz => BOLTD[sz] || 20;
+  const range = (n, f) => Array.from({ length: Math.max(0, n) }, (_, i) => f(i));
+  return { C, W, H, BOX, DEFS, view, R, P, Ln, lnP, Tx, tw, DH, DV, LD, LA, moment, BE, BS, WD, WS, BK, BKH, mask, ISec, IEl, IFl, title, svg, num, fv, secName, bd, range, esc, ST };
+})();
+
+/* ===== DRAWING KIT EXTRAS (EngineeringTools) =====
+   Additions to the JD drafting kit (joints/diagrams.js) for the member, floor and wall drawings: a page-width SVG wrapper,
+   arrows, supports, distributed loads, result fills, cross-section outlines (I, PFC, RHS, CHS) and SVG to PNG for PDF reports.
+   Source: scratchpad/drawings/kit.js. Pixel helpers take pixel coordinates; JD views map model mm to pixels. */
+const DK = (() => {
+  'use strict';
+  const { Tx, lnP, esc } = JD;
+  const BLUE = '#1d5fbf', FILL = 'rgba(29,95,191,.15)', RED = '#c4242a', REDF = 'rgba(196,36,42,.10)', INK = '#222a31', MUTE = '#6b7680', LINE = '#c9d0d7';
+  const DEFS = `<defs><marker id="dkB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${BLUE}"/></marker>`
+    + `<marker id="dkK" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${INK}"/></marker>`
+    + `<marker id="dkR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${RED}"/></marker>`
+    + `<pattern id="dkHatch" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)"><rect width="7" height="7" fill="#f3f1ec"/><line x1="0" y1="0" x2="0" y2="7" stroke="#8b8478" stroke-width="1"/></pattern></defs>`;
+  const f1 = v => (+v).toFixed(1);
+  // the page-width drawing: viewBox w x h, scales to its container
+  const svg = (body, w, h, label) => `<svg class="jd dk" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" role="img"${label ? ` aria-label="${esc(label)}"` : ''} `
+    + `style="width:100%;height:auto;display:block;background:#fff">${JD.DEFS}${DEFS}<rect width="${w}" height="${h}" fill="#fff"/>${body}</svg>`;
+  const col = c => ({ blue: BLUE, red: RED, ink: INK, mute: MUTE }[c] || c || INK);
+  const mk = c => ({ blue: 'dkB', red: 'dkR' }[c] || 'dkK');
+  // arrow from (x0, y0) to (x1, y1), head at the end (both: heads at both ends)
+  const arrow = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1.6}"`
+    + `${o.dash ? ` stroke-dasharray="${o.dash}"` : ''} marker-end="url(#${mk(o.c)})"${o.both ? ` marker-start="url(#${mk(o.c)})"` : ''}/>`;
+  const line = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.cap ? ` stroke-linecap="${o.cap}"` : ''}/>`;
+  const rect = (x, y, w, h, o = {}) => `<rect x="${f1(Math.min(x, x + w))}" y="${f1(Math.min(y, y + h))}" width="${f1(Math.abs(w))}" height="${f1(Math.abs(h))}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.rx ? ` rx="${o.rx}"` : ''}/>`;
+  const poly = (pts, o = {}) => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + f1(p[0]) + ' ' + f1(p[1])).join(' ')}${o.open ? '' : ' Z'}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+  const text = (x, y, s, o = {}) => Tx(x, y, s, Object.assign({ size: 11 }, o, { color: o.color ? col(o.color) : o.color }));
+  // pinned support under (px, py): triangle and ground line; dir 'down' (default) or 'up' (hanging, above the point)
+  function pin(px, py, dir = 'down') {
+    const s = dir === 'up' ? -1 : 1;
+    return poly([[px, py], [px - 8, py + s * 13], [px + 8, py + s * 13]], { fill: '#fff', stroke: 'ink', w: 1.3 }) + line(px - 12, py + s * 13, px + 12, py + s * 13, { w: 1.3 })
+      + [0, 1, 2, 3].map(k => line(px - 10 + k * 6, py + s * 13, px - 14 + k * 6, py + s * 18, { c: 'mute', w: 0.8 })).join('');
+  }
+  // hatched ground or wall strip: rectangle with the hatch fill and an edge line on the restrained side ('t', 'b', 'l', 'r')
+  function ground(x, y, w, h, edge = 't') {
+    const e = { t: [x, y, x + w, y], b: [x, y + h, x + w, y + h], l: [x, y, x, y + h], r: [x + w, y, x + w, y + h] }[edge];
+    return rect(x, y, w, h, { fill: 'url(#dkHatch)' }) + line(e[0], e[1], e[2], e[3], { w: 1.4 });
+  }
+  // a row of load arrows pointing from yTop to yBase between x0 and x1, with the bar along the tails and a label above
+  function udl(x0, x1, yTop, yBase, label, o = {}) {
+    const n = Math.max(2, Math.round((x1 - x0) / (o.pitch || 28)) + 1), c = o.c || 'red';
+    let g = line(x0, yTop, x1, yTop, { c, w: 1.3 });
+    for (let i = 0; i < n; i++) { const x = x0 + (x1 - x0) * i / (n - 1); g += arrow(x, yTop, x, yBase, { c, w: 1.2 }); }
+    return g + (label ? text((x0 + x1) / 2, yTop - 6, label, { anchor: 'middle', color: c === 'red' ? RED : col(c), weight: 600 }) : '');
+  }
+  // a result diagram: polyline pts (pixels) closed to the base line through the first and last points' base, filled blue
+  function fillDiagram(pts, base, o = {}) {
+    const vert = o.vertical;   // base is an x (diagram plotted sideways) when vertical
+    const close = vert ? [[base, pts[pts.length - 1][1]], [base, pts[0][1]]] : [[pts[pts.length - 1][0], base], [pts[0][0], base]];
+    return poly(pts.concat(close), { fill: o.fill || FILL, stroke: 'none' }) + poly(pts, { open: true, stroke: o.stroke || 'ink', w: 1.1 });
+  }
+  // cross-section outline, cut, centred at pixel (cx, cy) at scale k (px/mm); web vertical; returns svg
+  function section(s, cx, cy, k, o = {}) {
+    const st = o.style || 'cut', fill = st === 'cut' ? 'url(#jdCut)' : '#e7ecf1', edge = '#2f3b47';
+    if (s.shape === 'CHS') {
+      const ro = s.d / 2 * k, ri = (s.d / 2 - s.t) * k;
+      return `<path d="M${f1(cx - ro)} ${f1(cy)} a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(2 * ro)} 0 a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(-2 * ro)} 0 Z M${f1(cx - ri)} ${f1(cy)} a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(2 * ri)} 0 a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(-2 * ri)} 0 Z" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'RHS') {
+      const w = s.b * k, h = s.h * k, t = Math.max(s.t * k, 1.2), ro = Math.min((s.ro || 1.5 * s.t) * k, w / 2), ri = Math.max(0, ro - t);
+      const rr = (x, y, W, H, r) => `M${f1(x + r)} ${f1(y)} H${f1(x + W - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W)} ${f1(y + r)} V${f1(y + H - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W - r)} ${f1(y + H)} H${f1(x + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x)} ${f1(y + H - r)} V${f1(y + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + r)} ${f1(y)} Z`;
+      return `<path d="${rr(cx - w / 2, cy - h / 2, w, h, ro)} ${rr(cx - w / 2 + t, cy - h / 2 + t, w - 2 * t, h - 2 * t, ri)}" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'PFC') {   // channel, toes to the right, web on the left
+      const b = s.b * k, h = s.h * k, tf = Math.max(s.tf * k, 1.2), tw = Math.max(s.tw * k, 1.2), x0 = cx - b / 2, y0 = cy - h / 2;
+      return poly([[x0, y0], [x0 + b, y0], [x0 + b, y0 + tf], [x0 + tw, y0 + tf], [x0 + tw, y0 + h - tf], [x0 + b, y0 + h - tf], [x0 + b, y0 + h], [x0, y0 + h]], { fill, stroke: edge, w: 1.1 });
+    }
+    const v = { k, X: x => cx + x * k, Y: y => cy - y * k };   // I sections: JD's outline with root radii
+    return JD.ISec(v, 0, 0, s, 'v', st === 'cut' ? 'cut' : 'steel');
+  }
+  // SVG markup to a PNG data URL (for the jsPDF reports); resolves { url, w, h } with w, h the viewBox size
+  function toPNG(markup, wpx = 1800) {
+    return new Promise((resolve, reject) => {
+      const m = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(markup); if (!m) { reject(new Error('no viewBox')); return; }
+      const w = +m[1], h = +m[2], k = wpx / w, img = new Image();
+      const src = markup.replace(/style="[^"]*"/, `width="${f1(w * k)}" height="${f1(h * k)}"`);
+      img.onload = () => { const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k); const g = c.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height); resolve({ url: c.toDataURL('image/png'), w, h }); };
+      img.onerror = () => reject(new Error('drawing could not be rendered'));
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
+    });
+  }
+  // drawings for the page (heading + drawing) and for the A4 sheet (each kept whole on a page)
+  const page = blocks => blocks.map(([t, s]) => `<div class="dlabel">${t}</div>${s}`).join('');
+  const sheet = blocks => blocks.map(([t, s]) => `<div class="rfig" style="break-inside:avoid;page-break-inside:avoid;margin:1mm 0 3mm"><h3>${t}</h3><div class="rsvg">${s}</div></div>`).join('');
+  const fmt = (v, d = 0) => Number.isFinite(v) ? (+v).toFixed(d) : '–';
+  return { page, sheet, BLUE, FILL, RED, REDF, INK, MUTE, LINE, svg, arrow, line, rect, poly, text, pin, ground, udl, fillDiagram, section, toPNG, fmt, lnP };
+})();
+
+/* ===== RAFT FOUNDATION DRAWINGS (EngineeringTools) =====
+   Two plans of the raft to scale: the characteristic contact pressure under it (shaded light to dark, with the largest
+   marked, and any area lifting off the ground hatched), and the bending steel's utilisation (the largest of the four layers
+   at each element; red where the mesh is short). Columns are drawn with their numbers and loads, walls as heavy lines.
+   Source: scratchpad/drawings/raft.js. Needs JD, DK; takes RaftFoundation.design results. */
+const DrawRaft = (() => {
+  'use strict';
+  const { svg, line, rect, text, page, sheet, RED, MUTE, BLUE, INK } = DK;
+  const r0 = v => Math.round(v).toString(), r1 = v => (Math.round(v * 10) / 10).toFixed(1), r2 = v => (Math.round(v * 100) / 100).toFixed(2);
+  // light to dark blue, one hue
+  const LO = [238, 243, 251], HI = [29, 95, 191];
+  const shade = t => { t = Math.max(0, Math.min(1, t)); return `rgb(${LO.map((a, i) => Math.round(a + (HI[i] - a) * t)).join(',')})`; };
+  function plan(D, field, title, legend) {
+    const W = 700, M = D.M, k = Math.min(470 / D.Lx, 300 / D.Ly), x0 = 70, y0 = 34, X = x => x0 + x * k, Y = y => y0 + (D.Ly - y) * k;
+    let g = text(0, 14, title, { size: 9.5, color: MUTE });
+    const vals = new Float64Array(M.nEl); let vmax = 0, vmin = Infinity;
+    for (let e = 0; e < M.nEl; e++) { vals[e] = field(e); if (Number.isFinite(vals[e]) && vals[e] >= 0) { vmax = Math.max(vmax, vals[e]); vmin = Math.min(vmin, vals[e]); } }
+    const top = legend.max != null ? legend.max : Math.max(vmax, 1e-9), bot = legend.min != null ? legend.min : Math.min(vmin, top * 0.999);
+    for (let e = 0; e < M.nEl; e++) {
+      const xa = M.xs[M.ci[e]], xb = M.xs[M.ci[e] + 1], ya = M.ys[M.cj[e]], yb = M.ys[M.cj[e] + 1], v = vals[e];
+      const fill = v === -1 ? 'url(#dkHatch)' : legend.over != null && v > legend.over ? 'rgba(196,36,42,0.75)' : shade((v - bot) / (top - bot));
+      g += `<rect x="${X(xa).toFixed(1)}" y="${Y(yb).toFixed(1)}" width="${((xb - xa) * k + 0.4).toFixed(1)}" height="${((yb - ya) * k + 0.4).toFixed(1)}" fill="${fill}"/>`;
+    }
+    g += rect(X(0), Y(D.Ly), D.Lx * k, D.Ly * k, { fill: 'none', stroke: 'ink', w: 1.4 });
+    D.walls.forEach(w => { g += line(X(w.x0), Y(w.y0), X(w.x1), Y(w.y1), { w: 4, c: '#2f3b47' }); });
+    D.cols.forEach(p => { g += rect(X(p.x - p.cx / 2), Y(p.y + p.cy / 2), Math.max(4, p.cx * k), Math.max(4, p.cy * k), { fill: '#2f3b47', stroke: 'none' }) + text(X(p.x) + 6, Y(p.y) - 6, `C${p.i + 1}`, { size: 9, color: INK, weight: 600 }); });
+    if (legend.mark) { const [mx, my, lab] = legend.mark; g += `<circle cx="${X(mx).toFixed(1)}" cy="${Y(my).toFixed(1)}" r="4.5" fill="none" stroke="${RED}" stroke-width="2"/>` + text(X(mx) + (mx > D.Lx / 2 ? -8 : 8), Y(my) + (my > D.Ly / 2 ? 16 : -8), lab, { size: 9.5, color: RED, weight: 600, anchor: mx > D.Lx / 2 ? 'end' : 'start' }); }
+    // dimensions
+    g += line(X(0), Y(0) + 14, X(D.Lx), Y(0) + 14, { w: 0.8 }) + text(X(D.Lx / 2), Y(0) + 27, `L_{x} ${r2(D.Lx)} m`, { size: 9.5, anchor: 'middle' });
+    g += line(X(0) - 14, Y(0), X(0) - 14, Y(D.Ly), { w: 0.8 }) + text(X(0) - 18, Y(D.Ly / 2) + 3, `L_{y} ${r2(D.Ly)} m`, { size: 9.5, anchor: 'end' });
+    // legend: a strip from light to dark with its ends
+    const lx = X(D.Lx) + 24, ly = Y(D.Ly), lh = Math.min(140, D.Ly * k);
+    for (let i = 0; i < 20; i++) g += `<rect x="${lx}" y="${(ly + lh * (1 - (i + 1) / 20)).toFixed(1)}" width="14" height="${(lh / 20 + 0.5).toFixed(1)}" fill="${shade((i + 0.5) / 20)}"/>`;
+    g += rect(lx, ly, 14, lh, { fill: 'none', stroke: '#9aa3ad', w: 0.8 }) + text(lx + 20, ly + 8, `${legend.fmt(top)}`, { size: 9.5 }) + text(lx + 20, ly + lh, legend.fmt(bot), { size: 9.5 }) + text(lx, ly + lh + 16, legend.unit, { size: 9, color: MUTE });
+    if (legend.over != null) g += rect(lx, ly + lh + 24, 14, 10, { fill: 'rgba(196,36,42,0.75)', stroke: 'none' }) + text(lx + 20, ly + lh + 33, `over ${legend.fmt(legend.over)}`, { size: 9, color: RED });
+    if (legend.lift) g += rect(lx, ly + lh + 42, 14, 10, { fill: 'url(#dkHatch)', stroke: '#9aa3ad', w: 0.6 }) + text(lx + 20, ly + lh + 51, 'lifts off', { size: 9, color: MUTE });
+    return svg(g, W, Math.max(Y(0) + 34, ly + lh + 60), title);
+  }
+  function blocks(D) {
+    const M = D.M, pe = e => { let s = 0, off = 0; for (let a = 0; a < 4; a++) { const n = M.nodes[4 * e + a]; s += D.pK[n]; if (!D.K.on[n]) off++; } return off === 4 ? -1 : s / 4; };
+    let nP = -1, pm = 0; for (const n of D.bedNodes) if (D.pK[n] > pm) { pm = D.pK[n]; nP = n; }
+    const pres = plan(D, pe, `Contact pressure under the raft, characteristic (G + Q): up to ${r1(D.pMax)} kPa${D.qa > 0 ? ` against ${r0(D.qa)} kPa allowable` : ''}`,
+      { unit: 'kPa', fmt: v => r0(v), mark: nP >= 0 ? [M.X(nP), M.Y(nP), `${r1(D.pMax)} kPa`] : null, lift: D.lifted > 0 });
+    const worst = D.layer.reduce((a, b) => (b.worst.util > a.worst.util ? b : a));
+    const util = plan(D, e => D.utilEl[e], `Bending steel: the largest of the four layers' utilisation at each point (ULS); worst ${r2(worst.worst.util)}, ${worst.name}`,
+      { unit: 'A_s,req / A_s,prov', fmt: v => r2(v), min: 0, max: 1, over: 1, mark: worst.worst.e >= 0 ? [worst.worst.x, worst.worst.y, `${r2(worst.worst.util)} ${worst.name}`] : null });
+    return [['Contact pressure', pres], ['Bending steel', util]];
+  }
+  return { html: D => page(blocks(D)), report: D => sheet(blocks(D)), plan };
+})();
+
+</script>
+<script id="ui">
+'use strict';
+const $ = id => document.getElementById(id);
+const STORE = 'et-raft-v1';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ufmt = u => !Number.isFinite(u) ? '&gt;99' : u.toFixed(3);
+const f0 = v => Number.isFinite(v) ? Math.round(v).toString() : '–', f1 = v => Number.isFinite(v) ? (Math.abs(v) < 0.05 ? '0.0' : v.toFixed(1)) : '–', f2 = v => Number.isFinite(v) ? v.toFixed(2) : '–', f3 = v => Number.isFinite(v) ? v.toFixed(3) : '–';
+const sub = s => esc(s).replace(/_\{([^}]*)\}|_([A-Za-zα-ω0-9,′]+)/g, (m, a, b) => `<sub>${a || b}</sub>`).replace(/\^([0-9.]+)/g, '<sup>$1</sup>');
+// ---------- columns and walls ----------
+const CF = ['x', 'y', 'cx', 'cy', 'G', 'Q'], WF = ['x0', 'y0', 'x1', 'y1', 'G', 'Q'];
+// nine columns on a 5 m × 4 m grid, 500 mm in from the edges
+const DEFC = []; for (const y of [0.5, 4.5, 8.5]) for (const x of [0.5, 5.5, 10.5]) { const n = (x === 5.5 ? 1 : 0) + (y === 4.5 ? 1 : 0); DEFC.push({ x, y, cx: 300, cy: 300, G: [100, 180, 300][n], Q: [30, 60, 100][n] }); }
+function row(box, F, labels, o, cls) {
+  const r = document.createElement('div'); r.className = 'row col6 ' + cls;
+  r.innerHTML = F.map((k, i) => `<div><label>${labels[i]}</label><input type="number" class="${k}" step="${/^c/.test(k) ? 25 : 0.1}"></div>`).join('') + `<div><label>&nbsp;</label><button class="xbtn" type="button" title="Remove">×</button></div>`;
+  F.forEach(k => { if (o[k] !== undefined) r.querySelector('.' + k).value = o[k]; });
+  r.querySelector('.xbtn').onclick = () => { r.remove(); queueDraw(); };
+  $(box).appendChild(r); return r;
+}
+const colRow = (o = {}) => row('colRows', CF, ['x (m)', 'y (m)', 'Size x', 'Size y', 'G (kN)', 'Q (kN)'], o, 'colr');
+const wallRow = (o = {}) => row('wallRows', WF, ['x₀ (m)', 'y₀ (m)', 'x₁ (m)', 'y₁ (m)', 'G (kN/m)', 'Q (kN/m)'], o, 'wallr');
+$('addCol').onclick = () => colRow({ x: (+$('Lx').value || 10) / 2, y: (+$('Ly').value || 8) / 2, cx: 300, cy: 300, G: 200, Q: 60 });
+$('addWall').onclick = () => wallRow({ x0: 0.2, y0: 0.2, x1: (+$('Lx').value || 10) - 0.2, y1: 0.2, G: 30, Q: 5 });
+const data = (box, F) => [...document.querySelectorAll(`#${box} .row`)].map(r => Object.fromEntries(F.map(k => [k, r.querySelector('.' + k).value])));
+// ---------- state ----------
+const FIELDS = ['pName', 'pJob', 'pBy', 'pRef', 'Lx', 'Ly', 'h', 'fck', 'cBtm', 'cTop', 'phiB', 'sB', 'wk', 'phiT', 'sT', 'ks', 'qa', 'wlim', 'gk', 'qk', 'psi2'];
+function collect() { const s = { v: 1, columns: data('colRows', CF), walls: data('wallRows', WF) }; FIELDS.forEach(id => { s[id] = $(id).value; }); return s; }
+function restore(s) { $('colRows').innerHTML = ''; $('wallRows').innerHTML = ''; (s.columns || DEFC).forEach(colRow); (s.walls || []).forEach(wallRow); FIELDS.forEach(id => { if (s[id] !== undefined && $(id)) $(id).value = s[id]; }); }
+const num = v => (v === '' || v === undefined || v === null ? undefined : +v), req = v => (v === '' || v === undefined || v === null ? NaN : +v);
+function input(s) {
+  const o = { columns: s.columns.map(c => ({ x: req(c.x), y: req(c.y), cx: req(c.cx), cy: req(c.cy), G: num(c.G), Q: num(c.Q) })), walls: s.walls.map(w => ({ x0: req(w.x0), y0: req(w.y0), x1: req(w.x1), y1: req(w.y1), G: num(w.G), Q: num(w.Q) })) };
+  ['Lx', 'Ly', 'h', 'fck', 'cBtm', 'cTop', 'phiB', 'sB', 'wk', 'phiT', 'sT', 'ks', 'qa', 'wlim', 'gk', 'qk', 'psi2'].forEach(k => { o[k] = num(s[k]); });
+  ['Lx', 'Ly', 'h', 'ks', 'sB', 'sT'].forEach(k => { if (o[k] === undefined) o[k] = NaN; });
+  return o;
+}
+const compute = s => RaftFoundation.design(input(s));
+// ---------- results ----------
+const bar = c => `<div class="ck"><div class="nm">${sub(c.name)}<small>${sub(c.ref)} &nbsp;${sub(c.note || '')}</small></div><div class="bar"><i class="${c.util > 1 ? 'over' : c.util > 0.9 ? 'hi' : ''}" style="width:${Math.min(100, c.util * 100 / 1.2)}%"></i></div><div class="u ${c.util > 1 ? 'over' : ''}">${ufmt(c.util)}</div></div>`;
+const stepsHTML = S => `<div class="steps">${S.map(s => `<div class="st"><span>${esc(s.ref)}</span><span>${sub(s.text)}</span></div>`).join('')}</div>`;
+const td = (v, u) => `<td${u > 1 ? ' class="over"' : ''}>${v}</td>`;
+function colTable(D, cls) {
+  if (!D.punch.length) return '';
+  return `<div class="tscroll"><table class="${cls}"><thead><tr><th>Column</th><th>Type</th><th>V<sub>Ed</sub> kN</th><th>Ground kPa</th><th>Deducted kPa</th><th>v<sub>Ed</sub> / v<sub>Rd,c</sub></th><th>Utilisation</th></tr></thead><tbody>${D.punch.map(p => `<tr><td>C${p.i + 1} (${f2(p.x)}, ${f2(p.y)})</td><td>${p.type}</td><td>${f1(p.VEd)}</td><td>${f1(p.pAv)}</td><td>${f1(p.q)}</td><td>${p.R ? `${f3(p.R.vEd1)} / ${f3(p.R.vRdc)}` : esc(p.err)}</td>${td(ufmt(p.util), p.util)}</tr>`).join('')}</tbody></table></div>`;
+}
+const key = D => `${f2(D.Lx)} × ${f2(D.Ly)} m × ${f0(D.h)} mm raft, C${D.c.fck}/${D.c.fckCube}, H${D.mB.phi}@${D.mB.s} bottom and H${D.mT.phi}@${D.mT.s} top each way; contact pressure up to ${f1(D.pMax)} kPa, settlement ${f1(D.wMax * 1000)} mm (k<sub>s</sub> ${f0(D.ks)} kN/m³)`;
+function verdict(D) {
+  const W = [...D.checks].sort((a, b) => b.util - a.util)[0];
+  return `<div class="verdict ${D.utilMax > 1 ? 'fail' : ''}"><div><div class="big">${D.utilMax > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(D.utilMax)}</div><div class="sub">Governs: ${sub(W.name.charAt(0).toLowerCase() + W.name.slice(1))} (${sub(W.ref)})<br>${key(D)}</div></div></div>`;
+}
+const notes = D => ['Linear elastic plate (Mindlin, MITC4) at E<sub>cm</sub> on a Winkler bed that acts only in compression: the contact pressure, settlement and moments all depend on k<sub>s</sub>, so try the range the ground investigation allows. The loads are factored 1.35 G + 1.5 Q at ULS without pattern loading; the column loads are spread over their footprints, inside which the moments are not designed.',
+  'Not covered: overall bearing resistance of the raft to BS EN 1997-1 (compare the pressure with the allowable), differential settlement between parts of the building and its effect on the structure, layered or variable ground, water pressure and flotation, heave and shrinkable clay, thickenings and downstands, openings, temperature and shrinkage, and the bars’ curtailment, laps and starter bars.'];
+let last = null;
+function render(D, s) {
+  let h = verdict(D) + `<div id="drawings"></div>`;
+  h += `<div class="dlabel">Checks</div><div class="checks">${[...D.checks].sort((a, b) => b.util - a.util).map(bar).join('')}</div>`;
+  D.warnings.forEach(t => { h += `<div class="note">${sub(t)}</div>`; });
+  if (D.punch.length) h += `<div class="dlabel">Punching at each column (ULS)</div>${colTable(D, 'ctab')}`;
+  h += `<div class="dlabel">Calculation</div>${stepsHTML(D.steps)}`;
+  h += `<div class="note">${notes(D).join(' ')}</div><button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  $('results').innerHTML = h; redraw(D);
+  $('printBtn').onclick = () => { $('report').innerHTML = report(D, s); window.print(); };
+}
+function run() {
+  const s = collect(); try { localStorage.setItem(STORE, JSON.stringify(s)); } catch (e) { /* storage unavailable */ }
+  clearTimeout(drawT);
+  try { const D = compute(s); last = { D, s }; render(D, s); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div><div id="drawings"></div>`; redraw(); }
+}
+$('calc').onclick = run;
+// ---------- A4 sheet ----------
+const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
+const okng = u => u <= 1 ? `<span class="ok">${ufmt(u)} OK</span>` : `<span class="ng">${ufmt(u)} FAIL</span>`;
+function report(D, s) {
+  const today = new Date().toLocaleDateString('en-GB');
+  const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.pRef) || '&nbsp;'}</div><div class="ttl">Raft foundation, BS EN 1992-1-1</div></div>`;
+  let b = `<div class="rs"><h2>1 Raft, ground and loads</h2>${rl(key(D), '', '')}${D.steps.map(x => rl(sub(x.text), esc(x.ref), '')).join('')}</div>`;
+  b += `<div class="rs"><h2>2 Drawings</h2>${DrawRaft.report(D)}</div>`;
+  b += `<div class="rs"><h2>3 Checks</h2>${D.checks.map(c => rl(`${sub(c.name)}: ${sub(c.note)}`, sub(c.ref), okng(c.util))).join('')}${colTable(D, 'rt')}</div>`;
+  if (D.warnings.length) b += `<div class="rs">${D.warnings.map(t => `<p class="rp">${sub(t)}</p>`).join('')}</div>`;
+  b += `<div class="rs"><p class="rp">${notes(D).join(' ')}</p><p class="rp" style="color:#555">BS EN 1992-1-1:2004+A1:2014 with the UK National Annex. Generated by EngineeringTools — Raft Foundation.</p></div>`;
+  return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
+}
+// the plans follow the inputs
+let drawT = 0;
+function redraw(D) {
+  const el = $('drawings'); if (!el) return;
+  try { el.innerHTML = DrawRaft.html(D || compute(collect())); }
+  catch (e) { el.innerHTML = `<div class="note">The drawings will appear when the inputs are complete: ${esc(e.message)}</div>`; }
+}
+const queueDraw = () => { clearTimeout(drawT); drawT = setTimeout(() => redraw(), 200); };
+$('inputs').addEventListener('input', queueDraw); $('inputs').addEventListener('change', queueDraw);
+$('inputs').addEventListener('click', e => { const t = e.target.closest('button'); if (t && !t.classList.contains('btn') && !t.classList.contains('btn2')) queueDraw(); });
+(function init() {
+  let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
+  restore(s && s.v === 1 ? s : {});
+  redraw();
+})();
+</script>
+<footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent structural engineer with relevant experience to check and approve all calculations before they are used.</footer>
+<!-- @@FILEIO: save / open, shared by every tool (scratchpad/common/fileio.*) -->
+<style id="ef-style">
+/* Save / open buttons on the page header, and the status message (source: scratchpad/common/fileio.css) */
+.ef-bar{position:absolute;top:14px;right:16px;z-index:3;display:flex;gap:8px;}
+.ef-bar.ef-float{position:fixed;top:12px;right:12px;}
+.ef-btn{height:32px;padding:0 12px;display:inline-flex;align-items:center;gap:6px;border:0;border-radius:6px;background:rgba(255,255,255,.94);color:#111;font-family:inherit;font-size:13px;font-weight:500;line-height:1;cursor:pointer;}
+.ef-btn:hover{background:#fff;}
+.ef-btn:focus-visible{outline:2px solid #fff;outline-offset:2px;}
+.ef-btn svg{width:15px;height:15px;flex:none;}
+.ef-msg{position:fixed;left:50%;bottom:20px;z-index:1000;width:max-content;max-width:min(560px,calc(100vw - 32px));transform:translate(-50%,8px);opacity:0;pointer-events:none;
+  background:#1d1f20;color:#fff;font-family:inherit;font-size:13px;line-height:1.45;padding:10px 14px;border-radius:6px;transition:opacity .15s,transform .15s;}
+.ef-msg.on{opacity:1;transform:translate(-50%,0);}
+.ef-msg.bad{background:#b3261e;}
+@media(max-width:560px){.ef-bar{position:static;margin-top:12px;align-self:flex-start;}}
+@media print{.ef-bar,.ef-msg{display:none!important;}}
+</style>
+<script id="ef-script">
+/* Save / open: a tool's inputs as a .json file. Shared by every Engineering Tools page (source: scratchpad/common/fileio.js),
+   configured per page with EngFile.init({...}).
+   File: { app: 'EngineeringTools', tool, key, format, saved, state }.
+   Two ways to open:
+   - store: the tool already restores itself from browser storage on load. Open writes the file's state there and reloads,
+     so the tool rebuilds everything (load tables, spans, models) exactly as on a return visit, then recalculates.
+   - set: the page applies the state itself (pages without saved state); EngFile.fields() covers plain forms. */
+const EngFile = (() => {
+  'use strict';
+  const APP = 'EngineeringTools', FMT = 1, FLAG = 'ef-opened';
+  let C = null, input = null, timer = 0;
+  const ICON = {
+    open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+    save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v5h8V3"/><path d="M7 21v-7h10v7"/></svg>',
+  };
+  const sess = {
+    get: k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
+    set: (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } },
+    del: k => { try { sessionStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
+  };
+
+  function msg(t, bad) {
+    let m = document.getElementById('ef-msg');
+    if (!m) { m = document.createElement('div'); m.id = 'ef-msg'; m.className = 'ef-msg no-print'; m.setAttribute('role', 'status'); m.setAttribute('aria-live', 'polite'); document.body.appendChild(m); }
+    m.textContent = t || ''; m.classList.toggle('bad', !!bad); m.classList.toggle('on', !!t);
+    clearTimeout(timer); if (t) timer = setTimeout(() => m.classList.remove('on'), bad ? 9000 : 5000);
+  }
+  function data() { return { app: APP, tool: C.tool, key: C.key, format: FMT, saved: new Date().toISOString(), state: C.get() }; }
+  function fileName() {
+    let ref = '', nm = ''; try { ref = C.ref ? String(C.ref() || '').trim() : ''; nm = C.name ? String(C.name() || '').trim() : ''; } catch (e) { ref = ''; }
+    return `${ref ? ref + ' ' : ''}${nm || C.tool}.json`.replace(/[\\/:*?"<>|]+/g, '-');
+  }
+  async function save() {
+    let d; try { d = data(); } catch (e) { msg(`Could not save: ${e.message}`, true); return; }
+    const name = fileName(), text = JSON.stringify(d, null, 1);
+    if (window.showSaveFilePicker) {   // Chrome / Edge: a Save As dialog, so the file can go straight into the job folder
+      try {
+        const h = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: `${C.tool} file`, accept: { 'application/json': ['.json'] } }] });
+        const w = await h.createWritable(); await w.write(text); await w.close(); msg(`Saved ${h.name}`); return;
+      } catch (e) { if (e && e.name === 'AbortError') return; }   // cancelled; any other failure falls back to a download
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    msg(`Saved ${name} to your downloads folder`);
+  }
+  function open() { input.value = ''; input.click(); }
+  // the saved state, or an error saying what the file is
+  function stateOf(d) {
+    const old = C.legacy ? C.legacy(d) : null; if (old) return old;
+    if (!d || d.app !== APP || !d.state || typeof d.state !== 'object') throw new Error('this is not an Engineering Tools file');
+    if (d.key !== C.key) throw new Error(d.tool ? `it was saved in ${d.tool}, so open it there` : 'it was saved in another tool');
+    if (!(d.format >= 1) || d.format > FMT) throw new Error('this file was saved by a newer version of the tools');
+    return d.state;
+  }
+  async function apply(d, name) {
+    const s = stateOf(d);
+    if (C.store) {
+      try { localStorage.setItem(C.store, JSON.stringify(s)); } catch (e) { throw new Error('this browser is blocking site storage for this page, which Open needs'); }
+      sess.set(FLAG, JSON.stringify({ name, key: C.key }));
+      history.replaceState(null, '', location.href.split('#')[0]);   // a #in= hand-over in the address would otherwise win over the file
+      location.reload(); return { reload: true };
+    }
+    const r = (await C.set(s)) || {};
+    if (C.calc) try { C.calc(); } catch (e) { /* the tool reports its own input errors */ }
+    return r;
+  }
+  function done(name, r) {
+    const k = r && r.skipped ? r.skipped.length : 0;
+    msg(`Opened ${name}` + (k ? `. ${k} saved value${k > 1 ? 's are' : ' is'} not used by this version and ${k > 1 ? 'were' : 'was'} left at the default` : ''));
+  }
+  async function openFile(file) {
+    if (!file) return;
+    let d; try { d = JSON.parse(await file.text()); } catch (e) { msg(`${file.name} could not be read as a saved file`, true); return; }
+    try { const r = await apply(d, file.name); if (!r.reload) done(file.name, r); } catch (e) { msg(`${file.name} was not opened: ${e.message}`, true); }
+  }
+  // plain forms: every input, select and textarea with an id under root; dropdowns are restored first, since choosing a
+  // section often auto-fills its dimensions, which the saved values then override
+  function fields(root) {
+    const els = () => [...(typeof root === 'string' ? document.querySelector(root) : root || document).querySelectorAll('input[id],select[id],textarea[id]')]
+      .filter(el => el.id !== 'ef-file' && !['file', 'button', 'submit', 'reset'].includes(el.type));
+    return {
+      get: () => { const o = {}; els().forEach(el => { o[el.id] = el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value; }); return o; },
+      set: o => {
+        const have = new Map(els().map(el => [el.id, el])), skipped = [], ent = Object.entries(o || {}), fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+        for (const [id, v] of ent) {
+          const el = have.get(id); if (!el) { skipped.push(id); continue; }
+          if (el.tagName === 'SELECT') { if ([...el.options].some(x => x.value === String(v))) { el.value = String(v); fire(el, 'change'); } else skipped.push(id); }
+        }
+        for (const [id, v] of ent) {
+          const el = have.get(id); if (!el || el.tagName === 'SELECT') continue;
+          if (el.type === 'checkbox' || el.type === 'radio') { el.checked = !!v; fire(el, 'change'); } else { el.value = String(v); fire(el, 'input'); fire(el, 'change'); }
+        }
+        return { skipped };
+      },
+    };
+  }
+  // file names lead with the job and member references from the page, e.g. '24-123 Slab S3 RC Slab Design.json'
+  const refOf = ids => () => ids.map(id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; }).filter(Boolean).join(' ');
+  function mount() {
+    const bar = document.createElement('div'); bar.className = 'ef-bar no-print';
+    bar.innerHTML = `<button type="button" class="ef-btn" id="ef-open" title="Open a saved file (Ctrl+O), or drop it onto the page">${ICON.open}Open</button>`
+      + `<button type="button" class="ef-btn" id="ef-save" title="Save the inputs to a file (Ctrl+S)">${ICON.save}Save</button>`;
+    const h = document.querySelector('.page-hdr'); if (h) h.appendChild(bar); else { bar.classList.add('ef-float'); document.body.appendChild(bar); }
+    bar.querySelector('#ef-open').addEventListener('click', open); bar.querySelector('#ef-save').addEventListener('click', save);
+  }
+  function init(c) {
+    C = Object.assign({ tool: (document.querySelector('h1') || {}).textContent || document.title, ref: refOf(['pJob', 'pRef']), calc: () => { const b = document.getElementById('calc'); if (b) b.click(); }, delay: 200 }, c);
+    C.tool = C.tool.trim(); if (!C.key) C.key = C.store;
+    if (C.store && !C.get) C.get = () => collect();   // eslint-disable-line no-undef -- the tool's own serialiser
+    input = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json', id: 'ef-file' }); input.hidden = true;
+    document.body.appendChild(input); input.addEventListener('change', () => openFile(input.files[0]));
+    mount();
+    document.addEventListener('keydown', e => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return; const k = (e.key || '').toLowerCase();
+      if (k === 's') { e.preventDefault(); save(); } else if (k === 'o') { e.preventDefault(); open(); }
+    });
+    document.addEventListener('dragover', e => { if ([...((e.dataTransfer && e.dataTransfer.types) || [])].includes('Files')) e.preventDefault(); });
+    document.addEventListener('drop', e => { const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f && /\.json$/i.test(f.name)) { e.preventDefault(); openFile(f); } });
+    // after an Open that reloaded the page: the tool has restored itself; recalculate and say what was opened
+    const f = sess.get(FLAG);
+    if (f) {
+      sess.del(FLAG); let o = null; try { o = JSON.parse(f); } catch (e) { o = null; }
+      if (o && o.key === C.key) setTimeout(() => { if (C.calc) try { C.calc(); } catch (e) { /* the tool reports its own input errors */ } done(o.name); }, C.delay);
+    }
+  }
+  return { init, save, open, openFile, apply, data, fileName, msg, fields, stateOf, refOf };
+})();
+window.EngFile = EngFile;   // reachable from the page's other scripts and the tests
+EngFile.init({ store: STORE });
+</script>
+<!-- /@@FILEIO -->
+</body>
+</html>

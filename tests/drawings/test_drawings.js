@@ -1,6 +1,6 @@
 // Drawings on Composite Beam, Floor Vibration, Steel Member, Concrete Tie Force and RC Crack Width (group 1) and on Steel Beam
 // Torsion, Beam Web Openings, Steel Frame Design, Sheet Pile Wall, the RC Section Toolkit tabs, RC Column, Hollowcore Support
-// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages to Outrigger Loading (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
+// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages to Raft Foundation (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
 //   NODE_PATH=<jsdom>/node_modules node tests/drawings/test_drawings.js
 const fs = require('fs'), path = require('path'), { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '../..');
@@ -405,5 +405,9 @@ async function sweep(f, cases, expect) {
     ['square foot', w => set(w, 'footShape', 'square', 'change')], ['a long mat', w => set(w, 'L', '3')],
     ['75% rule', w => w.document.querySelector('#methods [data-m="rule"]').click()], ['given value', w => w.document.querySelector('#methods [data-m="given"]').click()],
   ], 3);
+  await sweep('Raft Foundation.html', [
+    ['thinner raft', w => set(w, 'h', '300')], ['softer ground', w => set(w, 'ks', '5000')], ['a wall', w => w.document.getElementById('addWall').click()],
+    ['a column removed', w => w.document.querySelectorAll('#colRows .xbtn')[4].click()], ['top bars H16', w => set(w, 'phiT', '16', 'change')], ['longer raft', w => set(w, 'Lx', '12')],
+  ], 2);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
