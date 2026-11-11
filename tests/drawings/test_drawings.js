@@ -331,5 +331,12 @@ async function sweep(f, cases, expect) {
     ['wind across t', w => set(w, 'wk', '1')], ['wind across b', w => set(w, 'wdir', 'b', 'change')], ['eccentric both ways', w => { set(w, 'ebT', '40'); set(w, 'etT', '-20'); }],
     ['double curvature', w => set(w, 'etB', '20')], ['concrete floors', w => set(w, 'rhoT', '0.75', 'change')], ['6.10a/b', w => { set(w, 'combo', '6.10ab', 'change'); set(w, 'Qk', '60'); }],
   ], 1);
+  await sweep('Masonry Wall Panel.html', [
+    ['tall panel', w => set(w, 'h', '4000')], ['long panel', w => set(w, 'l', '7500')], ['continuous sides', w => { set(w, 'eL', 'fixed', 'change'); set(w, 'eR', 'fixed', 'change'); }],
+    ['free top', w => set(w, 'eTopS', 'free', 'change')], ['one free side', w => { set(w, 'eTopS', 'ss', 'change'); set(w, 'eR', 'free', 'change'); }],
+    ['spanning vertically', w => { set(w, 'eL', 'free', 'change'); set(w, 'l', '4500'); }], ['spanning horizontally', w => { set(w, 'eL', 'ss', 'change'); set(w, 'eR', 'ss', 'change'); set(w, 'eTopS', 'free', 'change'); set(w, 'eBotS', 'free', 'change'); }],
+    ['single leaf', w => { set(w, 'eTopS', 'ss', 'change'); set(w, 'eBotS', 'ss', 'change'); const c = w.document.getElementById('cav'); c.checked = false; c.dispatchEvent(new w.Event('change', { bubbles: true })); }],
+    ['no wind', w => set(w, 'wk', '0')], ['eccentric load', w => set(w, 'eT', '-30')], ['clay bricks', w => { set(w, 'unit', 'clay', 'change'); set(w, 't', '215'); }],
+  ], 1);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
