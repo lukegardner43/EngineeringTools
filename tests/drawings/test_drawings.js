@@ -326,5 +326,10 @@ async function sweep(f, cases, expect) {
     ['long spreader', w => { set(w, 'pL', '1115'); set(w, 'ph', '300'); }], ['narrow padstone, centred bearing', w => { set(w, 'inset', '57.5'); set(w, 'wb', '100'); set(w, 'pW', '140'); }], ['tall wall', w => set(w, 'hc', '6000')],
     ['clay bricks', w => set(w, 'unit', 'clay', 'change')], ['AAC blocks', w => set(w, 'unit', 'aac', 'change')],
   ], 1);
+  await sweep('Masonry Column.html', [
+    ['tall column', w => set(w, 'h', '4500')], ['wide pier', w => set(w, 'b', '1115')], ['brick pier', w => { set(w, 'b', '327'); set(w, 't', '215'); set(w, 'unit', 'clay', 'change'); }],
+    ['wind across t', w => set(w, 'wk', '1')], ['wind across b', w => set(w, 'wdir', 'b', 'change')], ['eccentric both ways', w => { set(w, 'ebT', '40'); set(w, 'etT', '-20'); }],
+    ['double curvature', w => set(w, 'etB', '20')], ['concrete floors', w => set(w, 'rhoT', '0.75', 'change')], ['6.10a/b', w => { set(w, 'combo', '6.10ab', 'change'); set(w, 'Qk', '60'); }],
+  ], 1);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();

@@ -346,6 +346,17 @@ const EC6 = (() => {
     return { fk: val, K, fb: fb0, fbUsed: fbU, fm: fmU, alpha: a, beta: b, eq, steps, notes, unit: U.name, group: g, mortar: M.name };
   }
 
+  /* the masonry's compressive strength: f_k (from the units and mortar, or given as m.fk with m.src 'fk'), γ_M, f_d */
+  function material(m) {
+    const steps = [];
+    let fkv, F = null;
+    if (m.src === 'fk') { fkv = pos(+m.fk, 'f_k'); steps.push({ ref: '3.6.1', text: `f_k = ${r2(fkv)} N/mm² (given)` }); }
+    else { F = fk(m); fkv = F.fk; steps.push(...F.steps); }
+    const gM = gammaM({ category: m.category, exec: m.exec, kind: 'compression' });
+    steps.push({ ref: 'NA.1', text: `γ_M = ${gM} (units of category ${m.category}, execution class ${m.exec}); f_d = f_k/γ_M = ${r2(fkv)}/${gM} = ${r3(fkv / gM)} N/mm²` });
+    return { fk: fkv, gM, fd: fkv / gM, F, steps, notes: F ? F.notes : [] };
+  }
+
   /* γM, UK NA Table NA.1: kind 'compression' (direct or flexural compression), 'flexure' (flexural tension), 'shear', 'ties' */
   function gammaM({ category = 'I', exec = 2, kind = 'compression', accidental = false } = {}) {
     const c2 = +exec === 1 ? 0 : 1;
@@ -381,7 +392,7 @@ const EC6 = (() => {
   // small plan area: fd × (0.7 + 3A), A in m², for A < 0.1 m² (6.1.2.1(3))
   const smallArea = Amm2 => Amm2 < 1e5 ? 0.7 + 3 * Amm2 / 1e6 : 1;
 
-  return { UNITS, MORTARS, fk, gammaM, spread, lefm, beta, einit, phiI, phiM, tefCavity, smallArea };
+  return { UNITS, MORTARS, fk, material, gammaM, spread, lefm, beta, einit, phiI, phiM, tefCavity, smallArea };
 })();
 
 /* ===== MASONRY BEARING ENGINE (EngineeringTools) =====
@@ -412,16 +423,7 @@ const MasonryBearing = (() => {
   const nonneg = (v, nm) => { if (!(v >= 0) || !Number.isFinite(v)) throw new Error(`${nm} must be zero or more`); return v; };
   const AlphaCC = 0.85, AlphaPl = 0.6, GammaC = 1.5;
 
-  // the masonry's strength: f_k (from the units and mortar, or given), γ_M, f_d
-  function material(m) {
-    const steps = [];
-    let fk, F = null;
-    if (m.src === 'fk') { fk = pos(+m.fk, 'f_k'); steps.push({ ref: '3.6.1', text: `f_k = ${r2(fk)} N/mm² (given)` }); }
-    else { F = EC6.fk(m); fk = F.fk; steps.push(...F.steps); }
-    const gM = EC6.gammaM({ category: m.category, exec: m.exec, kind: 'compression' });
-    steps.push({ ref: 'NA.1', text: `γ_M = ${gM} (units of category ${m.category}, execution class ${m.exec}); f_d = f_k/γ_M = ${r2(fk)}/${gM} = ${r3(fk / gM)} N/mm²` });
-    return { fk, gM, fd: fk / gM, F, steps, notes: F ? F.notes : [] };
-  }
+  const material = m => EC6.material(m);
 
   // why β is 1 (or '' when the 6.1.3 value applies)
   function betaOne(m, ecc) {
@@ -550,7 +552,7 @@ const MasonryBearing = (() => {
     return null;
   }
 
-  return { design, suggest, material };
+  return { design, suggest };
 })();
 
 </script>

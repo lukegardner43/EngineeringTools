@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Masonry Column</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* Engineering Tools: shared light style (tasteskill app sheet "Achromatic ledger", seed 959138263).
+   Ink chrome on a blue-grey drawing-office ground; the one hue (#1d5fbf) goes on the main data element
+   (envelopes, utilisation bars); status colour only on the verdict and on a check that is over. */
+:root{
+  --bg:#f2f4f7; --surf:#ffffff; --surf2:#f7f8fa; --bdr:#e3e5e8; --bdr2:#d1d5db; --rule:#eceef1;
+  --txt:#111111; --lbl:#33363a; --mut:#5f6368; --faint:#6b6b6b;
+  --accent:#1d5fbf; --accent-dim:#e3ebf8;
+  --primary:#1d1f20;
+  --pass:#247b50; --warn:#b45309; --fail:#c4242a;
+  --pass-bg:#dcfae5; --pass-ink:#04250e; --fail-bg:#ffedea; --fail-ink:#831c1e;
+  --r:6px; --rc:8px;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:var(--sans);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5;min-height:100svh;padding:28px 32px 40px;
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;}
+.container{max-width:1376px;margin:0 auto;}
+/* title row: a photograph of the member's material (img/<material>.jpg beside the page, set by <body data-material>)
+   under a neutral scrim, with the breadcrumb, the tool's name and one line of scope. Without the photo it is a plain ink band. */
+.page-hdr{position:relative;isolation:isolate;overflow:hidden;border-radius:var(--rc);min-height:164px;padding:18px 24px 20px;margin-bottom:12px;
+  display:flex;flex-direction:column;justify-content:flex-end;color:#fff;background:#2c3036 var(--photo,none) center/cover no-repeat;}
+.page-hdr::before{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.55) 45%,rgba(0,0,0,.18) 100%);} /* taste-skill-ignore: neutral scrim under text on a photograph */
+.page-hdr::after{content:var(--credit,'');position:absolute;right:10px;bottom:8px;font-size:11px;color:rgba(255,255,255,.9);background:rgba(0,0,0,.4);padding:1px 6px;border-radius:4px;}
+.home-lnk{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:rgba(255,255,255,.88);text-decoration:none;font-weight:500;margin-bottom:auto;align-self:flex-start;padding-bottom:12px;}
+.home-lnk:hover{color:#fff;text-decoration:underline;}
+.home-lnk svg{width:14px;height:14px;}
+.page-hdr h1{font-size:26px;font-weight:600;line-height:1.25;letter-spacing:-0.01em;margin-bottom:4px;color:#fff;}
+.page-hdr p{font-size:14px;color:rgba(255,255,255,.92);max-width:900px;}
+body[data-material="steel"]{--photo:url(img/steel.jpg);--credit:'Photo: Chevsapher, CC0';}
+body[data-material="concrete"]{--photo:url(img/concrete.jpg);--credit:'Photo: MassDOT, public domain';}
+body[data-material="masonry"]{--photo:url(img/masonry.jpg);--credit:'Photo: Håkan Svensson, CC BY 2.5';}
+body[data-material="timber"]{--photo:url(img/timber.jpg);--credit:'Photo: Sebastian Wallroth, public domain';}
+body[data-material="frame"]{--photo:url(img/frame.jpg);--credit:'Photo: Wikideas1, CC0';}
+body[data-material="ground"]{--photo:url(img/ground.jpg);--credit:'Photo: Fons Heijnsbroek, CC0';}
+@media print{.page-hdr{display:none;}}
+/* inputs on the left, the answer on the right: (1376 - 12) x 6/13 = 630 | 734 */
+.main-grid{display:grid;grid-template-columns:minmax(380px,6fr) 7fr;gap:12px;align-items:start;}
+@media(max-width:1100px){.main-grid{grid-template-columns:1fr;}}
+.main-grid > div{min-width:0;}
+#results table.t{display:block;overflow-x:auto;white-space:nowrap;}
+.card{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rc);padding:20px 24px;margin-bottom:12px;}
+.section-title{font-size:16px;font-weight:600;color:var(--txt);margin:0 0 14px;display:flex;justify-content:space-between;align-items:baseline;gap:12px;line-height:1.3;}
+.section-title .aux{color:var(--mut);font-size:13px;font-weight:400;text-align:right;}
+.form-group{margin-bottom:14px;}
+.form-group label,.lbl{display:block;font-size:13px;margin-bottom:5px;color:var(--lbl);font-weight:500;line-height:1.35;}
+input[type="number"],input[type="text"],select{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);padding:0 10px;height:36px;border-radius:var(--r);font-family:var(--sans);font-size:14px;width:100%;font-variant-numeric:tabular-nums;transition:border-color .12s;}
+input::placeholder{color:var(--faint);}
+input:hover,select:hover{border-color:#b9bec6;}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);}
+input:disabled,select:disabled{background:var(--surf2);color:var(--mut);}
+select option{background:var(--surf);color:var(--txt);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.grid2 > .form-group,.grid3 > .form-group{display:flex;flex-direction:column;justify-content:flex-end;}
+.chk{display:block;position:relative;padding-left:26px;font-size:13px;color:var(--lbl);margin:8px 0;cursor:pointer;line-height:1.45;}
+.chk input{position:absolute;left:0;top:1px;width:16px;height:16px;accent-color:var(--primary);}
+.help{font-size:13px;color:var(--mut);margin-top:4px;line-height:1.45;}
+/* segmented control: grey track, white pill on the chosen option */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#e9ecf0;border-radius:var(--rc);margin-bottom:14px;}
+.seg button{background:transparent;color:var(--mut);border:1px solid transparent;border-radius:var(--r);height:32px;padding:0 10px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;}
+.seg button:hover{color:var(--txt);}
+.seg button.on{background:var(--surf);color:var(--txt);border-color:var(--bdr);}
+/* repeating rows: spans, supports, loads */
+.rows{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+.row{display:grid;gap:8px;align-items:end;background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--r);padding:10px;}
+.row label{font-size:12px;color:var(--mut);margin-bottom:3px;display:block;font-weight:500;line-height:1.3;}
+.row input,.row select{height:32px;font-size:13px;padding:0 8px;}
+.row.span{grid-template-columns:1fr 1.6fr 1fr 32px;}
+.row.load{grid-template-columns:52px 64px 1.1fr 1.1fr 32px;}
+.row.load .vals{grid-column:1 / span 3;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.xbtn{height:32px;width:32px;background:var(--surf);border:1px solid var(--bdr2);color:var(--mut);border-radius:var(--r);cursor:pointer;font-size:16px;line-height:1;}
+.xbtn:hover{color:var(--fail);border-color:var(--fail);}
+.addbtn{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);border-radius:var(--r);height:36px;padding:0 12px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;width:100%;}
+.addbtn:hover{border-color:#9aa0a8;background:var(--surf2);}
+/* the one primary action, near-black; secondary actions white and outlined */
+.btn{height:44px;padding:0 16px;border:none;border-radius:var(--r);font-weight:600;cursor:pointer;font-family:var(--sans);font-size:15px;width:100%;background:var(--primary);color:#fff;}
+.btn:hover{background:#000;}
+.btn:focus-visible,.btn2:focus-visible,.addbtn:focus-visible,.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.btn2{width:100%;height:38px;padding:0 12px;background:var(--surf);border:1px solid var(--bdr2);border-radius:var(--r);font-size:14px;font-weight:500;color:var(--txt);cursor:pointer;font-family:var(--sans);margin-top:8px;}
+.btn2:hover{border-color:#9aa0a8;background:var(--surf2);}
+.hidden{display:none!important;}
+/* results */
+.placeholder{display:flex;align-items:center;justify-content:center;min-height:160px;color:var(--mut);font-size:14px;text-align:center;padding:0 24px;}
+.verdict{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--bdr);border-radius:var(--rc);background:var(--surf2);margin-bottom:16px;}
+.verdict .big{font-size:24px;font-weight:600;line-height:1.2;color:var(--pass);letter-spacing:-0.01em;}
+.verdict.fail .big{color:var(--fail);}
+.verdict .sub{font-size:13px;color:var(--mut);margin-top:2px;}
+/* the utilisation ledger: check, clause, bar to scale (full track = 1.2, ink tick at the 1.0 limit), figure */
+.checks{display:flex;flex-direction:column;margin-bottom:8px;}
+.ck{display:grid;grid-template-columns:1.25fr 2fr 56px;gap:14px;align-items:center;font-size:13px;padding:7px 0;border-bottom:1px solid var(--rule);}
+.ck:last-child{border-bottom:none;}
+.ck .nm{color:var(--txt);line-height:1.35;} .ck .nm small{display:block;color:var(--mut);font-size:12px;}
+.bar{height:8px;background:#e8ebef;border-radius:4px;position:relative;}
+.bar::after{content:'';position:absolute;left:83.333%;top:-4px;bottom:-4px;width:1.5px;background:var(--txt);border-radius:1px;}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:4px;}
+.bar i.over{background:var(--fail);} /* 0.9-1.0 stays blue: a well-used member is not a warning; the tick shows how close it is */
+.ck .u{text-align:right;font-weight:600;font-size:14px;}
+.ck .u.over{color:var(--fail);}
+.diag{width:100%;height:auto;display:block;margin-bottom:6px;}
+/* screen drawings: the smallest labels lifted to the 11px floor (the print sheet keeps its own sizes) */
+.container svg text[font-size="8"],.container svg text[font-size="8.5"],.container svg text[font-size="9"],.container svg text[font-size="9.5"],
+.container svg text[font-size="10"],.container svg text[font-size="10.5"]{font-size:11px;}
+.dlabel{font-size:14px;font-weight:600;color:var(--txt);margin:20px 0 6px;line-height:1.3;}
+table.t{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px;font-variant-numeric:tabular-nums;}
+table.t th{color:var(--mut);font-weight:500;text-align:right;padding:6px 8px;border-bottom:1px solid var(--bdr);font-size:12px;}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--rule);text-align:right;}
+table.t th:first-child,table.t td:first-child{text-align:left;}
+.note{font-size:13px;color:var(--mut);background:var(--surf2);border:1px solid var(--rule);border-radius:var(--r);padding:10px 12px;margin-top:10px;line-height:1.5;}
+.err{color:var(--fail-ink);background:var(--fail-bg);font-size:13px;padding:10px 12px;border-radius:var(--r);margin-bottom:12px;}
+.busy{opacity:.55;pointer-events:none;}
+a{color:var(--txt);}
+sub,sup{font-size:max(11px,.75em);line-height:0;}
+@media(max-width:560px){body{padding:16px 16px 32px;} .card{padding:16px;} .ck{grid-template-columns:1fr 1fr 48px;gap:10px;} .grid3{grid-template-columns:1fr 1fr;}
+  .row.span{grid-template-columns:1fr 32px;} .row.span > div:nth-child(2),.row.span > div:nth-child(3){display:none;} .row.load .vals{grid-template-columns:1fr 1fr;}
+  .page-hdr{min-height:150px;padding:14px 16px 16px;} .page-hdr h1{font-size:22px;} .page-hdr::after{top:10px;bottom:auto;} .page-hdr::before{background:rgba(0,0,0,.6);} .verdict .big{font-size:22px;}}
+/* disclaimer: on screen at the foot of the page, and printed at the end of the calculation sheet */
+.disclaimer{max-width:1376px;margin:24px auto 0;padding-top:14px;border-top:1px solid var(--bdr,#e3e5e8);font-size:13px;line-height:1.55;color:var(--mut,#5f6368);}
+.disclaimer b{color:var(--txt,#111);font-weight:600;}
+@media print{.disclaimer{display:block!important;max-width:none;margin:4mm 0 0;padding-top:1.5mm;border-top:0.4pt solid #888;font-family:Arial,Helvetica,sans-serif;font-size:7.5pt;color:#000;break-inside:avoid;} .disclaimer b{color:#000;}}
+/* ---------- print: A4 calculation sheet ---------- */
+#report{display:none;}
+@media print{
+  @page{size:A4;margin:12mm 12mm 14mm;}
+  body{background:#fff;color:#000;padding:0;background-image:none;font-size:9.5pt;}
+  .container{display:none;}
+  #report{display:block;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  #report table.wrap{width:100%;border-collapse:collapse;}
+  #report thead td{padding:0 0 3mm;}
+  .rh{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;border:0.6pt solid #000;font-size:8pt;}
+  .rh div{padding:1.2mm 2mm;border-right:0.6pt solid #000;}
+  .rh div:last-child{border-right:none;}
+  .rh b{display:block;font-size:6.5pt;color:#444;font-weight:normal;text-transform:uppercase;letter-spacing:.3pt;}
+  .rh .ttl{grid-column:1 / -1;border-top:0.6pt solid #000;border-right:none;font-weight:bold;font-size:10pt;}
+  .rs{margin:0 0 3.5mm;}
+  .rs h2,.rs h3{break-after:avoid;}
+  .rl,.rt,.rsvg,.rp,.rt tr{break-inside:avoid;}
+  .rs h2{font-size:10pt;margin:3mm 0 1.5mm;padding-bottom:0.8mm;border-bottom:0.8pt solid #000;}
+  .rs h3{font-size:9pt;margin:2mm 0 1mm;}
+  .rl{display:grid;grid-template-columns:1fr 92px 132px;gap:2mm;padding:0.5mm 0;font-size:8.6pt;}
+  .rl .cl{text-align:right;color:#444;font-size:7.5pt;}
+  .rl .rv{text-align:right;font-weight:bold;}
+  .ok{color:#0a7a3e;} .ng{color:#c00;}
+  .rt{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;}
+  .rt th,.rt td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;}
+  .rt th{background:#eee;font-weight:bold;}
+  .rt td:first-child,.rt th:first-child,.rt.lft td,.rt.lft th{text-align:left;}
+  .rp{font-size:8.3pt;line-height:1.45;margin:1mm 0;}
+  .rsvg{width:100%;height:auto;}
+  .rsvg *{vector-effect:non-scaling-stroke;}
+}
+
+.steps{font-size:12px;color:var(--mut);line-height:1.5;margin-bottom:12px;}
+.steps .st{display:grid;grid-template-columns:120px 1fr;gap:8px;padding:3px 0;border-bottom:1px solid var(--bdr);}
+.steps .st span:first-child{font-size:12px;color:var(--faint);}
+</style>
+</head>
+<body data-material="masonry">
+<div class="container">
+  <div class="page-hdr">
+    <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
+    <h1>Masonry Column</h1>
+    <p>Brick and block piers and columns under vertical load, to BS EN 1996-1-1 + UK NA &nbsp;·&nbsp; slenderness each way &nbsp;·&nbsp; Φ at the top and bottom and at mid-height (Annex G) with the load&rsquo;s eccentricity and wind &nbsp;·&nbsp; the small-area factor &nbsp;·&nbsp; self-weight</p>
+  </div>
+  <div class="main-grid">
+    <div id="inputs">
+      <div class="card">
+        <div class="section-title">Project</div>
+        <div class="form-group"><label>Project</label><input type="text" id="pName" placeholder="Project name"></div>
+        <div class="grid3"><div class="form-group"><label>Job no.</label><input type="text" id="pJob"></div><div class="form-group"><label>By</label><input type="text" id="pBy"></div><div class="form-group"><label>Member ref.</label><input type="text" id="pRef" placeholder="e.g. Pier P1"></div></div>
+      </div>
+      <div class="card">
+        <div class="section-title">Column</div>
+        <div class="grid3">
+          <div class="form-group"><label>Length b (mm)</label><input type="number" id="b" value="440" step="5"></div>
+          <div class="form-group"><label>Thickness t (mm)</label><input type="number" id="t" value="215" step="5"></div>
+          <div class="form-group"><label>Clear height h (mm)</label><input type="number" id="h" value="2400" step="25"></div>
+        </div>
+        <div class="grid2">
+          <div class="form-group"><label>ρ across t (h<sub>ef</sub> = ρ h)</label><select id="rhoT"><option value="1">1.0, held in position top and bottom</option><option value="0.75">0.75, concrete floors</option><option value="custom">Other value</option></select></div>
+          <div class="form-group"><label>ρ across b</label><select id="rhoB"><option value="1">1.0, held in position top and bottom</option><option value="0.75">0.75, concrete floors</option><option value="custom">Other value</option></select></div>
+        </div>
+        <div class="grid2">
+          <div class="form-group r-t"><label>ρ across t</label><input type="number" id="rhoTv" value="1" step="0.05"></div>
+          <div class="form-group r-b"><label>ρ across b</label><input type="number" id="rhoBv" value="1" step="0.05"></div>
+        </div>
+        <div class="help">EC6 treats a column as a short wall; each direction is checked on its own with its own h<sub>ef</sub> and t<sub>ef</sub>. Take ρ = 0.75 only where concrete floors or a roof bear on the column and restrain it (5.5.1.2); a column with no restraint at its top is not covered.</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Masonry</div>
+        <div class="grid2">
+          <div class="form-group"><label>Strength</label><select id="src"><option value="calc">From the units and mortar</option><option value="fk">Enter fk</option></select></div>
+          <div class="form-group s-fk"><label>f<sub>k</sub> (N/mm²)</label><input type="number" id="fk" value="4.2" step="0.1"></div>
+        </div>
+        <div class="grid2">
+          <div class="form-group"><label>Units</label><select id="unit"><option value="clay">Clay</option><option value="cs">Calcium silicate</option><option value="agg" selected>Aggregate concrete</option><option value="aggflat">Aggregate concrete, laid flat</option><option value="aac">Autoclaved aerated concrete</option><option value="mstone">Manufactured stone</option><option value="nstone">Dimensioned natural stone</option></select></div>
+          <div class="form-group"><label>Group</label><select id="group"><option value="1">Group 1 (solid, up to 25 % voids)</option><option value="2">Group 2</option></select></div>
+        </div>
+        <div class="grid3 s-calc">
+          <div class="form-group"><label>f<sub>b</sub> normalised (N/mm²)</label><input type="number" id="fb" value="10" step="0.5"></div>
+          <div class="form-group"><label>Mortar</label><select id="mortar"><option value="M2">M2</option><option value="M4" selected>M4</option><option value="M6">M6</option><option value="M12">M12</option><option value="TL">Thin layer</option><option value="LW1">Lightweight 600–800</option><option value="LW2">Lightweight 800–1500</option></select></div>
+          <div class="form-group m-lw"><label>f<sub>m</sub> (N/mm²)</label><input type="number" id="fm" value="5" step="0.5"></div>
+          <div class="form-group u-voids"><label>Formed voids (%)</label><input type="number" id="voids" value="0" step="1"></div>
+        </div>
+        <label class="chk s-calc m-gp"><input type="checkbox" id="collar"> A mortar joint runs parallel to the face (a one-brick pier in English or Flemish bond, or collar jointed): K × 0.8</label>
+        <div class="grid3">
+          <div class="form-group"><label>Category of the units</label><select id="cat"><option value="I">Category I</option><option value="II">Category II</option></select></div>
+          <div class="form-group"><label>Execution control</label><select id="exec"><option value="2">Class 2</option><option value="1">Class 1</option></select></div>
+          <div class="form-group"><label>Density (kN/m³)</label><input type="number" id="dens" value="21" step="0.5"></div>
+        </div>
+        <div class="help s-calc">f<sub>b</sub> is the normalised mean compressive strength the manufacturer declares (BS EN 772-1), not the declared mean strength of the unit. f<sub>k</sub> = K f<sub>b</sub><sup>0.7</sup> f<sub>m</sub><sup>0.3</sup> with K from UK NA Table NA.4. γ<sub>M</sub> from UK NA Table NA.1. Density for the self-weight: about 19 for clay bricks, 21 for dense blocks, 15 for medium dense and 7.5 for aerated blocks.</div>
+        <div class="help s-fk">f<sub>k</sub> from a test, the UK NA, or the manufacturer. γ<sub>M</sub> from UK NA Table NA.1.</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Load at the top</div>
+        <div class="grid3">
+          <div class="form-group"><label>G<sub>k</sub> (kN)</label><input type="number" id="Gk" value="40" step="1"></div>
+          <div class="form-group"><label>Q<sub>k</sub> (kN)</label><input type="number" id="Qk" value="20" step="1"></div>
+          <div class="form-group"><label>Combination</label><select id="combo"><option value="6.10">EN 1990 6.10</option><option value="6.10ab">6.10a and 6.10b</option></select></div>
+        </div>
+        <div class="grid3 c-ab"><div class="form-group"><label>ψ<sub>0</sub> for Q</label><input type="number" id="psi0" value="0.7" step="0.1"></div></div>
+        <div class="grid2">
+          <div class="form-group"><label>e across t at the top (mm)</label><input type="number" id="etT" value="30" step="1"></div>
+          <div class="form-group"><label>e across t at the bottom (mm)</label><input type="number" id="etB" value="0" step="1"></div>
+        </div>
+        <div class="grid2">
+          <div class="form-group"><label>e across b at the top (mm)</label><input type="number" id="ebT" value="0" step="1"></div>
+          <div class="form-group"><label>e across b at the bottom (mm)</label><input type="number" id="ebB" value="0" step="1"></div>
+        </div>
+        <div class="help">The eccentricity of the load at the top from the centre of the column, and the eccentricity it keeps at the bottom (0 when the column is free to rotate there; the same sign for single curvature, the opposite sign for double). A beam bearing a on the column is often taken to act at a/3 from the face: e = t/2 − a/3. e<sub>init</sub> = h<sub>ef</sub>/450 is added; e is never less than 0.05 of the dimension.</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Wind</div>
+        <div class="grid2">
+          <div class="form-group"><label>w<sub>k</sub> on the column (kN/m)</label><input type="number" id="wk" value="0" step="0.1"></div>
+          <div class="form-group"><label>Bending</label><select id="wdir"><option value="t">Across t (on the face of length b)</option><option value="b">Across b (on the face of thickness t)</option></select></div>
+        </div>
+        <div class="help">The characteristic wind on the column per metre of its height (the pressure × the width it catches), taken at 1.5 with the most load and again with G alone; the column spans between its restraints, so the wind adds w h²/8 at mid-height.</div>
+      </div>
+      <button class="btn" id="calc">Calculate</button>
+    </div>
+    <div><div class="card" id="results"><div id="drawings"></div><div class="placeholder">The drawing follows the inputs. Calculate for the checks at the top, mid-height and bottom each way, and the A4 sheet.</div></div></div>
+  </div>
+</div>
+<div id="report"></div>
+<script id="engine">
+/* ===== EC6 CORE (EngineeringTools) =====
+   Plain masonry to BS EN 1996-1-1:2005+A1:2012 with the UK National Annex. Shared by Masonry Bearing, Masonry Column and
+   Masonry Wall Panel.
+   - fk from the unit and mortar (3.6.1.2): fk = K fb^α fm^β with K from UK NA Table NA.4; general purpose and lightweight
+     mortar α = 0.7, β = 0.3 (eq. 3.1); thin layer mortar fk = K fb^0.85 (eq. 3.2) or K fb^0.7 for clay units of Group 2
+     (eq. 3.3); K × 0.8 where a mortar joint runs parallel to the face (or a collar joint) in general purpose mortar;
+     Group 1 aggregate concrete units with formed vertical voids K × (100 − n)/100, n ≤ 25 %. Limits: fb ≤ 110 N/mm²
+     (general purpose, lightweight) or 50 N/mm² (thin layer); fm ≤ 2 fb and ≤ 12 N/mm² (general purpose) or 10 N/mm²
+     (lightweight).
+   - γM from UK NA Table NA.1 by the category of the units (I, II) and the class of execution control (1, 2); halved for
+     accidental situations.
+   - Concentrated loads (6.1.3): the enhancement β, the effective length l_efm at mid-height of the wall below the load
+     (60° spread, stopped at the wall ends), A_b/A_ef ≤ 0.45.
+   - Capacity reduction: Φ_i at the top or bottom (6.1.2.2, eq. 6.4), Φ_m at mid-height (Annex G) with E = 1000 fk (UK NA);
+     e_init = h_ef/450; t_ef of a cavity wall = ∛(k_tef t₁³ + t₂³) with k_tef = 1 (UK NA); the small-area factor 0.7 + 3A.
+   Units: N, mm (A in mm² unless stated). */
+const EC6 = (() => {
+  'use strict';
+  // K by mortar column: general purpose, thin layer, lightweight 600-800 kg/m³, lightweight 800-1500 kg/m³ (null: no UK value)
+  const UNITS = {
+    clay: { name: 'Clay', K: { 1: [0.50, 0.75, 0.30, 0.40], 2: [0.40, 0.70, 0.25, 0.30] }, tl07: { 2: true } },
+    cs: { name: 'Calcium silicate', K: { 1: [0.50, 0.80, null, null], 2: [0.40, 0.70, null, null] } },
+    agg: { name: 'Aggregate concrete', K: { 1: [0.55, 0.80, 0.45, 0.45], 2: [0.52, 0.76, 0.45, 0.45] }, voids: true },
+    aggflat: { name: 'Aggregate concrete, laid flat', K: { 1: [0.50, 0.70, 0.40, 0.40] } },
+    aac: { name: 'Autoclaved aerated concrete', K: { 1: [0.55, 0.80, 0.45, 0.45] } },
+    mstone: { name: 'Manufactured stone', K: { 1: [0.45, 0.75, null, null] } },
+    nstone: { name: 'Dimensioned natural stone', K: { 1: [0.45, null, null, null] } },
+  };
+  // mortars: general purpose by strength class (fm = the class), thin layer, lightweight (fm given)
+  const MORTARS = {
+    M2: { name: 'General purpose M2', col: 0, fm: 2 }, M4: { name: 'General purpose M4', col: 0, fm: 4 }, M6: { name: 'General purpose M6', col: 0, fm: 6 },
+    M12: { name: 'General purpose M12', col: 0, fm: 12 }, TL: { name: 'Thin layer', col: 1 }, LW1: { name: 'Lightweight, 600–800 kg/m³', col: 2 },
+    LW2: { name: 'Lightweight, 800–1500 kg/m³', col: 3 },
+  };
+  const COLS = ['general purpose', 'thin layer', 'lightweight', 'lightweight'];
+  const r2 = v => (Math.round(v * 100) / 100).toFixed(2), r3 = v => (Math.round(v * 1000) / 1000).toFixed(3);
+  const pos = (v, nm) => { if (!(v > 0) || !Number.isFinite(v)) throw new Error(`${nm} must be a positive number`); return v; };
+
+  /* fk from the unit and the mortar. m = { unit, group, fb, mortar, fm (lightweight only), voids (%), collar } */
+  function fk(m) {
+    const U = UNITS[m.unit]; if (!U) throw new Error('Choose the type of masonry unit');
+    const g = +m.group || 1, row = U.K[g];
+    if (!row) throw new Error(`${U.name} units: the UK National Annex gives K for Group ${Object.keys(U.K).join(' and ')} only`);
+    const M = MORTARS[m.mortar]; if (!M) throw new Error('Choose the mortar');
+    let K = row[M.col];
+    if (K == null) throw new Error(`${U.name} units in ${M.name.toLowerCase()} mortar: the UK National Annex gives no value of K (Table NA.4)`);
+    const steps = [], notes = [];
+    const fb0 = pos(+m.fb, 'The normalised strength of the units f_b');
+    steps.push({ ref: 'NA.4', text: `K = ${r2(K)} for ${U.name.toLowerCase()} units of Group ${g} in ${COLS[M.col]} mortar` });
+    if (U.voids && g === 1 && +m.voids > 0) {
+      const n = Math.min(25, +m.voids); K *= (100 - n) / 100;
+      steps.push({ ref: 'NA.4 note', text: `formed vertical voids n = ${n} %: K × (100 − n)/100 = ${r3(K)}` });
+      if (+m.voids > 25) notes.push('Formed voids are limited to 25 % for this factor; more voids put the units in Group 2.');
+    }
+    if (m.collar && M.col === 0) { K *= 0.8; steps.push({ ref: '3.6.1.2(1)', text: `mortar joint parallel to the face (or a collar joint): K × 0.8 = ${r3(K)}` }); }
+    let fbU = fb0, fmU = null, a = 0.7, b = 0.3, eq = '3.1', val;
+    if (M.col === 1) {   // thin layer: fk independent of fm
+      fbU = Math.min(fb0, 50); if (fb0 > 50) notes.push('f_b is taken as no more than 50 N/mm² in thin layer mortar.');
+      a = U.tl07 && U.tl07[g] ? 0.7 : 0.85; b = 0; eq = a === 0.7 ? '3.3' : '3.2';
+      val = K * Math.pow(fbU, a);
+      steps.push({ ref: `eq. ${eq}`, text: `f_k = K f_b^${a} = ${r3(K)} × ${r2(fbU)}^${a} = ${r2(val)} N/mm²` });
+    } else {
+      fbU = Math.min(fb0, 110); if (fb0 > 110) notes.push('f_b is taken as no more than 110 N/mm².');
+      const fm0 = M.col === 0 ? M.fm : pos(+m.fm, 'The strength of the lightweight mortar f_m');
+      const cap = Math.min(2 * fbU, M.col === 0 ? 12 : 10);
+      fmU = Math.min(fm0, cap); if (fm0 > cap) notes.push(`f_m is taken as no more than ${fmU === 2 * fbU ? '2 f_b' : (M.col === 0 ? '12' : '10') + ' N/mm²'} = ${r2(fmU)} N/mm².`);
+      val = K * Math.pow(fbU, a) * Math.pow(fmU, b);
+      steps.push({ ref: 'eq. 3.1', text: `f_k = K f_b^0.7 f_m^0.3 = ${r3(K)} × ${r2(fbU)}^0.7 × ${r2(fmU)}^0.3 = ${r2(val)} N/mm²` });
+    }
+    return { fk: val, K, fb: fb0, fbUsed: fbU, fm: fmU, alpha: a, beta: b, eq, steps, notes, unit: U.name, group: g, mortar: M.name };
+  }
+
+  /* the masonry's compressive strength: f_k (from the units and mortar, or given as m.fk with m.src 'fk'), γ_M, f_d */
+  function material(m) {
+    const steps = [];
+    let fkv, F = null;
+    if (m.src === 'fk') { fkv = pos(+m.fk, 'f_k'); steps.push({ ref: '3.6.1', text: `f_k = ${r2(fkv)} N/mm² (given)` }); }
+    else { F = fk(m); fkv = F.fk; steps.push(...F.steps); }
+    const gM = gammaM({ category: m.category, exec: m.exec, kind: 'compression' });
+    steps.push({ ref: 'NA.1', text: `γ_M = ${gM} (units of category ${m.category}, execution class ${m.exec}); f_d = f_k/γ_M = ${r2(fkv)}/${gM} = ${r3(fkv / gM)} N/mm²` });
+    return { fk: fkv, gM, fd: fkv / gM, F, steps, notes: F ? F.notes : [] };
+  }
+
+  /* γM, UK NA Table NA.1: kind 'compression' (direct or flexural compression), 'flexure' (flexural tension), 'shear', 'ties' */
+  function gammaM({ category = 'I', exec = 2, kind = 'compression', accidental = false } = {}) {
+    const c2 = +exec === 1 ? 0 : 1;
+    const v = kind === 'compression' ? (category === 'II' ? [2.6, 3.0] : [2.3, 2.7])[c2] : kind === 'flexure' ? [2.3, 2.7][c2] : kind === 'shear' ? 2.5 : 3.5;
+    return accidental ? v / 2 : v;
+  }
+
+  // the spread each side of a load at depth z below it, at 60° to the horizontal (6.1.3, Figure 6.2)
+  const spread = z => Math.max(0, z) / Math.tan(Math.PI / 3);
+  /* l_efm: a bearing of length lb with aL, aR of wall beyond its edges, spread down to depth z, stopped at the wall ends */
+  function lefm(lb, aL, aR, z) { const s = spread(z), eL = Math.min(aL, s), eR = Math.min(aR, s); return { l: lb + eL + eR, eL, eR, s }; }
+
+  /* β for a concentrated load (6.1.3(3)): a1 end distance, hc height to the load, Ab loaded area, Aef = l_efm t.
+     o.one: take β = 1 (units other than Group 1, shell bedding, the eccentricity over t/4, or the designer's choice). */
+  function beta(a1, hc, Ab, Aef, o = {}) {
+    const ratio = Ab / Aef, rU = Math.min(ratio, 0.45);
+    const raw = (1 + 0.3 * a1 / hc) * (1.5 - 1.1 * rU), max = Math.min(1.25 + a1 / (2 * hc), 1.5);
+    const calc = Math.min(Math.max(raw, 1), max);
+    return { beta: o.one ? 1 : calc, calc, raw, max, ratio, ratioUsed: rU, one: !!o.one, reason: o.reason || '' };
+  }
+
+  // capacity reduction factors
+  const einit = hef => hef / 450;
+  function phiI(ei, t) { const e = Math.max(Math.abs(ei), 0.05 * t); return { phi: Math.max(0, 1 - 2 * e / t), ei: e }; }
+  function phiM(hef, tef, emk, t, KE = 1000) {
+    const e = Math.max(Math.abs(emk), 0.05 * t), A1 = 1 - 2 * e / t, lam = (hef / tef) * Math.sqrt(1 / KE);
+    const den = 0.73 - 1.17 * e / t, u = (lam - 0.063) / den;
+    const phi = A1 <= 0 || den <= 0 ? 0 : Math.max(0, A1 * Math.exp(-u * u / 2));
+    return { phi, A1, u, lambda: lam, emk: e };
+  }
+  // effective thickness of a cavity wall, the unloaded leaf t1 taken as no thicker than the loaded leaf t2 (5.5.1.3, k_tef = 1)
+  const tefCavity = (t1, t2, k = 1) => Math.cbrt(k * Math.pow(Math.min(t1, t2), 3) + Math.pow(t2, 3));
+  // small plan area: fd × (0.7 + 3A), A in m², for A < 0.1 m² (6.1.2.1(3))
+  const smallArea = Amm2 => Amm2 < 1e5 ? 0.7 + 3 * Amm2 / 1e6 : 1;
+
+  return { UNITS, MORTARS, fk, material, gammaM, spread, lefm, beta, einit, phiI, phiM, tefCavity, smallArea };
+})();
+
+/* ===== MASONRY COLUMN ENGINE (EngineeringTools) =====
+   A plain masonry column or pier (a short wall, EC6 5.3.8) of rectangular section b × t under vertical load at its top,
+   with the load's eccentricity each way and, optionally, wind on one face; BS EN 1996-1-1:2005+A1:2012 + UK NA. Needs EC6.
+   - Loads: G_k and Q_k at the top, EN 1990 6.10 or the worse of 6.10a and 6.10b (ψ₀, ξ = 0.925), plus the self-weight
+     (factored with G); with wind, a second case with G alone (γ_G = 1.0) and the wind at 1.5, since less load makes the
+     eccentricity worse; the wind is taken at 1.5 in the first case too (the envelope of wind or imposed load leading).
+   - Each direction is checked on its own: across t (thickness t, h_ef = ρ_t h) and across b (h_ef = ρ_b h), with
+     t_ef the dimension in that direction; h_ef/t_ef ≤ 27.
+   - Top and bottom (6.1.2.2): e_i = M_i/N_i + e_init ≥ 0.05 d, Φ_i = 1 − 2e_i/d, the moment from the top load's
+     eccentricity there (e_top at the top, e_bot at the bottom, as entered).
+   - Mid-height (Annex G): e_m = M_md/N_md + e_hm + e_init, M_md = the mean of the top and bottom moments (signed: opposite
+     signs are double curvature), e_hm from the wind w h²/8 (the pier spans between its restraints), e_k = 0 (h_ef/t_ef ≤ 27,
+     UK NA), e_mk ≥ 0.05 d; Φ_m with E = 1000 f_k.
+   - N_Rd = Φ A f_d with the small-area factor 0.7 + 3A for A < 0.1 m²; a warning under 0.04 m² (the least loadbearing
+     area, IStructE manual 6.2.1).
+   Units: N, mm (loads in kN and kN/m at the interface, converted here). */
+const MasonryColumn = (() => {
+  'use strict';
+  const r0 = v => Math.round(v).toString(), r1 = v => (Math.round(v * 10) / 10).toFixed(1), r2 = v => (Math.round(v * 100) / 100).toFixed(2), r3 = v => (Math.round(v * 1000) / 1000).toFixed(3);
+  const pos = (v, nm) => { if (!(v > 0) || !Number.isFinite(v)) throw new Error(`${nm} must be a positive number`); return v; };
+  const nonneg = (v, nm) => { if (!(v >= 0) || !Number.isFinite(v)) throw new Error(`${nm} must be zero or more`); return v; };
+  const num = (v, nm) => { if (!Number.isFinite(v)) throw new Error(`${nm} must be a number`); return v; };
+
+  // the ULS cases: { name, gG (on G and self-weight), N (kN at the top), w (kN/m, ULS) }
+  function cases(L) {
+    const G = nonneg(L.Gk, 'G_k'), Q = nonneg(L.Qk || 0, 'Q_k'), w = nonneg(L.wk || 0, 'The wind'), psi = L.psi0 ?? 0.7;
+    if (!(G + Q > 0)) throw new Error('Give the load at the top of the column');
+    let max;
+    if (L.combo === '6.10ab') {
+      const a = 1.35 * G + 1.5 * psi * Q, b = 0.925 * 1.35 * G + 1.5 * Q;
+      max = a >= b ? { name: '6.10a', gG: 1.35, N: a, text: `1.35 G_k + 1.5 ψ₀ Q_k = 1.35 × ${r1(G)} + 1.5 × ${psi} × ${r1(Q)}` }
+        : { name: '6.10b', gG: 0.925 * 1.35, N: b, text: `ξ 1.35 G_k + 1.5 Q_k = 0.925 × 1.35 × ${r1(G)} + 1.5 × ${r1(Q)}` };
+    } else max = { name: '6.10', gG: 1.35, N: 1.35 * G + 1.5 * Q, text: `1.35 G_k + 1.5 Q_k = 1.35 × ${r1(G)} + 1.5 × ${r1(Q)}` };
+    max.w = 1.5 * w; max.label = w > 0 ? 'Most load' : 'ULS';
+    const out = [max];
+    if (w > 0) out.push({ name: 'min', gG: 1.0, N: G, w: 1.5 * w, label: 'Least load with wind', text: '1.0 G_k' });
+    return out;
+  }
+
+  /* one direction of one case: d the dimension in that direction, rho, e at the top and bottom of the top load, the wind
+     bending this way or not */
+  function direction(c, ax, g) {
+    const { d, rho, eT, eB, wind } = ax, { h, A, fd, fA, SW } = g;
+    const hef = rho * h, slend = hef / d, ei0 = EC6.einit(hef);
+    const Nt = c.N * 1e3, Nb = Nt + c.gG * SW, Nm = Nt + c.gG * SW / 2;
+    const Mt = Nt * eT, Mb = Nt * eB, Mm = (Mt + Mb) / 2, Mh = wind ? c.w * h * h / 8 : 0;   // w in N/mm (kN/m)
+    const top = EC6.phiI(Math.abs(Mt) / Nt + ei0, d), bot = EC6.phiI(Math.abs(Mb) / Nb + ei0, d);
+    const em = Math.abs(Mm) / Nm + Mh / Nm + ei0, mid = EC6.phiM(hef, d, em, d);
+    const R = phi => phi * A * fd * fA;
+    const at = [
+      { at: 'top', N: Nt, M: Mt, e: top.ei, phi: top.phi, NRd: R(top.phi) },
+      { at: 'mid-height', N: Nm, M: Math.abs(Mm) + Mh, e: mid.emk, phi: mid.phi, NRd: R(mid.phi), lam: mid.lambda, A1: mid.A1, u: mid.u, ehm: Mh / Nm },
+      { at: 'bottom', N: Nb, M: Mb, e: bot.ei, phi: bot.phi, NRd: R(bot.phi) },
+    ];
+    at.forEach(s => { s.util = s.N / s.NRd; });
+    return { ...ax, hef, slend, einit: ei0, Mt, Mb, Mm, Mh, at };
+  }
+
+  /* inp: { b, t, h, rhoT, rhoB, mas, loads: { Gk, Qk, combo, psi0, wk, wdir: 't'|'b', density }, ecc: { tTop, tBot, bTop, bBot } } */
+  function design(inp) {
+    const b = pos(inp.b, 'The length b'), t = pos(inp.t, 'The thickness t'), h = pos(inp.h, 'The height h');
+    const rhoT = pos(inp.rhoT, 'ρ across t'), rhoB = pos(inp.rhoB, 'ρ across b'), L = inp.loads || {}, E = inp.ecc || {};
+    const dens = nonneg(L.density ?? 20, 'The density');
+    const M = EC6.material(inp.mas || {}), fd = M.fd, A = b * t, fA = EC6.smallArea(A), SW = dens * 1e-6 * A * h;   // N (kN/m³ × mm³ × 1e-9 kN → N)
+    const eTT = num(+E.tTop || 0, 'e at the top across t'), eTB = num(+E.tBot || 0, 'e at the bottom across t'), eBT = num(+E.bTop || 0, 'e at the top across b'), eBB = num(+E.bBot || 0, 'e at the bottom across b');
+    [[eTT, t, 'across t at the top'], [eTB, t, 'across t at the bottom'], [eBT, b, 'across b at the top'], [eBB, b, 'across b at the bottom']].forEach(([e, d, nm]) => { if (Math.abs(e) >= d / 2) throw new Error(`The eccentricity ${nm} (${r0(e)} mm) puts the load outside the section`); });
+    const C = cases(L), g = { h, A, fd, fA, SW };
+    const steps = [...M.steps], warnings = [...M.notes], checks = [];
+    steps.push({ ref: '6.1.2.1(3)', text: `A = ${r0(b)} × ${r0(t)} = ${r3(A / 1e6)} m²${fA < 1 ? `: under 0.1 m², f_d × (0.7 + 3A) = × ${r3(fA)}` : ''}` });
+    steps.push({ ref: 'self-weight', text: `${r1(dens)} kN/m³ × ${r3(A / 1e6)} m² × ${r2(h / 1e3)} m = ${r2(SW / 1e3)} kN` });
+    const res = C.map(c => {
+      const dirs = [direction(c, { key: 't', name: 'across t', d: t, rho: rhoT, eT: eTT, eB: eTB, wind: (+L.wk > 0) && L.wdir !== 'b' }, g),
+        direction(c, { key: 'b', name: 'across b', d: b, rho: rhoB, eT: eBT, eB: eBB, wind: (+L.wk > 0) && L.wdir === 'b' }, g)];
+      return { ...c, dirs };
+    });
+    res.forEach(c => steps.push({ ref: 'EN 1990', text: `${c.label}: N_Ed at the top = ${c.text} = ${r1(c.N)} kN; self-weight × ${r3(c.gG)}${c.w > 0 ? `; wind w_Ed = 1.5 × ${r2(L.wk)} = ${r2(c.w)} kN/m` : ''}` }));
+    for (const k of ['t', 'b']) {
+      const D0 = res[0].dirs.find(x => x.key === k);
+      steps.push({ ref: '5.5.1.2', text: `${D0.name}: h_ef = ${r3(D0.rho)} × ${r0(h)} = ${r0(D0.hef)} mm, t_ef = ${r0(D0.d)} mm, h_ef/t_ef = ${r2(D0.slend)}; e_init = h_ef/450 = ${r2(D0.einit)} mm` });
+      checks.push({ id: `slend-${k}`, name: `Slenderness ${D0.name}`, ref: '5.5.1.4', util: D0.slend / 27, note: `h_ef/t_ef = ${r2(D0.slend)} ≤ 27` });
+      for (const at of ['top', 'mid-height', 'bottom']) {   // one check per section, the worse case
+        const W = res.map(c => ({ c, s: c.dirs.find(x => x.key === k).at.find(x => x.at === at) })).sort((p, q) => q.s.util - p.s.util)[0], s = W.s;
+        checks.push({ id: `${k}-${at}`, name: `${at === 'mid-height' ? 'Mid-height' : at.charAt(0).toUpperCase() + at.slice(1)}, ${D0.name}`, ref: at === 'mid-height' ? '6.1.2, Annex G' : '6.1.2.2', util: s.util, kase: W.c.label,
+          note: `${res.length > 1 ? W.c.label.toLowerCase() + ': ' : ''}N_Ed = ${r1(s.N / 1e3)} ≤ N_Rd = Φ A f_d = ${r3(s.phi)} × ${r3(A / 1e6)} m² × ${r3(fd)}${fA < 1 ? ` × ${r3(fA)}` : ''} = ${r1(s.NRd / 1e3)} kN, e = ${r2(s.e)} mm` });
+      }
+    }
+    if (A < 0.04e6) warnings.push(`The section is ${r3(A / 1e6)} m², under the 0.04 m² least loadbearing area (IStructE manual 6.2.1).`);
+    if (b < t) warnings.push('b is less than t: the directions are named by the dimension, so "across b" is the thinner way here.');
+    if (+L.wk > 0) warnings.push('With wind, the lateral supports at the top and bottom carry w h/2 plus 2.5 % of the vertical load (UK practice, IStructE manual 5.3.1).');
+    const utilMax = Math.max(...checks.map(c => c.util));
+    return { inp, b, t, h, A, fA, fd, mat: M, SW, cases: res, checks, utilMax, steps, warnings };
+  }
+
+  return { design, cases };
+})();
+
+</script>
+<script id="drawing-code">
+/* ===== CONNECTION DIAGRAMS (EngineeringTools ConnectionCheck) =====
+   Parametric, to-scale drafting views of each joint, drawn from the current inputs: an elevation and a plan or section,
+   with bolts, welds, dimension chains, labels and the design actions. Pure functions returning SVG strings.
+   Model units mm; each view maps a model box onto a pixel box (x right, y up). */
+const JD = (() => {
+  'use strict';
+  const C = { steel: '#e7ecf1', web: '#eef2f5', edge: '#2f3b47', plate: '#f6d58c', plateEdge: '#94700f', pack: '#e3d3ae', bolt: '#3a424b', boltDark: '#1f252b',
+    weld: '#1a1f24', dim: '#1b67b0', txt: '#222a31', mute: '#7a8590', cl: '#97a2ac', load: '#cc3426', conc: '#f1efea', concEdge: '#8b8478', grout: '#ddd7ca', paper: '#ffffff' };
+  const FS = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"', FM = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"';
+  const W = 920, H = 520;
+  const DEFS = `<defs>
+<pattern id="jdCut" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect width="6" height="6" fill="#c7d0d9"/><line x1="0" y1="0" x2="0" y2="6" stroke="#6f7d8a" stroke-width="0.9"/></pattern>
+<pattern id="jdPlCut" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(-45)"><rect width="5" height="5" fill="#efc560"/><line x1="0" y1="0" x2="0" y2="5" stroke="#94700f" stroke-width="0.8"/></pattern>
+<pattern id="jdConc" patternUnits="userSpaceOnUse" width="26" height="26"><rect width="26" height="26" fill="${C.conc}"/><circle cx="5" cy="6" r="1.3" fill="#b3ab9d"/><circle cx="17" cy="15" r="1.7" fill="#c0b8aa"/><circle cx="9" cy="21" r="1" fill="#a9a091"/><path d="M19 4 l3 2 l-3 2 z" fill="#c5bdaf"/><path d="M2 14 l2.5 -2 l1.5 3 z" fill="#bdb5a7"/></pattern>
+<pattern id="jdGrout" patternUnits="userSpaceOnUse" width="8" height="8"><rect width="8" height="8" fill="${C.grout}"/><circle cx="2" cy="2" r="0.7" fill="#9e9687"/><circle cx="6" cy="6" r="0.7" fill="#9e9687"/></pattern>
+<marker id="jdLd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${C.load}"/></marker>
+</defs>`;
+  const num = v => { const a = Math.abs(v); return a >= 100 || Number.isInteger(+v.toFixed(1)) ? Math.round(v).toString() : v.toFixed(1); };
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // ---------- views ----------
+  function view(box, bb) {
+    const w = bb[2] - bb[0], h = bb[3] - bb[1], k = Math.min(box[2] / w, box[3] / h);
+    const ox = box[0] + (box[2] - w * k) / 2 - bb[0] * k, oy = box[1] + (box[3] - h * k) / 2 + bb[3] * k;
+    return { k, X: x => ox + x * k, Y: y => oy - y * k, box };
+  }
+  const ST = {
+    steel: `fill="${C.steel}" stroke="${C.edge}" stroke-width="1.1"`, web: `fill="${C.web}" stroke="${C.edge}" stroke-width="1.1"`,
+    cut: `fill="url(#jdCut)" stroke="${C.edge}" stroke-width="1.2"`, plate: `fill="${C.plate}" stroke="${C.plateEdge}" stroke-width="1.1"`,
+    plateCut: `fill="url(#jdPlCut)" stroke="${C.plateEdge}" stroke-width="1.1"`, pack: `fill="${C.pack}" stroke="${C.plateEdge}" stroke-width="0.9"`,
+    conc: `fill="url(#jdConc)" stroke="${C.concEdge}" stroke-width="1"`, grout: `fill="url(#jdGrout)" stroke="${C.concEdge}" stroke-width="0.8"`,
+    ghost: `fill="none" stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="6 3"`, outline: `fill="none" stroke="${C.edge}" stroke-width="1.1"`,
+    bg: `fill="${C.paper}" stroke="none"`,
+  };
+  const R = (v, x0, y0, x1, y1, st = 'steel') => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)); return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${(Math.abs(x1 - x0) * v.k).toFixed(1)}" height="${(Math.abs(y1 - y0) * v.k).toFixed(1)}" ${ST[st]}/>`; };
+  const P = (v, pts, st = 'steel') => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + v.X(p[0]).toFixed(1) + ' ' + v.Y(p[1]).toFixed(1)).join(' ')} Z" ${ST[st]}/>`;
+  const LS = { e: `stroke="${C.edge}" stroke-width="1.1"`, t: `stroke="${C.edge}" stroke-width="0.55"`, c: `stroke="${C.cl}" stroke-width="0.7" stroke-dasharray="14 3 2 3"`,
+    h: `stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="5 3"`, d: `stroke="${C.dim}" stroke-width="0.7"` };
+  const Ln = (v, x0, y0, x1, y1, k = 'e') => `<line x1="${v.X(x0).toFixed(1)}" y1="${v.Y(y0).toFixed(1)}" x2="${v.X(x1).toFixed(1)}" y2="${v.Y(y1).toFixed(1)}" ${LS[k]}/>`;
+  const lnP = (x0, y0, x1, y1, k = 'e') => `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" ${LS[k]}/>`;
+  function Tx(x, y, s, o = {}) {
+    const sz = o.size || 11, col = o.color || C.txt, anc = o.anchor || 'start', w = o.weight || 400, rot = o.rot ? ` transform="rotate(${o.rot} ${x.toFixed(1)} ${y.toFixed(1)})"` : '';
+    const body = esc(s).replace(/_\{([^}]*)\}|_([A-Za-z0-9]+)/g, (m, p1, p2) => `<tspan baseline-shift="sub" font-size="78%">${p1 || p2}</tspan>`);
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${sz}" fill="${col}" text-anchor="${anc}" font-weight="${w}" ${o.mono ? FM : FS} paint-order="stroke" stroke="${C.paper}" stroke-width="3" stroke-linejoin="round"${rot}>${body}</text>`;
+  }
+  const tw = (s, sz = 10) => String(s).replace(/_/g, '').length * sz * 0.6;
+  // ---------- dimensions (tick terminators) ----------
+  const tick = (x, y) => `<line x1="${(x - 3.5).toFixed(1)}" y1="${(y + 3.5).toFixed(1)}" x2="${(x + 3.5).toFixed(1)}" y2="${(y - 3.5).toFixed(1)}" stroke="${C.dim}" stroke-width="1.3"/>`;
+  // horizontal chain: xs (model), measured from model level y, dimension line at off px (negative: below)
+  function DH(v, xs, y, off, labels) {
+    const Yf = v.Y(y), Yd = Yf - off, s = Math.sign(off) || 1; let o = '';
+    xs.forEach(x => { o += lnP(v.X(x), Yf - s * 3, v.X(x), Yd - s * 4, 'd'); });
+    o += lnP(v.X(xs[0]) - 4, Yd, v.X(xs[xs.length - 1]) + 4, Yd, 'd');
+    xs.forEach(x => { o += tick(v.X(x), Yd); });
+    for (let i = 0; i < xs.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(xs[i + 1] - xs[i])); if (lab === '') continue;
+      const a = v.X(xs[i]), b = v.X(xs[i + 1]), wpx = Math.abs(b - a), tW = tw(lab);
+      const ty = off > 0 ? Yd - 4 : Yd + 11;
+      if (wpx > tW + 6) o += Tx((a + b) / 2, ty, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true });
+      else o += Tx(Math.max(a, b) + 3 + (i === xs.length - 2 ? 2 : 0), ty + (off > 0 ? -9 : 9) * (i % 2), lab, { size: 10, color: C.dim, mono: true });
+    }
+    return o;
+  }
+  function DV(v, ys, x, off, labels) {
+    const Xf = v.X(x), Xd = Xf + off, s = Math.sign(off) || 1; let o = '';
+    ys.forEach(y => { o += lnP(Xf + s * 3, v.Y(y), Xd + s * 4, v.Y(y), 'd'); });
+    o += lnP(Xd, v.Y(ys[0]) + 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), Xd, v.Y(ys[ys.length - 1]) - 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), 'd');
+    ys.forEach(y => { o += tick(Xd, v.Y(y)); });
+    for (let i = 0; i < ys.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(ys[i + 1] - ys[i])); if (lab === '') continue;
+      const a = v.Y(ys[i]), b = v.Y(ys[i + 1]), hpx = Math.abs(b - a), tW = tw(lab);
+      const tx = off > 0 ? Xd + 11 : Xd - 4;
+      if (hpx > tW + 6) o += Tx(tx, (a + b) / 2, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true, rot: -90 });
+      else o += Tx(off > 0 ? Xd + 5 : Xd - 5, (a + b) / 2 + 3.5, lab, { size: 10, color: C.dim, mono: true, anchor: off > 0 ? 'start' : 'end' });
+    }
+    return o;
+  }
+  // leader with a dot at a model point and text lines at a pixel offset
+  function LD(v, x, y, dx, dy, lines, o = {}) {
+    const px = v.X(x), py = v.Y(y), ex = px + dx, ey = py + dy, s = dx >= 0 ? 1 : -1;
+    let out = `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="1.9" fill="${C.txt}"/>` + lnP(px, py, ex, ey, 't') + lnP(ex, ey, ex + s * 8, ey, 't');
+    [].concat(lines).forEach((t, i) => { out += Tx(ex + s * 11, ey + 4 + i * 13 - ([].concat(lines).length - 1) * 6.5, t, { size: o.size || 10.5, anchor: s > 0 ? 'start' : 'end', weight: i === 0 && o.bold ? 600 : 400, color: i === 0 ? C.txt : '#4b545d' }); });
+    return out;
+  }
+  // load arrow ending at pixel point (px, py); (vx, vy) is the arrow vector in pixels; label near the tail
+  function LA(px, py, vx, vy, label, o = {}) {
+    const x0 = px - vx, y0 = py - vy, lx = x0 + (o.ldx ?? 0), ly = y0 + (o.ldy ?? -6);
+    return `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${px.toFixed(1)}" y2="${py.toFixed(1)}" stroke="${C.load}" stroke-width="2.4" marker-end="url(#jdLd)"/>` +
+      (label ? Tx(lx, ly, label, { size: 11, color: C.load, weight: 600, anchor: o.anchor || 'middle' }) : '');
+  }
+  function moment(px, py, rr, label, cw = true) {
+    const a0 = cw ? 200 : -20, a1 = cw ? 340 : 160, p = a => [px + rr * Math.cos(a * Math.PI / 180), py - rr * Math.sin(a * Math.PI / 180)], [x0, y0] = p(a0), [x1, y1] = p(a1);
+    return `<path d="M${x0.toFixed(1)} ${y0.toFixed(1)} A${rr} ${rr} 0 1 ${cw ? 1 : 0} ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="${C.load}" stroke-width="2.2" marker-end="url(#jdLd)"/>` + Tx(px, py - rr - 7, label, { size: 11, color: C.load, weight: 600, anchor: 'middle' });
+  }
+  // ---------- steel symbols ----------
+  function BE(v, x, y, d) {   // bolt seen end-on: washer ring, head, centre cross
+    const px = v.X(x), py = v.Y(y), r1 = Math.max(0.95 * d * v.k, 3.2), r2 = Math.max(0.55 * d * v.k, 1.9), c = r1 + 3;
+    return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r1.toFixed(1)}" fill="#fff" stroke="${C.boltDark}" stroke-width="1"/><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r2.toFixed(1)}" fill="${C.bolt}"/>` +
+      lnP(px - c, py, px + c, py, 't') + lnP(px, py - c, px, py + c, 't');
+  }
+  // bolt seen side-on with its axis along x (dir 'x') or y: shank a0..a1 at c, head at a0, nut at a1
+  function BS(v, a0, a1, c, d, dir = 'x') {
+    const sg = Math.sign(a1 - a0) || 1, hd = 0.65 * d, nt = 0.8 * d, wh = 0.8 * d, wa = 0.15 * d, pr = 0.45 * d;
+    const seg = (s0, s1, half, fill) => dir === 'x' ? R(v, s0, c - half, s1, c + half, fill) : R(v, c - half, s0, c + half, s1, fill);
+    let o = seg(a0, a1 + sg * (wa + nt + pr), d / 2, 'bolt');
+    o += seg(a0 - sg * wa, a0, d, 'bolt') + seg(a0 - sg * (wa + hd), a0 - sg * wa, wh, 'boltH');
+    o += seg(a1, a1 + sg * wa, d, 'bolt') + seg(a1 + sg * wa, a1 + sg * (wa + nt), wh, 'boltH');
+    o += dir === 'x' ? Ln(v, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), c, 'c') : Ln(v, c, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), 'c');
+    return o;
+  }
+  ST.bolt = `fill="#59626c" stroke="${C.boltDark}" stroke-width="0.6"`; ST.boltH = `fill="${C.bolt}" stroke="${C.boltDark}" stroke-width="0.6"`;
+  // fillet weld at the corner (x, y): legs along sx (x) and sy (y), sized a (mm) but at least 4 px
+  function WD(v, x, y, a, sx, sy) {
+    const L = Math.max(a * v.k, 4.5), px = v.X(x), py = v.Y(y);
+    return `<path d="M${px.toFixed(1)} ${py.toFixed(1)} L${(px + sx * L).toFixed(1)} ${py.toFixed(1)} L${px.toFixed(1)} ${(py - sy * L).toFixed(1)} Z" fill="${C.weld}"/>`;
+  }
+  // weld seen along its length (elevation): narrow strip
+  const WS = (v, x0, y0, x1, y1) => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)), w = Math.max(Math.abs(x1 - x0) * v.k, 2.5), h = Math.max(Math.abs(y1 - y0) * v.k, 2.5);
+    return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${C.weld}" fill-opacity="0.82"/>`; };
+  // zigzag break lines through a member
+  function BK(v, x, y0, y1) {   // vertical break at model x between y0 and y1
+    const px = v.X(x), a = v.Y(Math.max(y0, y1)) - 4, b = v.Y(Math.min(y0, y1)) + 4, m = (a + b) / 2;
+    return `<path d="M${px} ${a} L${px} ${m - 7} L${px - 5} ${m - 3} L${px + 5} ${m + 3} L${px} ${m + 7} L${px} ${b}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  function BKH(v, y, x0, x1) {
+    const py = v.Y(y), a = v.X(Math.min(x0, x1)) - 4, b = v.X(Math.max(x0, x1)) + 4, m = (a + b) / 2;
+    return `<path d="M${a} ${py} L${m - 7} ${py} L${m - 3} ${py - 5} L${m + 3} ${py + 5} L${m + 7} ${py} L${b} ${py}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  // white mask to fade member ends beyond a break
+  const mask = (v, x0, y0, x1, y1) => R(v, x0, y0, x1, y1, 'bg');
+  // I section cross-section (cut), centred at (cx, cy); 'v': web vertical (depth along y), 'h': depth along x
+  function ISec(v, cx, cy, s, o = 'v', st = 'cut') {
+    const b = s.b, h = s.h, tf = s.tf, t = s.tw, r = Math.min(s.r || 0, (b - t) / 2 - 1), pts = [];
+    const arc = (ux, uy, a0, a1) => { for (let i = 0; i <= 6; i++) { const a = (a0 + (a1 - a0) * i / 6) * Math.PI / 180; pts.push([ux + r * Math.cos(a), uy + r * Math.sin(a)]); } };
+    pts.push([-b / 2, h / 2], [b / 2, h / 2], [b / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, h / 2 - tf - r, 90, 180); else pts.push([t / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, -h / 2 + tf + r, 180, 270); else pts.push([t / 2, -h / 2 + tf]);
+    pts.push([b / 2, -h / 2 + tf], [b / 2, -h / 2], [-b / 2, -h / 2], [-b / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, -h / 2 + tf + r, 270, 360); else pts.push([-t / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, h / 2 - tf - r, 0, 90); else pts.push([-t / 2, h / 2 - tf]);
+    pts.push([-b / 2, h / 2 - tf]);
+    return P(v, pts.map(([u, w]) => o === 'v' ? [cx + u, cy + w] : [cx + w, cy + u]), st);
+  }
+  // I member in side elevation: length along 'x' (a0..a1) with the depth c0..c1 across, or along 'y'
+  function IEl(v, a0, a1, c0, c1, s, dir = 'x', o = {}) {
+    const lo = Math.min(c0, c1), hi = Math.max(c0, c1), rr = s.r || 0;
+    const ln = (c, k) => dir === 'x' ? Ln(v, a0, c, a1, c, k) : Ln(v, c, a0, c, a1, k);
+    let out = dir === 'x' ? R(v, a0, lo, a1, hi, 'steel') : R(v, lo, a0, hi, a1, 'steel');
+    out += dir === 'x' ? R(v, a0, lo + s.tf, a1, hi - s.tf, 'web') : R(v, lo + s.tf, a0, hi - s.tf, a1, 'web');
+    out += ln(lo + s.tf, 'e') + ln(hi - s.tf, 'e');
+    if (rr > 0 && !o.noRoot) out += ln(lo + s.tf + rr, 't') + ln(hi - s.tf - rr, 't');
+    return out;
+  }
+  // I member seen on the flange face: width b, length along dir
+  const IFl = (v, a0, a1, cc, s, dir = 'y') => (dir === 'y' ? R(v, cc - s.b / 2, a0, cc + s.b / 2, a1, 'steel') + Ln(v, cc - s.tw / 2 - (s.r || 0), a0, cc - s.tw / 2 - (s.r || 0), a1, 'h') + Ln(v, cc + s.tw / 2 + (s.r || 0), a0, cc + s.tw / 2 + (s.r || 0), a1, 'h')
+    : R(v, a0, cc - s.b / 2, a1, cc + s.b / 2, 'steel'));
+  const title = (x, y, t, sub) => Tx(x, y, t, { size: 11.5, weight: 700, anchor: 'middle', color: C.txt }) + `<line x1="${(x - tw(t, 11.5) / 2).toFixed(1)}" y1="${(y + 3).toFixed(1)}" x2="${(x + tw(t, 11.5) / 2).toFixed(1)}" y2="${(y + 3).toFixed(1)}" stroke="${C.txt}" stroke-width="0.8"/>` + (sub ? Tx(x, y + 16, sub, { size: 10, anchor: 'middle', color: C.mute }) : '');
+  const svg = (body, h = H) => `<svg class="jd" viewBox="0 0 ${W} ${h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;background:${C.paper}" role="img">${DEFS}<rect width="${W}" height="${h}" fill="${C.paper}"/>${body}</svg>`;
+  const BOX = { L: [40, 46, 520, 400], Rt: [612, 46, 280, 400] };
+  const fv = x => { const n = parseFloat(x); return Number.isFinite(n) ? n : 0; };
+  const secName = x => x && x !== '0' ? x : '';   // a form without that selector reads as '0'
+  const BOLTD = { M12: 12, M16: 16, M20: 20, M24: 24, M27: 27, M30: 30, M36: 36 };
+  const bd = sz => BOLTD[sz] || 20;
+  const range = (n, f) => Array.from({ length: Math.max(0, n) }, (_, i) => f(i));
+  return { C, W, H, BOX, DEFS, view, R, P, Ln, lnP, Tx, tw, DH, DV, LD, LA, moment, BE, BS, WD, WS, BK, BKH, mask, ISec, IEl, IFl, title, svg, num, fv, secName, bd, range, esc, ST };
+})();
+
+/* ===== DRAWING KIT EXTRAS (EngineeringTools) =====
+   Additions to the JD drafting kit (joints/diagrams.js) for the member, floor and wall drawings: a page-width SVG wrapper,
+   arrows, supports, distributed loads, result fills, cross-section outlines (I, PFC, RHS, CHS) and SVG to PNG for PDF reports.
+   Source: scratchpad/drawings/kit.js. Pixel helpers take pixel coordinates; JD views map model mm to pixels. */
+const DK = (() => {
+  'use strict';
+  const { Tx, lnP, esc } = JD;
+  const BLUE = '#1d5fbf', FILL = 'rgba(29,95,191,.15)', RED = '#c4242a', REDF = 'rgba(196,36,42,.10)', INK = '#222a31', MUTE = '#6b7680', LINE = '#c9d0d7';
+  const DEFS = `<defs><marker id="dkB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${BLUE}"/></marker>`
+    + `<marker id="dkK" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${INK}"/></marker>`
+    + `<marker id="dkR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${RED}"/></marker>`
+    + `<pattern id="dkHatch" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)"><rect width="7" height="7" fill="#f3f1ec"/><line x1="0" y1="0" x2="0" y2="7" stroke="#8b8478" stroke-width="1"/></pattern></defs>`;
+  const f1 = v => (+v).toFixed(1);
+  // the page-width drawing: viewBox w x h, scales to its container
+  const svg = (body, w, h, label) => `<svg class="jd dk" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" role="img"${label ? ` aria-label="${esc(label)}"` : ''} `
+    + `style="width:100%;height:auto;display:block;background:#fff">${JD.DEFS}${DEFS}<rect width="${w}" height="${h}" fill="#fff"/>${body}</svg>`;
+  const col = c => ({ blue: BLUE, red: RED, ink: INK, mute: MUTE }[c] || c || INK);
+  const mk = c => ({ blue: 'dkB', red: 'dkR' }[c] || 'dkK');
+  // arrow from (x0, y0) to (x1, y1), head at the end (both: heads at both ends)
+  const arrow = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1.6}"`
+    + `${o.dash ? ` stroke-dasharray="${o.dash}"` : ''} marker-end="url(#${mk(o.c)})"${o.both ? ` marker-start="url(#${mk(o.c)})"` : ''}/>`;
+  const line = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.cap ? ` stroke-linecap="${o.cap}"` : ''}/>`;
+  const rect = (x, y, w, h, o = {}) => `<rect x="${f1(Math.min(x, x + w))}" y="${f1(Math.min(y, y + h))}" width="${f1(Math.abs(w))}" height="${f1(Math.abs(h))}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.rx ? ` rx="${o.rx}"` : ''}/>`;
+  const poly = (pts, o = {}) => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + f1(p[0]) + ' ' + f1(p[1])).join(' ')}${o.open ? '' : ' Z'}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+  const text = (x, y, s, o = {}) => Tx(x, y, s, Object.assign({ size: 11 }, o, { color: o.color ? col(o.color) : o.color }));
+  // pinned support under (px, py): triangle and ground line; dir 'down' (default) or 'up' (hanging, above the point)
+  function pin(px, py, dir = 'down') {
+    const s = dir === 'up' ? -1 : 1;
+    return poly([[px, py], [px - 8, py + s * 13], [px + 8, py + s * 13]], { fill: '#fff', stroke: 'ink', w: 1.3 }) + line(px - 12, py + s * 13, px + 12, py + s * 13, { w: 1.3 })
+      + [0, 1, 2, 3].map(k => line(px - 10 + k * 6, py + s * 13, px - 14 + k * 6, py + s * 18, { c: 'mute', w: 0.8 })).join('');
+  }
+  // hatched ground or wall strip: rectangle with the hatch fill and an edge line on the restrained side ('t', 'b', 'l', 'r')
+  function ground(x, y, w, h, edge = 't') {
+    const e = { t: [x, y, x + w, y], b: [x, y + h, x + w, y + h], l: [x, y, x, y + h], r: [x + w, y, x + w, y + h] }[edge];
+    return rect(x, y, w, h, { fill: 'url(#dkHatch)' }) + line(e[0], e[1], e[2], e[3], { w: 1.4 });
+  }
+  // a row of load arrows pointing from yTop to yBase between x0 and x1, with the bar along the tails and a label above
+  function udl(x0, x1, yTop, yBase, label, o = {}) {
+    const n = Math.max(2, Math.round((x1 - x0) / (o.pitch || 28)) + 1), c = o.c || 'red';
+    let g = line(x0, yTop, x1, yTop, { c, w: 1.3 });
+    for (let i = 0; i < n; i++) { const x = x0 + (x1 - x0) * i / (n - 1); g += arrow(x, yTop, x, yBase, { c, w: 1.2 }); }
+    return g + (label ? text((x0 + x1) / 2, yTop - 6, label, { anchor: 'middle', color: c === 'red' ? RED : col(c), weight: 600 }) : '');
+  }
+  // a result diagram: polyline pts (pixels) closed to the base line through the first and last points' base, filled blue
+  function fillDiagram(pts, base, o = {}) {
+    const vert = o.vertical;   // base is an x (diagram plotted sideways) when vertical
+    const close = vert ? [[base, pts[pts.length - 1][1]], [base, pts[0][1]]] : [[pts[pts.length - 1][0], base], [pts[0][0], base]];
+    return poly(pts.concat(close), { fill: o.fill || FILL, stroke: 'none' }) + poly(pts, { open: true, stroke: o.stroke || 'ink', w: 1.1 });
+  }
+  // cross-section outline, cut, centred at pixel (cx, cy) at scale k (px/mm); web vertical; returns svg
+  function section(s, cx, cy, k, o = {}) {
+    const st = o.style || 'cut', fill = st === 'cut' ? 'url(#jdCut)' : '#e7ecf1', edge = '#2f3b47';
+    if (s.shape === 'CHS') {
+      const ro = s.d / 2 * k, ri = (s.d / 2 - s.t) * k;
+      return `<path d="M${f1(cx - ro)} ${f1(cy)} a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(2 * ro)} 0 a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(-2 * ro)} 0 Z M${f1(cx - ri)} ${f1(cy)} a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(2 * ri)} 0 a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(-2 * ri)} 0 Z" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'RHS') {
+      const w = s.b * k, h = s.h * k, t = Math.max(s.t * k, 1.2), ro = Math.min((s.ro || 1.5 * s.t) * k, w / 2), ri = Math.max(0, ro - t);
+      const rr = (x, y, W, H, r) => `M${f1(x + r)} ${f1(y)} H${f1(x + W - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W)} ${f1(y + r)} V${f1(y + H - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W - r)} ${f1(y + H)} H${f1(x + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x)} ${f1(y + H - r)} V${f1(y + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + r)} ${f1(y)} Z`;
+      return `<path d="${rr(cx - w / 2, cy - h / 2, w, h, ro)} ${rr(cx - w / 2 + t, cy - h / 2 + t, w - 2 * t, h - 2 * t, ri)}" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'PFC') {   // channel, toes to the right, web on the left
+      const b = s.b * k, h = s.h * k, tf = Math.max(s.tf * k, 1.2), tw = Math.max(s.tw * k, 1.2), x0 = cx - b / 2, y0 = cy - h / 2;
+      return poly([[x0, y0], [x0 + b, y0], [x0 + b, y0 + tf], [x0 + tw, y0 + tf], [x0 + tw, y0 + h - tf], [x0 + b, y0 + h - tf], [x0 + b, y0 + h], [x0, y0 + h]], { fill, stroke: edge, w: 1.1 });
+    }
+    const v = { k, X: x => cx + x * k, Y: y => cy - y * k };   // I sections: JD's outline with root radii
+    return JD.ISec(v, 0, 0, s, 'v', st === 'cut' ? 'cut' : 'steel');
+  }
+  // SVG markup to a PNG data URL (for the jsPDF reports); resolves { url, w, h } with w, h the viewBox size
+  function toPNG(markup, wpx = 1800) {
+    return new Promise((resolve, reject) => {
+      const m = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(markup); if (!m) { reject(new Error('no viewBox')); return; }
+      const w = +m[1], h = +m[2], k = wpx / w, img = new Image();
+      const src = markup.replace(/style="[^"]*"/, `width="${f1(w * k)}" height="${f1(h * k)}"`);
+      img.onload = () => { const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k); const g = c.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height); resolve({ url: c.toDataURL('image/png'), w, h }); };
+      img.onerror = () => reject(new Error('drawing could not be rendered'));
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
+    });
+  }
+  // drawings for the page (heading + drawing) and for the A4 sheet (each kept whole on a page)
+  const page = blocks => blocks.map(([t, s]) => `<div class="dlabel">${t}</div>${s}`).join('');
+  const sheet = blocks => blocks.map(([t, s]) => `<div class="rfig" style="break-inside:avoid;page-break-inside:avoid;margin:1mm 0 3mm"><h3>${t}</h3><div class="rsvg">${s}</div></div>`).join('');
+  const fmt = (v, d = 0) => Number.isFinite(v) ? (+v).toFixed(d) : '–';
+  return { page, sheet, BLUE, FILL, RED, REDF, INK, MUTE, LINE, svg, arrow, line, rect, poly, text, pin, ground, udl, fillDiagram, section, toPNG, fmt, lnP };
+})();
+
+/* ===== MASONRY COLUMN DRAWINGS (EngineeringTools) =====
+   One drawing in three parts. For each direction (across t, across b): the column in elevation to scale with its
+   restraints at the top and bottom, the load at the top at its eccentricity, h_ef and any wind on its face; beside it,
+   on the same height scale, the moment up the column for the case with the most load (the top load's eccentricity at
+   the top and bottom, and the wind), with M at the top, mid-height and bottom. Then the plan of the section, b × t, with
+   the load's position. Source: scratchpad/drawings/mcolumn.js. Needs JD, DK; takes MasonryColumn.design results. */
+const DrawMColumn = (() => {
+  'use strict';
+  const { svg, arrow, line, rect, poly, text, page, sheet, RED, MUTE, BLUE } = DK;
+  const r0 = v => Math.round(v).toLocaleString('en-GB'), r1 = v => (Math.round(v * 10) / 10).toFixed(1), r2 = v => (Math.round(v * 100) / 100).toFixed(2);
+  const fillOf = D => /clay|stone/i.test(D.inp.mas.unit || '') || D.inp.mas.src === 'fk' ? '#ead9cf' : '#e4e2dd';
+  const hatch = (x, y, w, h) => { let g = rect(x, y, w, h, { fill: '#eef1f4', stroke: 'ink', w: 0.8 }); for (let xx = x + 4; xx < x + w; xx += 7) g += line(xx, y + h, Math.min(xx + h, x + w), y, { c: '#9aa6b2', w: 0.6 }); return g; };
+
+  // one direction: elevation and moment diagram, left edge at ox; returns the group and its width
+  function direction(D, key, ox, k, top) {
+    const C = D.cases[0], R = C.dirs.find(x => x.key === key), d = key === 't' ? D.t : D.b, h = D.h;
+    const wcol = Math.max(d * k, 14), cx = ox + 58, x0 = cx - wcol / 2, Y = z => top + (h - z) * k;   // z up from the base
+    let g = text(ox, 14, `Across ${key} (${key} = ${r0(d)})`, { size: 10.5, weight: 600 });
+    // the restraints: a slab at the top and the base
+    g += hatch(x0 - 16, Y(h) - 9, wcol + 32, 9) + hatch(x0 - 16, Y(0), wcol + 32, 9);
+    g += rect(x0, Y(h), wcol, h * k, { fill: fillOf(D), stroke: 'ink', w: 1.2 });
+    for (let z = 225; z < h; z += 225) g += line(x0, Y(z), x0 + wcol, Y(z), { c: '#cbb8ab', w: 0.5 });
+    g += line(cx, Y(h) - 14, cx, Y(0) + 14, { c: BLUE, w: 0.8, dash: '8 3 2 3' });
+    // the load at its eccentricity at the top
+    const e = R.eT, xl = cx + Math.max(-wcol / 2, Math.min(wcol / 2, e * k * (wcol / (d * k))));
+    g += arrow(xl, Y(h) - 34, xl, Y(h) - 10, { c: 'red', w: 2 });
+    g += text(xl + 5, Y(h) - 24, `N_Ed ${r1(C.N)} kN`, { size: 9.5, color: RED, weight: 600 });
+    if (Math.abs(e) > 0.5) g += text(xl + 5, Y(h) - 14, `e ${r0(e)}`, { size: 9, color: RED });
+    // wind on the face
+    if (R.wind) for (let i = 1; i <= 5; i++) { const y = Y(h * i / 6); g += arrow(x0 - 24, y, x0 - 2, y, { c: 'red', w: 1 }); }
+    if (R.wind) g += JD.Tx(ox, Y(0) + 24, `wind w_Ed ${r2(C.w)} kN/m`, { size: 9, color: RED });
+    // h and h_ef
+    g += line(ox + 18, Y(0), ox + 18, Y(h), { w: 0.8 }) + line(ox + 14, Y(0), ox + 22, Y(0), { w: 0.8 }) + line(ox + 14, Y(h), ox + 22, Y(h), { w: 0.8 });
+    g += JD.Tx(ox + 12, Y(h / 2), `h ${r0(h)}, h_ef ${r0(R.hef)}`, { size: 9.5, rot: -90, anchor: 'middle' });
+    // the moment up the column (most load): M(z) = M_b + (M_t − M_b) z/h + w z (h − z)/2, kNm
+    const mx = ox + 112, mw = 64, M = z => (R.Mb + (R.Mt - R.Mb) * z / h + (R.wind ? C.w * z * (h - z) / 2 : 0)) / 1e6;
+    const zs = Array.from({ length: 25 }, (_, i) => h * i / 24), ms = zs.map(M), mmax = Math.max(1e-9, ...ms.map(Math.abs));
+    const sx = mw / mmax, X = m => mx + m * sx * (mmax > 1e-6 ? 1 : 0);
+    g += line(mx, Y(0), mx, Y(h), { w: 0.9 });
+    g += poly([[mx, Y(0)], ...zs.map((z, i) => [X(ms[i]), Y(z)]), [mx, Y(h)]], { fill: 'rgba(29,95,191,.14)', stroke: BLUE, w: 1.4 });
+    const lab = (z, m) => text(Math.max(X(m), mx) + 4, Y(z) + (z === h ? 10 : z === 0 ? -3 : 4), `${r2(m)}`, { size: 9, color: BLUE });
+    g += lab(h, M(h)) + lab(h / 2, M(h / 2)) + lab(0, M(0));
+    g += text(mx, Y(h) - 14, 'M (kNm)', { size: 9, color: MUTE });
+    return { g, w: 200 };
+  }
+
+  function plan(D, ox, top) {
+    const W = 170, k = Math.min(W / D.b, 150 / D.t, 0.6), w = D.b * k, hh = D.t * k, x0 = ox + (W - w) / 2, y0 = top + 30;
+    let g = text(ox, 14, 'Plan', { size: 10.5, weight: 600 });
+    g += rect(x0, y0, w, hh, { fill: fillOf(D), stroke: 'ink', w: 1.2 });
+    g += line(x0 + w / 2, y0 - 8, x0 + w / 2, y0 + hh + 8, { c: BLUE, w: 0.8, dash: '8 3 2 3' }) + line(x0 - 8, y0 + hh / 2, x0 + w + 8, y0 + hh / 2, { c: BLUE, w: 0.8, dash: '8 3 2 3' });
+    const E = D.inp.ecc || {}, px = x0 + w / 2 + (+E.bTop || 0) * k, py = y0 + hh / 2 - (+E.tTop || 0) * k;
+    g += `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="4" fill="${RED}"/>` + text(px + 6, py - 5, 'N_Ed', { size: 9, color: RED });
+    g += line(x0, y0 + hh + 16, x0 + w, y0 + hh + 16, { w: 0.8 }) + text(x0 + w / 2, y0 + hh + 29, `b ${r0(D.b)}`, { size: 9.5, anchor: 'middle' });
+    g += line(x0 + w + 16, y0, x0 + w + 16, y0 + hh, { w: 0.8 }) + JD.Tx(x0 + w + 28, y0 + hh / 2, `t ${r0(D.t)}`, { size: 9.5, rot: -90, anchor: 'middle' });
+    g += text(ox, y0 + hh + 50, `A = ${(D.A / 1e6).toFixed(3)} m²`, { size: 9.5, color: MUTE });
+    return g;
+  }
+
+  function all(D) {
+    const top = 66, k = 280 / D.h;
+    const g = direction(D, 't', 0, k, top).g + direction(D, 'b', 230, k, top).g + plan(D, 480, top) + line(222, 20, 222, top + 300, { c: '#e3e7eb', w: 1 }) + line(462, 20, 462, top + 300, { c: '#e3e7eb', w: 1 });
+    return svg(g, 680, top + 300 + 36, 'The column in elevation each way with its load, restraints and moments, and its plan');
+  }
+  const blocks = D => [[`The column each way, with the moment for the case with ${D.cases.length > 1 ? 'the most load' : 'its load'}`, all(D)]];
+  return { html: D => page(blocks(D)), report: D => sheet(blocks(D)), all };
+})();
+
+</script>
+<script id="ui">
+'use strict';
+const $ = id => document.getElementById(id);
+const STORE = 'et-masonry-column-v1';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ufmt = u => !Number.isFinite(u) ? '&gt;99' : u.toFixed(3);
+const f0 = v => Number.isFinite(v) ? Math.round(v).toString() : '–', f1 = v => Number.isFinite(v) ? (Math.round(v * 10) / 10).toFixed(1) : '–', f2 = v => Number.isFinite(v) ? v.toFixed(2) : '–', f3 = v => Number.isFinite(v) ? v.toFixed(3) : '–';
+const sub = s => esc(s).replace(/_\{([^}]*)\}|_([A-Za-zα-ω0-9,]+)/g, (m, a, b) => `<sub>${a || b}</sub>`).replace(/\^([0-9.]+)/g, '<sup>$1</sup>');
+const IDS = ['pName', 'pJob', 'pBy', 'pRef', 'b', 't', 'h', 'rhoT', 'rhoB', 'rhoTv', 'rhoBv', 'src', 'fk', 'unit', 'group', 'fb', 'mortar', 'fm', 'voids', 'cat', 'exec', 'dens',
+  'Gk', 'Qk', 'combo', 'psi0', 'etT', 'etB', 'ebT', 'ebB', 'wk', 'wdir'];
+const CHK = ['collar'];
+function collect() { const s = { v: 1 }; IDS.forEach(k => s[k] = $(k).value); CHK.forEach(k => s[k] = $(k).checked); return s; }
+function restore(s) { IDS.forEach(k => { if (s[k] !== undefined) $(k).value = s[k]; }); CHK.forEach(k => { if (s[k] !== undefined) $(k).checked = !!s[k]; }); }
+function refreshVis() {
+  const show = (sel, on) => document.querySelectorAll(sel).forEach(e => e.classList.toggle('hidden', !on));
+  const calc = $('src').value === 'calc', m = $('mortar').value, u = $('unit').value;
+  show('.s-calc', calc); show('.s-fk', !calc); show('.m-lw', calc && /^LW/.test(m)); show('.m-gp', calc && /^M/.test(m)); show('.u-voids', calc && u === 'agg' && $('group').value === '1');
+  show('.r-t', $('rhoT').value === 'custom'); show('.r-b', $('rhoB').value === 'custom'); show('.c-ab', $('combo').value === '6.10ab');
+  const g2 = ['clay', 'cs', 'agg'].includes(u); $('group').querySelector('option[value="2"]').disabled = !g2; if (!g2) $('group').value = '1';
+}
+['src', 'mortar', 'unit', 'group', 'rhoT', 'rhoB', 'combo'].forEach(id => $(id).addEventListener('change', refreshVis));
+const num = (id, nm) => { const v = parseFloat($(id).value); if (!Number.isFinite(v)) throw new Error(`${nm}: give a number`); return v; };
+function input() {
+  const mas = { src: $('src').value, fk: parseFloat($('fk').value), unit: $('unit').value, group: +$('group').value, fb: parseFloat($('fb').value), mortar: $('mortar').value, fm: parseFloat($('fm').value),
+    voids: parseFloat($('voids').value) || 0, collar: $('collar').checked, category: $('cat').value, exec: +$('exec').value };
+  const rho = (sel, v, nm) => $(sel).value === 'custom' ? num(v, nm) : +$(sel).value;
+  return { b: num('b', 'b'), t: num('t', 't'), h: num('h', 'h'), rhoT: rho('rhoT', 'rhoTv', 'ρ across t'), rhoB: rho('rhoB', 'rhoBv', 'ρ across b'), mas,
+    loads: { Gk: num('Gk', 'G_k'), Qk: num('Qk', 'Q_k'), combo: $('combo').value, psi0: num('psi0', 'ψ0'), wk: num('wk', 'Wind'), wdir: $('wdir').value, density: num('dens', 'Density') },
+    ecc: { tTop: num('etT', 'e across t at the top'), tBot: num('etB', 'e across t at the bottom'), bTop: num('ebT', 'e across b at the top'), bBot: num('ebB', 'e across b at the bottom') } };
+}
+// ---------- results ----------
+const bar = c => `<div class="ck"><div class="nm">${esc(c.name)}<small>${esc(c.ref)} &nbsp;${sub(c.note || '')}</small></div><div class="bar"><i class="${c.util > 1 ? 'over' : c.util > 0.9 ? 'hi' : ''}" style="width:${Math.min(100, c.util * 100 / 1.2)}%"></i></div><div class="u ${c.util > 1 ? 'over' : ''}">${ufmt(c.util)}</div></div>`;
+const stepsHTML = S => `<div class="steps">${S.map(s => `<div class="st"><span>${esc(s.ref)}</span><span>${sub(s.text)}</span></div>`).join('')}</div>`;
+function table(D) {
+  let r = '';
+  for (const c of D.cases) for (const d of c.dirs) for (const s of d.at)
+    r += `<tr><td>${esc(c.label)}</td><td>${esc(d.name)}</td><td>${esc(s.at)}</td><td>${f1(s.N / 1e3)}</td><td>${f2(s.e)}</td><td>${f3(s.phi)}</td><td>${f1(s.NRd / 1e3)}</td><td style="${s.util > 1 ? 'color:var(--fail)' : ''}">${ufmt(s.util)}</td></tr>`;
+  return `<table class="t"><thead><tr><th>Case</th><th>Direction</th><th>Section</th><th>N<sub>Ed</sub> kN</th><th>e mm</th><th>Φ</th><th>N<sub>Rd</sub> kN</th><th>Util.</th></tr></thead><tbody>${r}</tbody></table>`;
+}
+function summary(D) {
+  const m = D.mat;
+  return `${f0(D.b)} × ${f0(D.t)} mm, h ${f0(D.h)} mm; N<sub>Ed</sub> ${f1(D.cases[0].N)} kN at the top (${esc(D.cases[0].name)}); f<sub>k</sub> ${f2(m.fk)}, γ<sub>M</sub> ${m.gM}, f<sub>d</sub> ${f3(m.fd)} N/mm²${D.fA < 1 ? `, × ${f3(D.fA)} small area` : ''}`;
+}
+function verdict(D) {
+  const W = [...D.checks].sort((a, b) => b.util - a.util)[0];
+  return `<div class="verdict ${D.utilMax > 1 ? 'fail' : ''}"><div><div class="big">${D.utilMax > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(D.utilMax)}</div><div class="sub">Governs: ${esc(W.name.charAt(0).toLowerCase() + W.name.slice(1))}${W.kase && D.cases.length > 1 ? `, ${esc(W.kase.toLowerCase())}` : ''} (${esc(W.ref)})<br>${summary(D)}</div></div></div>`;
+}
+let last = null;
+function runIt() {
+  const inp = input(), D = MasonryColumn.design(inp); last = { D, inp };
+  $('results').innerHTML = verdict(D) + `<div id="drawings">${DrawMColumn.html(D)}</div>`
+    + `<div class="dlabel">Checks</div><div class="checks">${D.checks.map(bar).join('')}</div>`
+    + `<div class="dlabel">Each section</div>${table(D)}`
+    + `<div class="dlabel">Calculation</div>${stepsHTML(D.steps)}`
+    + (D.warnings.length ? `<div class="note">${D.warnings.map(sub).join('<br>')}</div>` : '')
+    + `<div class="note">${notes().join(' ')}</div><button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  $('printBtn').onclick = () => { $('report').innerHTML = report(); window.print(); };
+}
+const notes = () => ['Φ_i = 1 − 2e_i/t at the top and bottom; Φ_m at mid-height from Annex G with E = 1000 f_k, which allows for the column’s slenderness. Concentrated loads on the column’s top: check the bearing with Masonry Bearing.'.replace(/_([a-z])/g, '<sub>$1</sub>')];
+function run() {
+  try { localStorage.setItem(STORE, JSON.stringify(collect())); } catch (e) { /* storage unavailable */ }
+  clearTimeout(drawT);
+  try { runIt(); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div><div id="drawings"></div>`; redraw(); }
+}
+$('calc').onclick = run;
+// ---------- A4 sheet ----------
+const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
+const okng = u => u <= 1 ? `<span class="ok">${ufmt(u)} OK</span>` : `<span class="ng">${ufmt(u)} FAIL</span>`;
+function report() {
+  const s = collect(), today = new Date().toLocaleDateString('en-GB'), { D } = last;
+  const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.pRef) || '&nbsp;'}</div><div class="ttl">Masonry column: vertical load to BS EN 1996-1-1 + UK NA</div></div>`;
+  let b = `<div class="rs"><h2>Basis</h2>${rl('BS EN 1996-1-1:2005+A1:2012 with the UK National Annex: the column as a short wall (6.1.2, Annex G), each direction on its own', '', '')}`
+    + rl(`Column ${f0(D.b)} × ${f0(D.t)} mm, clear height ${f0(D.h)} mm; G<sub>k</sub> = ${f1(+s.Gk)} kN, Q<sub>k</sub> = ${f1(+s.Qk)} kN at the top; e across t ${f0(+s.etT)} (top), ${f0(+s.etB)} (bottom) mm; across b ${f0(+s.ebT)}, ${f0(+s.ebB)} mm${+s.wk > 0 ? `; wind w<sub>k</sub> = ${f2(+s.wk)} kN/m across ${esc(s.wdir)}` : ''}`, '', '') + '</div>';
+  b += `<div class="rs"><h2>Drawing</h2>${DrawMColumn.report(D)}</div>`;
+  b += `<div class="rs"><h2>Calculation</h2>${D.steps.map(x => rl(sub(x.text), esc(x.ref), '')).join('')}${table(D)}</div>`;
+  b += `<div class="rs"><h2>Checks</h2>${D.checks.map(c => rl(`${esc(c.name)}: ${sub(c.note)}`, esc(c.ref), okng(c.util))).join('')}`
+    + rl(`<b>${D.utilMax > 1 ? 'FAIL' : 'PASS'}</b>, largest utilisation`, '', okng(D.utilMax)) + '</div>';
+  if (D.warnings.length) b += `<div class="rs"><p class="rp">${D.warnings.map(sub).join(' ')}</p></div>`;
+  b += `<div class="rs"><p class="rp">${notes().join(' ')}</p><p class="rp" style="color:#555">Generated by EngineeringTools &mdash; Masonry Column.</p></div>`;
+  return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
+}
+// the drawing follows the inputs as they change
+let drawT = 0;
+function redraw() {
+  const el = $('drawings'); if (!el) return;
+  try { el.innerHTML = DrawMColumn.html(MasonryColumn.design(input())); }
+  catch (e) { el.innerHTML = `<div class="note">The drawing will appear when the inputs are complete: ${esc(e.message)}</div>`; }
+}
+const queueDraw = () => { clearTimeout(drawT); drawT = setTimeout(redraw, 200); };
+$('inputs').addEventListener('input', queueDraw); $('inputs').addEventListener('change', queueDraw);
+(function init() {
+  let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
+  if (s && s.v === 1) restore(s);
+  refreshVis(); redraw();
+})();
+</script>
+<footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent engineer to check and approve all calculations before they are used.</footer>
+<!-- @@FILEIO: save / open, shared by every tool (scratchpad/common/fileio.*) -->
+<style id="ef-style">
+/* Save / open buttons on the page header, and the status message (source: scratchpad/common/fileio.css) */
+.ef-bar{position:absolute;top:14px;right:16px;z-index:3;display:flex;gap:8px;}
+.ef-bar.ef-float{position:fixed;top:12px;right:12px;}
+.ef-btn{height:32px;padding:0 12px;display:inline-flex;align-items:center;gap:6px;border:0;border-radius:6px;background:rgba(255,255,255,.94);color:#111;font-family:inherit;font-size:13px;font-weight:500;line-height:1;cursor:pointer;}
+.ef-btn:hover{background:#fff;}
+.ef-btn:focus-visible{outline:2px solid #fff;outline-offset:2px;}
+.ef-btn svg{width:15px;height:15px;flex:none;}
+.ef-msg{position:fixed;left:50%;bottom:20px;z-index:1000;width:max-content;max-width:min(560px,calc(100vw - 32px));transform:translate(-50%,8px);opacity:0;pointer-events:none;
+  background:#1d1f20;color:#fff;font-family:inherit;font-size:13px;line-height:1.45;padding:10px 14px;border-radius:6px;transition:opacity .15s,transform .15s;}
+.ef-msg.on{opacity:1;transform:translate(-50%,0);}
+.ef-msg.bad{background:#b3261e;}
+@media(max-width:560px){.ef-bar{position:static;margin-top:12px;align-self:flex-start;}}
+@media print{.ef-bar,.ef-msg{display:none!important;}}
+</style>
+<script id="ef-script">
+/* Save / open: a tool's inputs as a .json file. Shared by every Engineering Tools page (source: scratchpad/common/fileio.js),
+   configured per page with EngFile.init({...}).
+   File: { app: 'EngineeringTools', tool, key, format, saved, state }.
+   Two ways to open:
+   - store: the tool already restores itself from browser storage on load. Open writes the file's state there and reloads,
+     so the tool rebuilds everything (load tables, spans, models) exactly as on a return visit, then recalculates.
+   - set: the page applies the state itself (pages without saved state); EngFile.fields() covers plain forms. */
+const EngFile = (() => {
+  'use strict';
+  const APP = 'EngineeringTools', FMT = 1, FLAG = 'ef-opened';
+  let C = null, input = null, timer = 0;
+  const ICON = {
+    open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+    save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v5h8V3"/><path d="M7 21v-7h10v7"/></svg>',
+  };
+  const sess = {
+    get: k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
+    set: (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } },
+    del: k => { try { sessionStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
+  };
+
+  function msg(t, bad) {
+    let m = document.getElementById('ef-msg');
+    if (!m) { m = document.createElement('div'); m.id = 'ef-msg'; m.className = 'ef-msg no-print'; m.setAttribute('role', 'status'); m.setAttribute('aria-live', 'polite'); document.body.appendChild(m); }
+    m.textContent = t || ''; m.classList.toggle('bad', !!bad); m.classList.toggle('on', !!t);
+    clearTimeout(timer); if (t) timer = setTimeout(() => m.classList.remove('on'), bad ? 9000 : 5000);
+  }
+  function data() { return { app: APP, tool: C.tool, key: C.key, format: FMT, saved: new Date().toISOString(), state: C.get() }; }
+  function fileName() {
+    let ref = '', nm = ''; try { ref = C.ref ? String(C.ref() || '').trim() : ''; nm = C.name ? String(C.name() || '').trim() : ''; } catch (e) { ref = ''; }
+    return `${ref ? ref + ' ' : ''}${nm || C.tool}.json`.replace(/[\\/:*?"<>|]+/g, '-');
+  }
+  async function save() {
+    let d; try { d = data(); } catch (e) { msg(`Could not save: ${e.message}`, true); return; }
+    const name = fileName(), text = JSON.stringify(d, null, 1);
+    if (window.showSaveFilePicker) {   // Chrome / Edge: a Save As dialog, so the file can go straight into the job folder
+      try {
+        const h = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: `${C.tool} file`, accept: { 'application/json': ['.json'] } }] });
+        const w = await h.createWritable(); await w.write(text); await w.close(); msg(`Saved ${h.name}`); return;
+      } catch (e) { if (e && e.name === 'AbortError') return; }   // cancelled; any other failure falls back to a download
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    msg(`Saved ${name} to your downloads folder`);
+  }
+  function open() { input.value = ''; input.click(); }
+  // the saved state, or an error saying what the file is
+  function stateOf(d) {
+    const old = C.legacy ? C.legacy(d) : null; if (old) return old;
+    if (!d || d.app !== APP || !d.state || typeof d.state !== 'object') throw new Error('this is not an Engineering Tools file');
+    if (d.key !== C.key) throw new Error(d.tool ? `it was saved in ${d.tool}, so open it there` : 'it was saved in another tool');
+    if (!(d.format >= 1) || d.format > FMT) throw new Error('this file was saved by a newer version of the tools');
+    return d.state;
+  }
+  async function apply(d, name) {
+    const s = stateOf(d);
+    if (C.store) {
+      try { localStorage.setItem(C.store, JSON.stringify(s)); } catch (e) { throw new Error('this browser is blocking site storage for this page, which Open needs'); }
+      sess.set(FLAG, JSON.stringify({ name, key: C.key }));
+      history.replaceState(null, '', location.href.split('#')[0]);   // a #in= hand-over in the address would otherwise win over the file
+      location.reload(); return { reload: true };
+    }
+    const r = (await C.set(s)) || {};
+    if (C.calc) try { C.calc(); } catch (e) { /* the tool reports its own input errors */ }
+    return r;
+  }
+  function done(name, r) {
+    const k = r && r.skipped ? r.skipped.length : 0;
+    msg(`Opened ${name}` + (k ? `. ${k} saved value${k > 1 ? 's are' : ' is'} not used by this version and ${k > 1 ? 'were' : 'was'} left at the default` : ''));
+  }
+  async function openFile(file) {
+    if (!file) return;
+    let d; try { d = JSON.parse(await file.text()); } catch (e) { msg(`${file.name} could not be read as a saved file`, true); return; }
+    try { const r = await apply(d, file.name); if (!r.reload) done(file.name, r); } catch (e) { msg(`${file.name} was not opened: ${e.message}`, true); }
+  }
+  // plain forms: every input, select and textarea with an id under root; dropdowns are restored first, since choosing a
+  // section often auto-fills its dimensions, which the saved values then override
+  function fields(root) {
+    const els = () => [...(typeof root === 'string' ? document.querySelector(root) : root || document).querySelectorAll('input[id],select[id],textarea[id]')]
+      .filter(el => el.id !== 'ef-file' && !['file', 'button', 'submit', 'reset'].includes(el.type));
+    return {
+      get: () => { const o = {}; els().forEach(el => { o[el.id] = el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value; }); return o; },
+      set: o => {
+        const have = new Map(els().map(el => [el.id, el])), skipped = [], ent = Object.entries(o || {}), fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+        for (const [id, v] of ent) {
+          const el = have.get(id); if (!el) { skipped.push(id); continue; }
+          if (el.tagName === 'SELECT') { if ([...el.options].some(x => x.value === String(v))) { el.value = String(v); fire(el, 'change'); } else skipped.push(id); }
+        }
+        for (const [id, v] of ent) {
+          const el = have.get(id); if (!el || el.tagName === 'SELECT') continue;
+          if (el.type === 'checkbox' || el.type === 'radio') { el.checked = !!v; fire(el, 'change'); } else { el.value = String(v); fire(el, 'input'); fire(el, 'change'); }
+        }
+        return { skipped };
+      },
+    };
+  }
+  // file names lead with the job and member references from the page, e.g. '24-123 Slab S3 RC Slab Design.json'
+  const refOf = ids => () => ids.map(id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; }).filter(Boolean).join(' ');
+  function mount() {
+    const bar = document.createElement('div'); bar.className = 'ef-bar no-print';
+    bar.innerHTML = `<button type="button" class="ef-btn" id="ef-open" title="Open a saved file (Ctrl+O), or drop it onto the page">${ICON.open}Open</button>`
+      + `<button type="button" class="ef-btn" id="ef-save" title="Save the inputs to a file (Ctrl+S)">${ICON.save}Save</button>`;
+    const h = document.querySelector('.page-hdr'); if (h) h.appendChild(bar); else { bar.classList.add('ef-float'); document.body.appendChild(bar); }
+    bar.querySelector('#ef-open').addEventListener('click', open); bar.querySelector('#ef-save').addEventListener('click', save);
+  }
+  function init(c) {
+    C = Object.assign({ tool: (document.querySelector('h1') || {}).textContent || document.title, ref: refOf(['pJob', 'pRef']), calc: () => { const b = document.getElementById('calc'); if (b) b.click(); }, delay: 200 }, c);
+    C.tool = C.tool.trim(); if (!C.key) C.key = C.store;
+    if (C.store && !C.get) C.get = () => collect();   // eslint-disable-line no-undef -- the tool's own serialiser
+    input = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json', id: 'ef-file' }); input.hidden = true;
+    document.body.appendChild(input); input.addEventListener('change', () => openFile(input.files[0]));
+    mount();
+    document.addEventListener('keydown', e => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return; const k = (e.key || '').toLowerCase();
+      if (k === 's') { e.preventDefault(); save(); } else if (k === 'o') { e.preventDefault(); open(); }
+    });
+    document.addEventListener('dragover', e => { if ([...((e.dataTransfer && e.dataTransfer.types) || [])].includes('Files')) e.preventDefault(); });
+    document.addEventListener('drop', e => { const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f && /\.json$/i.test(f.name)) { e.preventDefault(); openFile(f); } });
+    // after an Open that reloaded the page: the tool has restored itself; recalculate and say what was opened
+    const f = sess.get(FLAG);
+    if (f) {
+      sess.del(FLAG); let o = null; try { o = JSON.parse(f); } catch (e) { o = null; }
+      if (o && o.key === C.key) setTimeout(() => { if (C.calc) try { C.calc(); } catch (e) { /* the tool reports its own input errors */ } done(o.name); }, C.delay);
+    }
+  }
+  return { init, save, open, openFile, apply, data, fileName, msg, fields, stateOf, refOf };
+})();
+window.EngFile = EngFile;   // reachable from the page's other scripts and the tests
+EngFile.init({ store: STORE });
+</script>
+<!-- /@@FILEIO -->
+</body>
+</html>
