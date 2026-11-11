@@ -109,7 +109,7 @@ body{font-variant-numeric:tabular-nums;}
   <div class="page-hdr">
     <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
     <h1>Concrete Frame Tie Force Calculator</h1>
-    <p>Disproportionate collapse design &nbsp;·&nbsp; Approved Document A &amp; UK NA to BS EN 1992-1-1:2004</p><!-- @@VERIFY: verification tag (scratchpad/verify/tags.py; the ROADMAP's Verification status) --><div class="vt" role="note"><span class="vt-pill vt-no">Not yet verified</span><span class="vt-why">Its results are not yet covered by any automated check: check them independently.</span></div><style id="vt-style">.vt{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;margin:2px 0 8px;max-width:900px;}.vt-pill{flex:none;font-size:12px;font-weight:600;line-height:1.5;padding:1px 10px;border-radius:999px;background:#f2b33d;color:#221500;}.vt-part{background:#fbe3b0;color:#3d2a00;}.vt-why{font-size:13px;line-height:1.45;color:rgba(255,255,255,.92);flex:1 1 320px;}@media print{.disclaimer::before{content:"Not yet verified: Its results are not yet covered by any automated check: check them independently.";display:block;font-family:Arial,Helvetica,sans-serif;font-size:8.5pt;line-height:1.35;color:#5a3b00;border:1px solid #e0a83a;border-radius:2mm;padding:2mm 3mm;margin:0 0 3mm;}}</style><!-- /@@VERIFY -->
+    <p>Disproportionate collapse design &nbsp;·&nbsp; Approved Document A &amp; UK NA to BS EN 1992-1-1:2004</p>
   </div>
 
   <div class="main-grid">
@@ -129,7 +129,8 @@ body{font-variant-numeric:tabular-nums;}
         <div class="form-group">
           <label>Building Use</label>
           <select id="buildingUse" onchange="updateClass()">
-            <option value="residential">Residential (apartments / houses)</option>
+            <option value="residential">Flats, apartments, hotels, other residential</option>
+            <option value="house">Houses (single occupancy)</option>
             <option value="office">Office</option>
             <option value="retail">Retail / Commercial</option>
             <option value="industrial">Industrial</option>
@@ -142,14 +143,14 @@ body{font-variant-numeric:tabular-nums;}
         </div>
 
         <div class="class-box">
-          <div class="lbl">Auto-classified (AD A Table 1)</div>
+          <div class="lbl">Consequence class (Approved Document A, Table 11)</div>
           <div class="val" id="classVal">Class 2A</div>
           <div class="rsn" id="classRsn">-</div>
         </div>
 
         <div class="section-title">Building Geometry</div>
         <div class="form-group"><label>Number of Storeys</label><input type="number" id="nStoreys" value="5" min="1" max="50" onchange="updateClass()"></div>
-        <div class="form-group"><label>Floor Area per Storey (m²)</label><input type="number" id="floorAreaPS" value="120" step="10" onchange="updateClass()"><div class="form-help">Used for class boundary checks (2000 m² and 5000 m² thresholds)</div></div>
+        <div class="form-group"><label>Floor Area per Storey (m²)</label><input type="number" id="floorAreaPS" value="120" step="10" onchange="updateClass()"><div class="form-help">For the 2000 m² and 5000 m² limits of Table 11</div></div>
         <div class="grid2">
           <div class="form-group"><label>Floor Width (m)</label><input type="number" id="floorW" value="10" step="0.5"></div>
           <div class="form-group"><label>Floor Length (m)</label><input type="number" id="floorL" value="12" step="0.5"></div>
@@ -158,7 +159,10 @@ body{font-variant-numeric:tabular-nums;}
           <div class="form-group"><label>Col Spacing X (m)</label><input type="number" id="csX" value="6" step="0.5"></div>
           <div class="form-group"><label>Col Spacing Y (m)</label><input type="number" id="csY" value="5" step="0.5"></div>
         </div>
-        <div class="form-group"><label>Floor-to-Floor Height L_s (m)</label><input type="number" id="ls" value="3.2" step="0.1"></div>
+        <div class="grid2">
+          <div class="form-group"><label>Floor to ceiling height l<sub>s</sub> (m)</label><input type="number" id="ls" value="3.2" step="0.1"></div>
+          <div class="form-group"><label>Column tributary area (m²)</label><input type="number" id="trib" placeholder="X × Y spacing" step="1"><div class="form-help">The largest load one column takes from one floor: blank for an internal column, spacing X × Y</div></div>
+        </div>
 
         <div class="section-title">Loading (kN/m²)</div>
         <div class="grid2">
@@ -172,7 +176,7 @@ body{font-variant-numeric:tabular-nums;}
 
         <div class="section-title">Accidental Combination Factor</div>
         <div class="grid2">
-          <div class="form-group"><label>psi1 (Frequent)</label><input type="number" id="psi1" value="0.5" step="0.05" min="0" max="1"><div class="form-help">NA Table NA.1.3(A) - default 0.5</div></div>
+          <div class="form-group"><label>ψ for the vertical tie</label><input type="number" id="psi1" value="0.5" step="0.05" min="0" max="1"><div class="form-help">Accidental combination G + ψQ: ψ<sub>1</sub> (BS EN 1990 Table NA.A1.1: 0.5 for offices and dwellings)</div></div>
           <div class="form-group"><label>psi2 (Quasi-perm.)</label><input type="number" id="psi2" value="0.3" step="0.05" min="0" max="1"><div class="form-help">Reference only</div></div>
         </div>
 
@@ -489,10 +493,10 @@ const DrawTies = (() => {
       push.forEach(([px, py, dx, dy]) => { g += arrow(px, py, px + dx, py + dy, { c: 'ink', w: 1.8 }); });
       // labels stacked beside the plan, each with a leader to what it names
       const lx = v.X(L) + 18, yP = v.Y(B) + 12, yI = yP + 66, yC = yI + 66, ld = (x, y, ty, c) => line(x, y, lx - 4, ty - 4, { c, w: 0.8 });
-      g += ld(v.X(L - t), v.Y(B - t) + 6, yP, BLUE) + text(lx, yP, 'Peripheral tie', { size: 10.5, weight: 600, color: BLUE }) + text(lx, yP + 13, `${num(d.Fper)} kN/m`, { size: 10.5, color: BLUE }) + text(lx, yP + 26, 'within 1.2 m of the edge', { size: 10, color: MUTE });
+      g += ld(v.X(L - t), v.Y(B - t) + 6, yP, BLUE) + text(lx, yP, 'Peripheral tie', { size: 10.5, weight: 600, color: BLUE }) + text(lx, yP + 13, `${num(d.Fper)} kN`, { size: 10.5, color: BLUE }) + text(lx, yP + 26, 'within 1.2 m of the edge', { size: 10, color: MUTE });
       const iyL = iy.length ? iy[0] : ey.length ? ey[0] : null;
       if (iyL != null) g += ld(v.X(L - t) - 6, v.Y(iyL), yI, BLUE);
-      g += text(lx, yI, 'Internal ties, both ways', { size: 10.5, weight: 600, color: BLUE }) + text(lx, yI + 13, `${num(d.Fint)} kN at ≤ ${m(d.maxSp)} m`, { size: 10.5, color: BLUE }) + text(lx, yI + 26, ex.length || ey.length ? 'dashed: extra ties for 1.5 l_r' : 'on the column lines', { size: 10, color: MUTE });
+      g += text(lx, yI, 'Internal ties, both ways', { size: 10.5, weight: 600, color: BLUE }) + text(lx, yI + 13, `X ${num(d.tx.F)}, Y ${num(d.ty.F)} kN/m`, { size: 10.5, color: BLUE }) + text(lx, yI + 26, ex.length || ey.length ? 'dashed: extra ties for 1.5 l_r' : 'on the column lines', { size: 10, color: MUTE });
       const cy = ys.length > 2 ? ys[1] : 0;
       g += ld(v.X(L) - s * 0.6, v.Y(cy) - 3, yC, 'ink') + text(lx, yC, 'Column ties', { size: 10.5, weight: 600 }) + text(lx, yC + 13, `${num(d.Fcol)} kN`, { size: 10.5 }) + text(lx, yC + 26, 'edge: one way, corner: two', { size: 10, color: MUTE });
       bottom = Math.max(bottom, yC + 30);
@@ -517,7 +521,7 @@ const DrawTies = (() => {
     g += DV(v, [0, d.ls], 0, -22, [`${m(d.ls)} m`]);
     const lx = v.X(L) + 16, yl = v.Y(Ht * 0.6);
     g += line(v.X(L) + 2, yl, lx - 3, yl, { c: BLUE, w: 0.8 }) + text(lx, yl - 2, 'Vertical ties', { size: 10.5, weight: 600, color: BLUE })
-      + text(lx, yl + 11, `${num(d.Fvert)} kN per storey`, { size: 10.5, color: BLUE }) + text(lx, yl + 24, 'every column and wall,', { size: 10, color: MUTE }) + text(lx, yl + 37, 'continuous base to roof', { size: 10, color: MUTE });
+      + text(lx, yl + 11, `${num(d.Fvert)} kN per column`, { size: 10.5, color: BLUE }) + text(lx, yl + 24, 'every column and wall,', { size: 10, color: MUTE }) + text(lx, yl + 37, 'continuous base to roof', { size: 10, color: MUTE });
     g += text(v.X(0), v.Y(-0.6) + 28, `Section along X: ${d.n0} storeys at ${m(d.ls)} m; laps in the vertical bars must carry the full tie force`, { size: 10.5 });
     return svg(g, W, H, 'Section with the vertical ties');
   }
@@ -533,44 +537,47 @@ function V(id){return document.getElementById(id).value;}
 function classify(){
   const use=V('buildingUse'),n=+V('nStoreys'),area=+V('floorAreaPS');
   const haz=document.getElementById('hazardous').checked,cap=+V('pubCap');
-  if(haz) return{cls:'3',rsn:'Contains hazardous substances or processes (AD A override)'};
-  if(cap>5000) return{cls:'3',rsn:'Public assembly capacity '+cap+' > 5000 spectators (AD A Table 1)'};
+  if(haz) return{cls:'3',rsn:'Contains hazardous substances or processes (AD A Table 11, Class 3)'};
+  if(cap>5000) return{cls:'3',rsn:'Grandstand for more than 5000 spectators ('+cap+') (AD A Table 11, Class 3)'};
+  // Approved Document A (2004 incorporating 2010 and 2013 amendments), Table 11; a building past its class's limits is Class 3
   switch(use){
+    case'house':
+      if(n<=4)return{cls:'1',rsn:'House not exceeding 4 storeys (AD A Table 11, Class 1)'};
+      if(n===5)return{cls:'2A',rsn:'5-storey single occupancy house (AD A Table 11, Class 2A)'};
+      return{cls:'3',rsn:'House of '+n+' storeys, beyond the Class 2A limit (AD A Table 11, Class 3)'};
     case'residential':
-      if(n<=4)return{cls:'1',rsn:'Residential <= 4 storeys (AD A Class 1)'};
-      if(n===5)return{cls:'2A',rsn:'Residential 5-storey house (AD A Class 2A)'};
-      if(n<=15)return{cls:'2B',rsn:'Residential '+n+' storeys, 5-15 (AD A Class 2B)'};
-      return{cls:'3',rsn:'Residential > 15 storeys (AD A Class 3)'};
+      if(n<=4)return{cls:'2A',rsn:'Flats, hotels or other residential not exceeding 4 storeys (AD A Table 11, Class 2A)'};
+      if(n<=15)return{cls:'2B',rsn:'Flats, hotels or other residential, '+n+' storeys (more than 4, not more than 15: AD A Table 11, Class 2B)'};
+      return{cls:'3',rsn:'Residential of more than 15 storeys (AD A Table 11, Class 3)'};
     case'office':
-      if(n<=4)return{cls:'2A',rsn:'Office <= 4 storeys (AD A Class 2A)'};
-      if(n<=15)return{cls:'2B',rsn:'Office '+n+' storeys, 5-15 (AD A Class 2B)'};
-      return{cls:'3',rsn:'Office > 15 storeys (AD A Class 3)'};
+      if(n<=4)return{cls:'2A',rsn:'Office not exceeding 4 storeys (AD A Table 11, Class 2A)'};
+      if(n<=15)return{cls:'2B',rsn:'Office of '+n+' storeys (more than 4, not more than 15: AD A Table 11, Class 2B)'};
+      return{cls:'3',rsn:'Office of more than 15 storeys (AD A Table 11, Class 3)'};
     case'retail':
-      if(n<=3&&area<2000)return{cls:'2A',rsn:'Retail <= 3 storeys, < 2000 m2/storey (AD A Class 2A)'};
-      if(n<=3&&area>=2000)return{cls:'2B',rsn:'Retail <= 3 storeys, >= 2000 m2/storey (AD A Class 2B)'};
-      if(n<=15)return{cls:'2B',rsn:'Retail '+n+' storeys, 4-15 (AD A Class 2B)'};
-      return{cls:'3',rsn:'Retail > 15 storeys (AD A Class 3)'};
+      if(area>=5000)return{cls:'3',rsn:'Retail with 5000 m² or more in a storey (beyond the Class 2B limit: AD A Table 11, Class 3)'};
+      if(n<=3&&area<2000)return{cls:'2A',rsn:'Retail not exceeding 3 storeys, less than 2000 m² in each storey (AD A Table 11, Class 2A)'};
+      if(n<=15)return{cls:'2B',rsn:n>3?'Retail of '+n+' storeys (more than 3, not more than 15: AD A Table 11, Class 2B)':'Retail, public admitted, more than 2000 m² but less than 5000 m² in a storey (AD A Table 11, Class 2B)'};
+      return{cls:'3',rsn:'Retail of more than 15 storeys (AD A Table 11, Class 3)'};
     case'industrial':
-      if(n<=3)return{cls:'2A',rsn:'Industrial <= 3 storeys (AD A Class 2A)'};
-      if(n<=15)return{cls:'2B',rsn:'Industrial '+n+' storeys, 4-15 (AD A Class 2B)'};
-      return{cls:'3',rsn:'Industrial > 15 storeys (AD A Class 3)'};
+      if(n<=3)return{cls:'2A',rsn:'Industrial not exceeding 3 storeys (AD A Table 11, Class 2A)'};
+      return{cls:'3',rsn:'Industrial of '+n+' storeys: beyond the Class 2A limit, with no Class 2B entry (AD A Table 11, Class 3)'};
     case'educational':
-      if(n===1)return{cls:'2A',rsn:'Single-storey educational (AD A Class 2A)'};
-      if(n<=15)return{cls:'2B',rsn:'Educational '+n+' storeys, 2-15 (AD A Class 2B)'};
-      return{cls:'3',rsn:'Educational > 15 storeys (AD A Class 3)'};
+      if(n===1)return{cls:'2A',rsn:'Single-storey educational (AD A Table 11, Class 2A)'};
+      if(n<=15)return{cls:'2B',rsn:'Educational of '+n+' storeys (more than 1, not more than 15: AD A Table 11, Class 2B)'};
+      return{cls:'3',rsn:'Educational of more than 15 storeys (AD A Table 11, Class 3)'};
     case'public_assembly':
-      if(n<=2&&area>=2000&&area<5000)return{cls:'2A',rsn:'Public assembly <= 2 storeys, 2000-5000 m2'};
-      if(n<=2&&area>=5000)return{cls:'2B',rsn:'Public assembly <= 2 storeys, >= 5000 m2'};
-      if(area>=5000)return{cls:'3',rsn:'Public assembly >= 5000 m2/storey (AD A Class 3)'};
-      return{cls:'2A',rsn:'Public assembly (AD A Class 2A - verify capacity)'};
+      if(area>=5000)return{cls:'3',rsn:'Public admitted, 5000 m² or more in a storey (AD A Table 11, Class 3)'};
+      if(area>2000)return{cls:'2B',rsn:'Public admitted, more than 2000 m² but less than 5000 m² in a storey (AD A Table 11, Class 2B)'};
+      if(n<=2)return{cls:'2A',rsn:'Public admitted, not exceeding 2 storeys or 2000 m² in a storey (AD A Table 11, Class 2A)'};
+      return{cls:'3',rsn:'Public admitted, '+n+' storeys: beyond the Class 2A limit of 2 storeys (AD A Table 11, Class 3)'};
     case'healthcare':
-      if(n<=3)return{cls:'2B',rsn:'Hospital <= 3 storeys (AD A Class 2B)'};
-      return{cls:'3',rsn:'Hospital > 3 storeys (AD A Class 3)'};
+      if(n<=3)return{cls:'2B',rsn:'Hospital not exceeding 3 storeys (AD A Table 11, Class 2B)'};
+      return{cls:'3',rsn:'Hospital of more than 3 storeys (AD A Table 11, Class 3)'};
     case'car_parking':
-      if(n<=6)return{cls:'2B',rsn:'Car parking <= 6 storeys (AD A Class 2B)'};
-      return{cls:'3',rsn:'Car parking > 6 storeys (AD A Class 3)'};
+      if(n<=6)return{cls:'2B',rsn:'Car parking not exceeding 6 storeys (AD A Table 11, Class 2B)'};
+      return{cls:'3',rsn:'Car parking of more than 6 storeys (AD A Table 11, Class 3)'};
     case'agricultural':
-      return{cls:'1',rsn:'Agricultural building (AD A Class 1)'};
+      return{cls:'1',rsn:'Agricultural building (AD A Table 11, Class 1)'};
     default:
       return{cls:'2A',rsn:'Default classification'};
   }
@@ -589,13 +596,20 @@ function tieCalc(){
   var n0=+V('nStoreys'),W=+V('floorW'),L=+V('floorL');
   var lr=Math.max(+V('csX'),+V('csY')),ls=+V('ls');
   var gk=+V('gk'),gsk=+V('gsk'),qk=+V('qk'),NEd=+V('ned'),psi1=+V('psi1');
-  var floorArea=W*L,avgLoad=gk+gsk+qk;
+  var floorArea=W*L,avgLoad=gk+gsk+qk,csX=+V('csX'),csY=+V('csY');
+  // UK NA to BS EN 1992-1-1, 9.10.2: Ft = (20 + 4n0) <= 60 kN; peripheral Ftie,per = Ft (kN);
+  // internal Ftie,int = [(gk + qk)/7.5](lr/5)Ft >= Ft (kN/m), lr the span in the direction of the tie, spacing <= 1.5lr;
+  // columns and walls Ftie,col = Ftie,fac = max(min(2Ft, ls Ft/2.5), 3% of NEd);
+  // vertical: the load one column or wall takes from any one storey, accidental combination G + psi Q
   var Ft=Math.min(20+4*n0,60);
   var Fper=Ft;
-  var Fint_calc=((avgLoad*(lr/5))/7.5)*Ft,Fint=Math.max(Fint_calc,Ft),maxSp=1.5*lr;
+  var tie=l=>{ var calc=((avgLoad*(l/5))/7.5)*Ft; return {lr:l,calc:calc,F:Math.max(calc,Ft),sp:1.5*l}; };
+  var tx=tie(csX), ty=tie(csY);
+  var Fint_calc=Math.max(tx.calc,ty.calc),Fint=Math.max(tx.F,ty.F),maxSp=1.5*lr;
   var h1=2*Ft,h2=(ls*Ft)/2.5,h3=0.03*NEd,Fcol=Math.max(Math.min(h1,h2),h3);
-  var Fvert=(gk+gsk+psi1*qk)*floorArea;
-  return {c,cls,n0,W,L,lr,csX:+V('csX'),csY:+V('csY'),ls,gk,gsk,qk,NEd,psi1,floorArea,avgLoad,Ft,Fper,Fint,Fint_calc,Fint_min:Ft,maxSp,h1,h2,h3,Fcol,Fvert};
+  var tribIn=parseFloat(V('trib')), trib=tribIn>0?tribIn:csX*csY;
+  var Fvert=(gk+gsk+psi1*qk)*trib;
+  return {c,cls,n0,W,L,lr,csX,csY,ls,gk,gsk,qk,NEd,psi1,floorArea,avgLoad,Ft,Fper,Fint,Fint_calc,Fint_min:Ft,maxSp,tx,ty,trib,tribGiven:tribIn>0,h1,h2,h3,Fcol,Fvert};
 }
 function calculate(){
   lastCalc=tieCalc();
@@ -621,23 +635,23 @@ function renderResults(){
   }
   h+='<div id="drawings"></div>';
   if(d.cls==='2A'||d.cls==='2B'||d.cls==='3'){
-    h+=tc('Peripheral Ties','NA to 9.10.2.1',d.Fper.toFixed(2)+' kN/m',
-      'F_tie,per = (20 + 4n₀) ≤ 60\n        = (20 + 4×'+d.n0+') = '+d.Fper.toFixed(2)+' kN/m',
-      'Continuous tie within 1.2 m of slab edge at every floor and roof level. Resist '+d.Fper.toFixed(2)+' kN per metre run.',
+    h+=tc('Peripheral Ties','UK NA to 9.10.2.2',d.Fper.toFixed(2)+' kN',
+      'F_tie,per = Ft = (20 + 4n₀) ≤ 60 kN\n        = (20 + 4×'+d.n0+') = '+d.Fper.toFixed(2)+' kN',
+      'Continuous tie within 1.2 m of slab edge at every floor and roof level, resisting '+d.Fper.toFixed(2)+' kN.',
       'Within 1.2 m of external edge and at edges of internal voids (atria).');
-    h+=tc('Internal Ties','NA to 9.10.2.2',d.Fint.toFixed(2)+' kN &nbsp; @ max '+d.maxSp.toFixed(2)+' m spacing',
-      'F_tie,int = max[(1/7.5)(gk+gsk+qk)(lr/5)Ft , Ft]\n        = max[(1/7.5)('+d.avgLoad.toFixed(2)+')('+d.lr.toFixed(2)+'/5)('+d.Ft.toFixed(2)+') , '+d.Ft.toFixed(2)+']\n        = max['+d.Fint_calc.toFixed(2)+' , '+d.Fint_min.toFixed(2)+'] = '+d.Fint.toFixed(2)+' kN',
-      'Provide in two perpendicular directions. Max spacing = 1.5×lr = '+d.maxSp.toFixed(2)+' m.',
+    h+=tc('Internal Ties','UK NA to 9.10.2.3','X '+d.tx.F.toFixed(2)+' kN/m &nbsp;·&nbsp; Y '+d.ty.F.toFixed(2)+' kN/m',
+      'F_tie,int = max[(1/7.5)(gk+gsk+qk)(lr/5)Ft , Ft]   (lr: the span in the direction of the tie)\n  X: = max[(1/7.5)('+d.avgLoad.toFixed(2)+')('+d.tx.lr.toFixed(2)+'/5)('+d.Ft.toFixed(2)+') , '+d.Ft.toFixed(2)+'] = '+d.tx.F.toFixed(2)+' kN/m\n  Y: = max[(1/7.5)('+d.avgLoad.toFixed(2)+')('+d.ty.lr.toFixed(2)+'/5)('+d.Ft.toFixed(2)+') , '+d.Ft.toFixed(2)+'] = '+d.ty.F.toFixed(2)+' kN/m',
+      'Provide in two perpendicular directions, per metre width. Grouped at beams: '+(d.tx.F*d.csY).toFixed(1)+' kN per X line ('+d.csY.toFixed(2)+' m apart), '+(d.ty.F*d.csX).toFixed(1)+' kN per Y line; max spacing 1.5lr = '+d.tx.sp.toFixed(2)+' m (X ties), '+d.ty.sp.toFixed(2)+' m (Y ties).',
       'Evenly distributed across floor width in both directions, or concentrated at beams/walls within 0.5 m of slab level.');
-    h+=tc('Horizontal Ties to Columns/Walls','NA to 9.10.2.3',d.Fcol.toFixed(2)+' kN',
+    h+=tc('Horizontal Ties to Columns/Walls','UK NA to 9.10.2.4',d.Fcol.toFixed(2)+' kN',
       'F_tie,col = max[min(2Ft , ls·Ft/2.5) , 0.03NEd]\n        = max[min('+d.h1.toFixed(2)+' , '+d.h2.toFixed(2)+') , '+d.h3.toFixed(2)+']\n        = max['+Math.min(d.h1,d.h2).toFixed(2)+' , '+d.h3.toFixed(2)+'] = '+d.Fcol.toFixed(2)+' kN',
       'Edge columns: tie in ONE direction. Corner columns: ties in TWO directions.',
       'Apply at every floor level. Tying of external walls only where peripheral tie is NOT in the wall.');
   }
   if(d.cls==='2B'||d.cls==='3'){
-    h+=tc('Vertical Ties','NA to 9.10.2.5 & Table NA.1.3(A)',d.Fvert.toFixed(2)+' kN / storey',
-      'Fv = (Gk + Gsk + ψ₁·Qk) × A_floor  [accidental combination]\n   = ('+d.gk.toFixed(2)+' + '+d.gsk.toFixed(2)+' + '+d.psi1+'×'+d.qk.toFixed(2)+') × '+d.floorArea.toFixed(2)+'\n   = '+d.Fvert.toFixed(2)+' kN per storey (ψ₁ = '+d.psi1+')',
-      'Continuous reinforcement from lowest to highest storey. Each column/wall must be capable of carrying load from all floors above.',
+    h+=tc('Vertical Ties','UK NA to 9.10.2.5',d.Fvert.toFixed(2)+' kN per column',
+      'Fv = (Gk + Gsk + ψ·Qk) × A_trib  [accidental combination, one storey]\n   = ('+d.gk.toFixed(2)+' + '+d.gsk.toFixed(2)+' + '+d.psi1+'×'+d.qk.toFixed(2)+') × '+d.trib.toFixed(2)+'\n   = '+d.Fvert.toFixed(2)+' kN (tributary '+d.trib.toFixed(2)+' m²'+(d.tribGiven?'':' = '+d.csX+' × '+d.csY)+')',
+      'Continuous reinforcement in every column and wall from the lowest to the highest level, resisting the load it takes from any one storey.',
       'Laps in vertical reinforcement must transmit the full tie force.');
   }
   h+='</div>';
@@ -786,20 +800,20 @@ async function exportPDF(){
 
   // §1 Classification & Parameters
   h1('1. Building Classification & Design Parameters');
-  row('Building use',useLabel,'AD A Table 1');
+  row('Building use',useLabel,'AD A Table 11');
   row('Classification',d.c.rsn,'');
   rowResult('AD A Class',`Class ${d.cls}`,true);
   row('Number of storeys  n₀',`${d.n0}`,'');
   row('Floor area  A',''+d.floorArea.toFixed(2)+' m²','');
-  row('Column spacing  lᵣ',''+d.lr.toFixed(2)+' m  (max of Lx, Ly)','');
-  row('Floor-to-floor height  lₛ',''+d.ls.toFixed(2)+' m','');
+  row('Column spacing  X / Y',''+d.csX.toFixed(2)+' / '+d.csY.toFixed(2)+' m','');
+  row('Floor to ceiling height  lₛ',''+d.ls.toFixed(2)+' m','');
   row('Gk + Gsk + Qk',''+d.gk.toFixed(2)+' + '+d.gsk.toFixed(2)+' + '+d.qk.toFixed(2)+' = '+d.avgLoad.toFixed(2)+' kN/m²','');
   row('Design column load  NEd',''+d.NEd.toFixed(1)+' kN','');
-  row('ψ₁ (frequent factor)',''+d.psi1,'NA Table NA.1.3(A)');
+  row('ψ for the vertical tie',''+d.psi1,'BS EN 1990 Table NA.A1.1');
 
   // §2 Base Tie Force
   h1('2. Base Tie Force  Ft');
-  await frow('Formula', `F_t = \\min(20 + 4n_0,\\; 60) = \\min(20 + 4 \\times ${d.n0},\\; 60)`, 'NA to 9.10.2.1');
+  await frow('Formula', `F_t = \\min(20 + 4n_0,\\; 60) = \\min(20 + 4 \\times ${d.n0},\\; 60)`, 'UK NA to 9.10.2.2');
   rowResult('Ft', d.Ft.toFixed(2)+' kN', true);
 
   // §3 Tie layout
@@ -808,34 +822,33 @@ async function exportPDF(){
 
   if(d.cls==='1'){
     h1('4. Outcome');
-    rowResult('No additional disproportionate collapse measures required','AD A Table 1 Class 1',true);
+    rowResult('No additional disproportionate collapse measures required','AD A Table 11 Class 1',true);
   } else {
     // §4 Peripheral Ties
     h1('4. Peripheral Ties');
-    row('Clause','NA to EN 1992-1-1 §9.10.2.1','');
+    row('Clause','UK NA to BS EN 1992-1-1, 9.10.2.2','');
     row('Location','Within 1.2 m of external slab edge at every floor and roof level','');
     row('Formula','Ftie,per = Ft','');
-    rowResult('Peripheral tie force',d.Fper.toFixed(2)+' kN/m',true);
+    rowResult('Peripheral tie force',d.Fper.toFixed(2)+' kN',true);
 
     // §5 Internal Ties
     h1('5. Internal Ties');
-    row('Clause','NA to EN 1992-1-1 §9.10.2.2','');
+    row('Clause','UK NA to BS EN 1992-1-1, 9.10.2.3','');
     await frow('Formula',
       `F_{tie,int} = \\max\\!\\left[\\frac{1}{7.5}(G_k+G_{sk}+Q_k)\\frac{l_r}{5}F_t,\\; F_t\\right]`,
-      'NA to 9.10.2.2');
-    await frow('Calculated value',
-      `= \\frac{1}{7.5}\\times${d.avgLoad.toFixed(2)}\\times\\frac{${d.lr.toFixed(2)}}{5}\\times${d.Ft.toFixed(2)} = ${d.Fint_calc.toFixed(2)}\\,\\text{kN}`,
-      '');
-    row('Minimum value', '= Ft = '+d.Fint_min.toFixed(2)+' kN', '');
-    rowResult('Internal tie force  (governing)', d.Fint.toFixed(2)+' kN', true);
-    row('Maximum tie spacing', '= 1.5 × lr = 1.5 × '+d.lr.toFixed(2)+' = '+d.maxSp.toFixed(2)+' m', '');
+      'UK NA to 9.10.2.3');
+    for (const [nm, t] of [['X', d.tx], ['Y', d.ty]]) {
+      await frow('Ties along '+nm+', lr = '+t.lr.toFixed(2)+' m',
+        `= \\frac{1}{7.5}\\times${d.avgLoad.toFixed(2)}\\times\\frac{${t.lr.toFixed(2)}}{5}\\times${d.Ft.toFixed(2)} = ${t.calc.toFixed(2)}\\,\\text{kN/m}`, '');
+      rowResult('Internal tie force along '+nm, t.F.toFixed(2)+' kN/m  (not less than Ft), spacing up to 1.5lr = '+t.sp.toFixed(2)+' m', true);
+    }
 
     // §6 Horizontal Ties to Columns/Walls
     h1('6. Horizontal Ties to Columns & Walls');
-    row('Clause','NA to EN 1992-1-1 §9.10.2.3','');
+    row('Clause','UK NA to BS EN 1992-1-1, 9.10.2.4','');
     await frow('Formula',
       `F_{tie,col} = \\max\\!\\left[\\min\\!\\left(2F_t,\\;\\frac{l_s F_t}{2.5}\\right),\\; 0.03N_{Ed}\\right]`,
-      'NA to 9.10.2.3');
+      'UK NA to 9.10.2.4');
     await frow('Substituted',
       `= \\max\\!\\left[\\min\\!\\left(${d.h1.toFixed(2)},\\;${d.h2.toFixed(2)}\\right),\\; ${d.h3.toFixed(2)}\\right] = ${d.Fcol.toFixed(2)}\\,\\text{kN}`,
       '');
@@ -846,10 +859,10 @@ async function exportPDF(){
   if(d.cls==='2B'||d.cls==='3'){
     // §7 Vertical Ties
     h1('7. Vertical Ties');
-    row('Clause','NA to EN 1992-1-1 §9.10.2.5 & Table NA.1.3(A)','');
-    row('Accidental combination Ed/m²','= Gk + Gsk + ψ₁·Qk = '+d.gk.toFixed(2)+' + '+d.gsk.toFixed(2)+' + '+d.psi1+'×'+d.qk.toFixed(2)+' = '+(d.gk+d.gsk+d.psi1*d.qk).toFixed(2)+' kN/m²','');
-    row('Formula','Fv = Ed × Afloor','');
-    rowResult('Vertical tie force per storey',d.Fvert.toFixed(2)+' kN',true);
+    row('Clause','UK NA to BS EN 1992-1-1, 9.10.2.5','');
+    row('Accidental combination Ed/m²','= Gk + Gsk + ψ·Qk = '+d.gk.toFixed(2)+' + '+d.gsk.toFixed(2)+' + '+d.psi1+'×'+d.qk.toFixed(2)+' = '+(d.gk+d.gsk+d.psi1*d.qk).toFixed(2)+' kN/m²','');
+    row('Formula','Fv = Ed × A_trib (one storey on the most loaded column), A_trib = '+d.trib.toFixed(2)+' m²','');
+    rowResult('Vertical tie force per column',d.Fvert.toFixed(2)+' kN',true);
     row('Application','Continuous reinforcement from lowest to highest storey','');
     try{ await figure(DrawTies.section(d),80); }catch(e){ /* the drawing is optional in the report */ }
   }
@@ -870,7 +883,7 @@ async function exportPDF(){
   doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(130,130,130);
   doc.text('References: UK National Annex to BS EN 1992-1-1:2004  |  Approved Document A: Structure (2004)  |  PD 6687',M,y,{maxWidth:TW});
   y+=4;
-  doc.setTextColor(30,30,30);doc.text(doc.splitTextToSize('Disclaimer. These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent engineer to check and approve all calculations before they are used.',TW),M,y);
+  doc.setTextColor(30,30,30);doc.text(doc.splitTextToSize('Disclaimer. These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent structural engineer with relevant experience to check and approve all calculations before they are used.',TW),M,y);
 
   const projRef=calcRef||projName||'';
   doc.save(`Tie_Force_Class${d.cls}_${projRef||dateStr.replace(/ /g,'_')}.pdf`);
@@ -878,7 +891,7 @@ async function exportPDF(){
 
 window.onload=updateClass;
 </script>
-<footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent engineer to check and approve all calculations before they are used.</footer>
+<footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent structural engineer with relevant experience to check and approve all calculations before they are used.</footer>
 <!-- @@FILEIO: save / open, shared by every tool (scratchpad/common/fileio.*) -->
 <style id="ef-style">
 /* Save / open buttons on the page header, and the status message (source: scratchpad/common/fileio.css) */

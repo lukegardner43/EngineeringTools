@@ -53,6 +53,8 @@ async function sweep(f, cases, expect) {
   await sweep('RC Crack Width.html', [
     ['base only', w => { set(w, 'restraint_config', 'base_only', 'change'); }], ['base and one end', w => set(w, 'restraint_config', 'base_one_end', 'change')],
     ['ends only', w => set(w, 'restraint_config', 'ends_only', 'change')], ['thick wall, long', w => { set(w, 'h', '600'); set(w, 'L', '20'); }],
+    ['base again, short on a slender base', w => { set(w, 'restraint_config', 'base_only', 'change'); set(w, 'L', '4'); set(w, 'base_b', '0.6'); }],
+    ['T1, R and εcd given', w => { set(w, 'T1_mode', 'given', 'change'); set(w, 'R1_mode', 'manual', 'change'); set(w, 'ecd_mode', 'given', 'change'); }],
   ], 2);
   {   // the steel beam page shares the template: its own beam drawings, not the member page's
     const { w, errs } = await load('Steel Beam Analysis and Design.html');

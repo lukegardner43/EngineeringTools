@@ -16,10 +16,10 @@ for (const r of rows) {
   for (const n of names.split(';')) want.set(n.replace(/\(.*?\)/g, '').trim(), STATUS[st]);
 }
 const count = k => [...want.values()].filter(v => v === k).length;
-const m = sec.match(/Of the (\d+) live tools, (\d+) are verified, (\d+) partly verified.*? and (\d+) not independently verified, (\w+) of them with no calculation tests/);
+const m = sec.match(/Of the (\d+) live tools, (\d+) are verified, (\d+) partly verified.*? and (\d+) not independently verified(?:, (\w+) of them with no calculation tests|; (every) live tool now has calculation tests)/);
 truth('ROADMAP counts sentence found', !!m);
 if (m) {
-  truth(`ROADMAP counts agree with its table (${want.size} tools)`, +m[1] === want.size && +m[2] === count('ok') && +m[3] === count('part') && +m[4] === count('no') + count('none') && m[5] === ['zero', 'one', 'two', 'three'][count('none')]);
+  truth(`ROADMAP counts agree with its table (${want.size} tools)`, +m[1] === want.size && +m[2] === count('ok') && +m[3] === count('part') && +m[4] === count('no') + count('none') && (m[6] ? count('none') === 0 : m[5] === ['zero', 'one', 'two', 'three'][count('none')]));
 }
 
 // the home page
