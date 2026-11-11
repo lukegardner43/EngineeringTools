@@ -1,6 +1,6 @@
 // Drawings on Composite Beam, Floor Vibration, Steel Member, Concrete Tie Force and RC Crack Width (group 1) and on Steel Beam
 // Torsion, Beam Web Openings, Steel Frame Design, Sheet Pile Wall, the RC Section Toolkit tabs, RC Column, Hollowcore Support
-// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages to Timber Beam (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
+// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages to Timber Member (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
 //   NODE_PATH=<jsdom>/node_modules node tests/drawings/test_drawings.js
 const fs = require('fs'), path = require('path'), { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '../..');
@@ -346,6 +346,13 @@ async function sweep(f, cases, expect) {
     ['notched', w => { tick(w, 'notchOn', true); set(w, 'hn', '40'); }], ['glulam', w => { set(w, 'fam', 'glulam', 'change'); set(w, 'b', '90'); }], ['product', w => set(w, 'fam', 'other', 'change')],
     ['a point load', w => row(w, 'Q', 'point', 3, 2.0)], ['partial snow', w => row(w, 'S', 'partial', 1.5, 0.5, 3)], ['wind uplift', w => row(w, 'W', 'line', 1.2, null, null, true)],
     ['no self-weight', w => tick(w, 'sw', false)], ['short bearing', w => set(w, 'lb', '50')],
+  ], 1);
+  const act = (w, c, N, My, Mz, wl) => { w.document.getElementById('addLoad').click(); const r = [...w.document.querySelectorAll('#loadRows .row')].pop(), q = s => r.querySelector(s);
+    q('.case').value = c; q('.N').value = N; q('.My').value = My; q('.Mz').value = Mz; q('.w').value = wl; q('.N').dispatchEvent(new w.Event('input', { bubbles: true })); };
+  await sweep('Timber Member.html', [
+    ['longer', w => set(w, 'L', '4800')], ['wider', w => set(w, 'b', '150')], ['no eccentricity', w => { set(w, 'ez', '0'); set(w, 'ey', '0'); }],
+    ['a moment', w => act(w, 'Q', 0, 2, 0, 0)], ['wind on the face', w => act(w, 'W', 0, 0, 0, 1.5)], ['tension', w => act(w, 'W', -80, 0, 0, 0)],
+    ['restrained mid-height', w => set(w, 'kY', '0.5')], ['glulam', w => { set(w, 'fam', 'glulam', 'change'); set(w, 'h', '315'); }], ['LVL', w => set(w, 'fam', 'other', 'change')],
   ], 1);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
