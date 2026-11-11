@@ -30,40 +30,101 @@ Every tool has **Open** and **Save** at the top right of its title row (below th
 
 Every page carries the disclaimer at its foot, and every printed calculation sheet and PDF report ends with it: the tools are an aid to design without warranty, the author accepts no responsibility for errors in them or their results or for any use made of them, and a competent engineer must check and approve all calculations before use.
 
-Status key: **Done** means it's in this repo with tests. **Partial** means an existing tool covers part of it. **Planned** means it isn't started. The home page lists every Planned tool, in the build plan or not yet scheduled, with a Planned tag.
+Status key: **Done** means it's in this repo with tests; how far those tests reach is given under Verification status, and a Done tool marked partly or not independently verified has a gap still to close. **Partial** means an existing tool covers part of it. **Planned** means it isn't started. The home page lists every Planned tool, in the build plan or not yet scheduled, with a Planned tag.
+
+## Verification status (November 2026)
+
+Every live tool has tests, but not every tool has been checked against an independent published source. A tool is **Verified** when its main calculation path reproduces published results: The Concrete Centre's spreadsheets, worked examples in published guides and textbooks, or exact closed-form solutions for analysis. It is **Partly verified** when only part of it has been checked that way. It is **Not independently verified** when it has been checked only against hand calculations or a Python reference written alongside it. Those catch coding mistakes but not a misreading of the code, because they share the same reading. **No calculation tests** means nothing checks the page's numbers at all.
+
+Of the 50 live tools, 20 are verified, 13 partly verified (Steel Member Design and Steel Beam Analysis and Design share one engine and one row) and 17 not independently verified, two of them with no calculation tests. The 30 tools that are not fully verified are flagged in the tables below and should be used with extra care until their gap is closed:
+Steel Member Design; Steel Beam Analysis and Design, Steel Column Design, Base Plate Design, Steel Frame Design, Steel Connection Design (ConnectionCheck), Bolt Group Analysis, Composite Beam Design, Beam Web Openings, Steel Beam Torsion, Hollowcore Support Beam, Steel Member Fire Design, Floor Vibration, RC Slab FE Design, RC Corbel and Nib Design, RC Lintel Design, RC Wall Crack Control (RC Crack Width), Concrete Frame Tie Force, Precast Connections, Steel Masonry Support, Windpost Design, Masonry Bearing, Masonry Column, Masonry Wall Panel, Timber Racking Wall, Timber Connections, Wind Loading, Snow Loading, Sheet Pile Wall, Retaining Wall.
+
+| Tool | Status | Checked against | To close the gap |
+|---|---|---|---|
+| Steel Member Design; Steel Beam Analysis and Design | **Partly verified** | Annex A: ECCS TC8 worked example 5 (published); section data against British Steel and Tata tables; M_cr against closed forms and a Galerkin solution; the EC3 clause chain (classification, buckling, LTB, interaction) against our own Python reference only | Published SCI worked examples for buckling, LTB and interaction |
+| Steel Column Design | **Not independently verified** | Our own Python reference; M_cr against the closed form | SCI worked examples for simple-construction columns (nominal moments, SN048) |
+| Base Plate Design | **Not independently verified** | The ConnectionCheck joints engine (our own reference) | A published base plate example (SCI P358 or the EC3 designers’ guides) |
+| Steel Frame Design | **Partly verified** | Analysis against exact solutions (stability functions, second-order cantilever) and an independent stiffness solver; member design by the Steel Member engine | A published portal frame design example |
+| Steel Connection Design (ConnectionCheck) | **Partly verified** | One published extended end plate example; everything else against our own Python reference | SCI P358 and P398 worked examples for fin plates, end plates, splices and moment joints |
+| Bolt Group Analysis | **Not independently verified** | Hand calculation; ICR against our own scipy solution | A published eccentric bolt group example |
+| Composite Beam Design | **Not independently verified** | Our own Python reference (fibre integration); M_cr against SN003 | SCI P359 worked examples |
+| Beam Web Openings | **Partly verified** | The NSC May 2024 worked example (steel beam, published); composite cases against our own reference | A published composite web opening example (SCI P355) |
+| Steel Beam Torsion | **Partly verified** | Torsion analysis against exact closed-form solutions; the design checks by hand | SCI P385 worked examples |
+| Hollowcore Support Beam | **Not independently verified** | Our own Python reference; ASB data against the British Steel datasheet | Published ASB / Slimflor and P385 worked examples |
+| Steel Member Fire Design | **Not independently verified** | Heating against our own numerical integration; Table 4.1 of EN 1993-1-2; resistances by hand | A published fire design worked example |
+| Floor Vibration | **Not independently verified** | Our own Python reference | SCI P354 worked examples |
+| RC Beam Analysis and Design | Verified | TCC41 (75 beams) and our own frame reference | — |
+| RC Slab Design | Verified | TCC31 (45 slabs) and TCC94 | — |
+| RC Flat Slab Design | Verified | TCC33 (30 bays) and TCC13 for punching | — |
+| RC Ribbed and Waffle Slabs | Verified | TCC32 (48 slabs) | — |
+| RC Punching Shear | Verified | TCC13 (110 runs) | — |
+| RC Slab FE Design | **Partly verified** | The plate element against exact solutions (Navier series, cylindrical bending); the section design is the toolkit’s (TCC11); no published FE slab design example | A published FE slab benchmark with design moments |
+| RC Section Design Toolkit | Verified | TCC11 (120 cases) | — |
+| RC Column Design | Verified | TCC53 (43 columns) | — |
+| RC Wall Design | Verified | TCC63 (40 buildings) | — |
+| RC Corbel and Nib Design | **Partly verified** | Two published examples: CCIP-057 5.4 and the Precast Eurocode 2 manual example 9; the rest by hand | More published corbel and nib examples |
+| RC Lintel Design | **Not independently verified** | Hand calculation; Naylor’s load tables read by eye from the brochure | A published PD 6697 lintel example, and Naylor’s tables checked against a second reading |
+| RC Stair Design | Verified | TCC71 (40 flights) | — |
+| RC 2D Frame Analysis and Design | Verified | TCC21 (50 sub-frames) | — |
+| Prestressed Beam Design | Verified | Mosley, Bungey & Hulse examples 11.1 to 11.12 and TCC42 | — |
+| RC Wall Crack Control (RC Crack Width) | **No calculation tests** | Only the drawing sweep and Save/Open run on this page; nothing checks its numbers | CIRIA C766 worked examples, as a test file |
+| Concrete Frame Tie Force | **No calculation tests** | Only the drawing sweep and Save/Open run on this page; nothing checks its numbers | A published tying example (EN 1992-1-1 9.10 with the UK NA), as a test file |
+| Precast Connections | **Not independently verified** | EC2 Tables 10.2 to 10.5 against the printed standard; the rest by hand (no TCC sheet covers it) | The Precast Eurocode 2 manual’s bearing and half-joint examples |
+| Steel Masonry Support | **Not independently verified** | Our own Python reference; angle data against BS EN 10056-1 | A manufacturer’s published worked example |
+| Windpost Design | **Not independently verified** | Hand calculation; M_cr against the closed form | A manufacturer’s published worked example |
+| Masonry Bearing | **Partly verified** | f_k for the JRC Eurocode 6 workshop blocks; Luke’s padstone calculator where the methods coincide; the rest by hand | IStructE EC6 masonry manual examples (the manual is in Luke’s Drive) |
+| Masonry Column | **Not independently verified** | Hand calculation | IStructE EC6 masonry manual examples |
+| Masonry Wall Panel | **Partly verified** | The JRC workshop example L1; the Annex E coefficients against the IStructE manual’s table; the vertical checks by hand | IStructE EC6 masonry manual examples for the vertical load |
+| Timber Beam | Verified | Porteous & Kermani 4.8.1 to 4.8.4 and Luke’s beam spreadsheet; shear and bearing to A1 by hand (the book predates A1) | — |
+| Timber Member | Verified | Porteous & Kermani 5.7.1 to 5.7.5 | — |
+| Timber Stud Wall | Verified | Porteous & Kermani 5.7.6 to 5.7.8; the plate bearing to A1 by hand | — |
+| Timber Racking Wall | **Not independently verified** | PD 6693-1 clause 20 by hand (the PD has no worked example); the nail capacity against Luke’s racking spreadsheet | A TRADA or manufacturer racking example to PD 6693-1, or an independent racking program |
+| Timber Connections | **Partly verified** | Porteous & Kermani 10.13.1, 10.13.2, 10.13.5, 10.13.6 and 10.13.7 (nails, a plywood gusset, withdrawal, coach screws, slip); bolts, dowels, steel plates and double shear by hand | The IStructE/TRADA manual Tables 6.5 to 6.28 and 10.5 to 10.7 (pages 115–145 and 205–220 needed in a smaller file: the full manual is too large for the Drive connector) |
+| Wind Loading | **Partly verified** | The NA figures against 240 readings; one spreadsheet sample; whole buildings by hand | A published UK NA wind worked example |
+| Snow Loading | **Not independently verified** | Hand calculation | A published UK NA snow worked example |
+| Beam Analysis | Verified | Closed-form solutions | — |
+| 2D Frame Analysis | Verified | An independent stiffness solver and closed forms (method of joints, three-moment equation) | — |
+| Section Properties | Verified | British Steel, Tata and BS EN 10056-1 tables, closed forms | — |
+| Sheet Pile Wall | **Not independently verified** | Closed forms (Coulomb, Blum, free earth) and hand checks, 18 in all | A published sheet pile worked example |
+| Pad Foundation | Verified | TCC81 (56 bases) | — |
+| Pile Cap | Verified | TCC82 (72 caps) | — |
+| Retaining Wall | **Partly verified** | TCC62 (40 cantilever walls); propped and gravity walls by hand | Published propped and gravity wall examples |
+| Basement Wall | Verified | TCC61 (24 walls); the surcharge and pinned cases by hand | — |
+
+Closing these gaps is part of the plan: each needs its published source (most are SCI, IStructE, CIRIA or manufacturers' documents) and a test file that reproduces it. The two with no calculation tests come first.
 
 ## Batch 1: Steel, EN 1993 (complete, October 2026)
 
 | Tedds entry | Module | Status | Basis |
 |---|---|---|---|
-| Steel Member Design | Steel Member Design | Done | EN 1993-1-1 6.2, 6.3, Annex A/B + UK NA; EN 1993-1-5 4.4, 5, 6, 7 |
-| Steel Member Analysis & Design | Steel Beam Analysis & Design | Done | + EN 1990 combinations, vertical and horizontal loads |
-| Steel Beam Analysis & Design | Steel Beam Analysis & Design | Done | separate page (split from Steel Member Design, October 2026): continuous spans, cantilevers (free end supports; a single member with a free end is fixed at the other), mechanism check, pattern loading, web bearing |
-| Steel Column Design | Steel Member Design | Done | 6.3.1, 6.3.3 Annex A or B |
-| Steel section classification | Steel Member Design / Steel Beam Analysis & Design | Done | Table 5.2 sheets 1-3 |
+| Steel Member Design | Steel Member Design | Done (partly verified) | EN 1993-1-1 6.2, 6.3, Annex A/B + UK NA; EN 1993-1-5 4.4, 5, 6, 7 |
+| Steel Member Analysis & Design | Steel Beam Analysis & Design | Done (partly verified) | + EN 1990 combinations, vertical and horizontal loads |
+| Steel Beam Analysis & Design | Steel Beam Analysis & Design | Done (partly verified) | separate page (split from Steel Member Design, October 2026): continuous spans, cantilevers (free end supports; a single member with a free end is fixed at the other), mechanism check, pattern loading, web bearing |
+| Steel Column Design | Steel Member Design | Done (partly verified) | 6.3.1, 6.3.3 Annex A or B |
+| Steel section classification | Steel Member Design / Steel Beam Analysis & Design | Done (partly verified) | Table 5.2 sheets 1-3 |
 | Beam Analysis | Beam Analysis | Done | stiffness method; springs, hinges, EI per member; EN 1990 combinations |
 | Section Properties Calculator | Section Properties | Done | exact polygon integrals; plastic moduli; principal axes; It, Iw, shear centre |
-| Steel simple connection design | ConnectionCheck | Done | SCI P358 check lists incl. detailing, supporting element and tying (fin plates, end plates) |
-| Steel beam splice design | ConnectionCheck (Moment End Plate, splice) | Done | bolted end plate splices, EN 1993-1-8 6.2.7 |
-| Steel moment connection design (SCI P398) | ConnectionCheck (Moment End Plate) | Done | extended / flush end plates, beam to column flange; plastic row distribution, compression and panel shear limits |
-| Steel column splice design | ConnectionCheck (Column Splice) | Done | bearing and non-bearing cover plate splices: EN 1993-1-8 6.2.7.1(13)/(14), packs, long joints, block tearing, tying |
-| Column Base Plate Design | ConnectionCheck | Done | EN 1993-1-8 6.2.5 effective area, 6.2.8 / Table 6.7 bending, anchors to EN 1992-4 |
-| Steel Column Design | Steel Column Design | Done | EN 1990 combinations; nominal moments of simple construction (100 mm from the face); EN 1993-1-1 member checks with NCCI SN048b; sends the actions at the base to Base Plate Design (split from Steel Column and Base Plate Design, November 2026) |
-| Base Plate Design | Base Plate Design | Done | one or more sets of N, M_y, V; EN 1993-1-8 6.2.5 / Table 6.7 / 6.2.2 base, column welds; anchors to BS EN 1992-4 |
-| Steel hollow section tension only splice design | ConnectionCheck (RHS Tension Splice) | Done | EN 1993-1-8 6.2.4 T-stubs; CHS flange splices not covered |
-| Steel to Concrete Simple Connection Design | ConnectionCheck (Steel to Concrete) | Done | cast-in headed anchors, BS EN 1992-4 |
-| Bolt Group Analysis | Bolt Group Analysis | Done | elastic and ICR methods; EN 1993-1-8 Table 3.4 |
-| Steel Beam Torsion Design | Steel Beam Torsion | Done | SCI P385; EN 1993-6 Annex A interaction |
-| Steel Masonry Support | Steel Masonry Support | Done | EN 1993-1-1, -1-4, -1-8; continuous angle, spanning angle, welded plate |
-| Windpost design | Windpost Design | Done | EN 1993-1-1; carbon steel (stainless windposts not covered) |
-| Steel Beam Supporting Hollowcore Slab Design | Hollowcore Support Beam | Done | P385 torsion + EC3; UKB / UKC / ASB / Slimflor |
-| Steel 2D Analysis & Design | Steel Frame Design | Done | portal and multi-bay multi-storey frames; α<sub>cr</sub>, EHF, second-order P-Δ, member design |
+| Steel simple connection design | ConnectionCheck | Done (partly verified) | SCI P358 check lists incl. detailing, supporting element and tying (fin plates, end plates) |
+| Steel beam splice design | ConnectionCheck (Moment End Plate, splice) | Done (partly verified) | bolted end plate splices, EN 1993-1-8 6.2.7 |
+| Steel moment connection design (SCI P398) | ConnectionCheck (Moment End Plate) | Done (partly verified) | extended / flush end plates, beam to column flange; plastic row distribution, compression and panel shear limits |
+| Steel column splice design | ConnectionCheck (Column Splice) | Done (partly verified) | bearing and non-bearing cover plate splices: EN 1993-1-8 6.2.7.1(13)/(14), packs, long joints, block tearing, tying |
+| Column Base Plate Design | ConnectionCheck | Done (partly verified) | EN 1993-1-8 6.2.5 effective area, 6.2.8 / Table 6.7 bending, anchors to EN 1992-4 |
+| Steel Column Design | Steel Column Design | Done (**not independently verified**) | EN 1990 combinations; nominal moments of simple construction (100 mm from the face); EN 1993-1-1 member checks with NCCI SN048b; sends the actions at the base to Base Plate Design (split from Steel Column and Base Plate Design, November 2026) |
+| Base Plate Design | Base Plate Design | Done (**not independently verified**) | one or more sets of N, M_y, V; EN 1993-1-8 6.2.5 / Table 6.7 / 6.2.2 base, column welds; anchors to BS EN 1992-4 |
+| Steel hollow section tension only splice design | ConnectionCheck (RHS Tension Splice) | Done (partly verified) | EN 1993-1-8 6.2.4 T-stubs; CHS flange splices not covered |
+| Steel to Concrete Simple Connection Design | ConnectionCheck (Steel to Concrete) | Done (partly verified) | cast-in headed anchors, BS EN 1992-4 |
+| Bolt Group Analysis | Bolt Group Analysis | Done (**not independently verified**) | elastic and ICR methods; EN 1993-1-8 Table 3.4 |
+| Steel Beam Torsion Design | Steel Beam Torsion | Done (partly verified) | SCI P385; EN 1993-6 Annex A interaction |
+| Steel Masonry Support | Steel Masonry Support | Done (**not independently verified**) | EN 1993-1-1, -1-4, -1-8; continuous angle, spanning angle, welded plate |
+| Windpost design | Windpost Design | Done (**not independently verified**) | EN 1993-1-1; carbon steel (stainless windposts not covered) |
+| Steel Beam Supporting Hollowcore Slab Design | Hollowcore Support Beam | Done (**not independently verified**) | P385 torsion + EC3; UKB / UKC / ASB / Slimflor |
+| Steel 2D Analysis & Design | Steel Frame Design | Done (partly verified) | portal and multi-bay multi-storey frames; α<sub>cr</sub>, EHF, second-order P-Δ, member design |
 | Crane gantry girder design | (removed) | Removed from the suite (November 2026) | Crane Gantry Girder was built and later taken out |
-| Steel member fire resistance design | Steel Member Fire Design | Done | EN 1993-1-2: incremental heating (unprotected / board / spray), restrained and unrestrained beams, columns; intumescents not covered |
-| Steel sheet piling design | Sheet Pile Wall | Done | cantilever (Blum) and single-propped (free earth) walls, DA1, layered soils and water; EN 1993-5 bending |
-| Composite beam design (SCI P359) | Composite Beam Design | Done | EN 1994-1-1: simply supported UKB, decking ⟂ / ∥ or solid slab, partial shear connection, studs, slab shear, SLS and frequency |
-| Steel and composite beams with web openings (SCI P355) | Beam Web Openings | Done | circular / rectangular / elongated openings, Vierendeel, web-posts (AD 418 / AD 419), construction stage, deflection |
-| Floor vibration (SCI P354) | Floor Vibration | Done | simplified method: mode frequencies, modal mass, steady-state / transient response factor, VDV |
+| Steel member fire resistance design | Steel Member Fire Design | Done (**not independently verified**) | EN 1993-1-2: incremental heating (unprotected / board / spray), restrained and unrestrained beams, columns; intumescents not covered |
+| Steel sheet piling design | Sheet Pile Wall | Done (**not independently verified**) | cantilever (Blum) and single-propped (free earth) walls, DA1, layered soils and water; EN 1993-5 bending |
+| Composite beam design (SCI P359) | Composite Beam Design | Done (**not independently verified**) | EN 1994-1-1: simply supported UKB, decking ⟂ / ∥ or solid slab, partial shear connection, studs, slab shear, SLS and frequency |
+| Steel and composite beams with web openings (SCI P355) | Beam Web Openings | Done (partly verified) | circular / rectangular / elongated openings, Vierendeel, web-posts (AD 418 / AD 419), construction stage, deflection |
+| Floor vibration (SCI P354) | Floor Vibration | Done (**not independently verified**) | simplified method: mode frequencies, modal mass, steady-state / transient response factor, VDV |
 
 Steel Member Design (design actions) and Steel Beam Analysis & Design (spans, loads and combinations) are separate pages since October 2026, built from one template with the same engine. Together they cover:
 
@@ -155,16 +216,16 @@ Build order and the planned CalcPad round trip / EngineeringSuite repo: see [doc
 | RC ribbed and waffle slabs | RC Ribbed and Waffle Slabs | Done (November 2026) |
 | RC flat slabs | RC Flat Slab Design | Done |
 | RC punching shear | RC Punching Shear | Done |
-| RC slab FE analysis (FEM) | RC Slab FE Design | Done (from FEMTool's model, on a new MITC4 element) |
-| RC Wall Design | RC Wall Design | Done (wall panels and core walls; RC Crack Width covers early-age cracking) |
-| RC Corbel Design; RC Nib Design | RC Corbel and Nib Design | Done (November 2026) |
+| RC slab FE analysis (FEM) | RC Slab FE Design | Done, partly verified (from FEMTool's model, on a new MITC4 element) |
+| RC Wall Design | RC Wall Design | Done (wall panels and core walls; RC Crack Width covers early-age cracking and has **no calculation tests**) |
+| RC Corbel Design; RC Nib Design | RC Corbel and Nib Design | Done (November 2026; partly verified) |
 | RC Stair design | RC Stair Design | Done (November 2026) |
-| RC lintels | RC Lintel Design | Done (November 2026); Naylor lintel check against the brochure added (November 2026) |
+| RC lintels | RC Lintel Design | Done (November 2026; **not independently verified**); Naylor lintel check against the brochure added (November 2026) |
 | RC 2D Analysis & Design | RC 2D Frame Analysis and Design | Done (November 2026) |
 | Precast Concrete beam design; prestressed beams | Prestressed Beam Design | Done (November 2026): pretensioned and post-tensioned, simply supported |
 | Precast Concrete Column / Wall / Stair Design | Precast members | Dropped from the plan (November 2026) |
 | Precast Concrete Hollowcore slab design | Hollowcore | Dropped from the plan (November 2026) |
-| Precast Concrete Bearing / Half-joint / Grouted Sleeve Splice Design | Precast Connections | Done (November 2026) |
+| Precast Concrete Bearing / Half-joint / Grouted Sleeve Splice Design | Precast Connections | Done (November 2026; **not independently verified**) |
 
 RC Column Design covers / limits (checked against TCC53 and TCC54, November 2026; the fire check is unchanged):
 - Rectangular and circular columns, any f<sub>yk</sub>; M–N diagrams about both axes by strain compatibility (0.8x block of f<sub>cd</sub> = 0.567 f<sub>ck</sub>, ε<sub>cu3</sub> at the face, pivot ε<sub>c3</sub> at h/2 once the section is all in compression, bars net of f<sub>cd</sub>), M<sub>Rd</sub> at N<sub>Ed</sub> solved exactly.
@@ -345,7 +406,7 @@ RC Punching Shear covers / limits:
 
 ## Batch 3: Timber and masonry, EN 1995 and EN 1996
 
-The timber beam, member, stud wall and racking wall are checked against the worked examples in *Structural Timber Design to Eurocode 5* (Porteous & Kermani) and the IStructE/TRADA timber manual (outputs only; the books are not in this repo).
+The timber beam, member and stud wall are checked against the worked examples in *Structural Timber Design to Eurocode 5* (Porteous & Kermani), and the connections partly so (outputs only; the books are not in this repo). The racking wall follows PD 6693-1:2025 and is checked by hand, as the PD has no worked example; the connections still await the IStructE/TRADA manual's tables (see Verification status).
 
 | Tedds entry | Module | Status |
 |---|---|---|
@@ -355,11 +416,11 @@ The timber beam, member, stud wall and racking wall are checked against the work
 | Flitch, Glulam, Composite LVL Beam / Member A&D (6 entries) | Timber member (product sets) | Planned |
 | Timber 2D analysis & design | 2D frame + EC5 | Planned |
 | Cross-laminated timber section properties / section design / floor panel / wall panel | CLT | Planned |
-| Timber Connection Design | Timber Connections | Done (November 2026), built afresh |
-| Timber Frame Racking Panel Design; Timber Frame Racking Loads | Timber Racking Wall (PD 6693-1) | Done (November 2026); racking loads (sharing a storey's wind between walls) still planned |
-| Masonry Bearing Design | Masonry Bearing | Done (November 2026) |
-| Masonry Column Design | Masonry Column | Done (November 2026) |
-| Masonry Wall Panel Design | Masonry Wall Panel | Done (November 2026) |
+| Timber Connection Design | Timber Connections | Done (November 2026), built afresh; partly verified |
+| Timber Frame Racking Panel Design; Timber Frame Racking Loads | Timber Racking Wall (PD 6693-1) | Done (November 2026; **not independently verified**); racking loads (sharing a storey's wind between walls) still planned |
+| Masonry Bearing Design | Masonry Bearing | Done (November 2026; partly verified) |
+| Masonry Column Design | Masonry Column | Done (November 2026; **not independently verified**) |
+| Masonry Wall Panel Design | Masonry Wall Panel | Done (November 2026; partly verified) |
 
 ## Batch 4: Foundations, retaining, loading and analysis, EN 1991 and EN 1997
 
@@ -369,10 +430,10 @@ The timber beam, member, stud wall and racking wall are checked against the work
 | RC pile cap design | Pile Cap | Done (November 2026): 2 to 6 piles |
 | RC raft foundation | Raft | Planned |
 | Pile Analysis; Pile Group Analysis | Piles | Planned |
-| Retaining Wall Analysis & Design | Retaining Wall | Done (November 2026): cantilever, propped and gravity |
+| Retaining Wall Analysis & Design | Retaining Wall | Done (November 2026): cantilever, propped and gravity; partly verified (propped and gravity by hand) |
 | Retaining basement wall analysis & design | Basement Wall | Done (November 2026) |
 | Gabion Retaining Wall | Gabion wall | Planned |
-| Wind Loading; Snow Loading | Wind Loading; Snow Loading | Done (November 2026) |
+| Wind Loading; Snow Loading | Wind Loading; Snow Loading | Done (November 2026); Wind partly verified, Snow **not independently verified** |
 | Dead Loading; Hipped End Loading | Load take-down | Planned |
 | Rigid Diaphragm Force Distribution | Diaphragm | Planned |
 | Outrigger loading design | Outrigger (TWf) | Planned |
