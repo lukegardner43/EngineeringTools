@@ -387,5 +387,10 @@ async function sweep(f, cases, expect) {
     ['hipped roof', w => { set(w, 'type', 'wall', 'change'); const c = w.document.getElementById('hipOn'); c.checked = true; c.dispatchEvent(new w.Event('change', { bubbles: true })); }],
     ['hip, half to the plates', w => set(w, 'hF', '0.5')], ['a level removed', w => lrow(w, 3).querySelector('.xbtn').click()],
   ], 1);
+  await sweep('Rolling Load Analysis.html', [
+    ['longer span', w => { const e = w.document.querySelector('#spanRows .L'); e.value = '12'; e.dispatchEvent(new w.Event('input', { bubbles: true })); }],
+    ['two spans', w => w.document.getElementById('addSpan').click()], ['a third load', w => w.document.getElementById('addWheel').click()],
+    ['fixed and free ends', w => { set(w, 'supL', 'fixed', 'change'); set(w, 'supR', 'free', 'change'); }], ['no permanent load', w => { w.document.querySelectorAll('#spanRows .G').forEach(e => { e.value = '0'; }); set(w, 'E', '205'); }],
+  ], 1);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
