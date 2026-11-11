@@ -1,6 +1,6 @@
 // Drawings on Composite Beam, Floor Vibration, Steel Member, Concrete Tie Force and RC Crack Width (group 1) and on Steel Beam
 // Torsion, Beam Web Openings, Steel Frame Design, Sheet Pile Wall, the RC Section Toolkit tabs, RC Column, Hollowcore Support
-// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages to Gabion Retaining Wall (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
+// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages to Outrigger Loading (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
 //   NODE_PATH=<jsdom>/node_modules node tests/drawings/test_drawings.js
 const fs = require('fs'), path = require('path'), { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '../..');
@@ -398,5 +398,12 @@ async function sweep(f, cases, expect) {
     ['heavy surcharge, resultant out of the middle third', w => set(w, 'qQ', '60')], ['no surcharge', w => set(w, 'qQ', '0')],
     ['undrained founding soil', w => { set(w, 'bearing', 'undrained', 'change'); set(w, 'cuf', '60'); }], ['toe 0.3 m down', w => set(w, 'D', '0.3')],
   ], 1);
+  await sweep('Outrigger Loading.html', [
+    ['a longer radius', w => { const e = w.document.querySelector('#liftRows .R'); e.value = '16'; e.dispatchEvent(new w.Event('input', { bubbles: true })); }],
+    ['a third, heavier lift that governs', w => { w.document.getElementById('addLift').click(); const r = w.document.querySelectorAll('#liftRows .row')[2]; r.querySelector('.P').value = '8'; r.querySelector('.R').value = '10'; r.querySelector('.R').dispatchEvent(new w.Event('input', { bubbles: true })); }], ['wider outriggers', w => set(w, 'b', '7')],
+    ['steel plate, two-way', w => { set(w, 'mat', 'steel', 'change'); set(w, 't', '40'); }], ['plastic mat', w => { set(w, 'mat', 'plastic', 'change'); set(w, 't', '120'); }],
+    ['square foot', w => set(w, 'footShape', 'square', 'change')], ['a long mat', w => set(w, 'L', '3')],
+    ['75% rule', w => w.document.querySelector('#methods [data-m="rule"]').click()], ['given value', w => w.document.querySelector('#methods [data-m="given"]').click()],
+  ], 3);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
