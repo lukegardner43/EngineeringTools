@@ -379,5 +379,13 @@ async function sweep(f, cases, expect) {
     ['masonry', w => wset(w, 0, 'type', 'masonry')], ['given k', w => wset(w, 1, 'type', 'k')], ['a wall moved', w => wset(w, 5, 'at', '12')], ['a wall removed', w => wrow(w, 4).querySelector('.xbtn').click()],
     ['walls along Y only (Y load)', w => { set(w, 'Fx', '0'); [0, 1, 2, 3, 4].forEach(i => { if (wrow(w, i)) wset(w, i, 'dir', 'y'); }); }], ['racking strength', w => { [0, 1, 2, 3, 4].forEach(i => { if (wrow(w, i)) wset(w, i, 'FRd', '20'); }); set(w, 'basis', 'strength', 'change'); }],
   ], 2);
+  const lrow = (w, i) => w.document.querySelectorAll('#levRows .row')[i], lset = (w, i, cls, v) => { const e = lrow(w, i).querySelector('.' + cls); e.value = v; e.dispatchEvent(new w.Event('change', { bubbles: true })); };
+  await sweep('Load Take-down.html', [
+    ['wider roof', w => lset(w, 0, 'trib', '6')], ['taller storeys', w => { lset(w, 1, 'h', '3.6'); lset(w, 2, 'h', '3.6'); }], ['no footing size', w => set(w, 'qa', '')],
+    ['column', w => { set(w, 'type', 'column', 'change'); lset(w, 0, 'trib', '20'); lset(w, 1, 'trib', '20'); lset(w, 2, 'trib', '20'); set(w, 'qa', '150'); }],
+    ['best of α_n and α_A', w => set(w, 'red', 'best', 'change')], ['(6.10a), (6.10b)', w => set(w, 'comb', '6.10ab', 'change')],
+    ['hipped roof', w => { set(w, 'type', 'wall', 'change'); const c = w.document.getElementById('hipOn'); c.checked = true; c.dispatchEvent(new w.Event('change', { bubbles: true })); }],
+    ['hip, half to the plates', w => set(w, 'hF', '0.5')], ['a level removed', w => lrow(w, 3).querySelector('.xbtn').click()],
+  ], 1);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
