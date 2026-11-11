@@ -184,7 +184,7 @@ svg.plan{max-width:560px;margin:4px auto 10px;}
   <div class="page-hdr">
     <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
     <h1>RC Slab Design</h1>
-    <p>Solid slabs to BS EN 1992-1-1 + UK NA, per metre width &nbsp;·&nbsp; one-way continuous slabs with load patterns and redistribution &nbsp;·&nbsp; two-way panels by the BS 8110 coefficients &nbsp;·&nbsp; bending, shear, span/depth, crack control, bar suggestions</p>
+    <p>Solid slabs to BS EN 1992-1-1 + UK NA, per metre width &nbsp;·&nbsp; one-way continuous slabs with load patterns and redistribution &nbsp;·&nbsp; two-way panels by moment coefficients &nbsp;·&nbsp; bending, shear, span/depth, crack control, bar suggestions</p>
   </div>
   <div class="main-grid">
     <div id="inputs">
@@ -258,7 +258,7 @@ svg.plan{max-width:560px;margin:4px auto 10px;}
             <div class="form-group"><label>q<sub>k</sub> imposed (kN/m²)</label><input type="number" id="tq" value="3.5" step="0.1"></div>
             <div></div>
           </div>
-          <div class="help">BS 8110-1 Table 3.14 (restrained panels, corners held down, torsion steel provided) and Table 3.15, as used with EC2 in the Concrete Centre's How to design slabs. Long edges run along l<sub>y</sub> and carry the short-span moments.</div>
+          <div class="help">The moments and edge shears per metre come from two-way coefficients for restrained panels (corners held down, with corner steel). EC2 gives no tables for two-way panels, so these are the analysis only (values as BS 8110-1 Tables 3.14 and 3.15, as used with EC2 in UK practice and in The Concrete Centre’s TCC94); every check is to BS EN 1992-1-1 + UK NA. Long edges run along l<sub>y</sub> and carry the short-span moments.</div>
         </div>
         <div class="card">
           <div class="section-title">Reinforcement <span class="aux">bar Ø @ spacing (mm)</span></div>
@@ -1127,7 +1127,7 @@ const RCSlabDesign = (() => {
     const nU = st.gG * gk + st.gQ * qk;   // N/mm per mm width = kN/m²
     const K = coefficients(inp.edges, Math.min(r, 2)), lx2 = inp.lx * inp.lx, S = [], step = (ref, text) => S.push({ ref, text });
     step('6.10', `n = ${st.gG === 1.35 && st.gQ === 1.5 ? '1.35' : st.gG.toFixed(3)} × ${r1(gk)} + ${st.gQ.toFixed(2)} × ${r1(qk)} = ${r3(nU)} kN/m² (g_k includes self-weight ${r1(sw)} kN/m²)`);
-    step('BS 8110 T3.14', `${K.name}, l_y/l_x = ${r3(r)}${oneway ? ' > 2: the slab spans one way; coefficients taken at 2.0 (consider a one-way design)' : ''}: β_sx = ${r4(K.bxp)}, β_sy = ${r4(K.byp)}${K.bxn ? `, β (long edges) = ${r4(K.bxn)}` : ''}${K.byn ? `, β (short edges) = ${r4(K.byn)}` : ''}`);
+    step('Analysis', `moment coefficients for the panel (analysis only: restrained-panel values as BS 8110-1 Table 3.14; EC2 gives no tables for two-way panels; the design below is to EC2): ${K.name}, l_y/l_x = ${r3(r)}${oneway ? ' > 2: the slab spans one way; coefficients taken at 2.0 (consider a one-way design)' : ''}: β_sx = ${r4(K.bxp)}, β_sy = ${r4(K.byp)}${K.bxn ? `, β (long edges) = ${r4(K.bxn)}` : ''}${K.byn ? `, β (short edges) = ${r4(K.byn)}` : ''}`);
     const b = inp.bars || {}, bx = b.x || { phi: 12, s: 200 }, by = b.y || { phi: 12, s: 200 };
     const tb = e => b[e] || { phi: 12, s: 200 };
     const common = { kind: 'slab', fck: inp.fck, fyk, dg: inp.dg || 20, psi2: inp.psi2 ?? 0.3, ae: inp.ae ?? 15, xdMax: inp.xdMax ?? null, gk, qk, gG: st.gG, gQ: st.gQ, delta: 1 };
@@ -1155,14 +1155,14 @@ const RCSlabDesign = (() => {
       const vs = shearSlab({ d, Asl: cont ? As : As / 2, Vface: V, Vd: V, c });
       shear.push({ edge: e, name: edgeName[e], cont, beta, V, Vk: { g: beta * gk * inp.lx, q: beta * qk * inp.lx }, ...vs });
     }
-    step('BS 8110 T3.15', `edge shears v = β_v n l_x: ${shear.map(s => `${edgeName[s.edge]} ${s.cont ? 'continuous' : 'discontinuous'} β_v ${r3(s.beta)} → ${r1(kN(s.V))} kN/m`).join('; ')}`);
+    step('Analysis', `edge shears v = β_v n l_x (shear coefficients for the analysis only, values as BS 8110-1 Table 3.15): ${shear.map(s => `${edgeName[s.edge]} ${s.cont ? 'continuous' : 'discontinuous'} β_v ${r3(s.beta)} → ${r1(kN(s.V))} kN/m`).join('; ')}`);
     // corner torsion steel (BS 8110 3.5.3.5, Concrete Centre How to: slabs): at corners where both edges are discontinuous 3/4 of the
     // short-span mid-span steel, top and bottom, both ways, over l_x/5; where one edge is discontinuous half of that
     const corners = [['L1', 'S1'], ['L1', 'S2'], ['L2', 'S1'], ['L2', 'S2']].map(([a, bb]) => { const nd = (!inp.edges[a]) + (!inp.edges[bb]); return { edges: [a, bb], nd, As: nd === 2 ? 0.75 * Rx.bd.As : nd === 1 ? 0.375 * Rx.bd.As : 0, size: inp.lx / 5 }; });
     const list = [];
     zones.forEach(z => z.R.checks.forEach(k => list.push({ ...k, where: z.name })));
     shear.forEach(s => s.checks.forEach(k => list.push({ ...k, where: s.name })));
-    if (oneway) list.push({ id: 'ratio', name: 'l_y/l_x ≤ 2 for two-way coefficients', ref: 'BS 8110 3.5.3', util: r / 2, note: `l_y/l_x = ${r3(r)}` });
+    if (oneway) list.push({ id: 'ratio', name: 'l_y/l_x ≤ 2 for the two-way coefficients', ref: 'analysis', util: r / 2, note: `l_y/l_x = ${r3(r)}` });
     return { c, K, r, nU, gk, qk, sw, st, zones, shear, corners, steps: S, checks: list, utilMax: Math.max(...list.map(k => k.util)) };
   }
   function suggestTwoWay(inp) {
@@ -1730,7 +1730,7 @@ function runTwo() {
   s += `</table><table class="t rtab"><tr><th>Edge</th><th>β<sub>v</sub></th><th>v<sub>Ed</sub> (kN/m)</th><th>V<sub>Rd,c</sub></th><th>Reaction g<sub>k</sub> / q<sub>k</sub> (kN/m)</th></tr>`;
   T.shear.forEach(h => { s += `<tr><td>${esc(h.name)} (${h.cont ? 'continuous' : 'discontinuous'})</td><td>${h.beta.toFixed(3)}</td><td>${f1(h.V / 1e3)}</td><td>${f1(h.vc.VRdc / 1e3)}</td><td>${f1(h.Vk.g / 1e3)} / ${f1(h.Vk.q / 1e3)}</td></tr>`; });
   s += `</table>`;
-  const cr = T.corners.filter(c => c.As > 0); if (cr.length) s += `<div class="help">Corner torsion steel (BS 8110 3.5.3.5): ${cr.map(c => `${c.edges.join('/')} corner ${f0(c.As)} mm²/m each way, top and bottom, over ${f0(c.size)} × ${f0(c.size)} mm`).join('; ')}. Reactions act on the middle three-quarters of each supporting beam.</div>`;
+  const cr = T.corners.filter(c => c.As > 0); if (cr.length) s += `<div class="help">Corner torsion steel where the corners are held down (EC2 9.3.1.3; the amount that goes with the coefficients): ${cr.map(c => `${c.edges.join('/')} corner ${f0(c.As)} mm²/m each way, top and bottom, over ${f0(c.size)} × ${f0(c.size)} mm`).join('; ')}. Reactions act on the middle three-quarters of each supporting beam.</div>`;
   const Rx = T.zones[0].R, dl = Rx.defl;
   $('results').innerHTML = verdict(T, `${T.K.name}, l_y/l_x = ${T.r.toFixed(3)}, n = ${T.nU.toFixed(2)} kN/m²${dl ? `, l/d ${dl.actual.toFixed(1)} / ${dl.allowed.toFixed(1)}` : ''}`)
     + `<div id="drawings">${drawTwo(T, inp)}</div><div class="dlabel">Governing checks</div><div class="checks">${W.slice(0, 12).map(bar).join('')}</div><div class="dlabel">Results</div>${s}`
@@ -1751,7 +1751,7 @@ function report() {
   const s = collect(), today = new Date().toLocaleDateString('en-GB'), { D, inp, kind } = last;
   const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.pRef) || '&nbsp;'}</div><div class="ttl">${kind === 'one' ? `RC one-way slab: ${D.A.P.n} span${D.A.P.n > 1 ? 's' : ''}` : `RC two-way slab panel ${f1(inp.lx / 1000)} × ${f1(inp.ly / 1000)} m`}, C${inp.fck}/${D.c.fckCube}</div></div>`;
   let b = `<div class="rs"><h2>Basis</h2>${rl(`BS EN 1992-1-1:2004+A1:2014 with the UK National Annex, per metre width; EN 1990 ${inp.rule === '6.10' ? '6.10' : '6.10a/6.10b'}; ψ₂ = ${inp.psi2}; covers ${inp.cover.top} top / ${inp.cover.btm} bottom mm; w_max ${inp.wk.top} / ${inp.wk.btm} mm`, '', '')}`
-    + (kind === 'two' ? rl('Moment coefficients BS 8110-1 Table 3.14 (restrained panel, torsion steel at corners), shear coefficients Table 3.15, linear interpolation in l_y/l_x', '', '') : rl(`Continuous strip, knife-edge supports with ${inp.adjacent ? 'all, alternate and adjacent' : 'all and alternate'} span patterns, same γ_G on every span; redistribution ${inp.redist === 'none' ? 'reductions only' : 'δ at supports, others ±(1 − δ)'}`, '5.1.3, 5.5', '')) + '</div>';
+    + (kind === 'two' ? rl('Analysis by two-way moment and edge shear coefficients for a restrained panel (corners held down, with corner steel), interpolated in l_y/l_x. EC2 gives no tables for two-way panels, so these coefficients are used only to find the moments and shears (values as BS 8110-1 Tables 3.14 and 3.15, the method used with EC2 in UK practice and in The Concrete Centre’s TCC94); every check is to BS EN 1992-1-1 + UK NA', 'Analysis', '') : rl(`Continuous strip, knife-edge supports with ${inp.adjacent ? 'all, alternate and adjacent' : 'all and alternate'} span patterns, same γ_G on every span; redistribution ${inp.redist === 'none' ? 'reductions only' : 'δ at supports, others ±(1 − δ)'}`, '5.1.3, 5.5', '')) + '</div>';
   if (kind === 'one') {
     b += `<div class="rs"><h2>Elevation and envelopes</h2>${svgElev(D, inp, true)}${svgEnv(D, 'M', true)}${svgEnv(D, 'V', true)}${DrawRCSlab.report(D, inp, 'one')}</div><div class="rs"><h2>Results</h2>${oneTables(D, inp)}</div>`;
     D.supZ.forEach(z => { if (!z) return; z.sides.forEach(sd => { b += `<div class="rs"><h2>Support ${z.j + 1}${z.sides.length > 1 ? ` (span ${sd.i + 1} side)` : ''}: M_Ed = ${f1(sd.Mdes / 1e6)} kNm/m, ${esc(sd.rule)}</h2>` + sd.R.steps.map(x => rl(esc(x.text), esc(x.ref), '')).join('') + sd.R.checks.filter(k => k.id !== 'bend' || sd.Mdes > 1e3).map(c => rl(esc(c.name) + ` <span style="color:#666">${esc(c.note || '')}</span>`, esc(c.ref), okng(c.util))).join('') + '</div>'; }); });
