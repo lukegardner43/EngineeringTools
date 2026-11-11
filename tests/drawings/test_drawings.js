@@ -370,5 +370,12 @@ async function sweep(f, cases, expect) {
     ['plates both sides', w => set(w, 'type', 'st2', 'change')], ['bolts', w => { set(w, 'kind', 'bolt', 'change'); set(w, 'd', '12'); set(w, 'n', '3'); set(w, 'sa1', '60'); }],
     ['slotted plate', w => set(w, 'type', 'st3', 'change')], ['at an angle', w => { set(w, 'a2', '45'); set(w, 'he', '100'); }],
   ], 1);
+  const wrow = (w, i) => w.document.querySelectorAll('#wallRows .row')[i], wset = (w, i, cls, v) => { const e = wrow(w, i).querySelector('.' + cls); e.value = v; e.dispatchEvent(new w.Event('change', { bubbles: true })); };
+  await sweep('Rigid Diaphragm.html', [
+    ['wider plan', w => set(w, 'B', '36')], ['load off centre', w => set(w, 'ay', '24')], ['load in X only', w => set(w, 'Fy', '0')], ['load in Y only', w => { set(w, 'Fy', '200'); set(w, 'Fx', '0'); }],
+    ['± e torsion', w => { set(w, 'Fx', '100'); set(w, 'tors', 'ecc', 'change'); }], ['no torsion', w => set(w, 'tors', 'none', 'change')], ['bracing', w => wset(w, 2, 'type', 'brace')],
+    ['masonry', w => wset(w, 0, 'type', 'masonry')], ['given k', w => wset(w, 1, 'type', 'k')], ['a wall moved', w => wset(w, 5, 'at', '12')], ['a wall removed', w => wrow(w, 4).querySelector('.xbtn').click()],
+    ['walls along Y only (Y load)', w => { set(w, 'Fx', '0'); [0, 1, 2, 3, 4].forEach(i => { if (wrow(w, i)) wset(w, i, 'dir', 'y'); }); }], ['racking strength', w => { [0, 1, 2, 3, 4].forEach(i => { if (wrow(w, i)) wset(w, i, 'FRd', '20'); }); set(w, 'basis', 'strength', 'change'); }],
+  ], 2);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();

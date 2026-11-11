@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rigid Diaphragm</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* Engineering Tools: shared light style (tasteskill app sheet "Achromatic ledger", seed 959138263).
+   Ink chrome on a blue-grey drawing-office ground; the one hue (#1d5fbf) goes on the main data element
+   (envelopes, utilisation bars); status colour only on the verdict and on a check that is over. */
+:root{
+  --bg:#f2f4f7; --surf:#ffffff; --surf2:#f7f8fa; --bdr:#e3e5e8; --bdr2:#d1d5db; --rule:#eceef1;
+  --txt:#111111; --lbl:#33363a; --mut:#5f6368; --faint:#6b6b6b;
+  --accent:#1d5fbf; --accent-dim:#e3ebf8;
+  --primary:#1d1f20;
+  --pass:#247b50; --warn:#b45309; --fail:#c4242a;
+  --pass-bg:#dcfae5; --pass-ink:#04250e; --fail-bg:#ffedea; --fail-ink:#831c1e;
+  --r:6px; --rc:8px;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:var(--sans);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5;min-height:100svh;padding:28px 32px 40px;
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;}
+.container{max-width:1376px;margin:0 auto;}
+/* title row: a photograph of the member's material (img/<material>.jpg beside the page, set by <body data-material>)
+   under a neutral scrim, with the breadcrumb, the tool's name and one line of scope. Without the photo it is a plain ink band. */
+.page-hdr{position:relative;isolation:isolate;overflow:hidden;border-radius:var(--rc);min-height:164px;padding:18px 24px 20px;margin-bottom:12px;
+  display:flex;flex-direction:column;justify-content:flex-end;color:#fff;background:#2c3036 var(--photo,none) center/cover no-repeat;}
+.page-hdr::before{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.55) 45%,rgba(0,0,0,.18) 100%);} /* taste-skill-ignore: neutral scrim under text on a photograph */
+.page-hdr::after{content:var(--credit,'');position:absolute;right:10px;bottom:8px;font-size:11px;color:rgba(255,255,255,.9);background:rgba(0,0,0,.4);padding:1px 6px;border-radius:4px;}
+.home-lnk{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:rgba(255,255,255,.88);text-decoration:none;font-weight:500;margin-bottom:auto;align-self:flex-start;padding-bottom:12px;}
+.home-lnk:hover{color:#fff;text-decoration:underline;}
+.home-lnk svg{width:14px;height:14px;}
+.page-hdr h1{font-size:26px;font-weight:600;line-height:1.25;letter-spacing:-0.01em;margin-bottom:4px;color:#fff;}
+.page-hdr p{font-size:14px;color:rgba(255,255,255,.92);max-width:900px;}
+body[data-material="steel"]{--photo:url(img/steel.jpg);--credit:'Photo: Chevsapher, CC0';}
+body[data-material="concrete"]{--photo:url(img/concrete.jpg);--credit:'Photo: MassDOT, public domain';}
+body[data-material="masonry"]{--photo:url(img/masonry.jpg);--credit:'Photo: Håkan Svensson, CC BY 2.5';}
+body[data-material="timber"]{--photo:url(img/timber.jpg);--credit:'Photo: Sebastian Wallroth, public domain';}
+body[data-material="frame"]{--photo:url(img/frame.jpg);--credit:'Photo: Wikideas1, CC0';}
+body[data-material="ground"]{--photo:url(img/ground.jpg);--credit:'Photo: Fons Heijnsbroek, CC0';}
+@media print{.page-hdr{display:none;}}
+/* inputs on the left, the answer on the right: (1376 - 12) x 6/13 = 630 | 734 */
+.main-grid{display:grid;grid-template-columns:minmax(380px,6fr) 7fr;gap:12px;align-items:start;}
+@media(max-width:1100px){.main-grid{grid-template-columns:1fr;}}
+.main-grid > div{min-width:0;}
+#results table.t{display:block;overflow-x:auto;white-space:nowrap;}
+.card{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rc);padding:20px 24px;margin-bottom:12px;}
+.section-title{font-size:16px;font-weight:600;color:var(--txt);margin:0 0 14px;display:flex;justify-content:space-between;align-items:baseline;gap:12px;line-height:1.3;}
+.section-title .aux{color:var(--mut);font-size:13px;font-weight:400;text-align:right;}
+.form-group{margin-bottom:14px;}
+.form-group label,.lbl{display:block;font-size:13px;margin-bottom:5px;color:var(--lbl);font-weight:500;line-height:1.35;}
+input[type="number"],input[type="text"],select{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);padding:0 10px;height:36px;border-radius:var(--r);font-family:var(--sans);font-size:14px;width:100%;font-variant-numeric:tabular-nums;transition:border-color .12s;}
+input::placeholder{color:var(--faint);}
+input:hover,select:hover{border-color:#b9bec6;}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);}
+input:disabled,select:disabled{background:var(--surf2);color:var(--mut);}
+select option{background:var(--surf);color:var(--txt);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.grid2 > .form-group,.grid3 > .form-group{display:flex;flex-direction:column;justify-content:flex-end;}
+.chk{display:block;position:relative;padding-left:26px;font-size:13px;color:var(--lbl);margin:8px 0;cursor:pointer;line-height:1.45;}
+.chk input{position:absolute;left:0;top:1px;width:16px;height:16px;accent-color:var(--primary);}
+.help{font-size:13px;color:var(--mut);margin-top:4px;line-height:1.45;}
+/* segmented control: grey track, white pill on the chosen option */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#e9ecf0;border-radius:var(--rc);margin-bottom:14px;}
+.seg button{background:transparent;color:var(--mut);border:1px solid transparent;border-radius:var(--r);height:32px;padding:0 10px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;}
+.seg button:hover{color:var(--txt);}
+.seg button.on{background:var(--surf);color:var(--txt);border-color:var(--bdr);}
+/* repeating rows: spans, supports, loads */
+.rows{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+.row{display:grid;gap:8px;align-items:end;background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--r);padding:10px;}
+.row label{font-size:12px;color:var(--mut);margin-bottom:3px;display:block;font-weight:500;line-height:1.3;}
+.row input,.row select{height:32px;font-size:13px;padding:0 8px;}
+.row.span{grid-template-columns:1fr 1.6fr 1fr 32px;}
+.row.load{grid-template-columns:52px 64px 1.1fr 1.1fr 32px;}
+.row.load .vals{grid-column:1 / span 3;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.xbtn{height:32px;width:32px;background:var(--surf);border:1px solid var(--bdr2);color:var(--mut);border-radius:var(--r);cursor:pointer;font-size:16px;line-height:1;}
+.xbtn:hover{color:var(--fail);border-color:var(--fail);}
+.addbtn{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);border-radius:var(--r);height:36px;padding:0 12px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;width:100%;}
+.addbtn:hover{border-color:#9aa0a8;background:var(--surf2);}
+/* the one primary action, near-black; secondary actions white and outlined */
+.btn{height:44px;padding:0 16px;border:none;border-radius:var(--r);font-weight:600;cursor:pointer;font-family:var(--sans);font-size:15px;width:100%;background:var(--primary);color:#fff;}
+.btn:hover{background:#000;}
+.btn:focus-visible,.btn2:focus-visible,.addbtn:focus-visible,.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.btn2{width:100%;height:38px;padding:0 12px;background:var(--surf);border:1px solid var(--bdr2);border-radius:var(--r);font-size:14px;font-weight:500;color:var(--txt);cursor:pointer;font-family:var(--sans);margin-top:8px;}
+.btn2:hover{border-color:#9aa0a8;background:var(--surf2);}
+.hidden{display:none!important;}
+/* results */
+.placeholder{display:flex;align-items:center;justify-content:center;min-height:160px;color:var(--mut);font-size:14px;text-align:center;padding:0 24px;}
+.verdict{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--bdr);border-radius:var(--rc);background:var(--surf2);margin-bottom:16px;}
+.verdict .big{font-size:24px;font-weight:600;line-height:1.2;color:var(--pass);letter-spacing:-0.01em;}
+.verdict.fail .big{color:var(--fail);}
+.verdict .sub{font-size:13px;color:var(--mut);margin-top:2px;}
+/* the utilisation ledger: check, clause, bar to scale (full track = 1.2, ink tick at the 1.0 limit), figure */
+.checks{display:flex;flex-direction:column;margin-bottom:8px;}
+.ck{display:grid;grid-template-columns:1.25fr 2fr 56px;gap:14px;align-items:center;font-size:13px;padding:7px 0;border-bottom:1px solid var(--rule);}
+.ck:last-child{border-bottom:none;}
+.ck .nm{color:var(--txt);line-height:1.35;} .ck .nm small{display:block;color:var(--mut);font-size:12px;}
+.bar{height:8px;background:#e8ebef;border-radius:4px;position:relative;}
+.bar::after{content:'';position:absolute;left:83.333%;top:-4px;bottom:-4px;width:1.5px;background:var(--txt);border-radius:1px;}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:4px;}
+.bar i.over{background:var(--fail);} /* 0.9-1.0 stays blue: a well-used member is not a warning; the tick shows how close it is */
+.ck .u{text-align:right;font-weight:600;font-size:14px;}
+.ck .u.over{color:var(--fail);}
+.diag{width:100%;height:auto;display:block;margin-bottom:6px;}
+/* screen drawings: the smallest labels lifted to the 11px floor (the print sheet keeps its own sizes) */
+.container svg text[font-size="8"],.container svg text[font-size="8.5"],.container svg text[font-size="9"],.container svg text[font-size="9.5"],
+.container svg text[font-size="10"],.container svg text[font-size="10.5"]{font-size:11px;}
+.dlabel{font-size:14px;font-weight:600;color:var(--txt);margin:20px 0 6px;line-height:1.3;}
+table.t{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px;font-variant-numeric:tabular-nums;}
+table.t th{color:var(--mut);font-weight:500;text-align:right;padding:6px 8px;border-bottom:1px solid var(--bdr);font-size:12px;}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--rule);text-align:right;}
+table.t th:first-child,table.t td:first-child{text-align:left;}
+.note{font-size:13px;color:var(--mut);background:var(--surf2);border:1px solid var(--rule);border-radius:var(--r);padding:10px 12px;margin-top:10px;line-height:1.5;}
+.err{color:var(--fail-ink);background:var(--fail-bg);font-size:13px;padding:10px 12px;border-radius:var(--r);margin-bottom:12px;}
+.busy{opacity:.55;pointer-events:none;}
+a{color:var(--txt);}
+sub,sup{font-size:max(11px,.75em);line-height:0;}
+@media(max-width:560px){body{padding:16px 16px 32px;} .card{padding:16px;} .ck{grid-template-columns:1fr 1fr 48px;gap:10px;} .grid3{grid-template-columns:1fr 1fr;}
+  .row.span{grid-template-columns:1fr 32px;} .row.span > div:nth-child(2),.row.span > div:nth-child(3){display:none;} .row.load .vals{grid-template-columns:1fr 1fr;}
+  .page-hdr{min-height:150px;padding:14px 16px 16px;} .page-hdr h1{font-size:22px;} .page-hdr::after{top:10px;bottom:auto;} .page-hdr::before{background:rgba(0,0,0,.6);} .verdict .big{font-size:22px;}}
+/* disclaimer: on screen at the foot of the page, and printed at the end of the calculation sheet */
+.disclaimer{max-width:1376px;margin:24px auto 0;padding-top:14px;border-top:1px solid var(--bdr,#e3e5e8);font-size:13px;line-height:1.55;color:var(--mut,#5f6368);}
+.disclaimer b{color:var(--txt,#111);font-weight:600;}
+@media print{.disclaimer{display:block!important;max-width:none;margin:4mm 0 0;padding-top:1.5mm;border-top:0.4pt solid #888;font-family:Arial,Helvetica,sans-serif;font-size:7.5pt;color:#000;break-inside:avoid;} .disclaimer b{color:#000;}}
+/* ---------- print: A4 calculation sheet ---------- */
+#report{display:none;}
+@media print{
+  @page{size:A4;margin:12mm 12mm 14mm;}
+  body{background:#fff;color:#000;padding:0;background-image:none;font-size:9.5pt;}
+  .container{display:none;}
+  #report{display:block;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  #report table.wrap{width:100%;border-collapse:collapse;}
+  #report thead td{padding:0 0 3mm;}
+  .rh{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;border:0.6pt solid #000;font-size:8pt;}
+  .rh div{padding:1.2mm 2mm;border-right:0.6pt solid #000;}
+  .rh div:last-child{border-right:none;}
+  .rh b{display:block;font-size:6.5pt;color:#444;font-weight:normal;text-transform:uppercase;letter-spacing:.3pt;}
+  .rh .ttl{grid-column:1 / -1;border-top:0.6pt solid #000;border-right:none;font-weight:bold;font-size:10pt;}
+  .rs{margin:0 0 3.5mm;}
+  .rs h2,.rs h3{break-after:avoid;}
+  .rl,.rt,.rsvg,.rp,.rt tr{break-inside:avoid;}
+  .rs h2{font-size:10pt;margin:3mm 0 1.5mm;padding-bottom:0.8mm;border-bottom:0.8pt solid #000;}
+  .rs h3{font-size:9pt;margin:2mm 0 1mm;}
+  .rl{display:grid;grid-template-columns:1fr 92px 132px;gap:2mm;padding:0.5mm 0;font-size:8.6pt;}
+  .rl .cl{text-align:right;color:#444;font-size:7.5pt;}
+  .rl .rv{text-align:right;font-weight:bold;}
+  .ok{color:#0a7a3e;} .ng{color:#c00;}
+  .rt{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;}
+  .rt th,.rt td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;}
+  .rt th{background:#eee;font-weight:bold;}
+  .rt td:first-child,.rt th:first-child,.rt.lft td,.rt.lft th{text-align:left;}
+  .rp{font-size:8.3pt;line-height:1.45;margin:1mm 0;}
+  .rsvg{width:100%;height:auto;}
+  .rsvg *{vector-effect:non-scaling-stroke;}
+}
+
+.steps{font-size:12px;color:var(--mut);line-height:1.5;margin-bottom:12px;}
+.steps .st{display:grid;grid-template-columns:140px 1fr;gap:8px;padding:3px 0;border-bottom:1px solid var(--bdr);}
+.steps .st span:first-child{font-size:12px;color:var(--faint);}
+.row.wall{grid-template-columns:1fr 70px 1fr 1fr 1fr 32px;}
+.row.wall .wl2{grid-column:1 / -1;display:grid;grid-template-columns:1.5fr 1fr 1.5fr 1fr;gap:8px;align-items:end;}
+.vshare{color:var(--mut);}
+td.gov{font-weight:600;}
+@media(max-width:560px){   /* name and remove; along and line; from and to; then the stiffness */
+  .row.wall{grid-template-columns:1fr 1fr 32px;}
+  .row.wall > :nth-child(1){grid-column:1 / 3;grid-row:1;} .row.wall > :nth-child(6){grid-column:3;grid-row:1;}
+  .row.wall > :nth-child(2){grid-column:1;grid-row:2;} .row.wall > :nth-child(3){grid-column:2 / 4;grid-row:2;}
+  .row.wall > :nth-child(4){grid-column:1;grid-row:3;} .row.wall > :nth-child(5){grid-column:2 / 4;grid-row:3;}
+  .row.wall .wl2{grid-row:4;grid-template-columns:1fr 1fr;}
+}
+</style>
+</head>
+<body data-material="concrete" style="--photo:url(img/concrete-frame.jpg);--credit:'Photo: Cjp24, CC BY-SA 4.0'">
+<div class="container">
+  <div class="page-hdr">
+    <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
+    <h1>Rigid Diaphragm</h1>
+    <p>A storey’s horizontal load shared between its shear walls, cores and braced bays by a rigid floor or roof &nbsp;·&nbsp; the centre of rigidity, and the torsion from the load’s eccentricity &nbsp;·&nbsp; by stiffness, or by racking strength for timber frame walls (PD 6693-1 20.3) &nbsp;·&nbsp; wind torsion by the UK National Annex to BS EN 1991-1-4 (Figure NA.10)</p>
+  </div>
+  <div class="main-grid">
+    <div id="inputs">
+      <div class="card">
+        <div class="section-title">Project</div>
+        <div class="form-group"><label>Project</label><input type="text" id="pName" placeholder="Project name"></div>
+        <div class="grid3"><div class="form-group"><label>Job no.</label><input type="text" id="pJob"></div><div class="form-group"><label>By</label><input type="text" id="pBy"></div><div class="form-group"><label>Level / ref.</label><input type="text" id="pRef" placeholder="e.g. 1st floor"></div></div>
+      </div>
+      <div class="card">
+        <div class="section-title">Plan and walls</div>
+        <div class="form-group"><label>Share the load</label><select id="basis"><option value="stiffness" selected>By stiffness: shear walls, cores, braced bays</option><option value="strength">By racking strength: timber frame walls (PD 6693-1 20.3)</option></select></div>
+        <div class="grid3">
+          <div class="form-group"><label>Plan width B, along X (m)</label><input type="number" id="B" value="30" step="0.5"></div>
+          <div class="form-group"><label>Plan depth D, along Y (m)</label><input type="number" id="D" value="15" step="0.5"></div>
+          <div class="form-group b-stiff"><label>Wall height H (m)</label><input type="number" id="H" value="10.5" step="0.1"></div>
+        </div>
+        <div class="grid3 b-stiff">
+          <div class="form-group"><label>Walls act as</label><select id="fix"><option value="cant" selected>Cantilevers from the base</option><option value="fixed">Fixed at both ends</option></select></div>
+          <div class="form-group"><label>Concrete f<sub>ck</sub> (N/mm²)</label><input type="number" id="fck" value="32" step="1"></div>
+          <div class="form-group"><label>Masonry f<sub>k</sub> (N/mm²)</label><input type="number" id="fk" value="5" step="0.1"></div>
+        </div>
+        <div class="grid3 b-stiff">
+          <div class="form-group"><label>Concrete stiffness factor</label><input type="number" id="crack" value="1" step="0.05"></div>
+          <div class="form-group"><label>Drift limit, H /</label><input type="number" id="drift" value="300" step="50"></div>
+        </div>
+        <label class="chk b-stiff"><input type="checkbox" id="shear" checked> Include the walls’ shear deformation (1.2H/GA)</label>
+        <div class="help b-stiff">H: the height over which the walls cantilever (to this floor from the foundations), or the storey height for walls fixed at both ends; drift is the floor’s characteristic movement at its corners against H/limit. The concrete stiffness factor reduces E<sub>cm</sub> for cracking (1.0 uncracked, for example 0.5 cracked).</div>
+        <div class="help b-strength hidden">Each wall diaphragm takes the load in proportion to its design racking strength F<sub>i,v,Rd</sub> (from the <a href="Timber Racking Wall.html">Timber Racking Wall</a> tool), where the floor or roof meets PD 6693-1 Annex E or BS EN 1995-1-1 9.2.3; the torsion from the eccentricity between the wind and the walls’ resistance goes to the walls both ways (20.3 d)).</div>
+        <div class="dlabel" style="margin-top:14px">Walls, cores and braced bays</div>
+        <div class="rows" id="wallRows"></div>
+        <button class="addbtn" id="addWall" type="button">+ Add a wall</button>
+        <div class="help">Origin at the bottom-left corner of the plan. A wall along X resists load in X: its line is y = the value given, from x to x. A wall along Y: x = the value, from y to y. Enter each wall of a core separately. <span class="b-stiff">F<sub>Rd</sub>: the wall’s design resistance, if you want it checked.</span></div>
+      </div>
+      <div class="card">
+        <div class="section-title">Horizontal load on this storey (characteristic)</div>
+        <div class="grid3">
+          <div class="form-group"><label>F<sub>k</sub> in X (kN)</label><input type="number" id="Fx" value="100" step="5"></div>
+          <div class="form-group"><label>At y (m)</label><input type="number" id="ax" placeholder="D/2" step="0.1"></div>
+          <div class="form-group"><label>Face width b (m)</label><input type="number" id="bx" placeholder="D" step="0.1"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>F<sub>k</sub> in Y (kN)</label><input type="number" id="Fy" value="200" step="5"></div>
+          <div class="form-group"><label>At x (m)</label><input type="number" id="ay" placeholder="B/2" step="0.1"></div>
+          <div class="form-group"><label>Face width b (m)</label><input type="number" id="by" placeholder="B" step="0.1"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Partial factor γ</label><input type="number" id="gam" value="1.5" step="0.05"></div>
+          <div class="form-group"><label>Torsion</label><select id="tors"><option value="na10" selected>Wind, UK NA Figure NA.10</option><option value="ecc">± eccentricity e × b</option><option value="none">None</option></select></div>
+          <div class="form-group t-ecc"><label>e (fraction of b)</label><input type="number" id="ecc" value="0.1" step="0.01"></div>
+          <div class="form-group t-na10"><label>Lack-of-correlation factor in F</label><input type="number" id="flc" value="1" step="0.01"></div>
+        </div>
+        <div class="help">F<sub>k</sub>: the storey’s wind (zones D and E) or other horizontal load, acting at the centre of the loaded face; leave the position blank for the middle of the plan. γ 1.5 for wind (BS EN 1990 Table NA.A1.2(B)); 1.0 for loads already factored. Figure NA.10 replaces Figure 7.1 of BS EN 1991-1-4 in the UK (NA.2.23): c<sub>pe</sub> of zones D and E × 1.3 rising from nothing at one end of each face, which is 0.65F at b/6 from the centre. If F includes the lack-of-correlation factor of 7.2.2(3), give it, so it is taken out of the torsion case.</div>
+      </div>
+      <button class="btn" id="calc">Calculate</button>
+    </div>
+    <div><div class="card" id="results"><div id="drawings"></div><div class="placeholder">The plan follows the inputs. Calculate for the wall forces, the checks and the A4 sheet.</div></div></div>
+  </div>
+</div>
+<div id="report"></div>
+<script id="engine">
+/* ===== RIGID DIAPHRAGM ENGINE (EngineeringTools) =====
+   A storey's horizontal load shared between its walls, cores and braced bays by a floor or roof that acts as a rigid
+   diaphragm, with the torsion from any eccentricity between the load and the centre of rigidity.
+   - The diaphragm moves as a rigid body: u, v (translation) and φ (rotation, anticlockwise) at the origin. Each wall or bay
+     resists only along its own line, with stiffness k; a unit vector (cos θ, sin θ) along it and its moment arm about the
+     origin r₀ = x sin θ − y cos θ give its row aᵢ = [cos θ, sin θ, r₀], so K = Σ kᵢ aᵢ aᵢᵀ and K d = P, P = [F_x, F_y, M_z].
+     Wall force fᵢ = kᵢ aᵢ·d. Walls all in one direction are solved on that direction and the rotation alone.
+   - Centre of rigidity: the point a force passes through without turning the floor, from C = K⁻¹: x_r = −C₁₂/C₂₂,
+     y_r = C₀₂/C₂₂ (for walls along X and Y this is Σk_y x/Σk_y, Σk_x y/Σk_x); torsional stiffness about it J = 1/C₂₂
+     (Σ k r² about the centre of rigidity). Each force splits exactly into a direct part, kᵢ (cos θ u_r + sin θ v_r) from the
+     translation of the centre of rigidity, and a torsional part kᵢ rᵢ φ = kᵢ rᵢ T/J, rᵢ measured from it (Mosley, Bungey
+     and Hulse, Reinforced Concrete Design to Eurocode 2, 3.5).
+   - Stiffness of each wall or bay, by one of:
+       given: k in kN/mm;
+       concrete or masonry wall: a cantilever from its base (c = 3) or fixed at both ends of the storey (c = 12), bending
+         and shear, δ/F = H³/(c E I) + 1.2 H/(G A), I = tL³/12, A = tL; concrete E_cm = 22((f_ck + 8)/10)^0.3 GPa
+         (BS EN 1992-1-1 Table 3.1), G = E/2.4 (ν 0.2, 3.1.3(4)); masonry E = 1000 f_k (BS EN 1996-1-1 3.7.2, UK NA),
+         G = 0.4E (3.7.3);
+       steel bracing: the diagonals' axial stiffness, k = n E A cos²α/L_d (single diagonal or X-bracing with both
+         diagonals or the tension diagonal only), a chevron's two diagonals to mid-bay; the columns' axial strain and the
+         connections' slip are ignored;
+       racking strength: timber frame wall diaphragms share the load in proportion to their design racking strength
+         F_i,v,Rd where the floor or roof can act as a diaphragm (PD 6693-1:2025 20.3 c)), and the torsion from the
+         eccentricity between the wind and the centroid of the racking resistance goes to the walls both ways (20.3 d)).
+   - Load cases for each direction loaded: the force at the centre of the loaded face, and for torsion either
+       the UK National Annex to BS EN 1991-1-4, NA.2.23 and Figure NA.10 (replacing Figure 7.1): c_pe of zones D and E
+       × 1.3 rising from zero at one end of each face to the other, which is 0.65 F_(D+E) at b/6 from the centre (each way),
+       F_(D+E) being the force without the lack-of-correlation factor of 7.2.2(3); or
+       a given eccentricity ± e b (accidental eccentricity, notional forces); or none.
+     Each case gives every wall its force; the design force is the largest over the cases (wind from either side changes
+     only the signs). Characteristic loads × γ (1.5 for wind, BS EN 1990 Table NA.A1.2(B)).
+   - Drift: the characteristic displacement of the floor at its corners against H/limit (walls with real stiffness).
+   Source: scratchpad/diaphragm/engine.js. Standalone. */
+const RigidDiaphragm = (() => {
+  'use strict';
+  const r0 = v => (Math.round(v) || 0).toLocaleString('en-GB'), r1 = v => (Math.round(v * 10) / 10).toFixed(1), r2 = v => (Math.round(v * 100) / 100).toFixed(2), r3 = v => (Math.round(v * 1000) / 1000).toFixed(3);
+  const sig = v => { const a = Math.abs(v); return a >= 100 ? r0(v) : a >= 10 ? r1(v) : a >= 1 ? r2(v) : (Math.round(v * 1000) / 1000).toString(); };
+  const num = (v, nm) => { const x = typeof v === 'number' ? v : parseFloat(v); if (!Number.isFinite(x)) throw new Error(`${nm}: give a number`); return x; };
+  const pos = (v, nm) => { const x = num(v, nm); if (!(x > 0)) throw new Error(`${nm}: must be more than zero`); return x; };
+  const opt = (v, d) => { const x = typeof v === 'number' ? v : parseFloat(v); return Number.isFinite(x) ? x : d; };
+  const ESTEEL = 210;   // kN/mm²
+  const MATS = { concrete: 'concrete', masonry: 'masonry' };
+  const BRACE = {
+    single: { name: 'single diagonal (tension and compression)', n: 1 },
+    xt: { name: 'X-bracing, tension diagonal only', n: 1 },
+    xb: { name: 'X-bracing, both diagonals', n: 2 },
+    chev: { name: 'chevron (two diagonals to mid-bay)', n: 2, half: true },
+  };
+  const Ecm = fck => 22 * ((fck + 8) / 10) ** 0.3;   // GPa = kN/mm²
+
+  // the stiffness of one wall or bay (kN/mm, or the racking strength in kN for the strength basis)
+  function stiffness(w, G, basis) {
+    const L = w.L * 1000, H = (opt(w.H, 0) || G.H) * 1000;   // mm
+    if (basis === 'strength') {
+      const F = pos(w.FRd, `${w.id}: racking strength F_i,v,Rd`);
+      return { k: F, FRd: F, how: `F_i,v,Rd = ${sig(F)} kN (racking strength)` };
+    }
+    const T = w.type || 'k';
+    if (T === 'k') { const k = pos(w.k, `${w.id}: stiffness k`); return { k, how: `k = ${sig(k)} kN/mm as given` }; }
+    if (T === 'concrete' || T === 'masonry') {
+      const t = pos(w.t, `${w.id}: thickness t`);
+      if (!(H > 0)) throw new Error('Storey height H: must be more than zero for walls whose stiffness is calculated');
+      let E, Gm, eh;
+      if (T === 'concrete') { const fck = pos(G.fck, 'Concrete f_ck'); E = Ecm(fck) * (opt(G.crack, 1) || 1); Gm = E / 2.4; eh = `E_cm = 22((${r0(fck)} + 8)/10)^0.3${G.crack && G.crack !== 1 ? ` × ${G.crack}` : ''} = ${r1(E)} GPa, G = E/2.4`; }
+      else { const fk = pos(G.fk, 'Masonry f_k'); E = 1000 * fk / 1000; Gm = 0.4 * E; eh = `E = 1000 f_k = ${r0(1000 * fk)} N/mm², G = 0.4E`; }
+      const I = t * L ** 3 / 12, A = t * L, c = G.fix === 'fixed' ? 12 : 3;
+      const db = H ** 3 / (c * E * I), ds = G.shear === false ? 0 : 1.2 * H / (Gm * A), k = 1 / (db + ds);
+      return { k, E, Gm, I, A, t, db, ds, how: `${T} wall t ${r0(t)} mm, L ${r2(w.L)} m, H ${r2(H / 1000)} m; ${eh}; δ/F = H³/(${c}EI)${ds ? ' + 1.2H/(GA)' : ''} = ${(db * 1e3).toPrecision(3)}${ds ? ` + ${(ds * 1e3).toPrecision(3)}` : ''} mm per MN; k = ${sig(k)} kN/mm` };
+    }
+    if (T === 'brace') {
+      const B = BRACE[w.arr || 'xt']; if (!B) throw new Error(`${w.id}: bracing arrangement not recognised`);
+      const A = pos(w.A, `${w.id}: diagonal area A`) * 100;   // cm² → mm²
+      if (!(H > 0)) throw new Error('Storey height H: must be more than zero for braced bays');
+      const wx = B.half ? L / 2 : L, Ld = Math.hypot(wx, H), k = B.n * ESTEEL * A * wx ** 2 / Ld ** 3;
+      return { k, A, Ld, wx, n: B.n, arr: w.arr || 'xt', how: `steel bracing, ${B.name}: A ${r1(A / 100)} cm², bay ${r2(w.L)} m × ${r2(H / 1000)} m, L_d = ${r2(Ld / 1000)} m; k = ${B.n} E A cos²α/L_d = ${B.n} × 210 × ${r0(A)} × (${r2(wx / 1000)}/${r2(Ld / 1000)})²/${r0(Ld)} = ${sig(k)} kN/mm` };
+    }
+    throw new Error(`${w.id}: stiffness type not recognised`);
+  }
+
+  // 3 × 3 solve (Gaussian elimination with partial pivoting)
+  function solve3(K, P) {
+    const A = K.map((r, i) => [...r, P[i]]);
+    for (let c = 0; c < 3; c++) {
+      let p = c; for (let r = c + 1; r < 3; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r;
+      [A[c], A[p]] = [A[p], A[c]];
+      for (let r = c + 1; r < 3; r++) { const f = A[r][c] / A[c][c]; for (let j = c; j < 4; j++) A[r][j] -= f * A[c][j]; }
+    }
+    const x = [0, 0, 0];
+    for (let r = 2; r >= 0; r--) { let s = A[r][3]; for (let j = r + 1; j < 3; j++) s -= A[r][j] * x[j]; x[r] = s / A[r][r]; }
+    return x;
+  }
+  const inv3 = K => [0, 1, 2].map(j => solve3(K, [0, 1, 2].map(i => +(i === j))));   // columns of K⁻¹ (symmetric)
+  const det3 = m => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+
+  function design(inp) {
+    const steps = [], checks = [], warnings = [], limits = [];
+    const basis = inp.basis === 'strength' ? 'strength' : 'stiffness';
+    const G = Object.assign({ H: 0, fix: 'cant', shear: true, fck: 32, fk: 5, crack: 1, drift: 300 }, inp.global || {});
+    G.H = opt(G.H, 0);
+    // walls
+    const raw = (inp.walls || []).filter(w => w && (w.id || w.at !== undefined));
+    if (!raw.length) throw new Error('Add the walls, cores or braced bays that carry the load');
+    const ids = new Set();
+    const walls = raw.map((w, i) => {
+      const id = String(w.id || '').trim() || `W${i + 1}`;
+      if (ids.has(id)) throw new Error(`Two walls are called ${id}: give each its own name`); ids.add(id);
+      const dir = w.dir === 'y' ? 'y' : w.dir === 'x' ? 'x' : 'a';
+      const th = dir === 'x' ? 0 : dir === 'y' ? 90 : num(w.theta, `${id}: angle`);
+      const at = num(w.at, `${id}: position of its line`), a = num(w.from, `${id}: start`), b = num(w.to, `${id}: end`);
+      const L = Math.abs(b - a); if (!(L > 0)) throw new Error(`${id}: its start and end are the same: give its length along its line`);
+      const m = (a + b) / 2, c = Math.cos(th * Math.PI / 180), s = Math.sin(th * Math.PI / 180);
+      // the wall's mid-point: for a wall along X its line is y = at; along Y, x = at; at an angle, 'at' is x and from/to are y of its ends
+      const x = dir === 'x' ? m : dir === 'y' ? at : at, y = dir === 'x' ? at : dir === 'y' ? m : m;
+      const W = { id, dir, th, c: Math.abs(c) < 1e-12 ? 0 : c, s: Math.abs(s) < 1e-12 ? 0 : s, at, a, b, L, x, y, type: basis === 'strength' ? 'rack' : (w.type || 'k'), FRd: opt(w.FRd, 0), src: w };
+      const S = stiffness({ ...w, id, L }, G, basis); Object.assign(W, { k: S.k, stiff: S, FRd: basis === 'strength' ? S.FRd : W.FRd });
+      W.r0 = W.x * W.s - W.y * W.c;
+      return W;
+    });
+    const real = basis === 'stiffness';                  // displacements are meaningful (k in kN/mm)
+    const kU = real ? 1000 : 1;                          // kN/mm → kN/m
+    walls.forEach(w => steps.push({ ref: w.type === 'rack' ? 'PD 6693-1 20.3 c)' : w.type === 'brace' ? 'stiffness' : w.type === 'k' ? 'given' : w.type === 'concrete' ? 'EC2 Table 3.1' : 'EC6 3.7.2, 3.7.3', text: `${w.id} (along ${w.dir === 'a' ? `${r0(w.th)}°` : w.dir.toUpperCase()}, ${w.dir === 'x' ? `y = ${r2(w.at)} m, x ${r2(w.a)} to ${r2(w.b)}` : w.dir === 'y' ? `x = ${r2(w.at)} m, y ${r2(w.a)} to ${r2(w.b)}` : `through (${r2(w.x)}, ${r2(w.y)})`} m): ${w.stiff.how}` }));
+    const kSum = walls.reduce((t, w) => t + w.k, 0);
+    // the plan: given, or the extent of the walls
+    const ex = walls.flatMap(w => w.dir === 'x' ? [[w.a, w.at], [w.b, w.at]] : w.dir === 'y' ? [[w.at, w.a], [w.at, w.b]] : [[w.x, w.y]]);
+    const minX = Math.min(...ex.map(p => p[0])), maxX = Math.max(...ex.map(p => p[0])), minY = Math.min(...ex.map(p => p[1])), maxY = Math.max(...ex.map(p => p[1]));
+    const P0 = inp.plan || {}, B = opt(P0.B, 0) > 0 ? +P0.B : Math.max(maxX, 0) - Math.min(minX, 0), D = opt(P0.D, 0) > 0 ? +P0.D : Math.max(maxY, 0) - Math.min(minY, 0);
+    const plan = { x0: opt(P0.B, 0) > 0 ? 0 : Math.min(minX, 0), y0: opt(P0.D, 0) > 0 ? 0 : Math.min(minY, 0), B, D, given: opt(P0.B, 0) > 0 && opt(P0.D, 0) > 0 };
+    if (!(B > 0) || !(D > 0)) throw new Error('Plan: give its width B and depth D (the walls alone do not span both ways)');
+    walls.forEach(w => { const out = (px, py) => px < plan.x0 - 1e-6 || px > plan.x0 + B + 1e-6 || py < plan.y0 - 1e-6 || py > plan.y0 + D + 1e-6;
+      if (w.dir === 'x' ? out(w.a, w.at) || out(w.b, w.at) : w.dir === 'y' ? out(w.at, w.a) || out(w.at, w.b) : out(w.x, w.y)) warnings.push(`${w.id} lies partly outside the plan B × D.`); });
+    const Lref = Math.max(B, D);
+    // all walls in one direction?
+    const par = walls.every(w => Math.abs(w.c * walls[0].s - w.s * walls[0].c) < 1e-9);
+    let K = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    walls.forEach(w => { const a = [w.c, w.s, w.r0]; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) K[i][j] += w.k * kU * a[i] * a[j]; });
+    let C = null, xr = null, yr = null, J, crLine = null, n0 = null;
+    if (par) {
+      const c0 = walls[0].c, s0 = walls[0].s; n0 = { c: c0, s: s0 };
+      const Sk = kSum * kU, Skr = walls.reduce((t, w) => t + w.k * kU * w.r0, 0), rc = Skr / Sk;
+      const vals = new Set(walls.map(w => Math.round(w.r0 * 1e6)));
+      if (vals.size < 2) throw new Error(`The walls all lie on one line, so the floor can turn about it: add a wall or bay on another line${walls.length > 1 ? '' : ''}`);
+      J = walls.reduce((t, w) => t + w.k * kU * (w.r0 - rc) ** 2, 0); crLine = rc;
+      if (Math.abs(s0) > 0.999999) xr = rc / s0; else if (Math.abs(c0) > 0.999999) yr = -rc / c0;
+      warnings.push(`Every wall runs along ${Math.abs(s0) > 0.999999 ? 'Y' : Math.abs(c0) > 0.999999 ? 'X' : `${r0(walls[0].th)}°`}: nothing resists load across them, and the torsion is taken by the walls’ spacing alone.`);
+    } else {
+      const sc = kSum * kU, Kn = K.map((r, i) => r.map((v, j) => v / sc / (i === 2 ? Lref : 1) / (j === 2 ? Lref : 1)));
+      if (Math.abs(det3(Kn)) < 1e-9) throw new Error('The walls’ lines all meet at one point, so they cannot stop the floor turning about it: add a wall or bay off that point');
+      C = inv3(K); xr = -C[1][2] / C[2][2]; yr = C[0][2] / C[2][2]; J = 1 / C[2][2];
+    }
+    // each wall's moment arm about the centre of rigidity (distance from it to the wall's line, signed)
+    walls.forEach(w => { w.r = par ? w.r0 - crLine : (w.x - xr) * w.s - (w.y - yr) * w.c; });
+    const kx = walls.filter(w => w.dir === 'x').reduce((t, w) => t + w.k, 0), ky = walls.filter(w => w.dir === 'y').reduce((t, w) => t + w.k, 0);
+    const ortho = walls.every(w => w.dir !== 'a'), uK = real ? 'kN/mm' : 'kN';
+    if (ortho) {
+      if (ky > 0 && xr !== null) steps.push({ ref: 'centre of rigidity', text: `x_r = Σk_y x/Σk_y = ${sig(walls.filter(w => w.dir === 'y').reduce((t, w) => t + w.k * w.at, 0))}/${sig(ky)} = ${r2(xr)} m (walls along Y)` });
+      if (kx > 0 && yr !== null) steps.push({ ref: 'centre of rigidity', text: `y_r = Σk_x y/Σk_x = ${sig(walls.filter(w => w.dir === 'x').reduce((t, w) => t + w.k * w.at, 0))}/${sig(kx)} = ${r2(yr)} m (walls along X)` });
+    } else steps.push({ ref: 'centre of rigidity', text: `from the flexibility C = K⁻¹ (walls at an angle): x_r = −C₁₂/C₂₂ = ${r2(xr)} m, y_r = C₀₂/C₂₂ = ${r2(yr)} m` });
+    const Jd = J / kU;   // in k-units × m²
+    steps.push({ ref: 'torsion', text: `J = Σ k r² about the centre of rigidity = ${walls.map(w => `${sig(w.k)} × ${r2(Math.abs(w.r))}²`).slice(0, 8).join(' + ')}${walls.length > 8 ? ' + …' : ''} = ${sig(Jd)} ${uK} m²` });
+
+    // loads
+    const L0 = inp.loads || {}, gam = opt(L0.gamma, 1.5), tors = L0.tors || 'na10', eF = opt(L0.e, 0.1), flc = opt(L0.flc, 1) || 1;
+    if (!(gam > 0)) throw new Error('γ: must be more than zero');
+    if (tors === 'na10' && !(flc > 0 && flc <= 1)) throw new Error('Lack-of-correlation factor in F: between 0 and 1');
+    const dirs = [];
+    for (const d of ['x', 'y']) {
+      const l = L0[d] || {}, Fk = opt(l.F, 0); if (!Fk) continue;
+      const bW = opt(l.b, 0) > 0 ? +l.b : d === 'x' ? D : B, atC = Number.isFinite(parseFloat(l.at)) ? +l.at : d === 'x' ? plan.y0 + D / 2 : plan.x0 + B / 2;
+      dirs.push({ d, Fk, F: gam * Fk, b: bW, at: atC });
+      if (d === 'x' ? atC < plan.y0 - 1e-6 || atC > plan.y0 + D + 1e-6 : atC < plan.x0 - 1e-6 || atC > plan.x0 + B + 1e-6) warnings.push(`The line of the load in ${d.toUpperCase()} lies outside the plan.`);
+    }
+    if (!dirs.length) throw new Error('Give the horizontal load in X or Y (or both)');
+    const cases = [];
+    dirs.forEach(L => {
+      const D2 = L.d.toUpperCase(), lab = L.d === 'x' ? 'y' : 'x';
+      cases.push({ dir: L.d, name: `${D2}, at the centre`, short: `${D2}`, F: L.F, Fk: L.Fk, at: L.at, off: 0 });
+      if (tors === 'na10') {
+        const Ft = 0.65 * L.F / flc, Ftk = 0.65 * L.Fk / flc;
+        [1, -1].forEach(sg => cases.push({ dir: L.d, name: `${D2}, torsion ${sg > 0 ? '+' : '−'}b/6`, short: `${D2} ${sg > 0 ? '+' : '−'}T`, F: Ft, Fk: Ftk, at: L.at + sg * L.b / 6, off: sg * L.b / 6, tors: true }));
+        steps.push({ ref: 'EC1-4 NA.2.23, Fig. NA.10', text: `${D2}: F_Ed = ${r2(gam)} × ${sig(L.Fk)} = ${sig(L.F)} kN at ${lab} = ${r2(L.at)} m; torsion: c_pe,D and c_pe,E × 1.3 rising from 0 to the other end of each face (b = ${r2(L.b)} m) give 0.65 F${flc !== 1 ? `/${r2(flc)}` : ''} = ${sig(Ft)} kN at b/6 = ${r2(L.b / 6)} m each side of the centre` });
+      } else if (tors === 'ecc') {
+        [1, -1].forEach(sg => cases.push({ dir: L.d, name: `${D2}, ${sg > 0 ? '+' : '−'}e`, short: `${D2} ${sg > 0 ? '+' : '−'}e`, F: L.F, Fk: L.Fk, at: L.at + sg * eF * L.b, off: sg * eF * L.b, tors: true }));
+        steps.push({ ref: 'eccentricity', text: `${D2}: F_Ed = ${r2(gam)} × ${sig(L.Fk)} = ${sig(L.F)} kN at ${lab} = ${r2(L.at)} m, and at ± e = ${r3(eF)} × ${r2(L.b)} = ${r2(eF * L.b)} m` });
+      } else steps.push({ ref: 'load', text: `${D2}: F_Ed = ${r2(gam)} × ${sig(L.Fk)} = ${sig(L.F)} kN at ${lab} = ${r2(L.at)} m (no torsion allowance)` });
+    });
+    // solve each case
+    cases.forEach(cs => {
+      const Fx = cs.dir === 'x' ? cs.F : 0, Fy = cs.dir === 'y' ? cs.F : 0, px = cs.dir === 'y' ? cs.at : 0, py = cs.dir === 'x' ? cs.at : 0;
+      const Mz = px * Fy - py * Fx;
+      let u, v, ph;
+      if (par) {
+        const nF = Fx * n0.c + Fy * n0.s, mF = -Fx * n0.s + Fy * n0.c;
+        if (Math.abs(mF) > 1e-9 * Math.max(1, Math.abs(cs.F))) throw new Error(`Nothing resists the load in ${cs.dir.toUpperCase()}: every wall runs the other way. Add walls or bays along ${cs.dir.toUpperCase()}`);
+        const Sk = kSum * kU, Skr = walls.reduce((t, w) => t + w.k * kU * w.r0, 0), Skrr = walls.reduce((t, w) => t + w.k * kU * w.r0 ** 2, 0);
+        const det = Sk * Skrr - Skr ** 2, wv = (nF * Skrr - Skr * Mz) / det; ph = (Sk * Mz - Skr * nF) / det; u = wv * n0.c; v = wv * n0.s;
+      } else [u, v, ph] = solve3(K, [Fx, Fy, Mz]);
+      // centre-of-rigidity translation, and the torque about it
+      // the torque about the centre of rigidity, and the load's offset from it
+      cs.T = par ? Mz - crLine * (Fx * n0.c + Fy * n0.s) : Mz - xr * Fy + yr * Fx;
+      cs.e = cs.dir === 'x' ? (yr !== null ? cs.at - yr : null) : (xr !== null ? cs.at - xr : null);
+      cs.u = u; cs.v = v; cs.ph = ph;
+      cs.f = walls.map(w => {
+        const tot = w.k * kU * (w.c * u + w.s * v + w.r0 * ph);
+        const tor = w.k * kU * w.r * ph, dir = tot - tor;
+        return { tot, dir, tor };
+      });
+      // equilibrium
+      const sx = cs.f.reduce((t, f, i) => t + f.tot * walls[i].c, 0), sy = cs.f.reduce((t, f, i) => t + f.tot * walls[i].s, 0), sm = cs.f.reduce((t, f, i) => t + f.tot * walls[i].r0, 0);
+      cs.eq = Math.max(Math.abs(sx - Fx), Math.abs(sy - Fy), Math.abs(sm - Mz) / Lref) / Math.max(1, cs.F);
+      if (real) {   // characteristic displacement of the corners of the plan (mm)
+        const kf = cs.Fk / cs.F, corners = [[plan.x0, plan.y0], [plan.x0 + B, plan.y0], [plan.x0, plan.y0 + D], [plan.x0 + B, plan.y0 + D]];
+        cs.drift = Math.max(...corners.map(([x, y]) => Math.max(Math.abs(u - ph * y), Math.abs(v + ph * x)))) * kf * 1000;
+        cs.rot = ph * kf;
+      }
+      if (cs.e !== null && cs.e !== undefined) steps.push({ ref: cs.name, text: `F = ${sig(cs.F)} kN, e = ${r2(cs.e)} m from the centre of rigidity, T = ${sig(cs.T)} kNm${real ? `; drift at the corners ${r2(cs.drift)} mm (characteristic)` : ''}` });
+    });
+    // per wall: envelope, governing case
+    walls.forEach((w, i) => {
+      let best = 0, gi = 0; cases.forEach((cs, j) => { if (Math.abs(cs.f[i].tot) > best + 1e-12) { best = Math.abs(cs.f[i].tot); gi = j; } });
+      w.F = best; w.gov = cases[gi]; w.govI = gi; w.v = best / w.L;
+      w.share = cases.map(cs => cs.f[i].tot);
+      if (w.type === 'brace') { const S = w.stiff; w.N = best * S.Ld / (S.n * S.wx); }   // each effective diagonal
+      if (w.FRd > 0) { w.util = best / w.FRd; checks.push({ id: 'w:' + w.id, name: `${w.id}${w.type === 'rack' ? ', racking' : ''}`, ref: w.type === 'rack' ? 'PD 6693-1 20.4.1' : 'F_Rd given', util: w.util, note: `F_Ed ${sig(best)} kN (${w.gov.short}) / F_Rd ${sig(w.FRd)} kN` }); }
+    });
+    // drift
+    let drift = null;
+    if (real && G.H > 0) {
+      const lim = opt(G.drift, 300) || 300, dl = G.H * 1000 / lim, worst = cases.reduce((a, c) => (c.drift > a.drift ? c : a), cases[0]);
+      drift = { lim, dl, d: worst.drift, cs: worst };
+      checks.push({ id: 'drift', name: 'Storey drift', ref: `H/${r0(lim)}`, util: worst.drift / dl, note: `δ_max ${r2(worst.drift)} mm at a corner (${worst.short}, characteristic) / H/${r0(lim)} = ${r2(dl)} mm` });
+    }
+    const eqMax = Math.max(...cases.map(c => c.eq));
+    if (eqMax > 1e-6) warnings.push(`Equilibrium out by ${(eqMax * 100).toPrecision(2)} %: check the inputs.`);
+    const top = [...walls].sort((a, b) => b.F - a.F)[0];
+    const utilMax = checks.length ? Math.max(...checks.map(c => c.util)) : null;
+    if (basis === 'strength') {
+      dirs.forEach(L => steps.push({ ref: 'PD 6693-1 20.3 c)', text: `${L.d.toUpperCase()}: walls along ${L.d.toUpperCase()} take F in proportion to F_i,v,Rd: ΣF_i,v,Rd = ${sig(walls.filter(w => w.dir === L.d).reduce((t, w) => t + w.FRd, 0))} kN, so the direct share uses ${r3(L.F / Math.max(1e-9, walls.filter(w => w.dir === L.d).reduce((t, w) => t + w.FRd, 0)))} of each wall’s strength` }));
+    }
+    return { basis, real, G, walls, cases, dirs, plan, xr, yr, J: Jd, kx, ky, kSum, par, n0, crLine, ortho, gam, tors, eF, flc, top, drift, checks, utilMax, steps, warnings, limits, uK };
+  }
+
+  return { design, Ecm, BRACE, MATS };
+})();
+if (typeof module !== 'undefined') module.exports = RigidDiaphragm;
+
+</script>
+<script id="drawing-code">
+/* ===== CONNECTION DIAGRAMS (EngineeringTools ConnectionCheck) =====
+   Parametric, to-scale drafting views of each joint, drawn from the current inputs: an elevation and a plan or section,
+   with bolts, welds, dimension chains, labels and the design actions. Pure functions returning SVG strings.
+   Model units mm; each view maps a model box onto a pixel box (x right, y up). */
+const JD = (() => {
+  'use strict';
+  const C = { steel: '#e7ecf1', web: '#eef2f5', edge: '#2f3b47', plate: '#f6d58c', plateEdge: '#94700f', pack: '#e3d3ae', bolt: '#3a424b', boltDark: '#1f252b',
+    weld: '#1a1f24', dim: '#1b67b0', txt: '#222a31', mute: '#7a8590', cl: '#97a2ac', load: '#cc3426', conc: '#f1efea', concEdge: '#8b8478', grout: '#ddd7ca', paper: '#ffffff' };
+  const FS = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"', FM = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"';
+  const W = 920, H = 520;
+  const DEFS = `<defs>
+<pattern id="jdCut" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect width="6" height="6" fill="#c7d0d9"/><line x1="0" y1="0" x2="0" y2="6" stroke="#6f7d8a" stroke-width="0.9"/></pattern>
+<pattern id="jdPlCut" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(-45)"><rect width="5" height="5" fill="#efc560"/><line x1="0" y1="0" x2="0" y2="5" stroke="#94700f" stroke-width="0.8"/></pattern>
+<pattern id="jdConc" patternUnits="userSpaceOnUse" width="26" height="26"><rect width="26" height="26" fill="${C.conc}"/><circle cx="5" cy="6" r="1.3" fill="#b3ab9d"/><circle cx="17" cy="15" r="1.7" fill="#c0b8aa"/><circle cx="9" cy="21" r="1" fill="#a9a091"/><path d="M19 4 l3 2 l-3 2 z" fill="#c5bdaf"/><path d="M2 14 l2.5 -2 l1.5 3 z" fill="#bdb5a7"/></pattern>
+<pattern id="jdGrout" patternUnits="userSpaceOnUse" width="8" height="8"><rect width="8" height="8" fill="${C.grout}"/><circle cx="2" cy="2" r="0.7" fill="#9e9687"/><circle cx="6" cy="6" r="0.7" fill="#9e9687"/></pattern>
+<marker id="jdLd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${C.load}"/></marker>
+</defs>`;
+  const num = v => { const a = Math.abs(v); return a >= 100 || Number.isInteger(+v.toFixed(1)) ? Math.round(v).toString() : v.toFixed(1); };
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // ---------- views ----------
+  function view(box, bb) {
+    const w = bb[2] - bb[0], h = bb[3] - bb[1], k = Math.min(box[2] / w, box[3] / h);
+    const ox = box[0] + (box[2] - w * k) / 2 - bb[0] * k, oy = box[1] + (box[3] - h * k) / 2 + bb[3] * k;
+    return { k, X: x => ox + x * k, Y: y => oy - y * k, box };
+  }
+  const ST = {
+    steel: `fill="${C.steel}" stroke="${C.edge}" stroke-width="1.1"`, web: `fill="${C.web}" stroke="${C.edge}" stroke-width="1.1"`,
+    cut: `fill="url(#jdCut)" stroke="${C.edge}" stroke-width="1.2"`, plate: `fill="${C.plate}" stroke="${C.plateEdge}" stroke-width="1.1"`,
+    plateCut: `fill="url(#jdPlCut)" stroke="${C.plateEdge}" stroke-width="1.1"`, pack: `fill="${C.pack}" stroke="${C.plateEdge}" stroke-width="0.9"`,
+    conc: `fill="url(#jdConc)" stroke="${C.concEdge}" stroke-width="1"`, grout: `fill="url(#jdGrout)" stroke="${C.concEdge}" stroke-width="0.8"`,
+    ghost: `fill="none" stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="6 3"`, outline: `fill="none" stroke="${C.edge}" stroke-width="1.1"`,
+    bg: `fill="${C.paper}" stroke="none"`,
+  };
+  const R = (v, x0, y0, x1, y1, st = 'steel') => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)); return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${(Math.abs(x1 - x0) * v.k).toFixed(1)}" height="${(Math.abs(y1 - y0) * v.k).toFixed(1)}" ${ST[st]}/>`; };
+  const P = (v, pts, st = 'steel') => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + v.X(p[0]).toFixed(1) + ' ' + v.Y(p[1]).toFixed(1)).join(' ')} Z" ${ST[st]}/>`;
+  const LS = { e: `stroke="${C.edge}" stroke-width="1.1"`, t: `stroke="${C.edge}" stroke-width="0.55"`, c: `stroke="${C.cl}" stroke-width="0.7" stroke-dasharray="14 3 2 3"`,
+    h: `stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="5 3"`, d: `stroke="${C.dim}" stroke-width="0.7"` };
+  const Ln = (v, x0, y0, x1, y1, k = 'e') => `<line x1="${v.X(x0).toFixed(1)}" y1="${v.Y(y0).toFixed(1)}" x2="${v.X(x1).toFixed(1)}" y2="${v.Y(y1).toFixed(1)}" ${LS[k]}/>`;
+  const lnP = (x0, y0, x1, y1, k = 'e') => `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" ${LS[k]}/>`;
+  function Tx(x, y, s, o = {}) {
+    const sz = o.size || 11, col = o.color || C.txt, anc = o.anchor || 'start', w = o.weight || 400, rot = o.rot ? ` transform="rotate(${o.rot} ${x.toFixed(1)} ${y.toFixed(1)})"` : '';
+    const body = esc(s).replace(/_\{([^}]*)\}|_([A-Za-z0-9]+)/g, (m, p1, p2) => `<tspan baseline-shift="sub" font-size="78%">${p1 || p2}</tspan>`);
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${sz}" fill="${col}" text-anchor="${anc}" font-weight="${w}" ${o.mono ? FM : FS} paint-order="stroke" stroke="${C.paper}" stroke-width="3" stroke-linejoin="round"${rot}>${body}</text>`;
+  }
+  const tw = (s, sz = 10) => String(s).replace(/_/g, '').length * sz * 0.6;
+  // ---------- dimensions (tick terminators) ----------
+  const tick = (x, y) => `<line x1="${(x - 3.5).toFixed(1)}" y1="${(y + 3.5).toFixed(1)}" x2="${(x + 3.5).toFixed(1)}" y2="${(y - 3.5).toFixed(1)}" stroke="${C.dim}" stroke-width="1.3"/>`;
+  // horizontal chain: xs (model), measured from model level y, dimension line at off px (negative: below)
+  function DH(v, xs, y, off, labels) {
+    const Yf = v.Y(y), Yd = Yf - off, s = Math.sign(off) || 1; let o = '';
+    xs.forEach(x => { o += lnP(v.X(x), Yf - s * 3, v.X(x), Yd - s * 4, 'd'); });
+    o += lnP(v.X(xs[0]) - 4, Yd, v.X(xs[xs.length - 1]) + 4, Yd, 'd');
+    xs.forEach(x => { o += tick(v.X(x), Yd); });
+    for (let i = 0; i < xs.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(xs[i + 1] - xs[i])); if (lab === '') continue;
+      const a = v.X(xs[i]), b = v.X(xs[i + 1]), wpx = Math.abs(b - a), tW = tw(lab);
+      const ty = off > 0 ? Yd - 4 : Yd + 11;
+      if (wpx > tW + 6) o += Tx((a + b) / 2, ty, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true });
+      else o += Tx(Math.max(a, b) + 3 + (i === xs.length - 2 ? 2 : 0), ty + (off > 0 ? -9 : 9) * (i % 2), lab, { size: 10, color: C.dim, mono: true });
+    }
+    return o;
+  }
+  function DV(v, ys, x, off, labels) {
+    const Xf = v.X(x), Xd = Xf + off, s = Math.sign(off) || 1; let o = '';
+    ys.forEach(y => { o += lnP(Xf + s * 3, v.Y(y), Xd + s * 4, v.Y(y), 'd'); });
+    o += lnP(Xd, v.Y(ys[0]) + 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), Xd, v.Y(ys[ys.length - 1]) - 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), 'd');
+    ys.forEach(y => { o += tick(Xd, v.Y(y)); });
+    for (let i = 0; i < ys.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(ys[i + 1] - ys[i])); if (lab === '') continue;
+      const a = v.Y(ys[i]), b = v.Y(ys[i + 1]), hpx = Math.abs(b - a), tW = tw(lab);
+      const tx = off > 0 ? Xd + 11 : Xd - 4;
+      if (hpx > tW + 6) o += Tx(tx, (a + b) / 2, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true, rot: -90 });
+      else o += Tx(off > 0 ? Xd + 5 : Xd - 5, (a + b) / 2 + 3.5, lab, { size: 10, color: C.dim, mono: true, anchor: off > 0 ? 'start' : 'end' });
+    }
+    return o;
+  }
+  // leader with a dot at a model point and text lines at a pixel offset
+  function LD(v, x, y, dx, dy, lines, o = {}) {
+    const px = v.X(x), py = v.Y(y), ex = px + dx, ey = py + dy, s = dx >= 0 ? 1 : -1;
+    let out = `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="1.9" fill="${C.txt}"/>` + lnP(px, py, ex, ey, 't') + lnP(ex, ey, ex + s * 8, ey, 't');
+    [].concat(lines).forEach((t, i) => { out += Tx(ex + s * 11, ey + 4 + i * 13 - ([].concat(lines).length - 1) * 6.5, t, { size: o.size || 10.5, anchor: s > 0 ? 'start' : 'end', weight: i === 0 && o.bold ? 600 : 400, color: i === 0 ? C.txt : '#4b545d' }); });
+    return out;
+  }
+  // load arrow ending at pixel point (px, py); (vx, vy) is the arrow vector in pixels; label near the tail
+  function LA(px, py, vx, vy, label, o = {}) {
+    const x0 = px - vx, y0 = py - vy, lx = x0 + (o.ldx ?? 0), ly = y0 + (o.ldy ?? -6);
+    return `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${px.toFixed(1)}" y2="${py.toFixed(1)}" stroke="${C.load}" stroke-width="2.4" marker-end="url(#jdLd)"/>` +
+      (label ? Tx(lx, ly, label, { size: 11, color: C.load, weight: 600, anchor: o.anchor || 'middle' }) : '');
+  }
+  function moment(px, py, rr, label, cw = true) {
+    const a0 = cw ? 200 : -20, a1 = cw ? 340 : 160, p = a => [px + rr * Math.cos(a * Math.PI / 180), py - rr * Math.sin(a * Math.PI / 180)], [x0, y0] = p(a0), [x1, y1] = p(a1);
+    return `<path d="M${x0.toFixed(1)} ${y0.toFixed(1)} A${rr} ${rr} 0 1 ${cw ? 1 : 0} ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="${C.load}" stroke-width="2.2" marker-end="url(#jdLd)"/>` + Tx(px, py - rr - 7, label, { size: 11, color: C.load, weight: 600, anchor: 'middle' });
+  }
+  // ---------- steel symbols ----------
+  function BE(v, x, y, d) {   // bolt seen end-on: washer ring, head, centre cross
+    const px = v.X(x), py = v.Y(y), r1 = Math.max(0.95 * d * v.k, 3.2), r2 = Math.max(0.55 * d * v.k, 1.9), c = r1 + 3;
+    return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r1.toFixed(1)}" fill="#fff" stroke="${C.boltDark}" stroke-width="1"/><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r2.toFixed(1)}" fill="${C.bolt}"/>` +
+      lnP(px - c, py, px + c, py, 't') + lnP(px, py - c, px, py + c, 't');
+  }
+  // bolt seen side-on with its axis along x (dir 'x') or y: shank a0..a1 at c, head at a0, nut at a1
+  function BS(v, a0, a1, c, d, dir = 'x') {
+    const sg = Math.sign(a1 - a0) || 1, hd = 0.65 * d, nt = 0.8 * d, wh = 0.8 * d, wa = 0.15 * d, pr = 0.45 * d;
+    const seg = (s0, s1, half, fill) => dir === 'x' ? R(v, s0, c - half, s1, c + half, fill) : R(v, c - half, s0, c + half, s1, fill);
+    let o = seg(a0, a1 + sg * (wa + nt + pr), d / 2, 'bolt');
+    o += seg(a0 - sg * wa, a0, d, 'bolt') + seg(a0 - sg * (wa + hd), a0 - sg * wa, wh, 'boltH');
+    o += seg(a1, a1 + sg * wa, d, 'bolt') + seg(a1 + sg * wa, a1 + sg * (wa + nt), wh, 'boltH');
+    o += dir === 'x' ? Ln(v, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), c, 'c') : Ln(v, c, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), 'c');
+    return o;
+  }
+  ST.bolt = `fill="#59626c" stroke="${C.boltDark}" stroke-width="0.6"`; ST.boltH = `fill="${C.bolt}" stroke="${C.boltDark}" stroke-width="0.6"`;
+  // fillet weld at the corner (x, y): legs along sx (x) and sy (y), sized a (mm) but at least 4 px
+  function WD(v, x, y, a, sx, sy) {
+    const L = Math.max(a * v.k, 4.5), px = v.X(x), py = v.Y(y);
+    return `<path d="M${px.toFixed(1)} ${py.toFixed(1)} L${(px + sx * L).toFixed(1)} ${py.toFixed(1)} L${px.toFixed(1)} ${(py - sy * L).toFixed(1)} Z" fill="${C.weld}"/>`;
+  }
+  // weld seen along its length (elevation): narrow strip
+  const WS = (v, x0, y0, x1, y1) => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)), w = Math.max(Math.abs(x1 - x0) * v.k, 2.5), h = Math.max(Math.abs(y1 - y0) * v.k, 2.5);
+    return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${C.weld}" fill-opacity="0.82"/>`; };
+  // zigzag break lines through a member
+  function BK(v, x, y0, y1) {   // vertical break at model x between y0 and y1
+    const px = v.X(x), a = v.Y(Math.max(y0, y1)) - 4, b = v.Y(Math.min(y0, y1)) + 4, m = (a + b) / 2;
+    return `<path d="M${px} ${a} L${px} ${m - 7} L${px - 5} ${m - 3} L${px + 5} ${m + 3} L${px} ${m + 7} L${px} ${b}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  function BKH(v, y, x0, x1) {
+    const py = v.Y(y), a = v.X(Math.min(x0, x1)) - 4, b = v.X(Math.max(x0, x1)) + 4, m = (a + b) / 2;
+    return `<path d="M${a} ${py} L${m - 7} ${py} L${m - 3} ${py - 5} L${m + 3} ${py + 5} L${m + 7} ${py} L${b} ${py}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  // white mask to fade member ends beyond a break
+  const mask = (v, x0, y0, x1, y1) => R(v, x0, y0, x1, y1, 'bg');
+  // I section cross-section (cut), centred at (cx, cy); 'v': web vertical (depth along y), 'h': depth along x
+  function ISec(v, cx, cy, s, o = 'v', st = 'cut') {
+    const b = s.b, h = s.h, tf = s.tf, t = s.tw, r = Math.min(s.r || 0, (b - t) / 2 - 1), pts = [];
+    const arc = (ux, uy, a0, a1) => { for (let i = 0; i <= 6; i++) { const a = (a0 + (a1 - a0) * i / 6) * Math.PI / 180; pts.push([ux + r * Math.cos(a), uy + r * Math.sin(a)]); } };
+    pts.push([-b / 2, h / 2], [b / 2, h / 2], [b / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, h / 2 - tf - r, 90, 180); else pts.push([t / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, -h / 2 + tf + r, 180, 270); else pts.push([t / 2, -h / 2 + tf]);
+    pts.push([b / 2, -h / 2 + tf], [b / 2, -h / 2], [-b / 2, -h / 2], [-b / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, -h / 2 + tf + r, 270, 360); else pts.push([-t / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, h / 2 - tf - r, 0, 90); else pts.push([-t / 2, h / 2 - tf]);
+    pts.push([-b / 2, h / 2 - tf]);
+    return P(v, pts.map(([u, w]) => o === 'v' ? [cx + u, cy + w] : [cx + w, cy + u]), st);
+  }
+  // I member in side elevation: length along 'x' (a0..a1) with the depth c0..c1 across, or along 'y'
+  function IEl(v, a0, a1, c0, c1, s, dir = 'x', o = {}) {
+    const lo = Math.min(c0, c1), hi = Math.max(c0, c1), rr = s.r || 0;
+    const ln = (c, k) => dir === 'x' ? Ln(v, a0, c, a1, c, k) : Ln(v, c, a0, c, a1, k);
+    let out = dir === 'x' ? R(v, a0, lo, a1, hi, 'steel') : R(v, lo, a0, hi, a1, 'steel');
+    out += dir === 'x' ? R(v, a0, lo + s.tf, a1, hi - s.tf, 'web') : R(v, lo + s.tf, a0, hi - s.tf, a1, 'web');
+    out += ln(lo + s.tf, 'e') + ln(hi - s.tf, 'e');
+    if (rr > 0 && !o.noRoot) out += ln(lo + s.tf + rr, 't') + ln(hi - s.tf - rr, 't');
+    return out;
+  }
+  // I member seen on the flange face: width b, length along dir
+  const IFl = (v, a0, a1, cc, s, dir = 'y') => (dir === 'y' ? R(v, cc - s.b / 2, a0, cc + s.b / 2, a1, 'steel') + Ln(v, cc - s.tw / 2 - (s.r || 0), a0, cc - s.tw / 2 - (s.r || 0), a1, 'h') + Ln(v, cc + s.tw / 2 + (s.r || 0), a0, cc + s.tw / 2 + (s.r || 0), a1, 'h')
+    : R(v, a0, cc - s.b / 2, a1, cc + s.b / 2, 'steel'));
+  const title = (x, y, t, sub) => Tx(x, y, t, { size: 11.5, weight: 700, anchor: 'middle', color: C.txt }) + `<line x1="${(x - tw(t, 11.5) / 2).toFixed(1)}" y1="${(y + 3).toFixed(1)}" x2="${(x + tw(t, 11.5) / 2).toFixed(1)}" y2="${(y + 3).toFixed(1)}" stroke="${C.txt}" stroke-width="0.8"/>` + (sub ? Tx(x, y + 16, sub, { size: 10, anchor: 'middle', color: C.mute }) : '');
+  const svg = (body, h = H) => `<svg class="jd" viewBox="0 0 ${W} ${h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;background:${C.paper}" role="img">${DEFS}<rect width="${W}" height="${h}" fill="${C.paper}"/>${body}</svg>`;
+  const BOX = { L: [40, 46, 520, 400], Rt: [612, 46, 280, 400] };
+  const fv = x => { const n = parseFloat(x); return Number.isFinite(n) ? n : 0; };
+  const secName = x => x && x !== '0' ? x : '';   // a form without that selector reads as '0'
+  const BOLTD = { M12: 12, M16: 16, M20: 20, M24: 24, M27: 27, M30: 30, M36: 36 };
+  const bd = sz => BOLTD[sz] || 20;
+  const range = (n, f) => Array.from({ length: Math.max(0, n) }, (_, i) => f(i));
+  return { C, W, H, BOX, DEFS, view, R, P, Ln, lnP, Tx, tw, DH, DV, LD, LA, moment, BE, BS, WD, WS, BK, BKH, mask, ISec, IEl, IFl, title, svg, num, fv, secName, bd, range, esc, ST };
+})();
+
+/* ===== DRAWING KIT EXTRAS (EngineeringTools) =====
+   Additions to the JD drafting kit (joints/diagrams.js) for the member, floor and wall drawings: a page-width SVG wrapper,
+   arrows, supports, distributed loads, result fills, cross-section outlines (I, PFC, RHS, CHS) and SVG to PNG for PDF reports.
+   Source: scratchpad/drawings/kit.js. Pixel helpers take pixel coordinates; JD views map model mm to pixels. */
+const DK = (() => {
+  'use strict';
+  const { Tx, lnP, esc } = JD;
+  const BLUE = '#1d5fbf', FILL = 'rgba(29,95,191,.15)', RED = '#c4242a', REDF = 'rgba(196,36,42,.10)', INK = '#222a31', MUTE = '#6b7680', LINE = '#c9d0d7';
+  const DEFS = `<defs><marker id="dkB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${BLUE}"/></marker>`
+    + `<marker id="dkK" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${INK}"/></marker>`
+    + `<marker id="dkR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${RED}"/></marker>`
+    + `<pattern id="dkHatch" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)"><rect width="7" height="7" fill="#f3f1ec"/><line x1="0" y1="0" x2="0" y2="7" stroke="#8b8478" stroke-width="1"/></pattern></defs>`;
+  const f1 = v => (+v).toFixed(1);
+  // the page-width drawing: viewBox w x h, scales to its container
+  const svg = (body, w, h, label) => `<svg class="jd dk" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" role="img"${label ? ` aria-label="${esc(label)}"` : ''} `
+    + `style="width:100%;height:auto;display:block;background:#fff">${JD.DEFS}${DEFS}<rect width="${w}" height="${h}" fill="#fff"/>${body}</svg>`;
+  const col = c => ({ blue: BLUE, red: RED, ink: INK, mute: MUTE }[c] || c || INK);
+  const mk = c => ({ blue: 'dkB', red: 'dkR' }[c] || 'dkK');
+  // arrow from (x0, y0) to (x1, y1), head at the end (both: heads at both ends)
+  const arrow = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1.6}"`
+    + `${o.dash ? ` stroke-dasharray="${o.dash}"` : ''} marker-end="url(#${mk(o.c)})"${o.both ? ` marker-start="url(#${mk(o.c)})"` : ''}/>`;
+  const line = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.cap ? ` stroke-linecap="${o.cap}"` : ''}/>`;
+  const rect = (x, y, w, h, o = {}) => `<rect x="${f1(Math.min(x, x + w))}" y="${f1(Math.min(y, y + h))}" width="${f1(Math.abs(w))}" height="${f1(Math.abs(h))}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.rx ? ` rx="${o.rx}"` : ''}/>`;
+  const poly = (pts, o = {}) => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + f1(p[0]) + ' ' + f1(p[1])).join(' ')}${o.open ? '' : ' Z'}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+  const text = (x, y, s, o = {}) => Tx(x, y, s, Object.assign({ size: 11 }, o, { color: o.color ? col(o.color) : o.color }));
+  // pinned support under (px, py): triangle and ground line; dir 'down' (default) or 'up' (hanging, above the point)
+  function pin(px, py, dir = 'down') {
+    const s = dir === 'up' ? -1 : 1;
+    return poly([[px, py], [px - 8, py + s * 13], [px + 8, py + s * 13]], { fill: '#fff', stroke: 'ink', w: 1.3 }) + line(px - 12, py + s * 13, px + 12, py + s * 13, { w: 1.3 })
+      + [0, 1, 2, 3].map(k => line(px - 10 + k * 6, py + s * 13, px - 14 + k * 6, py + s * 18, { c: 'mute', w: 0.8 })).join('');
+  }
+  // hatched ground or wall strip: rectangle with the hatch fill and an edge line on the restrained side ('t', 'b', 'l', 'r')
+  function ground(x, y, w, h, edge = 't') {
+    const e = { t: [x, y, x + w, y], b: [x, y + h, x + w, y + h], l: [x, y, x, y + h], r: [x + w, y, x + w, y + h] }[edge];
+    return rect(x, y, w, h, { fill: 'url(#dkHatch)' }) + line(e[0], e[1], e[2], e[3], { w: 1.4 });
+  }
+  // a row of load arrows pointing from yTop to yBase between x0 and x1, with the bar along the tails and a label above
+  function udl(x0, x1, yTop, yBase, label, o = {}) {
+    const n = Math.max(2, Math.round((x1 - x0) / (o.pitch || 28)) + 1), c = o.c || 'red';
+    let g = line(x0, yTop, x1, yTop, { c, w: 1.3 });
+    for (let i = 0; i < n; i++) { const x = x0 + (x1 - x0) * i / (n - 1); g += arrow(x, yTop, x, yBase, { c, w: 1.2 }); }
+    return g + (label ? text((x0 + x1) / 2, yTop - 6, label, { anchor: 'middle', color: c === 'red' ? RED : col(c), weight: 600 }) : '');
+  }
+  // a result diagram: polyline pts (pixels) closed to the base line through the first and last points' base, filled blue
+  function fillDiagram(pts, base, o = {}) {
+    const vert = o.vertical;   // base is an x (diagram plotted sideways) when vertical
+    const close = vert ? [[base, pts[pts.length - 1][1]], [base, pts[0][1]]] : [[pts[pts.length - 1][0], base], [pts[0][0], base]];
+    return poly(pts.concat(close), { fill: o.fill || FILL, stroke: 'none' }) + poly(pts, { open: true, stroke: o.stroke || 'ink', w: 1.1 });
+  }
+  // cross-section outline, cut, centred at pixel (cx, cy) at scale k (px/mm); web vertical; returns svg
+  function section(s, cx, cy, k, o = {}) {
+    const st = o.style || 'cut', fill = st === 'cut' ? 'url(#jdCut)' : '#e7ecf1', edge = '#2f3b47';
+    if (s.shape === 'CHS') {
+      const ro = s.d / 2 * k, ri = (s.d / 2 - s.t) * k;
+      return `<path d="M${f1(cx - ro)} ${f1(cy)} a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(2 * ro)} 0 a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(-2 * ro)} 0 Z M${f1(cx - ri)} ${f1(cy)} a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(2 * ri)} 0 a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(-2 * ri)} 0 Z" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'RHS') {
+      const w = s.b * k, h = s.h * k, t = Math.max(s.t * k, 1.2), ro = Math.min((s.ro || 1.5 * s.t) * k, w / 2), ri = Math.max(0, ro - t);
+      const rr = (x, y, W, H, r) => `M${f1(x + r)} ${f1(y)} H${f1(x + W - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W)} ${f1(y + r)} V${f1(y + H - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W - r)} ${f1(y + H)} H${f1(x + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x)} ${f1(y + H - r)} V${f1(y + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + r)} ${f1(y)} Z`;
+      return `<path d="${rr(cx - w / 2, cy - h / 2, w, h, ro)} ${rr(cx - w / 2 + t, cy - h / 2 + t, w - 2 * t, h - 2 * t, ri)}" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'PFC') {   // channel, toes to the right, web on the left
+      const b = s.b * k, h = s.h * k, tf = Math.max(s.tf * k, 1.2), tw = Math.max(s.tw * k, 1.2), x0 = cx - b / 2, y0 = cy - h / 2;
+      return poly([[x0, y0], [x0 + b, y0], [x0 + b, y0 + tf], [x0 + tw, y0 + tf], [x0 + tw, y0 + h - tf], [x0 + b, y0 + h - tf], [x0 + b, y0 + h], [x0, y0 + h]], { fill, stroke: edge, w: 1.1 });
+    }
+    const v = { k, X: x => cx + x * k, Y: y => cy - y * k };   // I sections: JD's outline with root radii
+    return JD.ISec(v, 0, 0, s, 'v', st === 'cut' ? 'cut' : 'steel');
+  }
+  // SVG markup to a PNG data URL (for the jsPDF reports); resolves { url, w, h } with w, h the viewBox size
+  function toPNG(markup, wpx = 1800) {
+    return new Promise((resolve, reject) => {
+      const m = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(markup); if (!m) { reject(new Error('no viewBox')); return; }
+      const w = +m[1], h = +m[2], k = wpx / w, img = new Image();
+      const src = markup.replace(/style="[^"]*"/, `width="${f1(w * k)}" height="${f1(h * k)}"`);
+      img.onload = () => { const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k); const g = c.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height); resolve({ url: c.toDataURL('image/png'), w, h }); };
+      img.onerror = () => reject(new Error('drawing could not be rendered'));
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
+    });
+  }
+  // drawings for the page (heading + drawing) and for the A4 sheet (each kept whole on a page)
+  const page = blocks => blocks.map(([t, s]) => `<div class="dlabel">${t}</div>${s}`).join('');
+  const sheet = blocks => blocks.map(([t, s]) => `<div class="rfig" style="break-inside:avoid;page-break-inside:avoid;margin:1mm 0 3mm"><h3>${t}</h3><div class="rsvg">${s}</div></div>`).join('');
+  const fmt = (v, d = 0) => Number.isFinite(v) ? (+v).toFixed(d) : '–';
+  return { page, sheet, BLUE, FILL, RED, REDF, INK, MUTE, LINE, svg, arrow, line, rect, poly, text, pin, ground, udl, fillDiagram, section, toPNG, fmt, lnP };
+})();
+
+/* ===== RIGID DIAPHRAGM DRAWINGS (EngineeringTools) =====
+   The plan to scale, origin at the bottom left: the walls, cores and braced bays on their lines with their names and design
+   forces (the largest wall red, or each coloured by its utilisation when resistances are given), the centre of rigidity,
+   the lines of the loads in X and Y and their eccentricities from the centre of rigidity, B and D. Then, for each direction
+   loaded, the case that gives the largest wall force: each wall's force as an arrow along its line with its value, the
+   load, and the torque about the centre of rigidity.
+   Source: scratchpad/drawings/diaphragm.js. Needs JD, DK; takes RigidDiaphragm.design results. */
+const DrawDiaphragm = (() => {
+  'use strict';
+  const { svg, arrow, line, rect, text, page, sheet, RED, MUTE, BLUE, INK } = DK;
+  const f1 = v => (+v).toFixed(1), mn = s => s.replace(/^-/, '−'), r1 = v => mn((Math.round(v * 10) / 10).toFixed(1)), r2 = v => mn((Math.round(v * 100) / 100).toFixed(2));
+  const kN = v => { const a = Math.abs(v); return a >= 100 ? Math.round(v).toLocaleString('en-GB') : a >= 10 ? r1(v) : r2(v); };
+  const AMBER = '#a15c07', GREEN = '#247b50';
+  // the plan's frame: scale and mapping, inside a box of width W from ox, top at oy
+  function frame(D, ox, oy, W, Hmax, pad) {
+    const P = D.plan, k = Math.min((W - pad.l - pad.r) / P.B, Hmax / P.D);
+    const X = x => ox + pad.l + (x - P.x0) * k, Y = y => oy + (P.D - (y - P.y0)) * k;
+    return { k, X, Y, h: P.D * k, w: P.B * k, P };
+  }
+  const wallEnds = w => w.dir === 'x' ? [[w.a, w.at], [w.b, w.at]] : w.dir === 'y' ? [[w.at, w.a], [w.at, w.b]] : [[w.x - w.c * w.L / 2, w.y - w.s * w.L / 2], [w.x + w.c * w.L / 2, w.y + w.s * w.L / 2]];
+  function wallBar(w, F, col, wpx = 6) {
+    const [[xa, ya], [xb, yb]] = wallEnds(w).map(([x, y]) => [F.X(x), F.Y(y)]);
+    const dx = xb - xa, dy = yb - ya, L = Math.hypot(dx, dy) || 1, nx = -dy / L * wpx / 2, ny = dx / L * wpx / 2;
+    return `<path d="M${f1(xa + nx)} ${f1(ya + ny)} L${f1(xb + nx)} ${f1(yb + ny)} L${f1(xb - nx)} ${f1(yb - ny)} L${f1(xa - nx)} ${f1(ya - ny)} Z" fill="${col}" stroke="${col}" stroke-width="0.6"/>`;
+  }
+  const cr = (x, y) => `<circle cx="${f1(x)}" cy="${f1(y)}" r="7" fill="#fff" stroke="${BLUE}" stroke-width="1.6"/>` + line(x - 11, y, x + 11, y, { c: BLUE, w: 1.2 }) + line(x, y - 11, x, y + 11, { c: BLUE, w: 1.2 });
+  // where a wall's label goes: X walls above, or below when another X wall sits just above; Y walls to the right, or
+  // to the left when another Y wall sits just to the right (the walls of a core)
+  function side(D, w, F) {
+    const near = (o, gap) => o !== w && o.dir === w.dir && Math.min(o.a, o.b) < Math.max(w.a, w.b) && Math.max(o.a, o.b) > Math.min(w.a, w.b) && (o.at - w.at) * F.k > 0 && (o.at - w.at) * F.k < gap;
+    return w.dir === 'x' ? (D.walls.some(o => near(o, 110)) ? 'below' : 'above') : (D.walls.some(o => near(o, 80)) ? 'left' : 'right');
+  }
+  function label(D, w, F, mx, my, s, col, size) {
+    const sd = side(D, w, F);
+    return sd === 'above' ? text(mx, my - 8, s, { size, anchor: 'middle', color: col, weight: 600 }) : sd === 'below' ? text(mx, my + 15, s, { size, anchor: 'middle', color: col, weight: 600 })
+      : sd === 'left' ? text(mx - 8, my + 3, s, { size, anchor: 'end', color: col, weight: 600 }) : text(mx + 8, my + 3, s, { size, color: col, weight: 600 });
+  }
+  const colOf = (D, w) => w.util !== undefined ? (w.util > 1 ? RED : w.util > 0.9 ? AMBER : BLUE) : (w === D.top ? RED : INK);
+
+  // 1. the plan with the walls, the centre of rigidity, the loads and the eccentricities
+  function plan(D) {
+    const W = 700, F = frame(D, 0, 70, W, 300, { l: 96, r: 120 }), P = F.P;
+    let g = rect(F.X(P.x0), F.Y(P.y0 + P.D), F.w, F.h, { fill: '#f6f7f9', stroke: '#c9d0d7', w: 1 });
+    // origin and axes
+    g += arrow(F.X(P.x0), F.Y(P.y0), F.X(P.x0) + 26, F.Y(P.y0), { c: MUTE, w: 1 }) + arrow(F.X(P.x0), F.Y(P.y0), F.X(P.x0), F.Y(P.y0) - 26, { c: MUTE, w: 1 })
+      + text(F.X(P.x0) + 29, F.Y(P.y0) + 4, 'x', { size: 9.5, color: MUTE }) + text(F.X(P.x0) - 4, F.Y(P.y0) - 30, 'y', { size: 9.5, color: MUTE }) + text(F.X(P.x0) - 6, F.Y(P.y0) + 12, '0', { size: 9, color: MUTE, anchor: 'end' });
+    // the walls, with name and design force
+    D.walls.forEach(w => {
+      const col = colOf(D, w); g += wallBar(w, F, col);
+      const [[xa, ya], [xb, yb]] = wallEnds(w), mx = F.X((xa + xb) / 2), my = F.Y((ya + yb) / 2);
+      g += w.dir === 'a' ? text(mx + 8, my + 3, `${w.id} ${kN(w.F)} kN`, { size: 9.5, color: col, weight: 600 }) : label(D, w, F, mx, my, `${w.id} ${kN(w.F)} kN`, col, 9.5);
+    });
+    // the centre of rigidity
+    if (D.xr !== null && D.yr !== null) g += cr(F.X(D.xr), F.Y(D.yr)) + text(F.X(D.xr) + 10, F.Y(D.yr) + 18, `CR (${r2(D.xr)}, ${r2(D.yr)})`, { size: 9.5, color: BLUE });
+    else if (D.xr !== null) g += line(F.X(D.xr), F.Y(P.y0 + P.D) - 6, F.X(D.xr), F.Y(P.y0) + 6, { c: BLUE, w: 1.2, dash: '8 3 2 3' }) + text(F.X(D.xr) + 4, F.Y(P.y0 + P.D) - 10, `CR line x = ${r2(D.xr)}`, { size: 9.5, color: BLUE });
+    else if (D.yr !== null) g += line(F.X(P.x0) - 6, F.Y(D.yr), F.X(P.x0 + P.B) + 6, F.Y(D.yr), { c: BLUE, w: 1.2, dash: '8 3 2 3' }) + text(F.X(P.x0 + P.B) + 8, F.Y(D.yr) + 3, `CR line y = ${r2(D.yr)}`, { size: 9.5, color: BLUE });
+    // the loads at the centre of their faces, and their eccentricity from the centre of rigidity
+    D.dirs.forEach(L => {
+      if (L.d === 'x') {
+        const y = F.Y(L.at);
+        g += line(F.X(P.x0) - 70, y, F.X(P.x0 + P.B), y, { c: RED, w: 0.8, dash: '6 4' }) + arrow(F.X(P.x0) - 70, y, F.X(P.x0) - 4, y, { c: 'red', w: 2.2 })
+          + text(F.X(P.x0) - 92, y - 7, `F_x ${kN(L.F)} kN`, { size: 9.5, color: RED, weight: 600 });
+        if (D.yr !== null && Math.abs(L.at - D.yr) > 1e-6) { const xd = F.X(P.x0 + P.B) + 34; g += line(xd, F.Y(D.yr), xd, y, { w: 0.8 }) + line(xd - 4, F.Y(D.yr), xd + 4, F.Y(D.yr), { w: 0.8 }) + line(xd - 4, y, xd + 4, y, { w: 0.8 }) + text(xd + 6, (F.Y(D.yr) + y) / 2 + 3, `e_y ${r2(L.at - D.yr)} m`, { size: 9 }); }
+      } else {
+        const x = F.X(L.at);
+        g += line(x, F.Y(P.y0) + 30, x, F.Y(P.y0 + P.D), { c: RED, w: 0.8, dash: '6 4' }) + arrow(x, F.Y(P.y0) + 40, x, F.Y(P.y0) + 4, { c: 'red', w: 2.2 })
+          + text(x + 6, F.Y(P.y0) + 40, `F_y ${kN(L.F)} kN`, { size: 9.5, color: RED, weight: 600 });
+        if (D.xr !== null && Math.abs(L.at - D.xr) > 1e-6) { const yd = F.Y(P.y0 + P.D) - 28; g += line(F.X(D.xr), yd, x, yd, { w: 0.8 }) + line(F.X(D.xr), yd - 4, F.X(D.xr), yd + 4, { w: 0.8 }) + line(x, yd - 4, x, yd + 4, { w: 0.8 }) + text((F.X(D.xr) + x) / 2, yd - 4, `e_x ${r2(L.at - D.xr)} m`, { size: 9, anchor: 'middle' }); }
+      }
+    });
+    // overall dimensions
+    const yb = F.Y(P.y0) + 56;
+    g += line(F.X(P.x0), yb, F.X(P.x0 + P.B), yb, { w: 0.8 }) + line(F.X(P.x0), yb - 4, F.X(P.x0), yb + 4, { w: 0.8 }) + line(F.X(P.x0 + P.B), yb - 4, F.X(P.x0 + P.B), yb + 4, { w: 0.8 })
+      + text((F.X(P.x0) + F.X(P.x0 + P.B)) / 2, yb + 13, `B ${r2(P.B)} m`, { size: 9.5, anchor: 'middle' });
+    const xl = F.X(P.x0) - 30;
+    g += line(xl, F.Y(P.y0), xl, F.Y(P.y0 + P.D), { w: 0.8 }) + line(xl - 4, F.Y(P.y0), xl + 4, F.Y(P.y0), { w: 0.8 }) + line(xl - 4, F.Y(P.y0 + P.D), xl + 4, F.Y(P.y0 + P.D), { w: 0.8 })
+      + text(xl - 6, F.Y(P.y0 + P.D) + 12, `D ${r2(P.D)} m`, { size: 9.5, anchor: 'end' });
+    g += text(0, 14, D.basis === 'strength' ? 'Plan: wall diaphragms with their design forces F_Ed (shared by racking strength, PD 6693-1 20.3)' : 'Plan: walls and bays with their design forces F_Ed (the largest over the load cases)', { size: 9.5, color: MUTE });
+    return svg(g, W, yb + 24, 'The plan with the walls and their design forces, the centre of rigidity, the loads and their eccentricities');
+  }
+
+  // 2. per direction: the case giving the largest wall force, each wall's force as an arrow
+  function caseView(D, cs, ox, W) {
+    const F = frame(D, ox, 54, W, 210, { l: 34, r: 34 }), P = F.P, sc = Math.max(...cs.f.map(f => Math.abs(f.tot))) || 1;
+    let g = text(ox, 14, `${cs.name}: F ${kN(cs.F)} kN${cs.e !== null && cs.e !== undefined ? `, T ${kN(cs.T)} kNm` : ''}`, { size: 9.5, color: MUTE });
+    g += rect(F.X(P.x0), F.Y(P.y0 + P.D), F.w, F.h, { fill: '#f6f7f9', stroke: '#c9d0d7', w: 1 });
+    D.walls.forEach((w, i) => {
+      const f = cs.f[i].tot, [[xa, ya], [xb, yb]] = wallEnds(w), mx = F.X((xa + xb) / 2), my = F.Y((ya + yb) / 2);
+      g += wallBar(w, F, '#8a949e', 4);
+      if (Math.abs(f) < 1e-6 * sc) return;
+      const len = 10 + 34 * Math.abs(f) / sc, sx = w.c * Math.sign(f), sy = -w.s * Math.sign(f), sd0 = side(D, w, F), o = w.dir === 'x' ? [0, sd0 === 'below' ? 9 : -9] : [sd0 === 'left' ? -9 : 9, 0];   // screen y is down
+      g += arrow(mx + o[0] - sx * len / 2, my + o[1] - sy * len / 2, mx + o[0] + sx * len / 2, my + o[1] + sy * len / 2, { c: 'red', w: 1.8 });
+      const sd = side(D, w, F), s = `${w.id} ${kN(Math.abs(f))}`;
+      g += w.dir === 'x' ? text(mx, sd === 'below' ? my + 20 : my - 18, s, { size: 9, color: RED, anchor: 'middle' }) : text(sd === 'left' ? mx - 14 : mx + 14, my + 3, s, { size: 9, color: RED, anchor: sd === 'left' ? 'end' : 'start' });
+    });
+    if (D.xr !== null && D.yr !== null) {
+      const cx = F.X(D.xr), cy = F.Y(D.yr), R = 15, a0 = cs.T >= 0 ? 0.3 : 2.84, a1 = cs.T >= 0 ? 2.6 : 0.54, sw = cs.T >= 0 ? 0 : 1;   // anticlockwise when T > 0
+      g += cr(cx, cy);
+      if (Math.abs(cs.T) > 1e-9) g += `<path d="M${f1(cx + R * Math.cos(a0))} ${f1(cy - R * Math.sin(a0))} A${R} ${R} 0 0 ${sw} ${f1(cx + R * Math.cos(a1))} ${f1(cy - R * Math.sin(a1))}" fill="none" stroke="${BLUE}" stroke-width="1.4" marker-end="url(#dkB)"/>`;
+    }
+    // the load
+    if (cs.dir === 'x') { const y = F.Y(cs.at); g += arrow(F.X(P.x0) - 30, y, F.X(P.x0) - 3, y, { c: INK, w: 2 }); }
+    else { const x = F.X(cs.at); g += arrow(x, F.Y(P.y0) + 30, x, F.Y(P.y0) + 3, { c: INK, w: 2 }); }
+    return { g, h: F.h + 80 };
+  }
+  function cases(D) {
+    const pick = D.dirs.map(L => { const cs = D.cases.filter(c => c.dir === L.d); return cs.reduce((a, c) => (Math.max(...c.f.map(f => Math.abs(f.tot))) > Math.max(...a.f.map(f => Math.abs(f.tot))) ? c : a), cs[0]); });
+    const n = pick.length, W = n > 1 ? 340 : 700, parts = pick.map((cs, i) => caseView(D, cs, i * 360, W)), h = Math.max(...parts.map(p => p.h));
+    return svg(parts.map(p => p.g).join('') + (n > 1 ? line(350, 8, 350, h - 8, { c: '#e3e7eb', w: 1 }) : ''), n > 1 ? 700 : 700, h, 'For each direction, the load case that gives the largest wall force, with each wall’s force as an arrow');
+  }
+  const blocks = D => [['The plan: walls, centre of rigidity and loads', plan(D)], ['The worst case each way: the force in each wall', cases(D)]];
+  return { html: D => page(blocks(D)), report: D => sheet(blocks(D)), plan, cases };
+})();
+
+</script>
+<script id="ui">
+'use strict';
+const $ = id => document.getElementById(id);
+const STORE = 'et-rigid-diaphragm-v1';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ufmt = u => !Number.isFinite(u) ? '&gt;99' : u.toFixed(3);
+const f2 = v => Number.isFinite(v) ? (Math.abs(v) < 0.005 ? '0.00' : v.toFixed(2)) : '–';
+const kN = v => { if (!Number.isFinite(v)) return '–'; const a = Math.abs(v); if (a < 0.005) return '0'; return a >= 100 ? Math.round(v).toLocaleString('en-GB') : a >= 10 ? v.toFixed(1) : v.toFixed(2); };
+const sub = s => esc(s).replace(/_\{([^}]*)\}|_([A-Za-zα-ω0-9,]+)/g, (m, a, b) => `<sub>${a || b}</sub>`).replace(/\^([0-9.]+)/g, '<sup>$1</sup>');
+const IDS = ['pName', 'pJob', 'pBy', 'pRef', 'basis', 'B', 'D', 'H', 'fix', 'fck', 'fk', 'crack', 'drift', 'Fx', 'ax', 'bx', 'Fy', 'ay', 'by', 'gam', 'tors', 'ecc', 'flc'];
+const CHK = ['shear'];
+const WF = ['id', 'dir', 'at', 'from', 'to', 'type', 'p', 'arr', 'FRd'];
+// a small concrete frame: a long gable wall at one end, a lift core towards the other and a rear wall
+const DEF_WALLS = [
+  { id: 'A', dir: 'y', at: 0, from: 3, to: 12, type: 'concrete', p: 200 },
+  { id: 'B', dir: 'y', at: 20, from: 6, to: 10, type: 'concrete', p: 200 },
+  { id: 'C', dir: 'y', at: 23, from: 6, to: 10, type: 'concrete', p: 200 },
+  { id: 'D', dir: 'x', at: 6, from: 20, to: 23, type: 'concrete', p: 200 },
+  { id: 'E', dir: 'x', at: 10, from: 20, to: 23, type: 'concrete', p: 200 },
+  { id: 'F', dir: 'x', at: 15, from: 0, to: 6, type: 'concrete', p: 200 },
+];
+const PLAB = { k: 'k (kN/mm)', concrete: 'Thickness t (mm)', masonry: 'Thickness t (mm)', brace: 'Diagonal A (cm²)' };
+const PDEF = { k: 10, concrete: 200, masonry: 215, brace: 10 };
+function wallRow(o = {}) {
+  const r = document.createElement('div'); r.className = 'row wall';
+  r.innerHTML = `<div><label>Name</label><input type="text" class="id"></div><div><label>Along</label><select class="dir"><option value="x">X</option><option value="y">Y</option></select></div>
+    <div><label class="lat">Line y (m)</label><input type="number" class="at" step="0.1"></div><div><label class="lfr">From x (m)</label><input type="number" class="from" step="0.1"></div><div><label class="lto">To x (m)</label><input type="number" class="to" step="0.1"></div>
+    <div><label>&nbsp;</label><button class="xbtn" type="button" title="Remove">×</button></div>
+    <div class="wl2"><div class="b-stiff"><label>Stiffness from</label><select class="type"><option value="concrete">Concrete wall</option><option value="masonry">Masonry wall</option><option value="brace">Steel bracing</option><option value="k">Stiffness k given</option></select></div>
+      <div class="b-stiff"><label class="lp">Thickness t (mm)</label><input type="number" class="p" step="1"></div>
+      <div class="b-stiff w-brace"><label>Bracing</label><select class="arr"><option value="xt">X, tension diagonal only</option><option value="xb">X, both diagonals</option><option value="single">Single diagonal</option><option value="chev">Chevron</option></select></div>
+      <div><label class="lfrd">F<sub>Rd</sub> (kN)</label><input type="number" class="FRd" step="0.5" placeholder="optional"></div></div>`;
+  WF.forEach(k => { const el = r.querySelector('.' + k); if (el && o[k] !== undefined) el.value = o[k]; });
+  if (!o.arr) r.querySelector('.arr').value = 'xt';
+  r.querySelector('.type').dataset.last = r.querySelector('.type').value;
+  r.querySelector('.xbtn').onclick = () => r.remove();
+  r.querySelector('.dir').addEventListener('change', () => rowVis(r));
+  r.querySelector('.type').addEventListener('change', () => { const t = r.querySelector('.type'); if (t.dataset.last !== t.value) r.querySelector('.p').value = PDEF[t.value]; t.dataset.last = t.value; rowVis(r); });
+  $('wallRows').appendChild(r); rowVis(r); return r;
+}
+function rowVis(r) {
+  const y = r.querySelector('.dir').value === 'y', t = r.querySelector('.type').value, str = $('basis').value === 'strength';
+  r.querySelector('.lat').textContent = y ? 'Line x (m)' : 'Line y (m)'; r.querySelector('.lfr').textContent = y ? 'From y (m)' : 'From x (m)'; r.querySelector('.lto').textContent = y ? 'To y (m)' : 'To x (m)';
+  r.querySelector('.lp').textContent = PLAB[t]; r.querySelector('.w-brace').classList.toggle('hidden', str || t !== 'brace');
+  r.querySelectorAll('.b-stiff').forEach(e => { if (!e.classList.contains('w-brace')) e.classList.toggle('hidden', str); });
+  r.querySelector('.lfrd').innerHTML = str ? 'F<sub>i,v,Rd</sub> (kN)' : 'F<sub>Rd</sub> (kN)'; r.querySelector('.FRd').placeholder = str ? '' : 'optional';
+}
+const rows = () => [...document.querySelectorAll('#wallRows .row')].map(r => Object.fromEntries(WF.map(k => [k, r.querySelector('.' + k).value])));
+function collect() { const s = { v: 1, walls: rows() }; IDS.forEach(k => s[k] = $(k).value); CHK.forEach(k => s[k] = $(k).checked); return s; }
+function restore(s) { IDS.forEach(k => { if (s[k] !== undefined) $(k).value = s[k]; }); CHK.forEach(k => { if (s[k] !== undefined) $(k).checked = !!s[k]; });
+  $('wallRows').innerHTML = ''; (s.walls || DEF_WALLS).forEach(wallRow); }
+function refreshVis() {
+  const show = (sel, on) => document.querySelectorAll(sel).forEach(e => e.classList.toggle('hidden', !on));
+  const str = $('basis').value === 'strength', t = $('tors').value;
+  document.querySelectorAll('#inputs > .card .b-stiff').forEach(e => { if (!e.closest('.row')) e.classList.toggle('hidden', str); });
+  show('.b-strength', str); show('.t-ecc', t === 'ecc'); show('.t-na10', t === 'na10');
+  document.querySelectorAll('#wallRows .row').forEach(rowVis);
+  document.body.dataset.material = str ? 'timber' : 'concrete';
+}
+['basis', 'tors'].forEach(id => $(id).addEventListener('change', refreshVis));
+$('addWall').onclick = () => { const n = document.querySelectorAll('#wallRows .row').length; wallRow({ id: String.fromCharCode(65 + (n % 26)) + (n >= 26 ? Math.floor(n / 26) : ''), dir: 'y', at: '', from: '', to: '', type: 'concrete', p: 200 }); };
+const num = (id, nm) => { const v = parseFloat($(id).value); if (!Number.isFinite(v)) throw new Error(`${nm}: give a number`); return v; };
+const opt = id => { const v = parseFloat($(id).value); return Number.isFinite(v) ? v : undefined; };
+function input() {
+  const str = $('basis').value === 'strength';
+  const walls = rows().filter(w => w.id || w.at !== '' || w.from !== '' || w.to !== '').map(w => ({ id: w.id, dir: w.dir, at: w.at, from: w.from, to: w.to, type: w.type,
+    k: w.type === 'k' ? w.p : undefined, t: w.type === 'concrete' || w.type === 'masonry' ? w.p : undefined, A: w.type === 'brace' ? w.p : undefined, arr: w.arr, FRd: w.FRd }));
+  return { basis: str ? 'strength' : 'stiffness', plan: { B: num('B', 'Plan width B'), D: num('D', 'Plan depth D') },
+    global: { H: str ? 0 : opt('H') || 0, fix: $('fix').value, shear: $('shear').checked, fck: opt('fck'), fk: opt('fk'), crack: opt('crack') || 1, drift: opt('drift') || 300 },
+    walls, loads: { gamma: opt('gam') ?? 1.5, tors: $('tors').value, e: opt('ecc') ?? 0.1, flc: opt('flc') ?? 1, x: { F: opt('Fx') || 0, at: opt('ax'), b: opt('bx') }, y: { F: opt('Fy') || 0, at: opt('ay'), b: opt('by') } } };
+}
+// ---------- results ----------
+const bar = c => `<div class="ck"><div class="nm">${esc(c.name)}<small>${esc(c.ref)} &nbsp;${sub(c.note || '')}</small></div><div class="bar"><i class="${c.util > 1 ? 'over' : c.util > 0.9 ? 'hi' : ''}" style="width:${Math.min(100, c.util * 100 / 1.2)}%"></i></div><div class="u ${c.util > 1 ? 'over' : ''}">${ufmt(c.util)}</div></div>`;
+const stepsHTML = S => `<div class="steps">${S.map(s => `<div class="st"><span>${esc(s.ref)}</span><span>${sub(s.text)}</span></div>`).join('')}</div>`;
+const crTxt = D => D.xr !== null && D.yr !== null ? `centre of rigidity (${f2(D.xr)}, ${f2(D.yr)}) m` : D.xr !== null ? `centre of rigidity on x = ${f2(D.xr)} m` : `centre of rigidity on y = ${f2(D.yr)} m`;
+function summary(D) { return `${D.walls.length} ${D.basis === 'strength' ? 'wall diaphragms' : 'walls and bays'}, ${crTxt(D)}; ${D.dirs.map(L => `F<sub>Ed,${L.d}</sub> ${kN(L.F)} kN`).join(', ')}; the most loaded: ${esc(D.top.id)}, ${kN(D.top.F)} kN (${esc(D.top.gov.name)})`; }
+function verdict(D) {
+  if (!D.checks.length) return `<div class="verdict"><div><div class="big">${esc(D.top.id)} takes the most: ${kN(D.top.F)} kN</div><div class="sub">${summary(D)}<br>Give the walls’ resistances F<sub>Rd</sub> to check them.</div></div></div>`;
+  const W = [...D.checks].sort((a, b) => b.util - a.util)[0];
+  return `<div class="verdict ${D.utilMax > 1 ? 'fail' : ''}"><div><div class="big">${D.utilMax > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(D.utilMax)}</div><div class="sub">Governs: ${esc(W.name)} (${esc(W.ref)})<br>${summary(D)}</div></div></div>`;
+}
+// the wall forces: every case, the design force, per metre, the resistance
+function table(D, cls) {
+  const anyR = D.walls.some(w => w.FRd > 0), anyB = D.walls.some(w => w.type === 'brace');
+  const head = `<tr><th>Wall</th><th>Along</th><th>k (${D.uK})</th><th>r (m)</th>${D.cases.map(c => `<th>${esc(c.short)}</th>`).join('')}<th>F<sub>Ed</sub> (kN)</th><th>kN/m</th>${anyB ? '<th>N<sub>diag</sub> (kN)</th>' : ''}${anyR ? `<th>F<sub>Rd</sub></th><th>Util.</th>` : ''}</tr>`;
+  const body = D.walls.map(w => `<tr><td>${esc(w.id)}</td><td>${w.dir === 'a' ? Math.round(w.th) + '°' : w.dir.toUpperCase()}</td><td>${kN(w.k)}</td><td>${f2(w.r)}</td>${w.share.map((f, j) => `<td${j === w.govI ? ' class="gov"' : ''}>${kN(f)}</td>`).join('')}<td class="gov">${kN(w.F)}</td><td>${f2(w.v)}</td>${anyB ? `<td>${w.N !== undefined ? kN(w.N) : ''}</td>` : ''}${anyR ? `<td>${w.FRd > 0 ? kN(w.FRd) : ''}</td><td>${w.util !== undefined ? ufmt(w.util) : ''}</td>` : ''}</tr>`).join('');
+  return `<table class="${cls}"><thead>${head}</thead><tbody>${body}</tbody></table>`;
+}
+const caseKey = D => D.cases.map(c => `${esc(c.short)}: ${esc(c.name)}, F ${kN(c.F)} kN${c.e !== null && c.e !== undefined ? `, e ${f2(c.e)} m, T ${kN(c.T)} kNm` : ''}`).join('; ');
+let last = null;
+function runIt() {
+  const inp = input(), D = RigidDiaphragm.design(inp); last = { D, inp };
+  $('results').innerHTML = verdict(D) + `<div id="drawings">${DrawDiaphragm.html(D)}</div>`
+    + `<div class="dlabel">Wall forces (design, kN; positive along +X or +Y)</div>${table(D, 't')}<div class="help" style="margin:-4px 0 12px">${caseKey(D)}. r: the distance from the centre of rigidity to the wall’s line. The design force F<sub>Ed</sub> is the largest over the cases (bold: the case that gives it).</div>`
+    + (D.checks.length ? `<div class="dlabel">Checks</div><div class="checks">${D.checks.map(bar).join('')}</div>` : '')
+    + (D.limits.length ? `<div class="err">${D.limits.map(sub).join('<br>')}</div>` : '')
+    + `<div class="dlabel">Calculation</div>${stepsHTML(D.steps)}`
+    + (D.warnings.length ? `<div class="note">${D.warnings.map(sub).join('<br>')}</div>` : '')
+    + `<div class="note">${notes(D).join(' ')}</div><button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  $('printBtn').onclick = () => { $('report').innerHTML = report(); window.print(); };
+}
+const notes = D => [D.basis === 'strength'
+  ? 'PD 6693-1:2025 20.3: the roof or floor shares the wind in proportion to the walls’ racking strengths where it meets Annex E or BS EN 1995-1-1 9.2.3; check each wall diaphragm for its F<sub>Ed</sub> in the <a href="Timber Racking Wall.html">Timber Racking Wall</a> tool (racking, overturning and sliding, 20.4).'
+  : 'The floor or roof is taken as rigid in its plane: true of in-situ concrete slabs and of precast floors with a structural topping or ties designed for it; check timber and lightly tied floors. Each wall resists only along its own line; walls’ own torsional stiffness, openings, flanges and coupling beams are ignored, and a core is the sum of its walls.',
+  'The load acts at the centre of the loaded face; wind from either side changes only the signs. Not covered: flexible diaphragms (sharing by tributary width), the diaphragm’s own design (its shear, chords and ties), loads from the storeys above at other eccentricities (enter the storey’s total), second-order (sway) effects and the walls’ own design.'];
+function run() {
+  try { localStorage.setItem(STORE, JSON.stringify(collect())); } catch (e) { /* storage unavailable */ }
+  clearTimeout(drawT);
+  try { runIt(); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div><div id="drawings"></div>`; redraw(); }
+}
+$('calc').onclick = run;
+// ---------- A4 sheet ----------
+const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
+const okng = u => u <= 1 ? `<span class="ok">${ufmt(u)} OK</span>` : `<span class="ng">${ufmt(u)} FAIL</span>`;
+function report() {
+  const s = collect(), today = new Date().toLocaleDateString('en-GB'), { D } = last;
+  const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Level</b>${esc(s.pRef) || '&nbsp;'}</div><div class="ttl">Rigid diaphragm: horizontal load shared between walls${D.basis === 'strength' ? ' (PD 6693-1 20.3)' : ''}</div></div>`;
+  let b = `<div class="rs"><h2>Basis</h2>${rl(D.basis === 'strength' ? 'Shared in proportion to racking strength, PD 6693-1:2025 20.3 c), d); actions to BS EN 1990 + UK NA, wind to BS EN 1991-1-4 + UK NA' : 'Shared in proportion to stiffness by a rigid floor or roof (Mosley, Bungey and Hulse, Reinforced Concrete Design to Eurocode 2, 3.5); actions to BS EN 1990 + UK NA, wind to BS EN 1991-1-4 + UK NA', '', '')}${rl(summary(D), '', '')}</div>`;
+  b += `<div class="rs"><h2>Drawing</h2>${DrawDiaphragm.report(D)}</div>`;
+  b += `<div class="rs"><h2>Calculation</h2>${D.steps.map(x => rl(sub(x.text), esc(x.ref), '')).join('')}</div>`;
+  b += `<div class="rs"><h2>Wall forces</h2>${table(D, 'rt')}<p class="rp">${caseKey(D)}. Design forces in kN, positive along +X or +Y; r from the centre of rigidity.</p></div>`;
+  if (D.checks.length) b += `<div class="rs"><h2>Checks</h2>${D.checks.map(c => rl(`${esc(c.name)}: ${sub(c.note)}`, esc(c.ref), okng(c.util))).join('')}` + rl(`<b>${D.utilMax > 1 ? 'FAIL' : 'PASS'}</b>, largest utilisation`, '', okng(D.utilMax)) + '</div>';
+  if (D.warnings.length) b += `<div class="rs"><p class="rp">${D.warnings.map(sub).join(' ')}</p></div>`;
+  b += `<div class="rs"><p class="rp">${notes(D).join(' ')}</p><p class="rp" style="color:#555">Generated by EngineeringTools &mdash; Rigid Diaphragm.</p></div>`;
+  return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
+}
+// the plan follows the inputs as they change
+let drawT = 0;
+function redraw() {
+  const el = $('drawings'); if (!el) return;
+  try { el.innerHTML = DrawDiaphragm.html(RigidDiaphragm.design(input())); }
+  catch (e) { el.innerHTML = `<div class="note">The plan will appear when the inputs are complete: ${esc(e.message)}</div>`; }
+}
+const queueDraw = () => { clearTimeout(drawT); drawT = setTimeout(redraw, 200); };
+$('inputs').addEventListener('input', queueDraw); $('inputs').addEventListener('change', queueDraw);
+$('inputs').addEventListener('click', e => { const t = e.target.closest('button'); if (t && !t.classList.contains('btn') && !t.classList.contains('btn2')) queueDraw(); });
+(function init() {
+  let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
+  if (s && s.v === 1) restore(s); else DEF_WALLS.forEach(wallRow);
+  refreshVis(); redraw();
+})();
+</script>
+<footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent engineer to check and approve all calculations before they are used.</footer>
+<!-- @@FILEIO: save / open, shared by every tool (scratchpad/common/fileio.*) -->
+<style id="ef-style">
+/* Save / open buttons on the page header, and the status message (source: scratchpad/common/fileio.css) */
+.ef-bar{position:absolute;top:14px;right:16px;z-index:3;display:flex;gap:8px;}
+.ef-bar.ef-float{position:fixed;top:12px;right:12px;}
+.ef-btn{height:32px;padding:0 12px;display:inline-flex;align-items:center;gap:6px;border:0;border-radius:6px;background:rgba(255,255,255,.94);color:#111;font-family:inherit;font-size:13px;font-weight:500;line-height:1;cursor:pointer;}
+.ef-btn:hover{background:#fff;}
+.ef-btn:focus-visible{outline:2px solid #fff;outline-offset:2px;}
+.ef-btn svg{width:15px;height:15px;flex:none;}
+.ef-msg{position:fixed;left:50%;bottom:20px;z-index:1000;width:max-content;max-width:min(560px,calc(100vw - 32px));transform:translate(-50%,8px);opacity:0;pointer-events:none;
+  background:#1d1f20;color:#fff;font-family:inherit;font-size:13px;line-height:1.45;padding:10px 14px;border-radius:6px;transition:opacity .15s,transform .15s;}
+.ef-msg.on{opacity:1;transform:translate(-50%,0);}
+.ef-msg.bad{background:#b3261e;}
+@media(max-width:560px){.ef-bar{position:static;margin-top:12px;align-self:flex-start;}}
+@media print{.ef-bar,.ef-msg{display:none!important;}}
+</style>
+<script id="ef-script">
+/* Save / open: a tool's inputs as a .json file. Shared by every Engineering Tools page (source: scratchpad/common/fileio.js),
+   configured per page with EngFile.init({...}).
+   File: { app: 'EngineeringTools', tool, key, format, saved, state }.
+   Two ways to open:
+   - store: the tool already restores itself from browser storage on load. Open writes the file's state there and reloads,
+     so the tool rebuilds everything (load tables, spans, models) exactly as on a return visit, then recalculates.
+   - set: the page applies the state itself (pages without saved state); EngFile.fields() covers plain forms. */
+const EngFile = (() => {
+  'use strict';
+  const APP = 'EngineeringTools', FMT = 1, FLAG = 'ef-opened';
+  let C = null, input = null, timer = 0;
+  const ICON = {
+    open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+    save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v5h8V3"/><path d="M7 21v-7h10v7"/></svg>',
+  };
+  const sess = {
+    get: k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
+    set: (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } },
+    del: k => { try { sessionStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
+  };
+
+  function msg(t, bad) {
+    let m = document.getElementById('ef-msg');
+    if (!m) { m = document.createElement('div'); m.id = 'ef-msg'; m.className = 'ef-msg no-print'; m.setAttribute('role', 'status'); m.setAttribute('aria-live', 'polite'); document.body.appendChild(m); }
+    m.textContent = t || ''; m.classList.toggle('bad', !!bad); m.classList.toggle('on', !!t);
+    clearTimeout(timer); if (t) timer = setTimeout(() => m.classList.remove('on'), bad ? 9000 : 5000);
+  }
+  function data() { return { app: APP, tool: C.tool, key: C.key, format: FMT, saved: new Date().toISOString(), state: C.get() }; }
+  function fileName() {
+    let ref = '', nm = ''; try { ref = C.ref ? String(C.ref() || '').trim() : ''; nm = C.name ? String(C.name() || '').trim() : ''; } catch (e) { ref = ''; }
+    return `${ref ? ref + ' ' : ''}${nm || C.tool}.json`.replace(/[\\/:*?"<>|]+/g, '-');
+  }
+  async function save() {
+    let d; try { d = data(); } catch (e) { msg(`Could not save: ${e.message}`, true); return; }
+    const name = fileName(), text = JSON.stringify(d, null, 1);
+    if (window.showSaveFilePicker) {   // Chrome / Edge: a Save As dialog, so the file can go straight into the job folder
+      try {
+        const h = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: `${C.tool} file`, accept: { 'application/json': ['.json'] } }] });
+        const w = await h.createWritable(); await w.write(text); await w.close(); msg(`Saved ${h.name}`); return;
+      } catch (e) { if (e && e.name === 'AbortError') return; }   // cancelled; any other failure falls back to a download
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    msg(`Saved ${name} to your downloads folder`);
+  }
+  function open() { input.value = ''; input.click(); }
+  // the saved state, or an error saying what the file is
+  function stateOf(d) {
+    const old = C.legacy ? C.legacy(d) : null; if (old) return old;
+    if (!d || d.app !== APP || !d.state || typeof d.state !== 'object') throw new Error('this is not an Engineering Tools file');
+    if (d.key !== C.key) throw new Error(d.tool ? `it was saved in ${d.tool}, so open it there` : 'it was saved in another tool');
+    if (!(d.format >= 1) || d.format > FMT) throw new Error('this file was saved by a newer version of the tools');
+    return d.state;
+  }
+  async function apply(d, name) {
+    const s = stateOf(d);
+    if (C.store) {
+      try { localStorage.setItem(C.store, JSON.stringify(s)); } catch (e) { throw new Error('this browser is blocking site storage for this page, which Open needs'); }
+      sess.set(FLAG, JSON.stringify({ name, key: C.key }));
+      history.replaceState(null, '', location.href.split('#')[0]);   // a #in= hand-over in the address would otherwise win over the file
+      location.reload(); return { reload: true };
+    }
+    const r = (await C.set(s)) || {};
+    if (C.calc) try { C.calc(); } catch (e) { /* the tool reports its own input errors */ }
+    return r;
+  }
+  function done(name, r) {
+    const k = r && r.skipped ? r.skipped.length : 0;
+    msg(`Opened ${name}` + (k ? `. ${k} saved value${k > 1 ? 's are' : ' is'} not used by this version and ${k > 1 ? 'were' : 'was'} left at the default` : ''));
+  }
+  async function openFile(file) {
+    if (!file) return;
+    let d; try { d = JSON.parse(await file.text()); } catch (e) { msg(`${file.name} could not be read as a saved file`, true); return; }
+    try { const r = await apply(d, file.name); if (!r.reload) done(file.name, r); } catch (e) { msg(`${file.name} was not opened: ${e.message}`, true); }
+  }
+  // plain forms: every input, select and textarea with an id under root; dropdowns are restored first, since choosing a
+  // section often auto-fills its dimensions, which the saved values then override
+  function fields(root) {
+    const els = () => [...(typeof root === 'string' ? document.querySelector(root) : root || document).querySelectorAll('input[id],select[id],textarea[id]')]
+      .filter(el => el.id !== 'ef-file' && !['file', 'button', 'submit', 'reset'].includes(el.type));
+    return {
+      get: () => { const o = {}; els().forEach(el => { o[el.id] = el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value; }); return o; },
+      set: o => {
+        const have = new Map(els().map(el => [el.id, el])), skipped = [], ent = Object.entries(o || {}), fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+        for (const [id, v] of ent) {
+          const el = have.get(id); if (!el) { skipped.push(id); continue; }
+          if (el.tagName === 'SELECT') { if ([...el.options].some(x => x.value === String(v))) { el.value = String(v); fire(el, 'change'); } else skipped.push(id); }
+        }
+        for (const [id, v] of ent) {
+          const el = have.get(id); if (!el || el.tagName === 'SELECT') continue;
+          if (el.type === 'checkbox' || el.type === 'radio') { el.checked = !!v; fire(el, 'change'); } else { el.value = String(v); fire(el, 'input'); fire(el, 'change'); }
+        }
+        return { skipped };
+      },
+    };
+  }
+  // file names lead with the job and member references from the page, e.g. '24-123 Slab S3 RC Slab Design.json'
+  const refOf = ids => () => ids.map(id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; }).filter(Boolean).join(' ');
+  function mount() {
+    const bar = document.createElement('div'); bar.className = 'ef-bar no-print';
+    bar.innerHTML = `<button type="button" class="ef-btn" id="ef-open" title="Open a saved file (Ctrl+O), or drop it onto the page">${ICON.open}Open</button>`
+      + `<button type="button" class="ef-btn" id="ef-save" title="Save the inputs to a file (Ctrl+S)">${ICON.save}Save</button>`;
+    const h = document.querySelector('.page-hdr'); if (h) h.appendChild(bar); else { bar.classList.add('ef-float'); document.body.appendChild(bar); }
+    bar.querySelector('#ef-open').addEventListener('click', open); bar.querySelector('#ef-save').addEventListener('click', save);
+  }
+  function init(c) {
+    C = Object.assign({ tool: (document.querySelector('h1') || {}).textContent || document.title, ref: refOf(['pJob', 'pRef']), calc: () => { const b = document.getElementById('calc'); if (b) b.click(); }, delay: 200 }, c);
+    C.tool = C.tool.trim(); if (!C.key) C.key = C.store;
+    if (C.store && !C.get) C.get = () => collect();   // eslint-disable-line no-undef -- the tool's own serialiser
+    input = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json', id: 'ef-file' }); input.hidden = true;
+    document.body.appendChild(input); input.addEventListener('change', () => openFile(input.files[0]));
+    mount();
+    document.addEventListener('keydown', e => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return; const k = (e.key || '').toLowerCase();
+      if (k === 's') { e.preventDefault(); save(); } else if (k === 'o') { e.preventDefault(); open(); }
+    });
+    document.addEventListener('dragover', e => { if ([...((e.dataTransfer && e.dataTransfer.types) || [])].includes('Files')) e.preventDefault(); });
+    document.addEventListener('drop', e => { const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f && /\.json$/i.test(f.name)) { e.preventDefault(); openFile(f); } });
+    // after an Open that reloaded the page: the tool has restored itself; recalculate and say what was opened
+    const f = sess.get(FLAG);
+    if (f) {
+      sess.del(FLAG); let o = null; try { o = JSON.parse(f); } catch (e) { o = null; }
+      if (o && o.key === C.key) setTimeout(() => { if (C.calc) try { C.calc(); } catch (e) { /* the tool reports its own input errors */ } done(o.name); }, C.delay);
+    }
+  }
+  return { init, save, open, openFile, apply, data, fileName, msg, fields, stateOf, refOf };
+})();
+window.EngFile = EngFile;   // reachable from the page's other scripts and the tests
+EngFile.init({ store: STORE });
+</script>
+<!-- /@@FILEIO -->
+</body>
+</html>

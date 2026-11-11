@@ -36,7 +36,7 @@ Status key: **Done** means it's in this repo with tests; how far those tests rea
 
 Every live tool has tests, but not every tool has been checked against an independent published source. A tool is **Verified** when its main calculation path reproduces published results: The Concrete Centre's spreadsheets, worked examples in published guides and textbooks, or exact closed-form solutions for analysis. It is **Partly verified** when only part of it has been checked that way. It is **Not independently verified** when it has been checked only against hand calculations or a Python reference written alongside it. Those catch coding mistakes but not a misreading of the code, because they share the same reading. **No calculation tests** means nothing checks the page's numbers at all.
 
-Of the 50 live tools, 20 are verified, 13 partly verified (Steel Member Design and Steel Beam Analysis and Design share one engine and one row) and 17 not independently verified, two of them with no calculation tests. The 30 tools that are not fully verified are flagged in the tables below and should be used with extra care until their gap is closed:
+Of the 51 live tools, 21 are verified, 13 partly verified (Steel Member Design and Steel Beam Analysis and Design share one engine and one row) and 17 not independently verified, two of them with no calculation tests. The 30 tools that are not fully verified are flagged in the tables below and should be used with extra care until their gap is closed:
 Steel Member Design; Steel Beam Analysis and Design, Steel Column Design, Base Plate Design, Steel Frame Design, Steel Connection Design (ConnectionCheck), Bolt Group Analysis, Composite Beam Design, Beam Web Openings, Steel Beam Torsion, Hollowcore Support Beam, Steel Member Fire Design, Floor Vibration, RC Slab FE Design, RC Corbel and Nib Design, RC Lintel Design, RC Wall Crack Control (RC Crack Width), Concrete Frame Tie Force, Precast Connections, Steel Masonry Support, Windpost Design, Masonry Bearing, Masonry Column, Masonry Wall Panel, Timber Racking Wall, Timber Connections, Wind Loading, Snow Loading, Sheet Pile Wall, Retaining Wall.
 
 Each of these 30 tools carries a tag under its title: **Not yet verified** (amber) for the not independently verified tools and the two with no calculation tests, **Partly verified** (pale amber) for the rest, each with a line saying what has and has not been checked. The same note heads the printed A4 sheet (it goes at the foot, above the disclaimer, on the three pages without a sheet: Steel Connection Design, RC Wall Crack Control and Concrete Frame Tie Force), and the tool's row on the home page carries the same tag, explained in the home page footer and found by searching "verified". The tags are written into the build sources by `verify/tags.py` (with the other build scripts, outside this repo) and into the home page's `VERIFY` map; `tests/verify/test_verify_tags.js` checks that the pages, the home page and the table below agree. When a tool's gap is closed, change its row here and take its tag off, or that test fails.
@@ -92,6 +92,7 @@ Each of these 30 tools carries a tag under its title: **Not yet verified** (ambe
 | Pile Cap | Verified | TCC82 (72 caps) | — |
 | Retaining Wall | **Partly verified** | TCC62 (40 cantilever walls); propped and gravity walls by hand | Published propped and gravity wall examples |
 | Basement Wall | Verified | TCC61 (24 walls); the surcharge and pinned cases by hand | — |
+| Rigid Diaphragm | Verified | Mosley, Bungey and Hulse, *Reinforced Concrete Design to Eurocode 2*, Examples 3.6 and 3.7 (published); wall and bracing stiffness against closed forms; walls at an angle against an independent solution; the UK NA Figure NA.10 resultant (0.65F at b/6) by hand from the figure | — |
 
 Closing these gaps is part of the plan: each needs its published source (most are SCI, IStructE, CIRIA or manufacturers' documents) and a test file that reproduces it. The two with no calculation tests come first.
 
@@ -419,7 +420,7 @@ The timber beam, member and stud wall are checked against the worked examples in
 | Timber 2D analysis & design | 2D frame + EC5 | Planned |
 | Cross-laminated timber section properties / section design / floor panel / wall panel | CLT | Planned |
 | Timber Connection Design | Timber Connections | Done (November 2026), built afresh; partly verified |
-| Timber Frame Racking Panel Design; Timber Frame Racking Loads | Timber Racking Wall (PD 6693-1) | Done (November 2026; **not independently verified**); racking loads (sharing a storey's wind between walls) still planned |
+| Timber Frame Racking Panel Design; Timber Frame Racking Loads | Timber Racking Wall (PD 6693-1) | Done (November 2026; **not independently verified**); racking loads (sharing a storey's wind between walls, with torsion) in Rigid Diaphragm |
 | Masonry Bearing Design | Masonry Bearing | Done (November 2026; partly verified) |
 | Masonry Column Design | Masonry Column | Done (November 2026; **not independently verified**) |
 | Masonry Wall Panel Design | Masonry Wall Panel | Done (November 2026; partly verified) |
@@ -437,7 +438,7 @@ The timber beam, member and stud wall are checked against the worked examples in
 | Gabion Retaining Wall | Gabion wall | Planned |
 | Wind Loading; Snow Loading | Wind Loading; Snow Loading | Done (November 2026); Wind partly verified, Snow **not independently verified** |
 | Dead Loading; Hipped End Loading | Load take-down | Planned |
-| Rigid Diaphragm Force Distribution | Diaphragm | Planned |
+| Rigid Diaphragm Force Distribution | Rigid Diaphragm | Done (November 2026) |
 | Outrigger loading design | Outrigger (TWf) | Planned |
 | 2D Frame Analysis | 2D Frame Analysis | Done |
 | Rolling load analysis | Analysis | Planned |
@@ -488,6 +489,13 @@ Snow Loading covers / limits (November 2026):
 - Exceptional drifts as accidental actions s = μs<sub>k</sub> by Annex B (NA.2.5, NA.2.12): valleys (B2, h on the line joining the ridges, b<sub>3</sub> three slopes), roofs abutting or within 1.5 m of taller construction (B3, Table B1 with μ<sub>2</sub> at the eaves and μ<sub>1</sub> at the ridge of a pitched lower roof), parapets (B4(3)–(5)), obstructions up to 1 m or slender ones (B4(2), faces of 1 m² or less ignored) and door canopies up to 5 m. Each case gives the coefficients along a section, s in kN/m² and the load per metre run.
 - Based on the NA to BS EN 1991-1-3:2003 incorporating corrigendum no. 1 (2007). The 2015 revision of the NA and its 2018 amendment add a drifted case for monopitch roofs longer than 10 m, which is not included yet.
 - Not covered: exceptional snow on the ground (case B2 is the only exceptional condition in the UK, NA.2.2), snow overhanging the edge of a roof (sites above 800 m, NA.2.24), loads on snow guards, roofs intersecting at right angles (BRE Digest 439), several valleys loaded at once (B2(5) is stated, not applied), hipped and other roof shapes.
+
+Rigid Diaphragm covers / limits (November 2026):
+- One storey's horizontal load shared between its shear walls, cores (as their separate walls) and braced bays by a floor or roof that is rigid in its plane: a three-degree-of-freedom solution (two translations and the rotation), each element resisting only along its line, with the centre of rigidity from the flexibility (Σk<sub>y</sub>x/Σk<sub>y</sub>, Σk<sub>x</sub>y/Σk<sub>x</sub> for walls along X and Y), the torsional stiffness Σkr² about it, and each wall's force split exactly into its direct and torsional parts. Walls all in one direction are solved on that direction and the rotation, with load across them refused; walls on one line or whose lines meet at one point are refused.
+- Stiffness: given (kN/mm); concrete or masonry walls as cantilevers from the base or fixed at both ends, bending plus shear (H³/cEI + 1.2H/GA), E<sub>cm</sub> from f<sub>ck</sub> (BS EN 1992-1-1 Table 3.1, with a factor for cracking) and G = E/2.4, or E = 1000f<sub>k</sub> and G = 0.4E (BS EN 1996-1-1 3.7.2, 3.7.3, UK NA); steel bracing from its diagonals' axial stiffness (X with the tension diagonal or both, a single diagonal, a chevron), with each diagonal's force. Or, for timber frame wall diaphragms, in proportion to their design racking strength with the torsion to the walls both ways (PD 6693-1:2025 20.3 c), d)).
+- Loads in X and Y at the centre of the loaded face (or where given), × γ; torsion by the UK NA to BS EN 1991-1-4 (NA.2.23, Figure NA.10: c<sub>pe</sub> of zones D and E × 1.3 rising across each face, 0.65F at b/6 either side, with any lack-of-correlation factor taken out), or ± e × b, or none. Every wall's force in every case, the design force (the largest), force per metre, diagonal forces, a check against a resistance where one is given, and the characteristic drift at the plan's corners against H/limit.
+- Checked against Mosley, Bungey and Hulse, *Reinforced Concrete Design to Eurocode 2*, 3.5, Examples 3.6 and 3.7 (outputs only): the centre of rotation, the torsional moment, Σkr² and each wall's direct, torsional and total force; the stiffnesses against their closed forms; equilibrium, a 90° turn of the plan and walls at an angle against an independent solution.
+- Not covered: flexible diaphragms (sharing by tributary width), the diaphragm's own design (shear, chords, ties and collectors), walls' own torsional stiffness (closed cores), openings, flanges and coupling beams, the axial strain of braced bays' columns, several storeys at once (enter each storey's total shear), second-order (sway) effects and the walls' own design.
 
 ## Steel Member Design and Steel Beam Analysis & Design verification (`node tests/steel-member/run_all.js`)
 
