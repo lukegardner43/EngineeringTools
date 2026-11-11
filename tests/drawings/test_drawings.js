@@ -1,6 +1,6 @@
 // Drawings on Composite Beam, Floor Vibration, Steel Member, Concrete Tie Force and RC Crack Width (group 1) and on Steel Beam
 // Torsion, Beam Web Openings, Steel Frame Design, Sheet Pile Wall, the RC Section Toolkit tabs, RC Column, Hollowcore Support
-// Beam, Steel Masonry Support and Steel Member Fire Design (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
+// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
 //   NODE_PATH=<jsdom>/node_modules node tests/drawings/test_drawings.js
 const fs = require('fs'), path = require('path'), { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '../..');
@@ -319,5 +319,12 @@ async function sweep(f, cases, expect) {
     ['waffle, all edges continuous', w => ['eL1', 'eL2', 'eS1', 'eS2'].forEach(id => { const e = w.document.getElementById(id); e.checked = true; e.dispatchEvent(new w.Event('change', { bubbles: true })); })],
     ['waffle, simply supported', w => set(w, 'method', 'simple', 'change')], ['waffle, no margins', w => set(w, 'margin', '0')], ['waffle, long panel', w => set(w, 'ly', '16')],
   ], 2);
+  await sweep('Masonry Bearing.html', [
+    ['bearing at the end of the wall', w => set(w, 'aL', '0')], ['short pier', w => { set(w, 'aL', '160'); set(w, 'aR', '160'); }], ['long wall', w => { set(w, 'aL', '6000'); set(w, 'aR', '6000'); }],
+    ['narrow bearing at one face', w => { set(w, 't', '215'); set(w, 'pW', '215'); set(w, 'wb', '60'); }], ['bearing set back from the face', w => set(w, 'inset', '100')],
+    ['no padstone', w => set(w, 'pmat', 'none', 'change')], ['masonry padstone, wall width', w => { set(w, 'pmat', 'masonry', 'change'); set(w, 'pW', '215'); }], ['shallow concrete padstone', w => { set(w, 'pmat', 'concrete', 'change'); set(w, 'ph', '100'); }],
+    ['long spreader', w => { set(w, 'pL', '1115'); set(w, 'ph', '300'); }], ['narrow padstone, centred bearing', w => { set(w, 'inset', '57.5'); set(w, 'wb', '100'); set(w, 'pW', '140'); }], ['tall wall', w => set(w, 'hc', '6000')],
+    ['clay bricks', w => set(w, 'unit', 'clay', 'change')], ['AAC blocks', w => set(w, 'unit', 'aac', 'change')],
+  ], 1);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
