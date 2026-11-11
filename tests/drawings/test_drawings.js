@@ -1,6 +1,6 @@
 // Drawings on Composite Beam, Floor Vibration, Steel Member, Concrete Tie Force and RC Crack Width (group 1) and on Steel Beam
 // Torsion, Beam Web Openings, Steel Frame Design, Sheet Pile Wall, the RC Section Toolkit tabs, RC Column, Hollowcore Support
-// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages to Timber Connections (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
+// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages to Gabion Retaining Wall (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
 //   NODE_PATH=<jsdom>/node_modules node tests/drawings/test_drawings.js
 const fs = require('fs'), path = require('path'), { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '../..');
@@ -391,6 +391,12 @@ async function sweep(f, cases, expect) {
     ['longer span', w => { const e = w.document.querySelector('#spanRows .L'); e.value = '12'; e.dispatchEvent(new w.Event('input', { bubbles: true })); }],
     ['two spans', w => w.document.getElementById('addSpan').click()], ['a third load', w => w.document.getElementById('addWheel').click()],
     ['fixed and free ends', w => { set(w, 'supL', 'fixed', 'change'); set(w, 'supR', 'free', 'change'); }], ['no permanent load', w => { w.document.querySelectorAll('#spanRows .G').forEach(e => { e.value = '0'; }); set(w, 'E', '205'); }],
+  ], 1);
+  await sweep('Gabion Retaining Wall.html', [
+    ['lean 10°', w => set(w, 'alpha', '10')], ['sloping ground 15°', w => set(w, 'eps', '15')], ['a fourth course', w => w.document.getElementById('addCourse').click()],
+    ['upright, stepped at the back', w => { set(w, 'alpha', '0'); w.document.querySelectorAll('#courseRows .off').forEach((e, i) => { if (i) { e.value = '0'; e.dispatchEvent(new w.Event('input', { bubbles: true })); } }); }],
+    ['heavy surcharge, resultant out of the middle third', w => set(w, 'qQ', '60')], ['no surcharge', w => set(w, 'qQ', '0')],
+    ['undrained founding soil', w => { set(w, 'bearing', 'undrained', 'change'); set(w, 'cuf', '60'); }], ['toe 0.3 m down', w => set(w, 'D', '0.3')],
   ], 1);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
