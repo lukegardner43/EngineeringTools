@@ -1,6 +1,6 @@
 // Drawings on Composite Beam, Floor Vibration, Steel Member, Concrete Tie Force and RC Crack Width (group 1) and on Steel Beam
 // Torsion, Beam Web Openings, Steel Frame Design, Sheet Pile Wall, the RC Section Toolkit tabs, RC Column, Hollowcore Support
-// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages to Timber Stud Wall (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
+// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages to Timber Racking Wall (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
 //   NODE_PATH=<jsdom>/node_modules node tests/drawings/test_drawings.js
 const fs = require('fs'), path = require('path'), { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '../..');
@@ -359,5 +359,10 @@ async function sweep(f, cases, expect) {
     ['two rows', w => set(w, 'rows', '2')], ['no restraint', w => set(w, 'restraint', 'none', 'change')], ['loads per stud', w => set(w, 'per', 'stud', 'change')],
     ['off centre', w => set(w, 'e', '40')], ['thicker plate', w => set(w, 'tp', '50')], ['no wind', w => { const r = [...w.document.querySelectorAll('#loadRows .row')].pop(); r.querySelector('.xbtn').click(); }],
   ], 2);
+  await sweep('Timber Racking Wall.html', [
+    ['longer', w => set(w, 'L', '4.8')], ['taller', w => set(w, 'H', '2.7')], ['more wind', w => set(w, 'R', '4')], ['no opening', w => w.document.querySelector('#openRows .xbtn').click()],
+    ['two openings', w => { w.document.getElementById('addOpen').click(); w.document.getElementById('addOpen').click(); }], ['no storey above', w => w.document.querySelector('#aboveRows .xbtn').click()],
+    ['return wall load', w => set(w, 'V', '5')], ['uplift', w => set(w, 'up', '0.5')], ['plasterboard', w => set(w, 'kind', 'pb', 'change')], ['no withdrawal', w => { set(w, 'kind', 'OSB/3', 'change'); set(w, 'fwd', '0'); }],
+  ], 1);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
