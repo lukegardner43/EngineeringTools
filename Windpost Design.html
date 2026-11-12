@@ -1858,7 +1858,9 @@ const Design = (() => {
   }
 
   /* MODE B - member with direct design actions (linear moments between ends).
-     inp: {sec, grade, L, N (+comp), MyB, MyT, MzB, MzT, ky, kz, nLT} */
+     inp: {sec, grade, L, N (+comp), MyB, MyT, MzB, MzT, ky, kz, nLT}, or with Lcr: {y, z, LT} (mm) the buckling lengths
+     given: flexural about y-y and z-z, and lateral-torsional (also the torsional buckling length). A given L_LT shorter
+     than the member is checked at every position along it (the restraints' places are not known): the worst governs. */
   function designMember(inp) {
     const sec = inp.sec, fy = EC3.yieldStrength(inp.grade, Math.max(sec.tf, sec.tw), inp.fy);
     const L = inp.L, N = inp.N || 0, nLT = Math.max(1, Math.round(inp.nLT || 1));
@@ -1875,25 +1877,43 @@ const Design = (() => {
       if (N) track(out.gov, 'axial', sc.uN, { x, sc });
     }
     const cls = EC3.classify(sec, fy, N, (inp.Myf ? Math.max(...Array.from({ length: 21 }, (_, k) => Math.abs(My(L * k / 20)))) : Math.abs(inp.MyB) + Math.abs(inp.MyT)) + Math.abs(inp.MzB) + Math.abs(inp.MzT) > 0, hasMz).cls;
-    const Lseg = L / nLT, Nc = Math.max(N, 0);
-    const ab = axialBuckling(sec, fy, inp.grade, Nc, inp.ky * L, inp.kz * L, Lseg);
-    out.ab = ab;
+    const G = inp.Lcr || null;
+    if (G && !(G.y > 0 && G.z > 0 && G.LT > 0)) throw new Error('Buckling lengths must be positive');
+    const Lcry = G ? G.y : inp.ky * L, Lcrz = G ? G.z : inp.kz * L, LLT = G ? G.LT : L / nLT;
+    const Nc = Math.max(N, 0);
+    const ab = axialBuckling(sec, fy, inp.grade, Nc, Lcry, Lcrz, LLT);
+    out.ab = ab; out.Lcr = { y: Lcry, z: Lcrz, LT: LLT, given: !!G };
     if (N > 0) track(out.gov, 'flexural', ab.util, { ab });
     const xs = Array.from({ length: 21 }, (_, k) => L * k / 20);
     // Table B.3 note: sway buckling mode -> Cm = 0.9. A buckling length above the member length implies a sway mode.
-    const swayY = inp.ky > 1 + 1e-9, swayZ = inp.kz > 1 + 1e-9;
+    const swayY = Lcry > L * (1 + 1e-9), swayZ = Lcrz > L * (1 + 1e-9);
     const Cmy = swayY ? 0.9 : EC3.cmFactor(xs, xs.map(My), !!inp.hasUdl, false).Cm, Cmz = swayZ ? 0.9 : EC3.cmFactor(xs, xs.map(Mz), false, false).Cm;
     // Annex A, Table A.2: Cmi,0 for end moments (psi = smaller / larger end moment); sway modes are outside the table: 1.0 taken
     const psiOf = (a, b) => { const big = Math.abs(a) >= Math.abs(b) ? a : b, sm = big === a ? b : a; return big ? sm / big : 1; };
     const annexA = inp.annex === 'A';
-    for (let i = 0; i < nLT; i++) {
-      const xa = i * Lseg, sxs = Array.from({ length: 11 }, (_, k) => Lseg * k / 10);
+    // lateral-torsional lengths: equal segments between forks; or a given L_LT at every position along the member (or, longer
+    // than the member, C1 from the member's moment diagram times the uniform-moment M_cr over L_LT)
+    const wins = [];
+    if (!G) for (let i = 0; i < nLT; i++) wins.push({ xa: i * LLT, L: LLT });
+    else if (LLT >= L * (1 - 1e-9)) wins.push({ xa: 0, L, over: LLT });
+    else {
+      const xs0 = new Set(), sp = L - LLT, n = 24;
+      for (let k = 0; k <= n; k++) xs0.add(+(sp * k / n).toFixed(3));
+      for (let k = 0; k * LLT <= sp + 1e-6; k++) { xs0.add(+(k * LLT).toFixed(3)); xs0.add(+(sp - k * LLT).toFixed(3)); }
+      [...xs0].filter(x => x >= -1e-6 && x <= sp + 1e-6).sort((a, b) => a - b).forEach(x => wins.push({ xa: Math.min(Math.max(x, 0), sp), L: LLT }));
+    }
+    let worst = null;
+    for (let i = 0; i < wins.length; i++) {
+      const w = wins[i], xa = w.xa, Lseg = w.L, sxs = Array.from({ length: 11 }, (_, k) => Lseg * k / 10);
       const Mmax = Math.max(...sxs.map(x => Math.abs(My(xa + x))));
       const CmLT = EC3.cmFactor(sxs, sxs.map(x => My(xa + x)), !!inp.hasUdl, false).Cm;
       let lt = null;
       if (Mmax > 1) {
         lt = ltb(sec, fy, cls, { L: Lseg, M: x => My(xa + x), Mref: Mmax, Mmax, restraints: [{ x: 0, type: 'fork' }, { x: Lseg, type: 'fork' }], forkFork: true }, { destab: false });
-        out.segResults.push({ seg: i, ...lt });
+        if (w.over) lt = ltbResult(sec, fy, cls, (lt.C1 || 1) * EC3.mcrUniform(sec, w.over), lt.C1, Mmax);   // L_LT beyond the member
+        lt = { ...lt, Lseg: w.over || Lseg, xa };
+        if (!G) out.segResults.push({ seg: i, ...lt });
+        else if (!worst || lt.util > worst.util) worst = { seg: i, ...lt };
         track(out.gov, 'ltb', lt.util, { seg: i, ...lt });
       }
       const chiLT = lt ? lt.chiMod : 1;
@@ -1901,14 +1921,16 @@ const Design = (() => {
       if (N > 0 || hasMz) {           // 6.3.3 with compression and/or biaxial bending
         let A = null;
         if (annexA) {
-          const Wy = EC3.wyByClass(sec, fy, cls), Mcr0 = EC3.mcrUniform(sec, Lseg);
+          const Wy = EC3.wyByClass(sec, fy, cls), Mcr0 = EC3.mcrUniform(sec, w.over || Lseg);
           A = { Cmy0: swayY ? 1 : EC3.cm0Linear(psiOf(inp.MyB, inp.MyT), Nc, ab.Ncry), Cmz0: swayZ ? 1 : EC3.cm0Linear(psiOf(inp.MzB, inp.MzT), Nc, ab.Ncrz),
             lam0: EC3.ltbParams(sec).none ? 0 : Math.sqrt(Wy * fy / Mcr0), C1: lt && lt.C1 ? lt.C1 : 1 };
         }
         const ir = interaction(sec, fy, cls, Nc, ab, Mmax, chiLT, Cmy, CmLT, MzMax, Cmz, A);
-        track(out.gov, 'interaction', ir.util, { seg: i, ir, chiLT, swayY, swayZ });
+        track(out.gov, 'interaction', ir.util, { seg: i, xa, Lseg: w.over || Lseg, ir, chiLT, swayY, swayZ });
       }
     }
+    if (worst) out.segResults.push(worst);
+    out.windows = G ? wins.length : 0;
     out.cls = cls; out.Cmy = Cmy; out.Cmz = Cmz; out.swayY = swayY; out.swayZ = swayZ;
     out.utilMax = Math.max(...Object.values(out.gov).map(g => g.util));
     return out;

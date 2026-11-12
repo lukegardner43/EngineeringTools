@@ -261,10 +261,9 @@ sub,sup{font-size:max(11px,.75em);line-height:0;}
 
         <div id="modeB" class="hidden">
           <div class="section-title">Member <span class="aux">m, kN, kNm</span></div>
-          <div class="grid3">
+          <div class="grid2">
             <div class="form-group"><label>Length L</label><input type="number" id="bL" value="5" step="0.1"></div>
             <div class="form-group"><label>N<sub>Ed</sub> (comp. +)</label><input type="number" id="bN" value="1200" step="10"></div>
-            <div class="form-group"><label>LT segments</label><input type="number" id="bnLT" value="1" min="1" max="10" step="1"></div>
           </div>
           <div class="grid2">
             <div class="form-group"><label>M<sub>y,Ed</sub> top</label><input type="number" id="bMyT" value="40" step="1"></div>
@@ -272,11 +271,21 @@ sub,sup{font-size:max(11px,.75em);line-height:0;}
             <div class="form-group"><label>M<sub>z,Ed</sub> top</label><input type="number" id="bMzT" value="0" step="1"></div>
             <div class="form-group"><label>M<sub>z,Ed</sub> bottom</label><input type="number" id="bMzB" value="0" step="1"></div>
           </div>
-          <div class="grid2">
+          <div class="help">Moments vary linearly between the ends; sign convention as drawn (same sign = single curvature).</div>
+          <div class="section-title" style="margin-top:14px">Buckling lengths</div>
+          <div class="seg" id="bLmodeSeg"><button data-v="k" class="on">Factors of L</button><button data-v="L">Lengths in metres</button></div>
+          <input type="hidden" id="bLmode" value="k">
+          <div class="grid3" id="bKbox">
             <div class="form-group"><label>L<sub>cr,y</sub> / L</label><input type="number" id="bky" value="1.0" step="0.05"></div>
             <div class="form-group"><label>L<sub>cr,z</sub> / L</label><input type="number" id="bkz" value="1.0" step="0.05"></div>
+            <div class="form-group"><label>LT segments</label><input type="number" id="bnLT" value="1" min="1" max="10" step="1"></div>
           </div>
-          <div class="help">Moments vary linearly between the ends; sign convention as drawn (same sign = single curvature). LT segments are equal lengths between forks (lateral and torsional restraint).</div>
+          <div class="grid3 hidden" id="bLbox">
+            <div class="form-group"><label>L<sub>cr,y</sub> axial, y&ndash;y (m)</label><input type="number" id="bLy" value="5" step="0.1" min="0"></div>
+            <div class="form-group"><label>L<sub>cr,z</sub> axial, z&ndash;z (m)</label><input type="number" id="bLz" value="5" step="0.1" min="0"></div>
+            <div class="form-group"><label>L<sub>LT</sub> for M<sub>y</sub> (m)</label><input type="number" id="bLLT" value="5" step="0.1" min="0"></div>
+          </div>
+          <div class="help" id="bLhelp"></div>
         </div>
         <button class="btn" id="calc" style="margin-top:12px">Calculate</button>
       </div>
@@ -2500,7 +2509,9 @@ const Design = (() => {
   }
 
   /* MODE B - member with direct design actions (linear moments between ends).
-     inp: {sec, grade, L, N (+comp), MyB, MyT, MzB, MzT, ky, kz, nLT} */
+     inp: {sec, grade, L, N (+comp), MyB, MyT, MzB, MzT, ky, kz, nLT}, or with Lcr: {y, z, LT} (mm) the buckling lengths
+     given: flexural about y-y and z-z, and lateral-torsional (also the torsional buckling length). A given L_LT shorter
+     than the member is checked at every position along it (the restraints' places are not known): the worst governs. */
   function designMember(inp) {
     const sec = inp.sec, fy = EC3.yieldStrength(inp.grade, Math.max(sec.tf, sec.tw), inp.fy);
     const L = inp.L, N = inp.N || 0, nLT = Math.max(1, Math.round(inp.nLT || 1));
@@ -2517,25 +2528,43 @@ const Design = (() => {
       if (N) track(out.gov, 'axial', sc.uN, { x, sc });
     }
     const cls = EC3.classify(sec, fy, N, (inp.Myf ? Math.max(...Array.from({ length: 21 }, (_, k) => Math.abs(My(L * k / 20)))) : Math.abs(inp.MyB) + Math.abs(inp.MyT)) + Math.abs(inp.MzB) + Math.abs(inp.MzT) > 0, hasMz).cls;
-    const Lseg = L / nLT, Nc = Math.max(N, 0);
-    const ab = axialBuckling(sec, fy, inp.grade, Nc, inp.ky * L, inp.kz * L, Lseg);
-    out.ab = ab;
+    const G = inp.Lcr || null;
+    if (G && !(G.y > 0 && G.z > 0 && G.LT > 0)) throw new Error('Buckling lengths must be positive');
+    const Lcry = G ? G.y : inp.ky * L, Lcrz = G ? G.z : inp.kz * L, LLT = G ? G.LT : L / nLT;
+    const Nc = Math.max(N, 0);
+    const ab = axialBuckling(sec, fy, inp.grade, Nc, Lcry, Lcrz, LLT);
+    out.ab = ab; out.Lcr = { y: Lcry, z: Lcrz, LT: LLT, given: !!G };
     if (N > 0) track(out.gov, 'flexural', ab.util, { ab });
     const xs = Array.from({ length: 21 }, (_, k) => L * k / 20);
     // Table B.3 note: sway buckling mode -> Cm = 0.9. A buckling length above the member length implies a sway mode.
-    const swayY = inp.ky > 1 + 1e-9, swayZ = inp.kz > 1 + 1e-9;
+    const swayY = Lcry > L * (1 + 1e-9), swayZ = Lcrz > L * (1 + 1e-9);
     const Cmy = swayY ? 0.9 : EC3.cmFactor(xs, xs.map(My), !!inp.hasUdl, false).Cm, Cmz = swayZ ? 0.9 : EC3.cmFactor(xs, xs.map(Mz), false, false).Cm;
     // Annex A, Table A.2: Cmi,0 for end moments (psi = smaller / larger end moment); sway modes are outside the table: 1.0 taken
     const psiOf = (a, b) => { const big = Math.abs(a) >= Math.abs(b) ? a : b, sm = big === a ? b : a; return big ? sm / big : 1; };
     const annexA = inp.annex === 'A';
-    for (let i = 0; i < nLT; i++) {
-      const xa = i * Lseg, sxs = Array.from({ length: 11 }, (_, k) => Lseg * k / 10);
+    // lateral-torsional lengths: equal segments between forks; or a given L_LT at every position along the member (or, longer
+    // than the member, C1 from the member's moment diagram times the uniform-moment M_cr over L_LT)
+    const wins = [];
+    if (!G) for (let i = 0; i < nLT; i++) wins.push({ xa: i * LLT, L: LLT });
+    else if (LLT >= L * (1 - 1e-9)) wins.push({ xa: 0, L, over: LLT });
+    else {
+      const xs0 = new Set(), sp = L - LLT, n = 24;
+      for (let k = 0; k <= n; k++) xs0.add(+(sp * k / n).toFixed(3));
+      for (let k = 0; k * LLT <= sp + 1e-6; k++) { xs0.add(+(k * LLT).toFixed(3)); xs0.add(+(sp - k * LLT).toFixed(3)); }
+      [...xs0].filter(x => x >= -1e-6 && x <= sp + 1e-6).sort((a, b) => a - b).forEach(x => wins.push({ xa: Math.min(Math.max(x, 0), sp), L: LLT }));
+    }
+    let worst = null;
+    for (let i = 0; i < wins.length; i++) {
+      const w = wins[i], xa = w.xa, Lseg = w.L, sxs = Array.from({ length: 11 }, (_, k) => Lseg * k / 10);
       const Mmax = Math.max(...sxs.map(x => Math.abs(My(xa + x))));
       const CmLT = EC3.cmFactor(sxs, sxs.map(x => My(xa + x)), !!inp.hasUdl, false).Cm;
       let lt = null;
       if (Mmax > 1) {
         lt = ltb(sec, fy, cls, { L: Lseg, M: x => My(xa + x), Mref: Mmax, Mmax, restraints: [{ x: 0, type: 'fork' }, { x: Lseg, type: 'fork' }], forkFork: true }, { destab: false });
-        out.segResults.push({ seg: i, ...lt });
+        if (w.over) lt = ltbResult(sec, fy, cls, (lt.C1 || 1) * EC3.mcrUniform(sec, w.over), lt.C1, Mmax);   // L_LT beyond the member
+        lt = { ...lt, Lseg: w.over || Lseg, xa };
+        if (!G) out.segResults.push({ seg: i, ...lt });
+        else if (!worst || lt.util > worst.util) worst = { seg: i, ...lt };
         track(out.gov, 'ltb', lt.util, { seg: i, ...lt });
       }
       const chiLT = lt ? lt.chiMod : 1;
@@ -2543,14 +2572,16 @@ const Design = (() => {
       if (N > 0 || hasMz) {           // 6.3.3 with compression and/or biaxial bending
         let A = null;
         if (annexA) {
-          const Wy = EC3.wyByClass(sec, fy, cls), Mcr0 = EC3.mcrUniform(sec, Lseg);
+          const Wy = EC3.wyByClass(sec, fy, cls), Mcr0 = EC3.mcrUniform(sec, w.over || Lseg);
           A = { Cmy0: swayY ? 1 : EC3.cm0Linear(psiOf(inp.MyB, inp.MyT), Nc, ab.Ncry), Cmz0: swayZ ? 1 : EC3.cm0Linear(psiOf(inp.MzB, inp.MzT), Nc, ab.Ncrz),
             lam0: EC3.ltbParams(sec).none ? 0 : Math.sqrt(Wy * fy / Mcr0), C1: lt && lt.C1 ? lt.C1 : 1 };
         }
         const ir = interaction(sec, fy, cls, Nc, ab, Mmax, chiLT, Cmy, CmLT, MzMax, Cmz, A);
-        track(out.gov, 'interaction', ir.util, { seg: i, ir, chiLT, swayY, swayZ });
+        track(out.gov, 'interaction', ir.util, { seg: i, xa, Lseg: w.over || Lseg, ir, chiLT, swayY, swayZ });
       }
     }
+    if (worst) out.segResults.push(worst);
+    out.windows = G ? wins.length : 0;
     out.cls = cls; out.Cmy = Cmy; out.Cmz = Cmz; out.swayY = swayY; out.swayZ = swayZ;
     out.utilMax = Math.max(...Object.values(out.gov).map(g => g.util));
     return out;
@@ -3135,7 +3166,8 @@ function collect() {
     loads: [...document.querySelectorAll('#loadRows .row')].map(d => ({ case: d.querySelector('.cs').value, dir: d.querySelector('.dir').value, member: +d.dataset.member, type: d.querySelector('.ty').value, ...d._vals })),
     sw: $('sw').checked, rule: $('rule').value, psi0: +$('psi0').value, NA: +$('NA').value,
     restr: [...document.querySelectorAll('#restrRows .row')].map(rowRestraint), destab: $('destab').checked, brittle: $('defl').value === '1', ssS: +$('ssS').value, ssP: +$('ssP').value, cEnd: +$('cEnd').value,
-    B: { L: +$('bL').value, N: +$('bN').value, nLT: +$('bnLT').value, MyT: +$('bMyT').value, MyB: +$('bMyB').value, MzT: +$('bMzT').value, MzB: +$('bMzB').value, ky: +$('bky').value, kz: +$('bkz').value },
+    B: { L: +$('bL').value, N: +$('bN').value, nLT: +$('bnLT').value, MyT: +$('bMyT').value, MyB: +$('bMyB').value, MzT: +$('bMzT').value, MzB: +$('bMzB').value, ky: +$('bky').value, kz: +$('bkz').value,
+      Lmode: $('bLmode').value, Ly: +$('bLy').value, Lz: +$('bLz').value, LLT: +$('bLLT').value },
   };
 }
 function applyState(s) {
@@ -3150,9 +3182,24 @@ function applyState(s) {
   refreshMembers();
   [...document.querySelectorAll('#restrRows .row')].forEach((d, i) => { const p = s.restr[i]; if (!p) return; d.querySelector('.rm').value = p.mode; d.querySelector('.rp').value = p.pts || ''; if (p.tip && d.querySelector('.tip')) d.querySelector('.tip').value = p.tip; if (p.ky && d.querySelector('.ky')) d.querySelector('.ky').value = p.ky; d.querySelector('.rp').disabled = p.mode !== 'points'; });
   $('sw').checked = s.sw; $('rule').value = s.rule; $('psi0').value = String(s.psi0); $('NA').value = s.NA; $('destab').checked = s.destab; $('defl').value = s.brittle ? '1' : '0'; $('ssS').value = s.ssS ?? 100; $('ssP').value = s.ssP ?? 50; $('cEnd').value = s.cEnd ?? 0;
-  Object.entries({ bL: 'L', bN: 'N', bnLT: 'nLT', bMyT: 'MyT', bMyB: 'MyB', bMzT: 'MzT', bMzB: 'MzB', bky: 'ky', bkz: 'kz' }).forEach(([id, k]) => $(id).value = s.B[k]);
+  Object.entries({ bL: 'L', bN: 'N', bnLT: 'nLT', bMyT: 'MyT', bMyB: 'MyB', bMzT: 'MzT', bMzB: 'MzB', bky: 'ky', bkz: 'kz', bLy: 'Ly', bLz: 'Lz', bLLT: 'LLT' }).forEach(([id, k]) => { if (s.B[k] != null) $(id).value = s.B[k]; });
+  setLmode(s.B.Lmode === 'L' ? 'L' : 'k');
   setMode(s.mode);
   return true;
+}
+// member page: buckling lengths as factors of L with equal lateral-torsional segments, or given in metres
+const LHELP = {
+  k: 'L<sub>cr,y</sub> and L<sub>cr,z</sub> as factors of L (a factor above 1 is taken as a sway mode: C<sub>m</sub> = 0.9). LT segments are equal lengths between forks (lateral and torsional restraint); torsional buckling (6.3.1.4) uses the segment length.',
+  L: 'L<sub>cr,y</sub>: flexural buckling about the major axis y&ndash;y (x&ndash;x in BS 5950); L<sub>cr,z</sub>: about the minor axis z&ndash;z (y&ndash;y in BS 5950); L<sub>LT</sub>: lateral-torsional buckling under M<sub>y,Ed</sub>, between lateral and torsional restraints, with any end-condition factor (also the torsional buckling length, 6.3.1.4). An L<sub>LT</sub> shorter than the member is checked at every position along it; a length above L is taken as a sway mode (C<sub>m</sub> = 0.9). M<sub>z,Ed</sub> has no buckling length: minor-axis bending does not buckle laterally.'
+};
+function setLmode(v, prefill) {
+  if (prefill && v === 'L' && $('bLmode').value !== 'L') {
+    const L = +$('bL').value || 0, r = x => String(+x.toFixed(3));
+    if (L > 0) { $('bLy').value = r(L * (+$('bky').value || 1)); $('bLz').value = r(L * (+$('bkz').value || 1)); $('bLLT').value = r(L / Math.max(1, Math.round(+$('bnLT').value || 1))); }
+  }
+  $('bLmode').value = v;
+  document.querySelectorAll('#bLmodeSeg button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  $('bKbox').classList.toggle('hidden', v !== 'k'); $('bLbox').classList.toggle('hidden', v !== 'L'); $('bLhelp').innerHTML = LHELP[v];
 }
 function setMode(m) {
   m = FIXED_MODE; mode = m; $('mA').classList.toggle('on', m === 'A'); $('mB').classList.toggle('on', m === 'B');
@@ -3284,11 +3331,11 @@ function renderB(R, inp, ms) {
   h += `<div id="drawings"></div>` + checksHTML(R.gov);
   const ab = R.ab;
   h += `<div class="dlabel">Flexural and torsional buckling</div><table class="t"><tr><th>Mode</th><th>L<sub>cr</sub> (m)</th><th>N<sub>cr</sub> (kN)</th><th>&lambda;</th><th>Curve</th><th>&chi;</th></tr>
-    <tr><td>y-y</td><td>${(inp.ky * inp.L / 1000).toFixed(2)}</td><td>${fmt(kN(ab.Ncry), 0)}</td><td>${ab.lamY.toFixed(3)}</td><td>${ab.curves.y}</td><td>${ab.y.chi.toFixed(3)}</td></tr>
-    <tr><td>z-z</td><td>${(inp.kz * inp.L / 1000).toFixed(2)}</td><td>${fmt(kN(ab.Ncrz), 0)}</td><td>${ab.lamZ.toFixed(3)}</td><td>${ab.curves.z}</td><td>${ab.z.chi.toFixed(3)}</td></tr>
-    ${ab.torsionalMode === 'none' ? '' : `<tr><td>${ab.torsionalMode === 'torsional-flexural' ? 'Tors.-flexural' : 'Torsional'}</td><td>${(inp.L / inp.nLT / 1000).toFixed(2)}</td><td>${fmt(kN(ab.NcrT), 0)}</td><td>${ab.lamT.toFixed(3)}</td><td>${ab.curves.z}</td><td>${ab.T.chi.toFixed(3)}</td></tr>`}</table>`;
-  if (R.segResults.length) h += `<div class="dlabel">Lateral-torsional buckling by segment</div><table class="t"><tr><th>Segment</th><th>M<sub>Ed</sub></th><th>C<sub>1</sub></th><th>M<sub>cr</sub></th><th>&lambda;<sub>LT</sub></th><th>&chi;<sub>LT,mod</sub></th><th>M<sub>b,Rd</sub></th><th>Util.</th></tr>` +
-    R.segResults.map(r => `<tr><td>${r.seg + 1}</td><td>${fmt(kNm(r.Mmax))}</td><td>${r.C1 ? r.C1.toFixed(2) : '&ndash;'}</td><td>${fmt(kNm(r.Mcr), 0)}</td><td>${r.lamLT.toFixed(3)}</td><td>${r.chiMod.toFixed(3)}</td><td>${fmt(kNm(r.MbRd))}</td><td>${ufmt(r.util)}</td></tr>`).join('') + `</table>`;
+    <tr><td>y-y</td><td>${(R.Lcr.y / 1000).toFixed(2)}</td><td>${fmt(kN(ab.Ncry), 0)}</td><td>${ab.lamY.toFixed(3)}</td><td>${ab.curves.y}</td><td>${ab.y.chi.toFixed(3)}</td></tr>
+    <tr><td>z-z</td><td>${(R.Lcr.z / 1000).toFixed(2)}</td><td>${fmt(kN(ab.Ncrz), 0)}</td><td>${ab.lamZ.toFixed(3)}</td><td>${ab.curves.z}</td><td>${ab.z.chi.toFixed(3)}</td></tr>
+    ${ab.torsionalMode === 'none' ? '' : `<tr><td>${ab.torsionalMode === 'torsional-flexural' ? 'Tors.-flexural' : 'Torsional'}</td><td>${(R.Lcr.LT / 1000).toFixed(2)}</td><td>${fmt(kN(ab.NcrT), 0)}</td><td>${ab.lamT.toFixed(3)}</td><td>${ab.curves.z}</td><td>${ab.T.chi.toFixed(3)}</td></tr>`}</table>`;
+  if (R.segResults.length) h += `<div class="dlabel">Lateral-torsional buckling ${R.Lcr.given ? `over L<sub>LT</sub> = ${(R.Lcr.LT / 1000).toFixed(2)} m${R.windows > 1 ? `, the worst of ${R.windows} positions along the member` : ''}` : 'by segment'}</div><table class="t"><tr><th>${R.Lcr.given ? 'Length' : 'Segment'}</th><th>M<sub>Ed</sub></th><th>C<sub>1</sub></th><th>M<sub>cr</sub></th><th>&lambda;<sub>LT</sub></th><th>&chi;<sub>LT,mod</sub></th><th>M<sub>b,Rd</sub></th><th>Util.</th></tr>` +
+    R.segResults.map(r => `<tr><td>${R.Lcr.given ? (R.windows > 1 ? `x = ${(r.xa / 1000).toFixed(2)}&ndash;${((r.xa + r.Lseg) / 1000).toFixed(2)} m` : 'whole member') : r.seg + 1}</td><td>${fmt(kNm(r.Mmax))}</td><td>${r.C1 ? r.C1.toFixed(2) : '&ndash;'}</td><td>${fmt(kNm(r.Mcr), 0)}</td><td>${r.lamLT.toFixed(3)}</td><td>${r.chiMod.toFixed(3)}</td><td>${fmt(kNm(r.MbRd))}</td><td>${ufmt(r.util)}</td></tr>`).join('') + `</table>`;
   if (R.gov.interaction) { const ir = R.gov.interaction.ir; h += `<div class="dlabel">Interaction, Annex ${ir.method || 'B'}</div><table class="t"><tr><th>C<sub>my</sub></th><th>C<sub>mz</sub></th><th>C<sub>mLT</sub></th><th>k<sub>yy</sub></th><th>k<sub>yz</sub></th><th>k<sub>zy</sub></th><th>k<sub>zz</sub></th><th>(6.61)</th><th>(6.62)</th></tr><tr><td>${ir.Cmy.toFixed(3)}</td><td>${ir.Cmz.toFixed(3)}</td><td>${ir.CmLT.toFixed(3)}</td><td>${ir.kyy.toFixed(3)}</td><td>${ir.kyz.toFixed(3)}</td><td>${ir.kzy.toFixed(3)}</td><td>${ir.kzz.toFixed(3)}</td><td>${ir.u61.toFixed(3)}</td><td>${ir.u62.toFixed(3)}</td></tr></table>`; }
   h += notesHTML(R, inp);
   h += `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
@@ -3355,6 +3402,8 @@ function reportHTML(R, inp, s) {
     b += `<div class="rs"><h2>3 Design actions</h2>` + rl('Member length', 'L', `${(inp.L / 1000).toFixed(2)} m`) + rl('Axial force (compression +)', 'N<sub>Ed</sub>', `${fmt(kN(inp.N))} kN`) +
       rl('Major-axis moments, bottom / top', 'M<sub>y,Ed</sub>', `${fmt(kNm(inp.MyB))} / ${fmt(kNm(inp.MyT))} kNm`) + rl('Minor-axis moments, bottom / top', 'M<sub>z,Ed</sub>', `${fmt(kNm(inp.MzB))} / ${fmt(kNm(inp.MzT))} kNm`) +
       rl('Shear from the moment gradient', 'V<sub>z,Ed</sub>', `${fmt(Math.abs(kN((inp.MyT - inp.MyB) / inp.L)), 2)} kN`) +
+      (R.Lcr.given ? rl('Buckling lengths given: flexural about y&ndash;y and z&ndash;z; lateral-torsional (and torsional)', 'L<sub>cr,y</sub>, L<sub>cr,z</sub>, L<sub>LT</sub>', `${(R.Lcr.y / 1000).toFixed(2)}, ${(R.Lcr.z / 1000).toFixed(2)}, ${(R.Lcr.LT / 1000).toFixed(2)} m`)
+        : rl(`Buckling lengths: ${inp.ky} L and ${inp.kz} L; ${inp.nLT} lateral-torsional segment${inp.nLT > 1 ? 's' : ''} of ${(R.Lcr.LT / 1000).toFixed(2)} m`, 'L<sub>cr,y</sub>, L<sub>cr,z</sub>, L<sub>LT</sub>', `${(R.Lcr.y / 1000).toFixed(2)}, ${(R.Lcr.z / 1000).toFixed(2)}, ${(R.Lcr.LT / 1000).toFixed(2)} m`)) +
       (typeof DrawMember !== 'undefined' ? DrawMember.report(inp, R) : '') + `</div>`;
   }
 
@@ -3416,7 +3465,8 @@ function reportHTML(R, inp, s) {
     if (sec.shape === 'RHS') b += `<p class="rp">Closed section: warping constant taken as zero in M<sub>cr</sub> (conservative); ${sec.cold ? 'cold-formed' : 'hot-finished'} hollow section parameters from UK NA NA.2.17.</p>`;
     if (sec.shape === 'PFC') b += `<p class="rp">Channel: curve d (&lsquo;other hot-rolled sections&rsquo;, UK NA NA.2.17); M<sub>cr</sub> about the shear centre with I<sub>w</sub> from the datasheet; load height measured from the shear centre (mid-height).</p>`;
     b += `<p class="rp">M<sub>cr</sub> by finite elements on the thin-walled beam (Vlasov) model for the actual moment diagram of each segment and combination; forks at restraints; loads at ${inp.destab ? 'the top flange (destabilising)' : 'the shear centre'}. C<sub>1</sub> = M<sub>cr</sub>(loads at shear centre) / M<sub>cr</sub>(uniform moment).</p>`;
-    b += rl(`Governing segment L = ${((lt.Lseg ?? (inp.L / (inp.nLT || 1))) / 1000).toFixed(2)} m, M<sub>Ed</sub> = ${fmt(kNm(lt.Mmax))} kNm${lt.combo ? '; ' + lt.combo : ''}`, '', '') +
+    if (mode === 'B' && R.Lcr.given) b += `<p class="rp">L<sub>LT</sub> given${R.Lcr.LT < inp.L ? `, shorter than the member: the restraints' positions are not known, so a length L<sub>LT</sub> between forks is checked at ${R.windows} positions along the member and the worst governs` : R.Lcr.LT > inp.L ? `, longer than the member: C<sub>1</sub> from the member's moment diagram, M<sub>cr</sub> = C<sub>1</sub> M<sub>cr,0</sub>(L<sub>LT</sub>) with M<sub>cr,0</sub> the uniform-moment value` : ''}.</p>`;
+    b += rl(`Governing ${mode === 'B' && R.Lcr.given ? `length L<sub>LT</sub> = ${((lt.Lseg) / 1000).toFixed(2)} m${R.windows > 1 ? ` at x = ${(lt.xa / 1000).toFixed(2)}&ndash;${((lt.xa + lt.Lseg) / 1000).toFixed(2)} m` : ''}` : `segment L = ${((lt.Lseg ?? (inp.L / (inp.nLT || 1))) / 1000).toFixed(2)} m`}, M<sub>Ed</sub> = ${fmt(kNm(lt.Mmax))} kNm${lt.combo ? '; ' + lt.combo : ''}`, '', '') +
       rl(`Elastic critical moment${lt.C1 ? ', C<sub>1</sub> = ' + lt.C1.toFixed(3) : ''}${lt.free ? ' (cantilever modelled with its backspan segment)' : ''}`, 'M<sub>cr</sub>', `${fmt(kNm(lt.Mcr))} kNm`) +
       rl(`&lambda;&#772;<sub>LT</sub> = &radic;(W<sub>y</sub> f<sub>y</sub> / M<sub>cr</sub>), W<sub>y</sub> = ${(lt.Wy / 1e3).toFixed(0)} cm³`, '6.3.2.2(1)', lt.lamLT.toFixed(3)) +
       rl(`h/b = ${(sec.h / sec.b).toFixed(2)}: curve ${lt.curve}, &alpha;<sub>LT</sub> = ${lt.alpha}; &lambda;&#772;<sub>LT,0</sub> = ${lt.lam0}, &beta; = ${lt.beta}`, 'UK NA NA.2.17', lt.ignored ? 'no LTB' : `&Phi;<sub>LT</sub> = ${lt.phi.toFixed(3)}`) +
@@ -3489,7 +3539,12 @@ function run() {
 function memberInput(s, sec) {
   const B = s.B;
   if (!(B.L > 0)) throw new Error('Length must be positive');
-  return { sec, grade: s.grade, fy: s.fy, annex: s.annex || 'B', L: B.L * 1000, N: B.N * 1e3, MyT: B.MyT * 1e6, MyB: B.MyB * 1e6, MzT: B.MzT * 1e6, MzB: B.MzB * 1e6, ky: B.ky, kz: B.kz, nLT: Math.max(1, Math.round(B.nLT)) };
+  const o = { sec, grade: s.grade, fy: s.fy, annex: s.annex || 'B', L: B.L * 1000, N: B.N * 1e3, MyT: B.MyT * 1e6, MyB: B.MyB * 1e6, MzT: B.MzT * 1e6, MzB: B.MzB * 1e6, ky: B.ky, kz: B.kz, nLT: Math.max(1, Math.round(B.nLT)) };
+  if (B.Lmode === 'L') {
+    [['Ly', 'L<sub>cr,y</sub>'], ['Lz', 'L<sub>cr,z</sub>'], ['LLT', 'L<sub>LT</sub>']].forEach(([k, n]) => { if (!(B[k] > 0)) throw new Error(`${n.replace(/<\/?sub>/g, '')}: give a buckling length greater than zero`); });
+    Object.assign(o, { Lcr: { y: B.Ly * 1000, z: B.Lz * 1000, LT: B.LLT * 1000 }, ky: B.Ly / B.L, kz: B.Lz / B.L, nLT: 1 });
+  } else if (!(B.ky > 0) || !(B.kz > 0)) throw new Error('Buckling length factors must be positive');
+  return o;
 }
 // drawings, redrawn from the inputs as they change; the checks update on Calculate. Member page: the member with its actions.
 // Beam page: the beam, loads and restraints as typed, with the LTB utilisations, governing location and deflected shape from
@@ -3508,6 +3563,8 @@ $('inputs').addEventListener('input', queueDraw); $('inputs').addEventListener('
 // ---------- init ----------
 $('series').onchange = () => { fillSections(); suggestGrade(); }; $('section').onchange = secInfo; $('grade').onchange = gradeVis; ['cH', 'cB', 'cTw', 'cTf', 'cR', 'cRolled'].forEach(id => $(id).oninput = secInfo);
 $('mA').onclick = () => setMode('A'); $('mB').onclick = () => setMode('B');
+document.querySelectorAll('#bLmodeSeg button').forEach(b => b.onclick = () => { setLmode(b.dataset.v, true); queueDraw(); });
+setLmode('k');
 $('addSpan').onclick = () => { if (document.querySelectorAll('#spanRows .row').length < 6) { spanRow(6); refreshMembers(); } };
 $('endL').onchange = () => { autoSupport('endL'); refreshMembers(); }; $('endR').onchange = () => { autoSupport('endR'); refreshMembers(); };
 $('addLoad').onclick = () => loadRow({ case: 'Q', member: 0, type: 'udl', w: 5 });

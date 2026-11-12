@@ -24,7 +24,22 @@ const block = (h, id) => h.match(new RegExp(`<script id="${id}">([\\s\\S]*?)</sc
     truth('member page: verdict with flexural buckling and interaction', /Flexural|flexural/.test(r) && /6\.6[12]|interaction/i.test(r) && !$('results').querySelector('.err'));
     $('printBtn').click(); truth('member page: A4 sheet names the tool', w.printed && /Steel Member Design/.test($('report').textContent));
     truth('member page: inputs saved under its own key', !!w.localStorage.getItem('et-steel-member-v1') && !w.localStorage.getItem('et-steel-beam-v1'));
-    truth('member page: no script errors', w.errs.length === 0); }
+    // buckling lengths in metres
+    const set = (id, v) => { $(id).value = v; $(id).dispatchEvent(new w.Event('input', { bubbles: true })); };
+    set('bL', '6'); set('bky', '0.85'); set('bkz', '0.7'); set('bnLT', '2');
+    truth('member page: factors of L by default, lengths hidden', $('bLmode').value === 'k' && $('bLbox').classList.contains('hidden') && !$('bKbox').classList.contains('hidden') && /factors of L/.test($('bLhelp').textContent));
+    d.querySelector('#bLmodeSeg button[data-v="L"]').click();
+    truth('member page: lengths in metres, filled from the factors', $('bLmode').value === 'L' && !$('bLbox').classList.contains('hidden') && $('bKbox').classList.contains('hidden') && $('bLy').value === '5.1' && $('bLz').value === '4.2' && $('bLLT').value === '3' && /BS 5950/.test($('bLhelp').textContent));
+    set('bLy', '7.2'); set('bLz', '3.1'); set('bLLT', '2.5'); await calc(w); const rl = $('results').textContent;
+    truth('member page: the given lengths in the buckling table', /y-y7\.20/.test(rl.replace(/\s/g, '')) && /z-z3\.10/.test(rl.replace(/\s/g, '')) && !$('results').querySelector('.err'));
+    truth('member page: L_LT checked along the member', /over LLT = 2\.50 m, the worst of \d+ positions/.test(rl.replace(/\s+/g, ' ')) && /x = \d\.\d\d–\d\.\d\d m/.test(rl));
+    await wait(200); const dt = $('drawings').textContent.replace(/[_{}]/g, '');
+    truth('member page: the drawing shows the given lengths and where L_LT governs', /Lcr,y = 7\.20 m/.test(dt) && /Lcr,z = 3\.10 m/.test(dt) && /LLT = 2\.50 m/.test(dt) && /LLT at x = \d\.\d\d–\d\.\d\d m/.test(dt));
+    $('printBtn').click(); truth('member page: the A4 sheet lists the given lengths', /Buckling lengths given/.test($('report').textContent) && /7\.20, 3\.10, 2\.50 m/.test($('report').textContent) && /positions along the member/.test($('report').textContent));
+    set('bLz', '0'); await calc(w); truth('member page: a zero length refused', /give a buckling length greater than zero/.test($('results').querySelector('.err').textContent)); set('bLz', '3.1');
+    const w3 = page(MEM, { 'et-steel-member-v1': w.localStorage.getItem('et-steel-member-v1') }), $3 = id => w3.document.getElementById(id);
+    truth('member page: the lengths restored', $3('bLmode').value === 'L' && !$3('bLbox').classList.contains('hidden') && $3('bLy').value === '7.2' && $3('bLLT').value === '2.5');
+    truth('member page: no script errors', w.errs.length === 0 && w3.errs.length === 0); }
   // beam analysis and design: spans and loads only
   { const w = page(BEAM), d = w.document, $ = id => d.getElementById(id);
     truth('beam page: title and heading', d.title === 'Steel Beam Analysis & Design' && /Steel Beam Analysis & Design/.test(d.querySelector('h1').textContent));

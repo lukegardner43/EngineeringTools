@@ -42,6 +42,8 @@ async function sweep(f, cases, expect) {
     ['three LT segments, double curvature', w => { set(w, 'bnLT', '3'); set(w, 'bMyB', '-30'); }], ['tension', w => set(w, 'bN', '-400')], ['k_z = 2', w => set(w, 'bkz', '2')],
     ['CHS', w => set(w, 'series', 'CHS-H', 'change')], ['RHS', w => set(w, 'series', 'RHS-C', 'change')], ['PFC', w => set(w, 'series', 'PFC', 'change')],
     ['a 1903 British Standard Beam, f_y given', w => { set(w, 'series', 'H-BSB1903', 'change'); set(w, 'fyG', '230'); }], ['a 1932 channel', w => set(w, 'series', 'H-BSC1932', 'change')],
+    ['buckling lengths in metres', w => w.document.querySelector('#bLmodeSeg button[data-v="L"]').click()], ['L_LT shorter than the member', w => set(w, 'bLLT', '1.5')],
+    ['L_cr,y longer than the member', w => set(w, 'bLy', '8')], ['L_LT longer than the member', w => set(w, 'bLLT', '6.5')],
   ], 1);
   await sweep('Concrete Tie Force.html', [
     ['class 2B: vertical ties drawn', w => { set(w, 'nStoreys', '8'); w.updateClass(); }], ['bays wider than 1.5 l_r get extra ties', w => { set(w, 'floorL', '40'); set(w, 'csX', '40'); }],
