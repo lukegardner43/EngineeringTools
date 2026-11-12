@@ -446,5 +446,12 @@ async function sweep(f, cases, expect) {
     ['a point load at the apex', w => row(w, 'Q', 'point', 20, 8)], ['wind uplift that governs', w => row(w, 'W', 'area', 3, null, null, true)], ['held only at the ends', w => set(w, 'rmode', 'ends', 'change')],
     ['no self-weight', w => tick(w, 'sw', false)], ['a long span', w => set(w, 'L', '24')],
   ], 3);
+  await sweep('Flitch Beams.html', [
+    ['a point load', w => row(w, 'Q', 'point', 8, 2)], ['a point load near a support', w => row(w, 'G', 'point', 5, 0.1)], ['a part line load', w => row(w, 'Q', 'partial', 3, 1, 3)],
+    ['a thicker S355 plate', w => { set(w, 'tp', '15'); set(w, 'grade', 'S355', 'change'); }], ['six support bolts in two columns', w => set(w, 'bnEnd', '6')],
+    ['M10 8.8 at 300', w => { set(w, 'bd', '10', 'change'); set(w, 'bg', '8.8', 'change'); set(w, 'bs', '300'); }], ['glulam stringers', w => set(w, 'fam', 'glulam', 'change')],
+    ['a wider loaded width', w => set(w, 'spacing', '3200')], ['wind uplift', w => row(w, 'W', 'area', 2, null, null, true)], ['a longer span', w => set(w, 'clear', '6000')],
+    ['deeper stringers and plate', w => { set(w, 'h', '300'); set(w, 'hp', '275'); }],
+  ], 1);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
