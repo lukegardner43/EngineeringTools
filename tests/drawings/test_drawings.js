@@ -453,5 +453,14 @@ async function sweep(f, cases, expect) {
     ['a wider loaded width', w => set(w, 'spacing', '3200')], ['wind uplift', w => row(w, 'W', 'area', 2, null, null, true)], ['a longer span', w => set(w, 'clear', '6000')],
     ['deeper stringers and plate', w => { set(w, 'h', '300'); set(w, 'hp', '275'); }],
   ], 1);
+  const sz = (w, g, k, v) => { const e = w.document.querySelector(`#sizes [data-g="${g}"][data-k="${k}"]`); e.value = v; e.dispatchEvent(new w.Event('input', { bubbles: true })); };
+  await sweep('Timber 2D Frame Analysis and Design.html', [
+    ['Howe', w => set(w, 'ttype', 'howe', 'change')], ['eight panels', w => set(w, 'n', '8')], ['Pratt', w => set(w, 'ttype', 'pratt', 'change')],
+    ['king post', w => set(w, 'ttype', 'kingpost', 'change')], ['a steeper pitch', w => set(w, 'pitch', '40')], ['a longer span', w => set(w, 'L', '10')],
+    ['every joint pinned', w => set(w, 'joints', 'pinned', 'change')], ['parallel-chord Pratt', w => set(w, 'kind', 'flat', 'change')],
+    ['Warren', w => set(w, 'ftype', 'warren', 'change')], ['a deeper truss', w => set(w, 'depth', '1200')], ['deeper chords', w => sz(w, 'top', 1, '150')],
+    ['a portal frame', w => set(w, 'kind', 'portal', 'change')], ['fixed bases', w => set(w, 'base', 'fixed', 'change')], ['taller eaves', w => set(w, 'he', '5.5')],
+    ['a flat roof', w => set(w, 'pitch', '0')], ['stronger wind on the wall', w => set(w, 'wWall1', '0.9')], ['deeper rafters', w => sz(w, 'raf', 1, '675')],
+  ], 1);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
