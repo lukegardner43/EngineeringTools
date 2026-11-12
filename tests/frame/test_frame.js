@@ -78,5 +78,10 @@ const sec = n => EC3.fromRow(SECTION_DATA.find(r => r[0].startsWith(n)));
   const mdS = F.build({ nodes: [{ x: 0, y: 0, sup: { ux: 1, uy: 1 } }, { x: 6000, y: 0, sup: { uy: 1 } }], members: [{ i: 0, j: 1, A: 1e4, I: 1e8 }] });
   const dE = Math.min(...F.analyse(mdE, { nodal: [], udl: [{ member: 0, wy: -10 }] }, false).u), dS = Math.min(...F.analyse(mdS, { nodal: [], udl: [{ member: 0, wy: -10 }] }, false).u);
   near('a member with its own E (half of steel) deflects twice as much', dE / dS, 2, 1e-9); }
+// axial force along a member loaded along its length (a column's weight; a sloping rafter): N varies within each element
+{ const md = F.build({ nodes: [{ x: 0, y: 0, sup: { ux: 1, uy: 1, rz: 1 } }, { x: 0, y: 4000 }], members: [{ i: 0, j: 1, A: 1e4, I: 1e8 }] });
+  const st = F.memberResults(md, F.analyse(md, { nodal: [], udl: [{ member: 0, wy: -2 }] }, false), 0);
+  near('column under its weight: N = -w L at the base', st[0].N, -8000, 1e-9); near('... -w L/2 at mid-height', st.find(p => Math.abs(p.x - 2000) < 1e-6).N, -4000, 1e-9);
+  near('... -w (L - x) one twelfth up, inside the first element', st[1].N, -2 * (4000 - st[1].x), 1e-9); near('... 0 at the free top', st[st.length - 1].N, 0, 1e-9, 1); }
 console.log(`\n${n - fails}/${n} frame checks passed`);
 if (fails) process.exit(1);
