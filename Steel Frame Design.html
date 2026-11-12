@@ -2063,6 +2063,8 @@ const Frame2D = (() => {
     return out;
   };
 
+  // an element's axial force (tension +) for its geometric stiffness: the mean of its two ends (it varies under a load along it)
+  const meanN = f => (f[3] - f[0]) / 2;
   // ---------- one analysis (linear or second order) ----------
   function analyse(md, L, second, Pfix) {
     const { F, fef } = loadVector(md, L);
@@ -2083,7 +2085,7 @@ const Frame2D = (() => {
       ef = endForces();
       if (!second || Pfix) break;
       let dmax = 0; const Pn = new Map();
-      for (const e of md.els) { const N = ef.get(e)[3]; Pn.set(e, N); dmax = Math.max(dmax, Math.abs(N - (P.get(e) || 0))); }
+      for (const e of md.els) { const N = meanN(ef.get(e)); Pn.set(e, N); dmax = Math.max(dmax, Math.abs(N - (P.get(e) || 0))); }
       P = Pn;
       if (it > 0 && dmax < 1e-3 * Math.max(1, ...[...Pn.values()].map(Math.abs))) break;
     }
@@ -2091,7 +2093,7 @@ const Frame2D = (() => {
   }
   // elastic critical load factor for the axial forces of a linear analysis: (K + lambda K_G) phi = 0
   function alphaCr(md, ef) {
-    const K = assemble(md, null), KG = assemble(md, e => ef.get(e)[3], true);
+    const K = assemble(md, null), KG = assemble(md, e => meanN(ef.get(e)), true);
     const free = [...Array(md.ndof).keys()].filter(i => !md.fixed.has(i)), n = free.length;
     const A = new Float64Array(n * n), G = new Float64Array(n * n);
     free.forEach((i, a) => free.forEach((j, b) => { A[a * n + b] = K[i][j]; G[a * n + b] = -KG[i][j]; }));
