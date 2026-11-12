@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Foundations Near Trees</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* Engineering Tools: shared light style (tasteskill app sheet "Achromatic ledger", seed 959138263).
+   Ink chrome on a blue-grey drawing-office ground; the one hue (#1d5fbf) goes on the main data element
+   (envelopes, utilisation bars); status colour only on the verdict and on a check that is over. */
+:root{
+  --bg:#f2f4f7; --surf:#ffffff; --surf2:#f7f8fa; --bdr:#e3e5e8; --bdr2:#d1d5db; --rule:#eceef1;
+  --txt:#111111; --lbl:#33363a; --mut:#5f6368; --faint:#6b6b6b;
+  --accent:#1d5fbf; --accent-dim:#e3ebf8;
+  --primary:#1d1f20;
+  --pass:#247b50; --warn:#b45309; --fail:#c4242a;
+  --pass-bg:#dcfae5; --pass-ink:#04250e; --fail-bg:#ffedea; --fail-ink:#831c1e;
+  --r:6px; --rc:8px;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:var(--sans);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5;min-height:100svh;padding:28px 32px 40px;
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;}
+.container{max-width:1376px;margin:0 auto;}
+/* title row: a photograph of the member's material (img/<material>.jpg beside the page, set by <body data-material>)
+   under a neutral scrim, with the breadcrumb, the tool's name and one line of scope. Without the photo it is a plain ink band. */
+.page-hdr{position:relative;isolation:isolate;overflow:hidden;border-radius:var(--rc);min-height:164px;padding:18px 24px 20px;margin-bottom:12px;
+  display:flex;flex-direction:column;justify-content:flex-end;color:#fff;background:#2c3036 var(--photo,none) center/cover no-repeat;}
+.page-hdr::before{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.55) 45%,rgba(0,0,0,.18) 100%);} /* taste-skill-ignore: neutral scrim under text on a photograph */
+.page-hdr::after{content:var(--credit,'');position:absolute;right:10px;bottom:8px;font-size:11px;color:rgba(255,255,255,.9);background:rgba(0,0,0,.4);padding:1px 6px;border-radius:4px;}
+.home-lnk{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:rgba(255,255,255,.88);text-decoration:none;font-weight:500;margin-bottom:auto;align-self:flex-start;padding-bottom:12px;}
+.home-lnk:hover{color:#fff;text-decoration:underline;}
+.home-lnk svg{width:14px;height:14px;}
+.page-hdr h1{font-size:26px;font-weight:600;line-height:1.25;letter-spacing:-0.01em;margin-bottom:4px;color:#fff;}
+.page-hdr p{font-size:14px;color:rgba(255,255,255,.92);max-width:900px;}
+body[data-material="steel"]{--photo:url(img/steel.jpg);--credit:'Photo: Chevsapher, CC0';}
+body[data-material="concrete"]{--photo:url(img/concrete.jpg);--credit:'Photo: MassDOT, public domain';}
+body[data-material="masonry"]{--photo:url(img/masonry.jpg);--credit:'Photo: Håkan Svensson, CC BY 2.5';}
+body[data-material="timber"]{--photo:url(img/timber.jpg);--credit:'Photo: Sebastian Wallroth, public domain';}
+body[data-material="frame"]{--photo:url(img/frame.jpg);--credit:'Photo: Wikideas1, CC0';}
+body[data-material="ground"]{--photo:url(img/ground.jpg);--credit:'Photo: Fons Heijnsbroek, CC0';}
+@media print{.page-hdr{display:none;}}
+/* inputs on the left, the answer on the right: (1376 - 12) x 6/13 = 630 | 734 */
+.main-grid{display:grid;grid-template-columns:minmax(380px,6fr) 7fr;gap:12px;align-items:start;}
+@media(max-width:1100px){.main-grid{grid-template-columns:1fr;}}
+.main-grid > div{min-width:0;}
+#results table.t{display:block;overflow-x:auto;white-space:nowrap;}
+.card{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rc);padding:20px 24px;margin-bottom:12px;}
+.section-title{font-size:16px;font-weight:600;color:var(--txt);margin:0 0 14px;display:flex;justify-content:space-between;align-items:baseline;gap:12px;line-height:1.3;}
+.section-title .aux{color:var(--mut);font-size:13px;font-weight:400;text-align:right;}
+.form-group{margin-bottom:14px;}
+.form-group label,.lbl{display:block;font-size:13px;margin-bottom:5px;color:var(--lbl);font-weight:500;line-height:1.35;}
+input[type="number"],input[type="text"],select{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);padding:0 10px;height:36px;border-radius:var(--r);font-family:var(--sans);font-size:14px;width:100%;font-variant-numeric:tabular-nums;transition:border-color .12s;}
+input::placeholder{color:var(--faint);}
+input:hover,select:hover{border-color:#b9bec6;}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);}
+input:disabled,select:disabled{background:var(--surf2);color:var(--mut);}
+select option{background:var(--surf);color:var(--txt);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.grid2 > .form-group,.grid3 > .form-group{display:flex;flex-direction:column;justify-content:flex-end;}
+.chk{display:block;position:relative;padding-left:26px;font-size:13px;color:var(--lbl);margin:8px 0;cursor:pointer;line-height:1.45;}
+.chk input{position:absolute;left:0;top:1px;width:16px;height:16px;accent-color:var(--primary);}
+.help{font-size:13px;color:var(--mut);margin-top:4px;line-height:1.45;}
+/* segmented control: grey track, white pill on the chosen option */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#e9ecf0;border-radius:var(--rc);margin-bottom:14px;}
+.seg button{background:transparent;color:var(--mut);border:1px solid transparent;border-radius:var(--r);height:32px;padding:0 10px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;}
+.seg button:hover{color:var(--txt);}
+.seg button.on{background:var(--surf);color:var(--txt);border-color:var(--bdr);}
+/* repeating rows: spans, supports, loads */
+.rows{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+.row{display:grid;gap:8px;align-items:end;background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--r);padding:10px;}
+.row label{font-size:12px;color:var(--mut);margin-bottom:3px;display:block;font-weight:500;line-height:1.3;}
+.row input,.row select{height:32px;font-size:13px;padding:0 8px;}
+.row.span{grid-template-columns:1fr 1.6fr 1fr 32px;}
+.row.load{grid-template-columns:52px 64px 1.1fr 1.1fr 32px;}
+.row.load .vals{grid-column:1 / span 3;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.xbtn{height:32px;width:32px;background:var(--surf);border:1px solid var(--bdr2);color:var(--mut);border-radius:var(--r);cursor:pointer;font-size:16px;line-height:1;}
+.xbtn:hover{color:var(--fail);border-color:var(--fail);}
+.addbtn{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);border-radius:var(--r);height:36px;padding:0 12px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;width:100%;}
+.addbtn:hover{border-color:#9aa0a8;background:var(--surf2);}
+/* the one primary action, near-black; secondary actions white and outlined */
+.btn{height:44px;padding:0 16px;border:none;border-radius:var(--r);font-weight:600;cursor:pointer;font-family:var(--sans);font-size:15px;width:100%;background:var(--primary);color:#fff;}
+.btn:hover{background:#000;}
+.btn:focus-visible,.btn2:focus-visible,.addbtn:focus-visible,.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.btn2{width:100%;height:38px;padding:0 12px;background:var(--surf);border:1px solid var(--bdr2);border-radius:var(--r);font-size:14px;font-weight:500;color:var(--txt);cursor:pointer;font-family:var(--sans);margin-top:8px;}
+.btn2:hover{border-color:#9aa0a8;background:var(--surf2);}
+.hidden{display:none!important;}
+/* results */
+.placeholder{display:flex;align-items:center;justify-content:center;min-height:160px;color:var(--mut);font-size:14px;text-align:center;padding:0 24px;}
+.verdict{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--bdr);border-radius:var(--rc);background:var(--surf2);margin-bottom:16px;}
+.verdict .big{font-size:24px;font-weight:600;line-height:1.2;color:var(--pass);letter-spacing:-0.01em;}
+.verdict.fail .big{color:var(--fail);}
+.verdict .sub{font-size:13px;color:var(--mut);margin-top:2px;}
+/* the utilisation ledger: check, clause, bar to scale (full track = 1.2, ink tick at the 1.0 limit), figure */
+.checks{display:flex;flex-direction:column;margin-bottom:8px;}
+.ck{display:grid;grid-template-columns:1.25fr 2fr 56px;gap:14px;align-items:center;font-size:13px;padding:7px 0;border-bottom:1px solid var(--rule);}
+.ck:last-child{border-bottom:none;}
+.ck .nm{color:var(--txt);line-height:1.35;} .ck .nm small{display:block;color:var(--mut);font-size:12px;}
+.bar{height:8px;background:#e8ebef;border-radius:4px;position:relative;}
+.bar::after{content:'';position:absolute;left:83.333%;top:-4px;bottom:-4px;width:1.5px;background:var(--txt);border-radius:1px;}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:4px;}
+.bar i.over{background:var(--fail);} /* 0.9-1.0 stays blue: a well-used member is not a warning; the tick shows how close it is */
+.ck .u{text-align:right;font-weight:600;font-size:14px;}
+.ck .u.over{color:var(--fail);}
+.diag{width:100%;height:auto;display:block;margin-bottom:6px;}
+/* screen drawings: the smallest labels lifted to the 11px floor (the print sheet keeps its own sizes) */
+.container svg text[font-size="8"],.container svg text[font-size="8.5"],.container svg text[font-size="9"],.container svg text[font-size="9.5"],
+.container svg text[font-size="10"],.container svg text[font-size="10.5"]{font-size:11px;}
+.dlabel{font-size:14px;font-weight:600;color:var(--txt);margin:20px 0 6px;line-height:1.3;}
+table.t{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px;font-variant-numeric:tabular-nums;}
+table.t th{color:var(--mut);font-weight:500;text-align:right;padding:6px 8px;border-bottom:1px solid var(--bdr);font-size:12px;}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--rule);text-align:right;}
+table.t th:first-child,table.t td:first-child{text-align:left;}
+.note{font-size:13px;color:var(--mut);background:var(--surf2);border:1px solid var(--rule);border-radius:var(--r);padding:10px 12px;margin-top:10px;line-height:1.5;}
+.err{color:var(--fail-ink);background:var(--fail-bg);font-size:13px;padding:10px 12px;border-radius:var(--r);margin-bottom:12px;}
+.busy{opacity:.55;pointer-events:none;}
+a{color:var(--txt);}
+sub,sup{font-size:max(11px,.75em);line-height:0;}
+@media(max-width:560px){body{padding:16px 16px 32px;} .card{padding:16px;} .ck{grid-template-columns:1fr 1fr 48px;gap:10px;} .grid3{grid-template-columns:1fr 1fr;}
+  .row.span{grid-template-columns:1fr 32px;} .row.span > div:nth-child(2),.row.span > div:nth-child(3){display:none;} .row.load .vals{grid-template-columns:1fr 1fr;}
+  .page-hdr{min-height:150px;padding:14px 16px 16px;} .page-hdr h1{font-size:22px;} .page-hdr::after{top:10px;bottom:auto;} .page-hdr::before{background:rgba(0,0,0,.6);} .verdict .big{font-size:22px;}}
+/* disclaimer: on screen at the foot of the page, and printed at the end of the calculation sheet */
+.disclaimer{max-width:1376px;margin:24px auto 0;padding-top:14px;border-top:1px solid var(--bdr,#e3e5e8);font-size:13px;line-height:1.55;color:var(--mut,#5f6368);}
+.disclaimer b{color:var(--txt,#111);font-weight:600;}
+@media print{.disclaimer{display:block!important;max-width:none;margin:4mm 0 0;padding-top:1.5mm;border-top:0.4pt solid #888;font-family:Arial,Helvetica,sans-serif;font-size:7.5pt;color:#000;break-inside:avoid;} .disclaimer b{color:#000;}}
+/* ---------- print: A4 calculation sheet ---------- */
+#report{display:none;}
+@media print{
+  @page{size:A4;margin:12mm 12mm 14mm;}
+  body{background:#fff;color:#000;padding:0;background-image:none;font-size:9.5pt;}
+  .container{display:none;}
+  #report{display:block;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  #report table.wrap{width:100%;border-collapse:collapse;}
+  #report thead td{padding:0 0 3mm;}
+  .rh{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;border:0.6pt solid #000;font-size:8pt;}
+  .rh div{padding:1.2mm 2mm;border-right:0.6pt solid #000;}
+  .rh div:last-child{border-right:none;}
+  .rh b{display:block;font-size:6.5pt;color:#444;font-weight:normal;text-transform:uppercase;letter-spacing:.3pt;}
+  .rh .ttl{grid-column:1 / -1;border-top:0.6pt solid #000;border-right:none;font-weight:bold;font-size:10pt;}
+  .rs{margin:0 0 3.5mm;}
+  .rs h2,.rs h3{break-after:avoid;}
+  .rl,.rt,.rsvg,.rp,.rt tr{break-inside:avoid;}
+  .rs h2{font-size:10pt;margin:3mm 0 1.5mm;padding-bottom:0.8mm;border-bottom:0.8pt solid #000;}
+  .rs h3{font-size:9pt;margin:2mm 0 1mm;}
+  .rl{display:grid;grid-template-columns:1fr 92px 132px;gap:2mm;padding:0.5mm 0;font-size:8.6pt;}
+  .rl .cl{text-align:right;color:#444;font-size:7.5pt;}
+  .rl .rv{text-align:right;font-weight:bold;}
+  .ok{color:#0a7a3e;} .ng{color:#c00;}
+  .rt{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;}
+  .rt th,.rt td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;}
+  .rt th{background:#eee;font-weight:bold;}
+  .rt td:first-child,.rt th:first-child,.rt.lft td,.rt.lft th{text-align:left;}
+  .rp{font-size:8.3pt;line-height:1.45;margin:1mm 0;}
+  .rsvg{width:100%;height:auto;}
+  .rsvg *{vector-effect:non-scaling-stroke;}
+}
+
+[hidden]{display:none!important;}
+.steps{font-size:12px;color:var(--mut);line-height:1.5;margin-bottom:12px;}
+.steps .st{display:grid;grid-template-columns:120px 1fr;gap:8px;padding:3px 0;border-bottom:1px solid var(--bdr);}
+.steps .st span:first-child{font-size:12px;color:var(--faint);}
+.row.tree{grid-template-columns:0.7fr 2.4fr 1.25fr 0.9fr 0.9fr 0.9fr 32px;}
+.row.shrub{grid-template-columns:0.7fr 2.4fr 0.9fr 0.9fr 32px;}
+.ctab{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:12px;}
+.ctab th{font-size:12px;font-weight:500;color:var(--mut);text-align:right;padding:4px 6px;border-bottom:1px solid var(--rule);}
+.ctab th:first-child,.ctab td:first-child,.ctab th:nth-child(2),.ctab td:nth-child(2){text-align:left;}
+.ctab td{text-align:right;padding:4px 6px;border-bottom:1px solid #f0f0f0;font-variant-numeric:tabular-nums;}
+.ctab td.gov{color:var(--accent);font-weight:600;}
+.tscroll{overflow-x:auto;}
+.chk{display:flex;gap:8px;align-items:center;font-size:13px;margin:6px 0;}
+.chk input{width:auto;height:auto;}
+ul.heave{margin:0 0 12px 18px;padding:0;font-size:13px;line-height:1.5;}
+</style>
+</head>
+<body data-material="ground" style="--photo:url(img/ground.jpg);--credit:'Photo: Fons Heijnsbroek, CC0'">
+<div class="container">
+  <div class="page-hdr">
+    <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
+    <h1>Foundations Near Trees</h1>
+    <p>Foundation depth on shrinkable soil near trees, hedgerows and shrubs, after NHBC Standards Chapter 4.2 (2022) &nbsp;·&nbsp; the soil’s volume change potential, each tree’s water demand, height and distance, removed and proposed trees &nbsp;·&nbsp; the climate reduction and changed ground levels &nbsp;·&nbsp; shrubs (Table 6) &nbsp;·&nbsp; heave precautions, new planting, non-shrinkable soil over clay and rafts</p>
+  </div>
+  <div class="main-grid">
+    <div id="inputs">
+      <div class="card">
+        <div class="section-title">Project</div>
+        <div class="form-group"><label>Project</label><input type="text" id="pName" placeholder="Project name"></div>
+        <div class="grid3"><div class="form-group"><label>Job no.</label><input type="text" id="pJob"></div><div class="form-group"><label>By</label><input type="text" id="pBy"></div><div class="form-group"><label>Ref.</label><input type="text" id="pRef" placeholder="e.g. Plot 12"></div></div>
+      </div>
+      <div class="card">
+        <div class="section-title">Soil and site</div>
+        <div class="grid3">
+          <div class="form-group"><label>Volume change potential</label><select id="vcp"><option value="test" selected>From tests</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="unknown">Not known (high)</option></select></div>
+          <div class="form-group g-test"><label>Plasticity index I<sub>p</sub> (%)</label><input type="number" id="Ip" value="36" step="1"></div>
+          <div class="form-group g-test"><label>Passing 425 μm (%)</label><input type="number" id="pass" value="100" step="5"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Climate reduction</label><select id="clim"><option value="0">None (London)</option><option value="0.05" selected>0.05 m</option><option value="0.1">0.10 m</option><option value="0.15">0.15 m</option><option value="0.2">0.20 m</option><option value="0.25">0.25 m</option><option value="0.3">0.30 m</option><option value="0.35">0.35 m</option><option value="0.4">0.40 m</option><option value="0.45">0.45 m</option><option value="0.5">0.50 m</option></select></div>
+          <div class="form-group"><label>Level change (m)</label><input type="number" id="dLevel" value="0" step="0.1"></div>
+        </div>
+        <div class="help">I′p = I<sub>p</sub> × the percentage passing 425 μm (NHBC Table 1); unknown is taken as high. The climate reduction is 50 mm for every 50 miles north and west of London, from the chapter’s map; where the zone is unclear take the lower. The level change is the finished ground at the foundation against the original: + raised, − lowered (Figures 1 to 3). I′p: 40% or more high, 20% to 40% medium, 10% to 20% low.</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Foundation</div>
+        <div class="grid3">
+          <div class="form-group"><label>Type</label><select id="type"><option value="trench" selected>Strip or trench fill</option><option value="pier">Pier and beam</option><option value="pile">Pile and beam</option><option value="raft">Raft</option></select></div>
+          <div class="form-group"><label>Proposed depth (m)</label><input type="number" id="dProp" value="" step="0.05" placeholder="optional"></div>
+        </div>
+        <div class="grid3 g-raft" hidden>
+          <div class="form-group"><label>Raft length (m)</label><input type="number" id="Lx" value="12" step="0.5"></div>
+          <div class="form-group"><label>Raft width (m)</label><input type="number" id="Ly" value="8" step="0.5"></div>
+        </div>
+        <label class="chk"><input type="checkbox" id="nsOn"> Founding in non-shrinkable soil (sand, gravel) over the clay</label>
+        <div class="grid3 g-ns" hidden>
+          <div class="form-group"><label>Non-shrinkable soil to (m)</label><input type="number" id="nsT" value="2.5" step="0.1"></div>
+          <div class="form-group"><label>Foundation width B (m)</label><input type="number" id="nsB" value="0.6" step="0.05"></div>
+          <div class="form-group"><label>Foundation depth in it (m)</label><input type="number" id="nsD" value="1.0" step="0.05"></div>
+        </div>
+        <div class="help">Leave the proposed depth blank for the depth needed. Over 2.5 m, and any pier and beam, pile and beam or raft foundation in shrinkable soil, is an engineer’s design (Technical Requirement R5).</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Trees and hedgerows</div>
+        <div class="rows" id="treeRows"></div>
+        <button class="addbtn" id="addTree" type="button">+ Add a tree or hedgerow</button>
+        <div class="help">Species from NHBC Table 3 with its mature height (where only the species is known, the greatest height listed). A hedgerow: the species in it likely to have the greatest effect. Present height: needed for a tree removed (or young), to choose the height used (Table 3a: under half its mature height, its height then). D: from the centre of the trunk to the nearest face of the foundation.</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Shrubs</div>
+        <div class="rows" id="shrubRows"></div>
+        <button class="addbtn" id="addShrub" type="button">+ Add a shrub</button>
+        <div class="help">NHBC Table 6: the mature height and the distance from the foundation. Shrubs up to 1.8 m, and climbers on a wall up to 5 m, need the column B depth; pyracantha and cotoneaster over 1.8 m column B at their mature height away, column A at half; all others column B at three quarters of their height, else column A.</div>
+      </div>
+      <button class="btn" id="calc">Check foundation</button>
+    </div>
+    <div><div class="card" id="results"><div class="placeholder">Give the soil, the foundation and the trees and shrubs near it, then Check.</div><div id="drawings"></div></div></div>
+  </div>
+</div>
+<div id="report"></div>
+<script id="engine">
+/* ===== FOUNDATIONS NEAR TREES ENGINE (EngineeringTools) =====
+   Foundation depths on shrinkable soil near trees, hedgerows and shrubs, after NHBC Standards Chapter 4.2 (Building near
+   trees, 2022). Metres throughout.
+   - The soil: the volume change potential from the modified plasticity index I′p = I_p × (% passing 425 μm)/100 (40 and over
+     high, 20 to 40 medium, 10 to 20 low; under 10 not shrinkable), or given, or high when not known (Table 1).
+   - Each tree or hedgerow: its water demand and mature height from Table 3 (the greatest height where only the species is
+     known; an unlisted broad-leafed tree high if an elm, eucalyptus, hawthorn, oak, poplar or willow, otherwise moderate,
+     Table 2; an unidentified tree high). The height used (Table 3a): the mature height for trees that remain or are
+     proposed; for a tree removed, its height when removed if that was under half its mature height, else the mature height;
+     for heave, the height at the time of construction by the same rule. D from the centre of the trunk to the foundation's
+     face, 2 m for a removed sapling (under half its mature height) that stood within 2 m (4.2.7).
+   - The depth: Charts 1 to 3 are straight lines in D/H from a depth at the trunk down to the minimum depth (1.0, 0.9, 0.75 m:
+     Table 4 column B) at D/H 1.25, 0.75 or 0.5 for high, moderate or low water demand broad-leafed trees and 0.6 or 0.35 for
+     high or moderate water demand conifers; at the trunk, high water demand 3.5, 3.0, 2.5 m on high, medium and low soil,
+     moderate 2.4, 2.0, 1.6, low 1.8, 1.5, 1.2. The depth tables (4.2.13) are these lines to the centimetre, rounded up to 50 mm. Less 50 mm for
+     every 50 miles north and west of London (the climate map), never below the minimum. Over 2.5 m: an engineer's design.
+   - Changed ground levels (Figures 1 to 3): the lower of two founding levels, one from the original ground and one from the
+     finished ground: a tree to remain, (a) the appropriate height from the original level, (b) the mature height from the
+     new; removed, (a) the appropriate height from the original, (b) the minimum depth from the new; proposed, (a) the
+     minimum from the original, (b) the mature height from the new.
+   - Shrubs (Table 6): up to 1.8 m, and climbers on a wall up to 5 m, need the column B depth; pyracantha and cotoneaster over
+     1.8 m column B if planted at least their mature height away, column A at half of it; all others column B at three
+     quarters of their height, column A at any distance. Column A: 1.5, 1.25, 1.0 m (Table 4).
+   - New planting (Table 5): at the column B depth no trees within the zone of influence (1.25, 0.75, 0.5 H); at column A
+     no trees within 1.0, 0.5 or 0.2 H.
+   - Heave (4.2.10): voids or compressible material where trees to remain or be removed influence the foundation: Table 7
+     voids, Table 8 positions (trench fill deeper than 1.5 m on the appropriate height: the inside faces of external walls;
+     piers deeper than 1.5 m: all faces; ground beams: the inside faces of external beams and the underside of all),
+     Table 9 movement for drainage.
+   - Non-shrinkable soil over shrinkable (4.2.9): a shallower foundation in it if its depth exceeds ¾ X and the thickness
+     below the foundation is at least its width B (with NHBC's approval). Rafts (4.2.8): an engineer's design under 2.5 m,
+     granular infill at least half the depth and at most 1.25 m deep, plan ratio up to 2:1. */
+const TreeFoundations = (() => {
+  'use strict';
+  const fin = (v, nm) => { v = typeof v === 'string' && v.trim() !== '' ? +v : v; if (!Number.isFinite(v)) throw new Error(`${nm}: give a number`); return v; };
+  const pos = (v, nm) => { v = fin(v, nm); if (!(v > 0)) throw new Error(`${nm} must be greater than 0`); return v; };
+  const nonneg = (v, nm) => { v = fin(v, nm); if (v < 0) throw new Error(`${nm} cannot be negative`); return v; };
+  const opt = (v, d) => (v === undefined || v === null || v === '' || (typeof v === 'number' && Number.isNaN(v)) ? d : v);
+  // Table 4 (minimum depths A and B), the depth at the trunk for each water demand (Charts 1 to 3), Tables 7 and 9
+  const VCP = {
+    high: { name: 'High', B: 1.0, A: 1.5, d0: { high: 3.5, moderate: 2.4, low: 1.8 }, voids: [35, 150, 300], move: 150, chart: 1 },
+    medium: { name: 'Medium', B: 0.9, A: 1.25, d0: { high: 3.0, moderate: 2.0, low: 1.5 }, voids: [25, 100, 250], move: 100, chart: 2 },
+    low: { name: 'Low', B: 0.75, A: 1.0, d0: { high: 2.5, moderate: 1.6, low: 1.2 }, voids: [0, 50, 200], move: 50, chart: 3 },
+  };
+  const ZONE = { high: 1.25, moderate: 0.75, low: 0.5 };            // Table 3b, and where the broad-leafed lines meet the minimum
+  const CONIFER = { high: 0.6, moderate: 0.35, low: 0.35 };         // where the conifer lines meet the minimum (Charts 1 to 3)
+  const NOPLANT_A = { high: 1.0, moderate: 0.5, low: 0.2 };         // Table 5, column A
+  const WD = { high: 'High', moderate: 'Moderate', low: 'Low' };
+  // Table 3 (mature heights in favourable conditions), with Table 2 and the "species known, subspecies not" rule
+  const S = (n, wd, H, con = false, note = '') => ({ n, wd, H, con, note });
+  const SPECIES = [
+    S('English elm', 'high', 24), S('Wheatley elm', 'high', 22), S('Wych elm', 'high', 18), S('Elm, subspecies unknown', 'high', 24),
+    S('Eucalyptus', 'high', 18), S('Hawthorn', 'high', 10),
+    S('English oak', 'high', 20), S('Holm oak', 'high', 16), S('Red oak', 'high', 24), S('Turkey oak', 'high', 24), S('Oak, subspecies unknown', 'high', 24),
+    S('Hybrid black poplar', 'high', 28), S('Lombardy poplar', 'high', 25), S('White poplar', 'high', 15), S('Poplar, subspecies unknown', 'high', 28),
+    S('Crack willow', 'high', 24), S('Weeping willow', 'high', 16), S('White willow', 'high', 24), S('Willow, subspecies unknown', 'high', 24),
+    S('Acacia (false)', 'moderate', 18), S('Alder', 'moderate', 18), S('Apple', 'moderate', 10), S('Ash', 'moderate', 23), S('Bay laurel', 'moderate', 10),
+    S('Beech', 'moderate', 20), S('Blackthorn', 'moderate', 8), S('Japanese cherry', 'moderate', 9), S('Laurel cherry', 'moderate', 8),
+    S('Orchard cherry', 'moderate', 12), S('Wild cherry', 'moderate', 17), S('Cherry, subspecies unknown', 'moderate', 17),
+    S('Horse chestnut', 'moderate', 20), S('Sweet chestnut', 'moderate', 24), S('Lime', 'moderate', 22), S('Japanese maple', 'moderate', 8),
+    S('Norway maple', 'moderate', 18), S('Maple, subspecies unknown', 'moderate', 18), S('Mountain ash', 'moderate', 11), S('Pear', 'moderate', 12),
+    S('Plane', 'moderate', 26), S('Plum', 'moderate', 10), S('Sycamore', 'moderate', 22), S('Tree of heaven', 'moderate', 20), S('Walnut', 'moderate', 18),
+    S('Whitebeam', 'moderate', 12),
+    S('Birch', 'low', 14), S('Elder', 'low', 10), S('Fig', 'low', 8), S('Hazel', 'low', 8), S('Holly', 'low', 12), S('Honey locust', 'low', 14),
+    S('Hornbeam', 'low', 17), S('Laburnum', 'low', 12), S('Magnolia', 'low', 9), S('Mulberry', 'low', 9), S('Tulip tree', 'low', 20),
+    S('Lawson’s cypress', 'high', 18, true), S('Leyland cypress', 'high', 20, true), S('Monterey cypress', 'high', 20, true), S('Cypress, subspecies unknown', 'high', 20, true),
+    S('Cedar', 'moderate', 20, true), S('Douglas fir', 'moderate', 20, true), S('Larch', 'moderate', 20, true), S('Monkey puzzle', 'moderate', 18, true),
+    S('Pine', 'moderate', 20, true), S('Spruce', 'moderate', 18, true), S('Wellingtonia', 'moderate', 30, true), S('Yew', 'moderate', 12, true),
+  ];
+  const OTHER = {   // not in Table 3: the user gives the mature height
+    unknown: { n: 'Not identified', wd: 'high', con: false, note: 'unidentified: high water demand (4.2.4)' },
+    otherHigh: { n: 'Other broad-leafed: an elm, eucalyptus, hawthorn, oak, poplar or willow', wd: 'high', con: false, note: 'Table 2: high' },
+    otherMod: { n: 'Other broad-leafed', wd: 'moderate', con: false, note: 'Table 2: moderate' },
+    conHigh: { n: 'Other conifer (taken as high)', wd: 'high', con: true, note: 'not in Tables 2 and 3: taken as high' },
+  };
+  const speciesOf = k => (OTHER[k] ? { ...OTHER[k], key: k, listed: false } : (() => { const i = +k, s = SPECIES[i]; if (!s) throw new Error('Choose a tree species'); return { ...s, key: k, listed: true }; })());
+
+  // the chart line: the depth at D/H = x for the soil, water demand and leaf type, before the climate reduction
+  function chart(v, wd, con, x) {
+    const V = VCP[v], xL = con ? CONIFER[wd] : ZONE[wd], d0 = V.d0[wd];
+    return x >= xL ? V.B : V.B + (d0 - V.B) * (1 - x / xL);
+  }
+  const roundUp = d => Math.ceil(Math.round(d * 100) / 5 - 1e-9) * 5 / 100;   // the depth tables (4.2.13): to the cm, then up to 50 mm
+
+  function vcpOf(soil) {
+    const m = soil && soil.vcp;
+    if (m === 'high' || m === 'medium' || m === 'low') return { v: m, how: 'given' };
+    if (m === 'test') {
+      const Ip = nonneg(soil.Ip, 'Plasticity index I_p'), p = fin(opt(soil.pass, 100), '% passing 425 μm');
+      if (p < 0 || p > 100) throw new Error('% passing 425 μm: between 0 and 100');
+      const Ipm = Ip * p / 100;
+      if (Ipm < 10) return { v: null, how: 'test', Ip, p, Ipm };
+      return { v: Ipm >= 40 ? 'high' : Ipm >= 20 ? 'medium' : 'low', how: 'test', Ip, p, Ipm };
+    }
+    return { v: 'high', how: 'unknown' };
+  }
+
+  function design(inp) {
+    const S0 = vcpOf(inp.soil || {});
+    if (!S0.v) throw new Error(`I′p = ${S0.Ipm.toFixed(1)}% is under 10%: the soil is not shrinkable, so Chapter 4.2's depths do not apply (Chapter 4.4)`);
+    const v = S0.v, V = VCP[v];
+    const clim = nonneg(opt(inp.clim, 0), 'Climate reduction');
+    if (clim > 0.5 + 1e-9) throw new Error('Climate reduction: 0.50 m at most (the north of Scotland)');
+    const dL = fin(opt(inp.dLevel, 0), 'Change in ground level');
+    const type = ['trench', 'pier', 'pile', 'raft'].includes(inp.type) ? inp.type : 'trench';
+    const dProp = nonneg(opt(inp.dProp, 0), 'Proposed foundation depth');
+    const red = d => Math.max(V.B, d - clim);   // the climate reduction, not below the minimum
+    const f2 = x => x.toFixed(2), f1 = x => x.toFixed(1), f0 = x => Math.round(x).toString();
+    // ---- trees and hedgerows ----
+    const trees = (Array.isArray(inp.trees) ? inp.trees : []).map((t, i) => {
+      const sp = speciesOf(t.sp), ref = String(t.ref || `T${i + 1}`), status = ['remain', 'remove', 'proposed'].includes(t.status) ? t.status : 'remain';
+      const Hm = sp.listed && (t.Hm === undefined || t.Hm === '' || t.Hm === null) ? sp.H : pos(t.Hm, `${ref}: mature height`);
+      const Ha = opt(t.Ha, null) === null ? null : pos(t.Ha, `${ref}: present height`);
+      let D = nonneg(t.D, `${ref}: distance to the foundation`);
+      const young = Ha !== null && Ha < 0.5 * Hm;
+      const notes = [];
+      if (sp.listed && Hm < sp.H - 1e-9) notes.push(`a mature height under Table 3’s ${sp.H} m needs an arboriculturist’s assessment`);
+      // the appropriate height (Table 3a)
+      const Hap = status === 'remove' && young ? Ha : Hm;
+      if (status === 'remove' && Ha === null) notes.push('its height when removed is not given: the mature height is used');
+      if (status === 'remove' && young && D < 2) { D = 2; notes.push('a sapling under half its mature height removed from within 2 m: D taken as 2 m (4.2.7)'); }
+      const H = status === 'proposed' || status === 'remain' ? Hm : Hap;
+      const x = D / H, zone = ZONE[sp.wd] * H, inZone = D < zone;
+      const raw = chart(v, sp.wd, sp.con, x), dTree = red(raw);
+      // the founding level below the original ground, the lower of (a) and (b) (Figures 1 to 3)
+      const dA = status === 'proposed' ? V.B : red(chart(v, sp.wd, sp.con, D / Hap));
+      const dB = status === 'remove' ? V.B : dTree;
+      const lvlA = dA, lvlB = dB - dL, lvl = Math.max(lvlA, lvlB), depth = lvl + dL;
+      // heave: trees that remain or are removed, on the height at the time of construction (Table 3a)
+      const Hh = status === 'proposed' ? null : young ? Ha : Hm;
+      const dHeave = Hh ? red(chart(v, sp.wd, sp.con, D / Hh)) : 0;
+      const heave = status !== 'proposed' && D < ZONE[sp.wd] * (Hh || Hm);
+      return { i, ref, sp, status, Hm, Ha, young, Hap, H, D, Dgiven: +t.D, x, zone, inZone, raw, tab: roundUp(raw), dTree, dA, dB, lvlA, lvlB, depth, Hh, dHeave, heave, notes };
+    });
+    // ---- shrubs (Table 6) ----
+    const KIND = { small: 'Shrub up to 1.8 m', climber: 'Climber on a wall, up to 5 m', pyra: 'Pyracantha or cotoneaster over 1.8 m', other: 'Other shrub' };
+    const shrubs = (Array.isArray(inp.shrubs) ? inp.shrubs : []).map((s, i) => {
+      const ref = String(s.ref || `S${i + 1}`), H = pos(s.H, `${ref}: mature height`), D = nonneg(s.D, `${ref}: distance to the foundation`);
+      let kind = KIND[s.kind] ? s.kind : 'other';
+      if (kind === 'small' && H > 1.8 + 1e-9) kind = 'other';
+      if (kind === 'climber' && H > 5 + 1e-9) kind = 'other';
+      if (kind === 'pyra' && H <= 1.8 + 1e-9) kind = 'small';
+      let need, rule, tooClose = false;
+      if (kind === 'small' || kind === 'climber') { need = V.B; rule = `${KIND[kind].toLowerCase()}: column B at any distance`; }
+      else if (kind === 'pyra') {
+        if (D >= 1.0 * H - 1e-9) { need = V.B; rule = `at least 1.0 × ${f1(H)} = ${f2(H)} m away: column B`; }
+        else if (D >= 0.5 * H - 1e-9) { need = V.A; rule = `${f2(D)} m is under 1.0H (${f2(H)} m) but at least 0.5H (${f2(0.5 * H)} m): column A`; }
+        else { need = V.A; tooClose = true; rule = `${f2(D)} m is closer than 0.5H = ${f2(0.5 * H)} m: plant it further away (Table 6)`; }
+      } else if (D >= 0.75 * H - 1e-9) { need = V.B; rule = `at least 0.75 × ${f1(H)} = ${f2(0.75 * H)} m away: column B`; }
+      else { need = V.A; rule = `closer than 0.75H (${f2(0.75 * H)} m): column A, at any distance`; }
+      return { i, ref, kind, kindName: KIND[kind], H, D, need, rule, tooClose, minD: kind === 'pyra' ? 0.5 * H : 0 };
+    });
+    if (!trees.length && !shrubs.length) throw new Error('Give at least one tree, hedgerow or shrub');
+    // ---- the depth ----
+    const govT = trees.length ? trees.reduce((a, b) => (b.depth > a.depth ? b : a)) : null;
+    const govS = shrubs.length ? shrubs.reduce((a, b) => (b.need > a.need ? b : a)) : null;
+    const dTrees = govT ? govT.depth : 0, dShrubs = govS ? govS.need : 0;   // shrubs from the finished ground
+    const dReq = Math.max(V.B, dTrees, dShrubs);
+    const dFound = dProp > 0 ? dProp : dReq;
+    const anyTreeInfluence = trees.some(t => t.inZone || t.depth > V.B + 1e-9);
+    // ---- heave (4.2.10) ----
+    const heaveTrees = trees.filter(t => t.heave);
+    const dHeave = heaveTrees.length ? Math.max(...heaveTrees.map(t => t.dHeave)) : 0;
+    const heave = { needed: heaveTrees.length > 0, trees: heaveTrees.map(t => t.ref), dHeave, voids: V.voids, move: V.move, items: [] };
+    if (heave.needed) {
+      const [vs, vb, vf] = V.voids, cm = n => (n > 0 ? `${n} mm void (compressible material about ${2 * n} mm, to the maker’s data)` : 'no void needed');
+      if (type === 'trench') heave.items.push(dHeave > 1.5 + 1e-9 ? `Trench fill deeper than 1.5 m (${f2(dHeave)} m on the height at construction): compressible material or a void former on the inside faces of the external walls, ${cm(vs)}; none to internal walls` : `Trench fill no deeper than 1.5 m on the height at construction (${f2(dHeave)} m): no compressible material against it (Table 8)`);
+      if (type === 'pier') heave.items.push(dHeave > 1.5 + 1e-9 ? `Piers deeper than 1.5 m (${f2(dHeave)} m): compressible material on all their faces, ${cm(vs)}` : `Piers no deeper than 1.5 m: none against them`);
+      if (type === 'pier' || type === 'pile') heave.items.push(`Ground beams: compressible material or void formers on the inside faces of the external beams (${cm(vs)}) and a ${vb} mm void (after collapse) under all of them`);
+      if (type === 'pile') heave.items.push('Piles: designed for the uplift from heave on their shafts, reinforced over that length and anchored below the desiccated soil (4.2.8)');
+      heave.items.push(`Suspended ground floors: a ${vb} mm void under in-situ concrete, ${vf} mm under precast concrete and timber (from the underside of the beam or joist, with 150 mm ventilation)`);
+      heave.items.push(`Drainage: allow for ${V.move} mm of ground movement where pipes pass through walls and foundations, and in their falls (Table 9)`);
+    }
+    // ---- non-shrinkable soil over the clay (4.2.9) ----
+    let ns = null;
+    if (inp.ns && inp.ns.on) {
+      const t = pos(inp.ns.t, 'Depth of the non-shrinkable soil'), B = pos(inp.ns.B, 'Foundation width B'), d = pos(inp.ns.d, 'Foundation depth in the non-shrinkable soil');
+      const X = dReq, T = t - d;
+      ns = { t, B, d, X, T, uX: 0.75 * X / t, uB: T > 0 ? B / T : Infinity };
+      ns.util = Math.max(ns.uX, ns.uB);
+    }
+    // ---- checks ----
+    const checks = [], add = (id, name, ref, util, note) => checks.push({ id, name, ref, util: Math.max(0, util), note });
+    if (dProp > 0) add('depth', 'Foundation depth', 'NHBC 4.2.7, 4.2.12', dReq / dProp, `${dReq > dProp + 1e-9 ? 'needs' : 'needs only'} ${f2(dReq)} m${govT && govT.depth >= dReq - 1e-9 ? ` for ${govT.ref} (${govT.sp.n})` : govS ? ` for ${govS.ref}` : ''} against the ${f2(dProp)} m proposed`);
+    add('limit', 'Within the chapter’s guidance', 'NHBC 4.2.7, R5', Math.max(dReq, dProp) / 2.5, `${f2(Math.max(dReq, dProp))} m ≤ 2.5 m; deeper is an engineer’s design (Technical Requirement R5)`);
+    shrubs.forEach(s => add(`shrub${s.i}`, `Shrub ${s.ref}: ${s.kindName.toLowerCase()}`, 'NHBC Table 6', Math.max(s.need / dFound, s.tooClose ? s.minD / Math.max(s.D, 1e-6) : 0), `${f1(s.H)} m at ${f2(s.D)} m: ${s.rule}; needs ${f2(s.need)} m against ${f2(dFound)} m`));
+    if (ns) add('ns', 'Founding in the non-shrinkable soil above', 'NHBC 4.2.9', ns.util, `its depth ${f2(ns.t)} m > ¾X = ¾ × ${f2(ns.X)} = ${f2(0.75 * ns.X)} m; below the foundation T = ${f2(ns.t)} − ${f2(ns.d)} = ${f2(ns.T)} m ≥ B ${f2(ns.B)} m (with NHBC’s approval)`);
+    let raft = null;
+    if (type === 'raft') {
+      const Lx = pos(inp.Lx, 'Raft length'), Ly = pos(inp.Ly, 'Raft width'), r = Math.max(Lx, Ly) / Math.min(Lx, Ly);
+      raft = { Lx, Ly, r, infillMin: 0.5 * dReq, infillMax: 1.25 };
+      add('raft', 'Raft: plan proportion', 'NHBC 4.2.8', r / 2, `${f2(Math.max(Lx, Ly))} / ${f2(Math.min(Lx, Ly))} = ${f2(r)} ≤ 2; granular infill ${f2(Math.min(raft.infillMin, 1.25))} to 1.25 m deep${raft.infillMin > 1.25 ? ' (half the depth is more than 1.25 m: not possible)' : ''}`);
+      if (raft.infillMin > 1.25 + 1e-9) add('infill', 'Raft: granular infill', 'NHBC 4.2.9', raft.infillMin / 1.25, `at least half the ${f2(dReq)} m depth (${f2(raft.infillMin)} m) but no more than 1.25 m`);
+    }
+    // ---- new planting (Table 5) ----
+    const planting = ['high', 'moderate', 'low'].map(w => ({ wd: w, A: NOPLANT_A[w], B: ZONE[w] }));
+    const plantCol = dFound >= V.A - 1e-9 ? 'A' : dFound >= V.B - 1e-9 ? 'B' : null;
+    // ---- notes ----
+    const warnings = [];
+    if (S0.how === 'unknown') warnings.push('The volume change potential is not known, so it is taken as high (4.2.4): site investigation may justify less.');
+    if (Math.max(dReq, dProp) > 2.5 + 1e-9) warnings.push(`At ${f2(Math.max(dReq, dProp))} m the foundation is deeper than the chapter covers: an engineer’s design to Technical Requirement R5, with arboricultural advice, the trench’s stability and heave on its sides.`);
+    if (type !== 'trench') warnings.push(`${type === 'pier' ? 'Pier and beam' : type === 'pile' ? 'Pile and beam' : 'Raft'} foundations in shrinkable soil are an engineer’s design accounting for all the soil’s movement (4.2.8)${type === 'pier' ? '; pier depths over 2.5 m need a site-specific assessment' : ''}.`);
+    if (type === 'trench' && dReq > 2.5 + 1e-9) warnings.push('Trench fill deeper than 2.5 m: an engineer’s design (4.2.8).');
+    if (dL !== 0) warnings.push(`The ground at the foundation is ${dL > 0 ? 'raised' : 'lowered'} ${f2(Math.abs(dL))} m: the depth is from the finished ground, the founding level the lower of those from the original and the new ground (Figures 1 to 3).`);
+    trees.forEach(t => t.notes.forEach(n => warnings.push(`${t.ref} (${t.sp.n}): ${n}.`)));
+    const steps = [
+      { ref: 'Soil', text: S0.how === 'test' ? `I′p = I_p × % < 425 μm = ${f1(S0.Ip)} × ${f0(S0.p)}% = ${f1(S0.Ipm)}%: ${V.name.toLowerCase()} volume change potential (Table 1)` : `${V.name} volume change potential${S0.how === 'unknown' ? ' (not known: high, 4.2.4)' : ''}` },
+      { ref: 'Minimums', text: `${f2(V.B)} m (column B: no new trees within their zone of influence), ${f2(V.A)} m (column A); Chart ${V.chart}` },
+      { ref: 'Climate', text: clim > 0 ? `less ${f2(clim)} m north and west of London, not below ${f2(V.B)} m` : 'no reduction (south-east England)' },
+      ...trees.map(t => ({ ref: `${t.ref} ${t.sp.n}`, text: `${WD[t.sp.wd].toLowerCase()} water demand${t.sp.con ? ', conifer' : ''}, ${t.status === 'remain' ? 'to remain' : t.status === 'remove' ? 'removed' : 'proposed'}: H ${f1(t.H)} m${t.H !== t.Hm ? ` (present ${f1(t.Ha)} m, under half its mature ${f1(t.Hm)} m)` : ''}, D ${f2(t.D)} m, D/H ${t.x.toFixed(3)} (zone ${f2(t.zone)} m): ${f2(t.raw)} m (tables ${f2(t.tab)})${clim > 0 ? `, less the climate ${f2(t.dTree)}` : ''}${dL !== 0 ? `; founding ${f2(t.lvlA)} / ${f2(t.lvlB)} m below the original ground, ${f2(t.depth)} m from the finished` : ''}` })),
+      ...shrubs.map(s => ({ ref: `${s.ref} shrub`, text: `${s.kindName.toLowerCase()}, ${f1(s.H)} m at ${f2(s.D)} m: ${s.rule}: ${f2(s.need)} m` })),
+      { ref: 'Depth', text: `${f2(dReq)} m${govT && dReq <= govT.depth + 1e-9 ? `, ${govT.ref} governs` : govS ? `, shrub ${govS.ref} governs` : ''}${dProp > 0 ? `; ${f2(dProp)} m proposed` : ''}` },
+    ];
+    const utilMax = Math.max(...checks.map(c => c.util));
+    return { soil: { ...S0, ...V, v }, clim, dL, type, dProp, trees, shrubs, govT, govS, dReq, dFound, anyTreeInfluence, heave, ns, raft, planting, plantCol, checks, utilMax, steps, warnings, VCP, ZONE, CONIFER, chart, red };
+  }
+  return { design, chart, roundUp, vcpOf, SPECIES, OTHER, VCP, ZONE, CONIFER, NOPLANT_A, WD };
+})();
+
+</script>
+<script id="drawing-code">
+/* ===== CONNECTION DIAGRAMS (EngineeringTools ConnectionCheck) =====
+   Parametric, to-scale drafting views of each joint, drawn from the current inputs: an elevation and a plan or section,
+   with bolts, welds, dimension chains, labels and the design actions. Pure functions returning SVG strings.
+   Model units mm; each view maps a model box onto a pixel box (x right, y up). */
+const JD = (() => {
+  'use strict';
+  const C = { steel: '#e7ecf1', web: '#eef2f5', edge: '#2f3b47', plate: '#f6d58c', plateEdge: '#94700f', pack: '#e3d3ae', bolt: '#3a424b', boltDark: '#1f252b',
+    weld: '#1a1f24', dim: '#1b67b0', txt: '#222a31', mute: '#7a8590', cl: '#97a2ac', load: '#cc3426', conc: '#f1efea', concEdge: '#8b8478', grout: '#ddd7ca', paper: '#ffffff' };
+  const FS = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"', FM = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"';
+  const W = 920, H = 520;
+  const DEFS = `<defs>
+<pattern id="jdCut" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect width="6" height="6" fill="#c7d0d9"/><line x1="0" y1="0" x2="0" y2="6" stroke="#6f7d8a" stroke-width="0.9"/></pattern>
+<pattern id="jdPlCut" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(-45)"><rect width="5" height="5" fill="#efc560"/><line x1="0" y1="0" x2="0" y2="5" stroke="#94700f" stroke-width="0.8"/></pattern>
+<pattern id="jdConc" patternUnits="userSpaceOnUse" width="26" height="26"><rect width="26" height="26" fill="${C.conc}"/><circle cx="5" cy="6" r="1.3" fill="#b3ab9d"/><circle cx="17" cy="15" r="1.7" fill="#c0b8aa"/><circle cx="9" cy="21" r="1" fill="#a9a091"/><path d="M19 4 l3 2 l-3 2 z" fill="#c5bdaf"/><path d="M2 14 l2.5 -2 l1.5 3 z" fill="#bdb5a7"/></pattern>
+<pattern id="jdGrout" patternUnits="userSpaceOnUse" width="8" height="8"><rect width="8" height="8" fill="${C.grout}"/><circle cx="2" cy="2" r="0.7" fill="#9e9687"/><circle cx="6" cy="6" r="0.7" fill="#9e9687"/></pattern>
+<marker id="jdLd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${C.load}"/></marker>
+</defs>`;
+  const num = v => { const a = Math.abs(v); return a >= 100 || Number.isInteger(+v.toFixed(1)) ? Math.round(v).toString() : v.toFixed(1); };
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // ---------- views ----------
+  function view(box, bb) {
+    const w = bb[2] - bb[0], h = bb[3] - bb[1], k = Math.min(box[2] / w, box[3] / h);
+    const ox = box[0] + (box[2] - w * k) / 2 - bb[0] * k, oy = box[1] + (box[3] - h * k) / 2 + bb[3] * k;
+    return { k, X: x => ox + x * k, Y: y => oy - y * k, box };
+  }
+  const ST = {
+    steel: `fill="${C.steel}" stroke="${C.edge}" stroke-width="1.1"`, web: `fill="${C.web}" stroke="${C.edge}" stroke-width="1.1"`,
+    cut: `fill="url(#jdCut)" stroke="${C.edge}" stroke-width="1.2"`, plate: `fill="${C.plate}" stroke="${C.plateEdge}" stroke-width="1.1"`,
+    plateCut: `fill="url(#jdPlCut)" stroke="${C.plateEdge}" stroke-width="1.1"`, pack: `fill="${C.pack}" stroke="${C.plateEdge}" stroke-width="0.9"`,
+    conc: `fill="url(#jdConc)" stroke="${C.concEdge}" stroke-width="1"`, grout: `fill="url(#jdGrout)" stroke="${C.concEdge}" stroke-width="0.8"`,
+    ghost: `fill="none" stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="6 3"`, outline: `fill="none" stroke="${C.edge}" stroke-width="1.1"`,
+    bg: `fill="${C.paper}" stroke="none"`,
+  };
+  const R = (v, x0, y0, x1, y1, st = 'steel') => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)); return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${(Math.abs(x1 - x0) * v.k).toFixed(1)}" height="${(Math.abs(y1 - y0) * v.k).toFixed(1)}" ${ST[st]}/>`; };
+  const P = (v, pts, st = 'steel') => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + v.X(p[0]).toFixed(1) + ' ' + v.Y(p[1]).toFixed(1)).join(' ')} Z" ${ST[st]}/>`;
+  const LS = { e: `stroke="${C.edge}" stroke-width="1.1"`, t: `stroke="${C.edge}" stroke-width="0.55"`, c: `stroke="${C.cl}" stroke-width="0.7" stroke-dasharray="14 3 2 3"`,
+    h: `stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="5 3"`, d: `stroke="${C.dim}" stroke-width="0.7"` };
+  const Ln = (v, x0, y0, x1, y1, k = 'e') => `<line x1="${v.X(x0).toFixed(1)}" y1="${v.Y(y0).toFixed(1)}" x2="${v.X(x1).toFixed(1)}" y2="${v.Y(y1).toFixed(1)}" ${LS[k]}/>`;
+  const lnP = (x0, y0, x1, y1, k = 'e') => `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" ${LS[k]}/>`;
+  function Tx(x, y, s, o = {}) {
+    const sz = o.size || 11, col = o.color || C.txt, anc = o.anchor || 'start', w = o.weight || 400, rot = o.rot ? ` transform="rotate(${o.rot} ${x.toFixed(1)} ${y.toFixed(1)})"` : '';
+    const body = esc(s).replace(/_\{([^}]*)\}|_([A-Za-z0-9]+)/g, (m, p1, p2) => `<tspan baseline-shift="sub" font-size="78%">${p1 || p2}</tspan>`);
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${sz}" fill="${col}" text-anchor="${anc}" font-weight="${w}" ${o.mono ? FM : FS} paint-order="stroke" stroke="${C.paper}" stroke-width="3" stroke-linejoin="round"${rot}>${body}</text>`;
+  }
+  const tw = (s, sz = 10) => String(s).replace(/_/g, '').length * sz * 0.6;
+  // ---------- dimensions (tick terminators) ----------
+  const tick = (x, y) => `<line x1="${(x - 3.5).toFixed(1)}" y1="${(y + 3.5).toFixed(1)}" x2="${(x + 3.5).toFixed(1)}" y2="${(y - 3.5).toFixed(1)}" stroke="${C.dim}" stroke-width="1.3"/>`;
+  // horizontal chain: xs (model), measured from model level y, dimension line at off px (negative: below)
+  function DH(v, xs, y, off, labels) {
+    const Yf = v.Y(y), Yd = Yf - off, s = Math.sign(off) || 1; let o = '';
+    xs.forEach(x => { o += lnP(v.X(x), Yf - s * 3, v.X(x), Yd - s * 4, 'd'); });
+    o += lnP(v.X(xs[0]) - 4, Yd, v.X(xs[xs.length - 1]) + 4, Yd, 'd');
+    xs.forEach(x => { o += tick(v.X(x), Yd); });
+    for (let i = 0; i < xs.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(xs[i + 1] - xs[i])); if (lab === '') continue;
+      const a = v.X(xs[i]), b = v.X(xs[i + 1]), wpx = Math.abs(b - a), tW = tw(lab);
+      const ty = off > 0 ? Yd - 4 : Yd + 11;
+      if (wpx > tW + 6) o += Tx((a + b) / 2, ty, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true });
+      else o += Tx(Math.max(a, b) + 3 + (i === xs.length - 2 ? 2 : 0), ty + (off > 0 ? -9 : 9) * (i % 2), lab, { size: 10, color: C.dim, mono: true });
+    }
+    return o;
+  }
+  function DV(v, ys, x, off, labels) {
+    const Xf = v.X(x), Xd = Xf + off, s = Math.sign(off) || 1; let o = '';
+    ys.forEach(y => { o += lnP(Xf + s * 3, v.Y(y), Xd + s * 4, v.Y(y), 'd'); });
+    o += lnP(Xd, v.Y(ys[0]) + 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), Xd, v.Y(ys[ys.length - 1]) - 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), 'd');
+    ys.forEach(y => { o += tick(Xd, v.Y(y)); });
+    for (let i = 0; i < ys.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(ys[i + 1] - ys[i])); if (lab === '') continue;
+      const a = v.Y(ys[i]), b = v.Y(ys[i + 1]), hpx = Math.abs(b - a), tW = tw(lab);
+      const tx = off > 0 ? Xd + 11 : Xd - 4;
+      if (hpx > tW + 6) o += Tx(tx, (a + b) / 2, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true, rot: -90 });
+      else o += Tx(off > 0 ? Xd + 5 : Xd - 5, (a + b) / 2 + 3.5, lab, { size: 10, color: C.dim, mono: true, anchor: off > 0 ? 'start' : 'end' });
+    }
+    return o;
+  }
+  // leader with a dot at a model point and text lines at a pixel offset
+  function LD(v, x, y, dx, dy, lines, o = {}) {
+    const px = v.X(x), py = v.Y(y), ex = px + dx, ey = py + dy, s = dx >= 0 ? 1 : -1;
+    let out = `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="1.9" fill="${C.txt}"/>` + lnP(px, py, ex, ey, 't') + lnP(ex, ey, ex + s * 8, ey, 't');
+    [].concat(lines).forEach((t, i) => { out += Tx(ex + s * 11, ey + 4 + i * 13 - ([].concat(lines).length - 1) * 6.5, t, { size: o.size || 10.5, anchor: s > 0 ? 'start' : 'end', weight: i === 0 && o.bold ? 600 : 400, color: i === 0 ? C.txt : '#4b545d' }); });
+    return out;
+  }
+  // load arrow ending at pixel point (px, py); (vx, vy) is the arrow vector in pixels; label near the tail
+  function LA(px, py, vx, vy, label, o = {}) {
+    const x0 = px - vx, y0 = py - vy, lx = x0 + (o.ldx ?? 0), ly = y0 + (o.ldy ?? -6);
+    return `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${px.toFixed(1)}" y2="${py.toFixed(1)}" stroke="${C.load}" stroke-width="2.4" marker-end="url(#jdLd)"/>` +
+      (label ? Tx(lx, ly, label, { size: 11, color: C.load, weight: 600, anchor: o.anchor || 'middle' }) : '');
+  }
+  function moment(px, py, rr, label, cw = true) {
+    const a0 = cw ? 200 : -20, a1 = cw ? 340 : 160, p = a => [px + rr * Math.cos(a * Math.PI / 180), py - rr * Math.sin(a * Math.PI / 180)], [x0, y0] = p(a0), [x1, y1] = p(a1);
+    return `<path d="M${x0.toFixed(1)} ${y0.toFixed(1)} A${rr} ${rr} 0 1 ${cw ? 1 : 0} ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="${C.load}" stroke-width="2.2" marker-end="url(#jdLd)"/>` + Tx(px, py - rr - 7, label, { size: 11, color: C.load, weight: 600, anchor: 'middle' });
+  }
+  // ---------- steel symbols ----------
+  function BE(v, x, y, d) {   // bolt seen end-on: washer ring, head, centre cross
+    const px = v.X(x), py = v.Y(y), r1 = Math.max(0.95 * d * v.k, 3.2), r2 = Math.max(0.55 * d * v.k, 1.9), c = r1 + 3;
+    return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r1.toFixed(1)}" fill="#fff" stroke="${C.boltDark}" stroke-width="1"/><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r2.toFixed(1)}" fill="${C.bolt}"/>` +
+      lnP(px - c, py, px + c, py, 't') + lnP(px, py - c, px, py + c, 't');
+  }
+  // bolt seen side-on with its axis along x (dir 'x') or y: shank a0..a1 at c, head at a0, nut at a1
+  function BS(v, a0, a1, c, d, dir = 'x') {
+    const sg = Math.sign(a1 - a0) || 1, hd = 0.65 * d, nt = 0.8 * d, wh = 0.8 * d, wa = 0.15 * d, pr = 0.45 * d;
+    const seg = (s0, s1, half, fill) => dir === 'x' ? R(v, s0, c - half, s1, c + half, fill) : R(v, c - half, s0, c + half, s1, fill);
+    let o = seg(a0, a1 + sg * (wa + nt + pr), d / 2, 'bolt');
+    o += seg(a0 - sg * wa, a0, d, 'bolt') + seg(a0 - sg * (wa + hd), a0 - sg * wa, wh, 'boltH');
+    o += seg(a1, a1 + sg * wa, d, 'bolt') + seg(a1 + sg * wa, a1 + sg * (wa + nt), wh, 'boltH');
+    o += dir === 'x' ? Ln(v, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), c, 'c') : Ln(v, c, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), 'c');
+    return o;
+  }
+  ST.bolt = `fill="#59626c" stroke="${C.boltDark}" stroke-width="0.6"`; ST.boltH = `fill="${C.bolt}" stroke="${C.boltDark}" stroke-width="0.6"`;
+  // fillet weld at the corner (x, y): legs along sx (x) and sy (y), sized a (mm) but at least 4 px
+  function WD(v, x, y, a, sx, sy) {
+    const L = Math.max(a * v.k, 4.5), px = v.X(x), py = v.Y(y);
+    return `<path d="M${px.toFixed(1)} ${py.toFixed(1)} L${(px + sx * L).toFixed(1)} ${py.toFixed(1)} L${px.toFixed(1)} ${(py - sy * L).toFixed(1)} Z" fill="${C.weld}"/>`;
+  }
+  // weld seen along its length (elevation): narrow strip
+  const WS = (v, x0, y0, x1, y1) => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)), w = Math.max(Math.abs(x1 - x0) * v.k, 2.5), h = Math.max(Math.abs(y1 - y0) * v.k, 2.5);
+    return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${C.weld}" fill-opacity="0.82"/>`; };
+  // zigzag break lines through a member
+  function BK(v, x, y0, y1) {   // vertical break at model x between y0 and y1
+    const px = v.X(x), a = v.Y(Math.max(y0, y1)) - 4, b = v.Y(Math.min(y0, y1)) + 4, m = (a + b) / 2;
+    return `<path d="M${px} ${a} L${px} ${m - 7} L${px - 5} ${m - 3} L${px + 5} ${m + 3} L${px} ${m + 7} L${px} ${b}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  function BKH(v, y, x0, x1) {
+    const py = v.Y(y), a = v.X(Math.min(x0, x1)) - 4, b = v.X(Math.max(x0, x1)) + 4, m = (a + b) / 2;
+    return `<path d="M${a} ${py} L${m - 7} ${py} L${m - 3} ${py - 5} L${m + 3} ${py + 5} L${m + 7} ${py} L${b} ${py}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  // white mask to fade member ends beyond a break
+  const mask = (v, x0, y0, x1, y1) => R(v, x0, y0, x1, y1, 'bg');
+  // I section cross-section (cut), centred at (cx, cy); 'v': web vertical (depth along y), 'h': depth along x
+  function ISec(v, cx, cy, s, o = 'v', st = 'cut') {
+    const b = s.b, h = s.h, tf = s.tf, t = s.tw, r = Math.min(s.r || 0, (b - t) / 2 - 1), pts = [];
+    const arc = (ux, uy, a0, a1) => { for (let i = 0; i <= 6; i++) { const a = (a0 + (a1 - a0) * i / 6) * Math.PI / 180; pts.push([ux + r * Math.cos(a), uy + r * Math.sin(a)]); } };
+    pts.push([-b / 2, h / 2], [b / 2, h / 2], [b / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, h / 2 - tf - r, 90, 180); else pts.push([t / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, -h / 2 + tf + r, 180, 270); else pts.push([t / 2, -h / 2 + tf]);
+    pts.push([b / 2, -h / 2 + tf], [b / 2, -h / 2], [-b / 2, -h / 2], [-b / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, -h / 2 + tf + r, 270, 360); else pts.push([-t / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, h / 2 - tf - r, 0, 90); else pts.push([-t / 2, h / 2 - tf]);
+    pts.push([-b / 2, h / 2 - tf]);
+    return P(v, pts.map(([u, w]) => o === 'v' ? [cx + u, cy + w] : [cx + w, cy + u]), st);
+  }
+  // I member in side elevation: length along 'x' (a0..a1) with the depth c0..c1 across, or along 'y'
+  function IEl(v, a0, a1, c0, c1, s, dir = 'x', o = {}) {
+    const lo = Math.min(c0, c1), hi = Math.max(c0, c1), rr = s.r || 0;
+    const ln = (c, k) => dir === 'x' ? Ln(v, a0, c, a1, c, k) : Ln(v, c, a0, c, a1, k);
+    let out = dir === 'x' ? R(v, a0, lo, a1, hi, 'steel') : R(v, lo, a0, hi, a1, 'steel');
+    out += dir === 'x' ? R(v, a0, lo + s.tf, a1, hi - s.tf, 'web') : R(v, lo + s.tf, a0, hi - s.tf, a1, 'web');
+    out += ln(lo + s.tf, 'e') + ln(hi - s.tf, 'e');
+    if (rr > 0 && !o.noRoot) out += ln(lo + s.tf + rr, 't') + ln(hi - s.tf - rr, 't');
+    return out;
+  }
+  // I member seen on the flange face: width b, length along dir
+  const IFl = (v, a0, a1, cc, s, dir = 'y') => (dir === 'y' ? R(v, cc - s.b / 2, a0, cc + s.b / 2, a1, 'steel') + Ln(v, cc - s.tw / 2 - (s.r || 0), a0, cc - s.tw / 2 - (s.r || 0), a1, 'h') + Ln(v, cc + s.tw / 2 + (s.r || 0), a0, cc + s.tw / 2 + (s.r || 0), a1, 'h')
+    : R(v, a0, cc - s.b / 2, a1, cc + s.b / 2, 'steel'));
+  const title = (x, y, t, sub) => Tx(x, y, t, { size: 11.5, weight: 700, anchor: 'middle', color: C.txt }) + `<line x1="${(x - tw(t, 11.5) / 2).toFixed(1)}" y1="${(y + 3).toFixed(1)}" x2="${(x + tw(t, 11.5) / 2).toFixed(1)}" y2="${(y + 3).toFixed(1)}" stroke="${C.txt}" stroke-width="0.8"/>` + (sub ? Tx(x, y + 16, sub, { size: 10, anchor: 'middle', color: C.mute }) : '');
+  const svg = (body, h = H) => `<svg class="jd" viewBox="0 0 ${W} ${h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;background:${C.paper}" role="img">${DEFS}<rect width="${W}" height="${h}" fill="${C.paper}"/>${body}</svg>`;
+  const BOX = { L: [40, 46, 520, 400], Rt: [612, 46, 280, 400] };
+  const fv = x => { const n = parseFloat(x); return Number.isFinite(n) ? n : 0; };
+  const secName = x => x && x !== '0' ? x : '';   // a form without that selector reads as '0'
+  const BOLTD = { M12: 12, M16: 16, M20: 20, M24: 24, M27: 27, M30: 30, M36: 36 };
+  const bd = sz => BOLTD[sz] || 20;
+  const range = (n, f) => Array.from({ length: Math.max(0, n) }, (_, i) => f(i));
+  return { C, W, H, BOX, DEFS, view, R, P, Ln, lnP, Tx, tw, DH, DV, LD, LA, moment, BE, BS, WD, WS, BK, BKH, mask, ISec, IEl, IFl, title, svg, num, fv, secName, bd, range, esc, ST };
+})();
+
+/* ===== DRAWING KIT EXTRAS (EngineeringTools) =====
+   Additions to the JD drafting kit (joints/diagrams.js) for the member, floor and wall drawings: a page-width SVG wrapper,
+   arrows, supports, distributed loads, result fills, cross-section outlines (I, PFC, RHS, CHS) and SVG to PNG for PDF reports.
+   Source: scratchpad/drawings/kit.js. Pixel helpers take pixel coordinates; JD views map model mm to pixels. */
+const DK = (() => {
+  'use strict';
+  const { Tx, lnP, esc } = JD;
+  const BLUE = '#1d5fbf', FILL = 'rgba(29,95,191,.15)', RED = '#c4242a', REDF = 'rgba(196,36,42,.10)', INK = '#222a31', MUTE = '#6b7680', LINE = '#c9d0d7';
+  const DEFS = `<defs><marker id="dkB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${BLUE}"/></marker>`
+    + `<marker id="dkK" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${INK}"/></marker>`
+    + `<marker id="dkR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${RED}"/></marker>`
+    + `<pattern id="dkHatch" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)"><rect width="7" height="7" fill="#f3f1ec"/><line x1="0" y1="0" x2="0" y2="7" stroke="#8b8478" stroke-width="1"/></pattern></defs>`;
+  const f1 = v => (+v).toFixed(1);
+  // the page-width drawing: viewBox w x h, scales to its container
+  const svg = (body, w, h, label) => `<svg class="jd dk" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" role="img"${label ? ` aria-label="${esc(label)}"` : ''} `
+    + `style="width:100%;height:auto;display:block;background:#fff">${JD.DEFS}${DEFS}<rect width="${w}" height="${h}" fill="#fff"/>${body}</svg>`;
+  const col = c => ({ blue: BLUE, red: RED, ink: INK, mute: MUTE }[c] || c || INK);
+  const mk = c => ({ blue: 'dkB', red: 'dkR' }[c] || 'dkK');
+  // arrow from (x0, y0) to (x1, y1), head at the end (both: heads at both ends)
+  const arrow = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1.6}"`
+    + `${o.dash ? ` stroke-dasharray="${o.dash}"` : ''} marker-end="url(#${mk(o.c)})"${o.both ? ` marker-start="url(#${mk(o.c)})"` : ''}/>`;
+  const line = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.cap ? ` stroke-linecap="${o.cap}"` : ''}/>`;
+  const rect = (x, y, w, h, o = {}) => `<rect x="${f1(Math.min(x, x + w))}" y="${f1(Math.min(y, y + h))}" width="${f1(Math.abs(w))}" height="${f1(Math.abs(h))}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.rx ? ` rx="${o.rx}"` : ''}/>`;
+  const poly = (pts, o = {}) => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + f1(p[0]) + ' ' + f1(p[1])).join(' ')}${o.open ? '' : ' Z'}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+  const text = (x, y, s, o = {}) => Tx(x, y, s, Object.assign({ size: 11 }, o, { color: o.color ? col(o.color) : o.color }));
+  // pinned support under (px, py): triangle and ground line; dir 'down' (default) or 'up' (hanging, above the point)
+  function pin(px, py, dir = 'down') {
+    const s = dir === 'up' ? -1 : 1;
+    return poly([[px, py], [px - 8, py + s * 13], [px + 8, py + s * 13]], { fill: '#fff', stroke: 'ink', w: 1.3 }) + line(px - 12, py + s * 13, px + 12, py + s * 13, { w: 1.3 })
+      + [0, 1, 2, 3].map(k => line(px - 10 + k * 6, py + s * 13, px - 14 + k * 6, py + s * 18, { c: 'mute', w: 0.8 })).join('');
+  }
+  // hatched ground or wall strip: rectangle with the hatch fill and an edge line on the restrained side ('t', 'b', 'l', 'r')
+  function ground(x, y, w, h, edge = 't') {
+    const e = { t: [x, y, x + w, y], b: [x, y + h, x + w, y + h], l: [x, y, x, y + h], r: [x + w, y, x + w, y + h] }[edge];
+    return rect(x, y, w, h, { fill: 'url(#dkHatch)' }) + line(e[0], e[1], e[2], e[3], { w: 1.4 });
+  }
+  // a row of load arrows pointing from yTop to yBase between x0 and x1, with the bar along the tails and a label above
+  function udl(x0, x1, yTop, yBase, label, o = {}) {
+    const n = Math.max(2, Math.round((x1 - x0) / (o.pitch || 28)) + 1), c = o.c || 'red';
+    let g = line(x0, yTop, x1, yTop, { c, w: 1.3 });
+    for (let i = 0; i < n; i++) { const x = x0 + (x1 - x0) * i / (n - 1); g += arrow(x, yTop, x, yBase, { c, w: 1.2 }); }
+    return g + (label ? text((x0 + x1) / 2, yTop - 6, label, { anchor: 'middle', color: c === 'red' ? RED : col(c), weight: 600 }) : '');
+  }
+  // a result diagram: polyline pts (pixels) closed to the base line through the first and last points' base, filled blue
+  function fillDiagram(pts, base, o = {}) {
+    const vert = o.vertical;   // base is an x (diagram plotted sideways) when vertical
+    const close = vert ? [[base, pts[pts.length - 1][1]], [base, pts[0][1]]] : [[pts[pts.length - 1][0], base], [pts[0][0], base]];
+    return poly(pts.concat(close), { fill: o.fill || FILL, stroke: 'none' }) + poly(pts, { open: true, stroke: o.stroke || 'ink', w: 1.1 });
+  }
+  // cross-section outline, cut, centred at pixel (cx, cy) at scale k (px/mm); web vertical; returns svg
+  function section(s, cx, cy, k, o = {}) {
+    const st = o.style || 'cut', fill = st === 'cut' ? 'url(#jdCut)' : '#e7ecf1', edge = '#2f3b47';
+    if (s.shape === 'CHS') {
+      const ro = s.d / 2 * k, ri = (s.d / 2 - s.t) * k;
+      return `<path d="M${f1(cx - ro)} ${f1(cy)} a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(2 * ro)} 0 a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(-2 * ro)} 0 Z M${f1(cx - ri)} ${f1(cy)} a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(2 * ri)} 0 a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(-2 * ri)} 0 Z" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'RHS') {
+      const w = s.b * k, h = s.h * k, t = Math.max(s.t * k, 1.2), ro = Math.min((s.ro || 1.5 * s.t) * k, w / 2), ri = Math.max(0, ro - t);
+      const rr = (x, y, W, H, r) => `M${f1(x + r)} ${f1(y)} H${f1(x + W - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W)} ${f1(y + r)} V${f1(y + H - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W - r)} ${f1(y + H)} H${f1(x + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x)} ${f1(y + H - r)} V${f1(y + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + r)} ${f1(y)} Z`;
+      return `<path d="${rr(cx - w / 2, cy - h / 2, w, h, ro)} ${rr(cx - w / 2 + t, cy - h / 2 + t, w - 2 * t, h - 2 * t, ri)}" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'PFC') {   // channel, toes to the right, web on the left
+      const b = s.b * k, h = s.h * k, tf = Math.max(s.tf * k, 1.2), tw = Math.max(s.tw * k, 1.2), x0 = cx - b / 2, y0 = cy - h / 2;
+      return poly([[x0, y0], [x0 + b, y0], [x0 + b, y0 + tf], [x0 + tw, y0 + tf], [x0 + tw, y0 + h - tf], [x0 + b, y0 + h - tf], [x0 + b, y0 + h], [x0, y0 + h]], { fill, stroke: edge, w: 1.1 });
+    }
+    const v = { k, X: x => cx + x * k, Y: y => cy - y * k };   // I sections: JD's outline with root radii
+    return JD.ISec(v, 0, 0, s, 'v', st === 'cut' ? 'cut' : 'steel');
+  }
+  // SVG markup to a PNG data URL (for the jsPDF reports); resolves { url, w, h } with w, h the viewBox size
+  function toPNG(markup, wpx = 1800) {
+    return new Promise((resolve, reject) => {
+      const m = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(markup); if (!m) { reject(new Error('no viewBox')); return; }
+      const w = +m[1], h = +m[2], k = wpx / w, img = new Image();
+      const src = markup.replace(/style="[^"]*"/, `width="${f1(w * k)}" height="${f1(h * k)}"`);
+      img.onload = () => { const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k); const g = c.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height); resolve({ url: c.toDataURL('image/png'), w, h }); };
+      img.onerror = () => reject(new Error('drawing could not be rendered'));
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
+    });
+  }
+  // drawings for the page (heading + drawing) and for the A4 sheet (each kept whole on a page)
+  const page = blocks => blocks.map(([t, s]) => `<div class="dlabel">${t}</div>${s}`).join('');
+  const sheet = blocks => blocks.map(([t, s]) => `<div class="rfig" style="break-inside:avoid;page-break-inside:avoid;margin:1mm 0 3mm"><h3>${t}</h3><div class="rsvg">${s}</div></div>`).join('');
+  const fmt = (v, d = 0) => Number.isFinite(v) ? (+v).toFixed(d) : '–';
+  return { page, sheet, BLUE, FILL, RED, REDF, INK, MUTE, LINE, svg, arrow, line, rect, poly, text, pin, ground, udl, fillDiagram, section, toPNG, fmt, lnP };
+})();
+
+/* ===== FOUNDATIONS NEAR TREES DRAWINGS (EngineeringTools) =====
+   The depth needed against the distance from each tree (NHBC's chart line for the soil and the tree, less the climate
+   reduction, to scale), with each tree's own distance marked and the governing one in blue; the minimum depth and the
+   2.5 m limit of the chapter. And a plan to scale: the foundation as a line, each tree at its distance with its zone of
+   influence (Table 3b) and the length of foundation inside it, the shrubs on the other side.
+   Source: scratchpad/drawings/trees.js. Needs JD, DK; takes TreeFoundations.design results. */
+const DrawTrees = (() => {
+  'use strict';
+  const { svg, line, rect, text, page, sheet, RED, MUTE, BLUE, INK } = DK;
+  const r1 = v => (Math.round(v * 10) / 10).toFixed(1), r2 = v => (Math.round(v * 100) / 100).toFixed(2);
+  const GREY = '#7d8893';
+  function depthChart(D) {
+    const T = D.trees;
+    const Wd = 700, x0 = 54, y0 = 34, w = 560, h = 230;
+    const xmax = Math.max(4, ...T.map(t => t.zone * 1.05), ...T.map(t => t.D * 1.1)), ymax = Math.max(3, Math.ceil((D.dReq + 0.3) * 2) / 2);
+    const X = x => x0 + x / xmax * w, Y = d => y0 + d / ymax * h;
+    let g = text(0, 14, `Depth needed against the distance from each tree (${D.soil.name.toLowerCase()} volume change potential${D.clim > 0 ? `, less ${r2(D.clim)} m for the climate` : ''})`, { size: 9.5, color: MUTE });
+    // axes and grid
+    const sx = xmax > 30 ? 10 : xmax > 12 ? 5 : 2;
+    for (let x = 0; x <= xmax + 1e-9; x += sx) g += line(X(x), y0, X(x), y0 + h, { c: '#eceff2', w: 0.8 }) + text(X(x), y0 - 5, `${Math.round(x)}`, { size: 9, anchor: 'middle', color: MUTE });
+    for (let d = 0; d <= ymax + 1e-9; d += 0.5) g += line(x0, Y(d), x0 + w, Y(d), { c: '#eceff2', w: 0.8 }) + text(x0 - 6, Y(d) + 3, r1(d), { size: 9, anchor: 'end', color: MUTE });
+    g += line(x0, y0, x0 + w, y0, { w: 0.9 }) + line(x0, y0, x0, y0 + h, { w: 0.9 });
+    g += text(x0 + w, y0 + h + 14, 'distance D from the trunk to the foundation (m)', { size: 9, anchor: 'end', color: MUTE }) + text(x0, y0 + h + 14, 'depth below the ground (m), down', { size: 9, color: MUTE });
+    // the minimum and the 2.5 m limit
+    g += line(x0, Y(D.soil.B), x0 + w, Y(D.soil.B), { c: INK, w: 0.8, dash: '4 3' }) + text(x0 + w - 2, Y(D.soil.B) - 4, `minimum ${r2(D.soil.B)} m`, { size: 9, anchor: 'end', color: MUTE });
+    if (ymax >= 2.5) g += line(x0, Y(2.5), x0 + w, Y(2.5), { c: RED, w: 0.9, dash: '6 3' }) + text(x0 + w - 2, Y(2.5) + 12, 'deeper than 2.5 m: an engineer’s design', { size: 9, anchor: 'end', color: RED });
+    // each tree's line, the governing one last and in blue
+    const order = [...T].sort((a, b) => (a === D.govT) - (b === D.govT));
+    order.forEach(t => {
+      const gov = t === D.govT, col = gov ? BLUE : GREY, pts = [];
+      for (let i = 0; i <= 120; i++) { const x = xmax * i / 120; pts.push(`${i ? 'L' : 'M'}${X(x).toFixed(1)} ${Y(Math.min(ymax, D.red(D.chart(D.soil.v, t.sp.wd, t.sp.con, x / t.H)))).toFixed(1)}`); }
+      g += `<path d="${pts.join(' ')}" fill="none" stroke="${col}" stroke-width="${gov ? 2 : 1.2}"/>`;
+      const dd = Math.min(ymax, t.dTree);
+      g += `<circle cx="${X(t.D).toFixed(1)}" cy="${Y(dd).toFixed(1)}" r="4" fill="${col}"/>` + text(X(t.D) + 6, Y(dd) + 14, t.ref, { size: 9.5, color: gov ? BLUE : INK, weight: 600 });
+    });
+    // the key, under the chart
+    T.forEach((t, i) => { const gov = t === D.govT, yy = y0 + h + 32 + i * 14; g += line(x0, yy - 3, x0 + 16, yy - 3, { c: gov ? BLUE : GREY, w: gov ? 2 : 1.2 }) + text(x0 + 22, yy, `${t.ref} ${t.sp.n} (${t.status === 'remain' ? 'remains' : t.status === 'remove' ? 'removed' : 'proposed'}), H ${r1(t.H)} m: ${r2(t.dTree)} m at ${r2(t.D)} m${gov ? ', governs' : ''}`, { size: 9.5, color: gov ? BLUE : INK, weight: gov ? 600 : 400 }); });
+    if (!T.length) g += text(x0 + w / 2, y0 + h / 2, 'shrubs only: no tree lines', { size: 10, anchor: 'middle', color: MUTE });
+    return svg(g, Wd, y0 + h + 24 + T.length * 14 + 6, 'The foundation depth needed against the distance from each tree');
+  }
+  function plan(D) {
+    const T = D.trees, Sh = D.shrubs, Wd = 700;
+    const R = Math.max(2, ...T.map(t => t.zone), ...Sh.map(s => s.D + 1));
+    const above = Math.max(1, ...T.map(t => t.zone - t.D), ...Sh.map(s => s.D + 0.5)), below = Math.max(1, ...T.map(t => t.D + t.zone));
+    const n = Math.max(1, T.length), span = Math.max(n * 1.4 * R, 2 * R), k = Math.min(620 / span, 300 / (above + below), 40);
+    const x0 = 40, yF = 30 + above * k, X = x => x0 + x * k;
+    let g = text(0, 14, 'Plan: the foundation (line), each tree at its distance with its zone of influence; the foundation inside it in blue', { size: 9.5, color: MUTE });
+    const L = span;
+    g += line(X(0), yF, X(L), yF, { c: INK, w: 3 });
+    T.forEach((t, i) => {
+      const cx = X((i + 0.5) * L / n), cy = yF + t.D * k, rz = t.zone * k, gov = t === D.govT;
+      g += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${rz.toFixed(1)}" fill="none" stroke="${gov ? BLUE : GREY}" stroke-width="1" stroke-dasharray="5 4"/>`;
+      if (t.D < t.zone) { const half = Math.sqrt(t.zone * t.zone - t.D * t.D) * k; g += line(Math.max(X(0), cx - half), yF, Math.min(X(L), cx + half), yF, { c: BLUE, w: 4 }); }
+      g += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${Math.max(4, 0.3 * k).toFixed(1)}" fill="${t.status === 'remove' ? '#fff' : t.sp.con ? '#4f7a55' : '#7aa36f'}" stroke="#3b5a3f" stroke-width="1.2"${t.status === 'proposed' ? ' stroke-dasharray="2 2"' : ''}/>`;
+      g += line(cx, yF, cx, cy, { c: MUTE, w: 0.8, dash: '2 2' }) + text(cx + 6, (yF + cy) / 2 + 3, `D ${r2(t.D)} m`, { size: 9, color: MUTE });
+      g += text(cx + 8, cy + 4, `${t.ref} ${t.sp.n} (${t.status === 'remain' ? 'remains' : t.status === 'remove' ? 'removed' : 'proposed'})`, { size: 9.5, weight: gov ? 600 : 400, color: gov ? BLUE : INK });
+      g += text(cx + 8, cy + 17, `zone ${r2(t.zone)} m`, { size: 9, color: MUTE });
+    });
+    Sh.forEach((s, i) => {
+      const cx = X((i + 0.5) * L / Math.max(1, Sh.length)), cy = yF - s.D * k;
+      g += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="4" fill="${s.tooClose ? 'rgba(196,36,42,0.25)' : '#a7c29a'}" stroke="${s.tooClose ? RED : '#3b5a3f'}" stroke-width="1"/>` + text(cx + 7, cy + 3, `${s.ref} shrub ${r1(s.H)} m at ${r2(s.D)} m`, { size: 9, color: s.tooClose ? RED : INK });
+    });
+    return svg(g, Wd, yF + below * k + 12, 'Plan of the foundation with the trees, their zones of influence and the shrubs');
+  }
+  const blocks = D => [['Depth and distance', depthChart(D)], ['Plan', plan(D)]];
+  return { html: D => page(blocks(D)), report: D => sheet(blocks(D)), depthChart, plan };
+})();
+
+</script>
+<script id="ui">
+'use strict';
+const $ = id => document.getElementById(id);
+const STORE = 'et-trees-v1';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ufmt = u => !Number.isFinite(u) ? '&gt;99' : u.toFixed(3);
+const f0 = v => Number.isFinite(v) ? Math.round(v).toString() : '–', f1 = v => Number.isFinite(v) ? v.toFixed(1) : '–', f2 = v => Number.isFinite(v) ? v.toFixed(2) : '–';
+const sub = s => esc(s).replace(/_\{([^}]*)\}|_([A-Za-zα-ω0-9,′]+)/g, (m, a, b) => `<sub>${a || b}</sub>`).replace(/\^([0-9.]+)/g, '<sup>$1</sup>');
+function refreshVis() {
+  document.querySelectorAll('.g-test').forEach(e => { e.hidden = $('vcp').value !== 'test'; });
+  document.querySelectorAll('.g-raft').forEach(e => { e.hidden = $('type').value !== 'raft'; });
+  document.querySelectorAll('.g-ns').forEach(e => { e.hidden = !$('nsOn').checked; });
+}
+// ---------- the species list (NHBC Table 3) ----------
+const TF = TreeFoundations, SP = TF.SPECIES;
+const grp = (lab, f) => `<optgroup label="${lab}">${SP.map((s, i) => [s, i]).filter(([s]) => f(s)).map(([s, i]) => `<option value="${i}">${esc(s.n)}</option>`).join('')}</optgroup>`;
+const SPOPTS = grp('Broad-leafed, high water demand', s => !s.con && s.wd === 'high') + grp('Broad-leafed, moderate', s => !s.con && s.wd === 'moderate') + grp('Broad-leafed, low', s => !s.con && s.wd === 'low')
+  + grp('Conifers, high', s => s.con && s.wd === 'high') + grp('Conifers, moderate', s => s.con && s.wd === 'moderate')
+  + `<optgroup label="Not in Table 3: give the mature height">${Object.entries(TF.OTHER).map(([k, o]) => `<option value="${k}">${esc(o.n)}</option>`).join('')}</optgroup>`;
+const idx = n => String(SP.findIndex(s => s.n === n));
+// ---------- trees ----------
+const TFL = ['ref', 'sp', 'status', 'Hm', 'Ha', 'D'];
+const DEFT = [{ ref: 'T1', sp: idx('Lombardy poplar'), status: 'remain', Hm: 25, Ha: '', D: 10 }, { ref: 'T2', sp: idx('Sycamore'), status: 'remove', Hm: 22, Ha: 15, D: 8 }];
+function treeRow(o = {}) {
+  const r = document.createElement('div'); r.className = 'row tree';
+  r.innerHTML = `<div><label>Ref</label><input type="text" class="ref"></div><div><label>Species</label><select class="sp">${SPOPTS}</select></div><div><label>Status</label><select class="status"><option value="remain">Remains</option><option value="remove">Removed</option><option value="proposed">Proposed</option></select></div>`
+    + `<div><label>Mature H (m)</label><input type="number" class="Hm" step="0.5"></div><div><label>Present H (m)</label><input type="number" class="Ha" step="0.5" placeholder="–"></div><div><label>D (m)</label><input type="number" class="D" step="0.5"></div><div><label>&nbsp;</label><button class="xbtn" type="button" title="Remove">×</button></div>`;
+  TFL.forEach(k => { if (o[k] !== undefined) r.querySelector('.' + k).value = o[k]; });
+  r.querySelector('.sp').addEventListener('change', () => { const s = SP[+r.querySelector('.sp').value]; r.querySelector('.Hm').value = s ? s.H : ''; });
+  r.querySelector('.xbtn').onclick = () => { r.remove(); queueDraw(); };
+  $('treeRows').appendChild(r); return r;
+}
+$('addTree').onclick = () => { const n = document.querySelectorAll('#treeRows .row').length + 1; treeRow({ ref: `T${n}`, sp: idx('English oak'), status: 'remain', Hm: 20, D: 12 }); queueDraw(); };
+// ---------- shrubs ----------
+const SFL = ['ref', 'kind', 'H', 'D'];
+const DEFS = [{ ref: 'S1', kind: 'pyra', H: 3, D: 2 }];
+function shrubRow(o = {}) {
+  const r = document.createElement('div'); r.className = 'row shrub';
+  r.innerHTML = `<div><label>Ref</label><input type="text" class="ref"></div><div><label>Kind</label><select class="kind"><option value="small">Shrub up to 1.8 m</option><option value="climber">Climber on a wall, up to 5 m</option><option value="pyra">Pyracantha or cotoneaster over 1.8 m</option><option value="other">Other shrub</option></select></div>`
+    + `<div><label>Mature H (m)</label><input type="number" class="H" step="0.1"></div><div><label>D (m)</label><input type="number" class="D" step="0.1"></div><div><label>&nbsp;</label><button class="xbtn" type="button" title="Remove">×</button></div>`;
+  SFL.forEach(k => { if (o[k] !== undefined) r.querySelector('.' + k).value = o[k]; });
+  r.querySelector('.xbtn').onclick = () => { r.remove(); queueDraw(); };
+  $('shrubRows').appendChild(r); return r;
+}
+$('addShrub').onclick = () => { const n = document.querySelectorAll('#shrubRows .row').length + 1; shrubRow({ ref: `S${n}`, kind: 'other', H: 2.5, D: 1.5 }); queueDraw(); };
+const rows = (box, F) => [...document.querySelectorAll(`#${box} .row`)].map(r => Object.fromEntries(F.map(k => [k, r.querySelector('.' + k).value])));
+// ---------- state ----------
+const FIELDS = ['pName', 'pJob', 'pBy', 'pRef', 'vcp', 'Ip', 'pass', 'clim', 'dLevel', 'type', 'dProp', 'Lx', 'Ly', 'nsT', 'nsB', 'nsD'], CHK = ['nsOn'];
+function collect() { const s = { v: 1, trees: rows('treeRows', TFL), shrubs: rows('shrubRows', SFL) }; FIELDS.forEach(id => { s[id] = $(id).value; }); CHK.forEach(id => { s[id] = $(id).checked; }); return s; }
+function restore(s) {
+  $('treeRows').innerHTML = ''; $('shrubRows').innerHTML = '';
+  (s.trees ? s.trees : DEFT).forEach(treeRow); (s.shrubs ? s.shrubs : DEFS).forEach(shrubRow);
+  FIELDS.forEach(id => { if (s[id] !== undefined && $(id)) $(id).value = s[id]; }); CHK.forEach(id => { if (s[id] !== undefined) $(id).checked = !!s[id]; }); refreshVis();
+}
+const num = v => (v === '' || v === undefined || v === null ? undefined : +v), req = v => (v === '' || v === undefined || v === null ? NaN : +v);
+function input(s) {
+  return { soil: { vcp: s.vcp, Ip: num(s.Ip), pass: num(s.pass) }, clim: num(s.clim), dLevel: num(s.dLevel), type: s.type, dProp: num(s.dProp), Lx: num(s.Lx), Ly: num(s.Ly),
+    ns: { on: s.nsOn, t: num(s.nsT), B: num(s.nsB), d: num(s.nsD) },
+    trees: s.trees.map(t => ({ ref: t.ref, sp: t.sp, status: t.status, Hm: num(t.Hm), Ha: num(t.Ha), D: req(t.D) })),
+    shrubs: s.shrubs.map(t => ({ ref: t.ref, kind: t.kind, H: req(t.H), D: req(t.D) })) };
+}
+const compute = s => TF.design(input(s));
+// ---------- results ----------
+const bar = c => `<div class="ck"><div class="nm">${sub(c.name)}<small>${sub(c.ref)} &nbsp;${sub(c.note || '')}</small></div><div class="bar"><i class="${c.util > 1 ? 'over' : c.util > 0.9 ? 'hi' : ''}" style="width:${Math.min(100, c.util * 100 / 1.2)}%"></i></div><div class="u ${c.util > 1 ? 'over' : ''}">${ufmt(c.util)}</div></div>`;
+const stepsHTML = S => `<div class="steps">${S.map(s => `<div class="st"><span>${esc(s.ref)}</span><span>${sub(s.text)}</span></div>`).join('')}</div>`;
+const ST = { remain: 'remains', remove: 'removed', proposed: 'proposed' };
+function treeTable(D, cls) {
+  if (!D.trees.length) return '';
+  return `<div class="tscroll"><table class="${cls}"><thead><tr><th>Tree</th><th>Species</th><th>Water demand</th><th>H (m)</th><th>D (m)</th><th>D/H</th><th>Zone (m)</th><th>Chart (m)</th><th>Tables (m)</th><th>Depth (m)</th></tr></thead><tbody>${D.trees.map(t => `<tr><td${t === D.govT ? ' class="gov"' : ''}>${esc(t.ref)}</td><td>${esc(t.sp.n)}, ${ST[t.status]}</td><td>${TF.WD[t.sp.wd]}${t.sp.con ? ', conifer' : ''}</td><td>${f1(t.H)}</td><td>${f2(t.D)}</td><td>${t.x.toFixed(2)}</td><td>${f2(t.zone)}${t.inZone ? '' : ' (outside)'}</td><td>${f2(t.raw)}</td><td>${f2(t.tab)}</td><td${t === D.govT ? ' class="gov"' : ''}>${f2(t.depth)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+function plantTable(D, cls) {
+  return `<div class="tscroll"><table class="${cls}"><thead><tr><th>New trees</th><th></th><th>At ${f2(D.soil.A)} m (column A): none within</th><th>At ${f2(D.soil.B)} m (column B): none within</th></tr></thead><tbody>${D.planting.map(p => `<tr><td>${TF.WD[p.wd]} water demand</td><td></td><td>${p.A.toFixed(2)} × mature height</td><td>${p.B.toFixed(2)} × mature height</td></tr>`).join('')}</tbody></table></div>`;
+}
+const key = D => `${D.soil.name} volume change potential${D.soil.how === 'test' ? ` (I′p ${f1(D.soil.Ipm)}%)` : ''}; ${D.trees.length} tree${D.trees.length === 1 ? '' : 's'}${D.shrubs.length ? `, ${D.shrubs.length} shrub${D.shrubs.length === 1 ? '' : 's'}` : ''}; ${{ trench: 'strip or trench fill', pier: 'pier and beam', pile: 'pile and beam', raft: 'raft' }[D.type]}${D.clim > 0 ? `; climate −${f2(D.clim)} m` : ''}`;
+function verdict(D) {
+  const W = [...D.checks].sort((a, b) => b.util - a.util)[0];
+  return `<div class="verdict ${D.utilMax > 1 ? 'fail' : ''}"><div><div class="big">${D.utilMax > 1 ? 'FAIL' : 'PASS'} &nbsp;${f2(D.dReq)} m deep</div><div class="sub">${D.govT && D.dReq <= D.govT.depth + 1e-9 ? `${esc(D.govT.ref)} ${esc(D.govT.sp.n)} governs` : D.govS ? `shrub ${esc(D.govS.ref)} governs` : 'the minimum depth'}${D.dProp > 0 ? `, against ${f2(D.dProp)} m proposed` : ''}; the highest check: ${sub(W.name.charAt(0).toLowerCase() + W.name.slice(1))} ${ufmt(W.util)}<br>${key(D)}</div></div></div>`;
+}
+const notes = D => ['After NHBC Standards Chapter 4.2 (2022): the depth from Charts 1 to 3 (the depth tables of 4.2.13 are the same lines rounded up to 50 mm), Table 3 for the water demand and mature height, Table 3a for the height used, the climate map, Figures 1 to 3 for changed levels, Table 6 for shrubs and 4.2.10 for heave. The 2026 edition is current: check any change against it.',
+  'Not covered: slopes steeper than 1 in 7 and man-made slopes, underpinning, foundations deeper than 2.5 m and the engineer’s design of piers, piles and rafts (R5), roots met in the trench (ask an engineer), the arboriculturist’s assessment of pruned or pollarded trees, and the foundation’s own design to Chapters 4.3 to 4.5.'];
+let last = null;
+function render(D, s) {
+  let h = verdict(D) + `<div id="drawings"></div>`;
+  h += `<div class="dlabel">Checks</div><div class="checks">${[...D.checks].sort((a, b) => b.util - a.util).map(bar).join('')}</div>`;
+  D.warnings.forEach(t => { h += `<div class="note">${sub(t)}</div>`; });
+  if (D.trees.length) h += `<div class="dlabel">Each tree</div>${treeTable(D, 'ctab')}`;
+  h += `<div class="dlabel">Heave precautions</div>${D.heave.needed ? `<ul class="heave">${D.heave.items.map(t => `<li>${sub(t)}</li>`).join('')}</ul>` : '<div class="note">No tree that remains or is removed reaches the foundation: none needed for proposed trees on soil that is not desiccated (Table 8).</div>'}`;
+  h += `<div class="dlabel">New planting (NHBC Table 5)</div><div class="note">At ${f2(D.dFound)} m the foundation meets ${D.plantCol === 'A' ? 'column A: new trees no closer than the column A distances below' : 'column B: new trees outside their zone of influence'}. A tree planned nearer: enter it as a proposed tree.</div>${plantTable(D, 'ctab')}`;
+  h += `<div class="dlabel">Calculation</div>${stepsHTML(D.steps)}`;
+  h += `<div class="note">${notes(D).join(' ')}</div><button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  $('results').innerHTML = h; redraw(D);
+  $('printBtn').onclick = () => { $('report').innerHTML = report(D, s); window.print(); };
+}
+function run() {
+  const s = collect(); try { localStorage.setItem(STORE, JSON.stringify(s)); } catch (e) { /* storage unavailable */ }
+  clearTimeout(drawT);
+  try { const D = compute(s); last = { D, s }; render(D, s); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div><div id="drawings"></div>`; redraw(); }
+}
+$('calc').onclick = run;
+// ---------- A4 sheet ----------
+const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
+const okng = u => u <= 1 ? `<span class="ok">${ufmt(u)} OK</span>` : `<span class="ng">${ufmt(u)} FAIL</span>`;
+function report(D, s) {
+  const today = new Date().toLocaleDateString('en-GB');
+  const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.pRef) || '&nbsp;'}</div><div class="ttl">Foundations near trees, NHBC Standards Chapter 4.2</div></div>`;
+  let b = `<div class="rs"><h2>1 Soil, trees and shrubs</h2>${rl(key(D), '', '')}${D.steps.map(x => rl(sub(x.text), esc(x.ref), '')).join('')}</div>`;
+  b += `<div class="rs"><h2>2 Drawings</h2>${DrawTrees.report(D)}</div>`;
+  b += `<div class="rs"><h2>3 Depth and checks</h2>${rl(`Foundation depth needed: <b>${f2(D.dReq)} m</b>`, 'NHBC 4.2.12', '')}${D.checks.map(c => rl(`${sub(c.name)}: ${sub(c.note)}`, sub(c.ref), okng(c.util))).join('')}${treeTable(D, 'rt')}</div>`;
+  b += `<div class="rs"><h2>4 Heave precautions and new planting</h2>${D.heave.needed ? D.heave.items.map(t => `<p class="rp">${sub(t)}</p>`).join('') : '<p class="rp">None needed (no tree that remains or is removed reaches the foundation).</p>'}${plantTable(D, 'rt')}</div>`;
+  if (D.warnings.length) b += `<div class="rs">${D.warnings.map(t => `<p class="rp">${sub(t)}</p>`).join('')}</div>`;
+  b += `<div class="rs"><p class="rp">${notes(D).join(' ')}</p><p class="rp" style="color:#555">NHBC Standards 2022, Chapter 4.2 Building near trees. Generated by EngineeringTools — Foundations Near Trees.</p></div>`;
+  return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
+}
+let drawT = 0;
+function redraw(D) {
+  const el = $('drawings'); if (!el) return;
+  try { el.innerHTML = DrawTrees.html(D || compute(collect())); }
+  catch (e) { el.innerHTML = `<div class="note">The drawings will appear when the inputs are complete: ${esc(e.message)}</div>`; }
+}
+const queueDraw = () => { clearTimeout(drawT); drawT = setTimeout(() => redraw(), 200); };
+$('inputs').addEventListener('input', () => { refreshVis(); queueDraw(); }); $('inputs').addEventListener('change', () => { refreshVis(); queueDraw(); });
+$('inputs').addEventListener('click', e => { const t = e.target.closest('button'); if (t && !t.classList.contains('btn') && !t.classList.contains('btn2')) queueDraw(); });
+(function init() {
+  let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
+  restore(s && s.v === 1 ? s : {});
+  redraw();
+})();
+</script>
+<footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent structural engineer with relevant experience to check and approve all calculations before they are used.</footer>
+<!-- @@FILEIO: save / open, shared by every tool (scratchpad/common/fileio.*) -->
+<style id="ef-style">
+/* Save / open buttons on the page header, and the status message (source: scratchpad/common/fileio.css) */
+.ef-bar{position:absolute;top:14px;right:16px;z-index:3;display:flex;gap:8px;}
+.ef-bar.ef-float{position:fixed;top:12px;right:12px;}
+.ef-btn{height:32px;padding:0 12px;display:inline-flex;align-items:center;gap:6px;border:0;border-radius:6px;background:rgba(255,255,255,.94);color:#111;font-family:inherit;font-size:13px;font-weight:500;line-height:1;cursor:pointer;}
+.ef-btn:hover{background:#fff;}
+.ef-btn:focus-visible{outline:2px solid #fff;outline-offset:2px;}
+.ef-btn svg{width:15px;height:15px;flex:none;}
+.ef-msg{position:fixed;left:50%;bottom:20px;z-index:1000;width:max-content;max-width:min(560px,calc(100vw - 32px));transform:translate(-50%,8px);opacity:0;pointer-events:none;
+  background:#1d1f20;color:#fff;font-family:inherit;font-size:13px;line-height:1.45;padding:10px 14px;border-radius:6px;transition:opacity .15s,transform .15s;}
+.ef-msg.on{opacity:1;transform:translate(-50%,0);}
+.ef-msg.bad{background:#b3261e;}
+@media(max-width:560px){.ef-bar{position:static;margin-top:12px;align-self:flex-start;}}
+@media print{.ef-bar,.ef-msg{display:none!important;}}
+</style>
+<script id="ef-script">
+/* Save / open: a tool's inputs as a .json file. Shared by every Engineering Tools page (source: scratchpad/common/fileio.js),
+   configured per page with EngFile.init({...}).
+   File: { app: 'EngineeringTools', tool, key, format, saved, state }.
+   Two ways to open:
+   - store: the tool already restores itself from browser storage on load. Open writes the file's state there and reloads,
+     so the tool rebuilds everything (load tables, spans, models) exactly as on a return visit, then recalculates.
+   - set: the page applies the state itself (pages without saved state); EngFile.fields() covers plain forms. */
+const EngFile = (() => {
+  'use strict';
+  const APP = 'EngineeringTools', FMT = 1, FLAG = 'ef-opened';
+  let C = null, input = null, timer = 0;
+  const ICON = {
+    open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+    save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v5h8V3"/><path d="M7 21v-7h10v7"/></svg>',
+  };
+  const sess = {
+    get: k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
+    set: (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } },
+    del: k => { try { sessionStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
+  };
+
+  function msg(t, bad) {
+    let m = document.getElementById('ef-msg');
+    if (!m) { m = document.createElement('div'); m.id = 'ef-msg'; m.className = 'ef-msg no-print'; m.setAttribute('role', 'status'); m.setAttribute('aria-live', 'polite'); document.body.appendChild(m); }
+    m.textContent = t || ''; m.classList.toggle('bad', !!bad); m.classList.toggle('on', !!t);
+    clearTimeout(timer); if (t) timer = setTimeout(() => m.classList.remove('on'), bad ? 9000 : 5000);
+  }
+  function data() { return { app: APP, tool: C.tool, key: C.key, format: FMT, saved: new Date().toISOString(), state: C.get() }; }
+  function fileName() {
+    let ref = '', nm = ''; try { ref = C.ref ? String(C.ref() || '').trim() : ''; nm = C.name ? String(C.name() || '').trim() : ''; } catch (e) { ref = ''; }
+    return `${ref ? ref + ' ' : ''}${nm || C.tool}.json`.replace(/[\\/:*?"<>|]+/g, '-');
+  }
+  async function save() {
+    let d; try { d = data(); } catch (e) { msg(`Could not save: ${e.message}`, true); return; }
+    const name = fileName(), text = JSON.stringify(d, null, 1);
+    if (window.showSaveFilePicker) {   // Chrome / Edge: a Save As dialog, so the file can go straight into the job folder
+      try {
+        const h = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: `${C.tool} file`, accept: { 'application/json': ['.json'] } }] });
+        const w = await h.createWritable(); await w.write(text); await w.close(); msg(`Saved ${h.name}`); return;
+      } catch (e) { if (e && e.name === 'AbortError') return; }   // cancelled; any other failure falls back to a download
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    msg(`Saved ${name} to your downloads folder`);
+  }
+  function open() { input.value = ''; input.click(); }
+  // the saved state, or an error saying what the file is
+  function stateOf(d) {
+    const old = C.legacy ? C.legacy(d) : null; if (old) return old;
+    if (!d || d.app !== APP || !d.state || typeof d.state !== 'object') throw new Error('this is not an Engineering Tools file');
+    if (d.key !== C.key) throw new Error(d.tool ? `it was saved in ${d.tool}, so open it there` : 'it was saved in another tool');
+    if (!(d.format >= 1) || d.format > FMT) throw new Error('this file was saved by a newer version of the tools');
+    return d.state;
+  }
+  async function apply(d, name) {
+    const s = stateOf(d);
+    if (C.store) {
+      try { localStorage.setItem(C.store, JSON.stringify(s)); } catch (e) { throw new Error('this browser is blocking site storage for this page, which Open needs'); }
+      sess.set(FLAG, JSON.stringify({ name, key: C.key }));
+      history.replaceState(null, '', location.href.split('#')[0]);   // a #in= hand-over in the address would otherwise win over the file
+      location.reload(); return { reload: true };
+    }
+    const r = (await C.set(s)) || {};
+    if (C.calc) try { C.calc(); } catch (e) { /* the tool reports its own input errors */ }
+    return r;
+  }
+  function done(name, r) {
+    const k = r && r.skipped ? r.skipped.length : 0;
+    msg(`Opened ${name}` + (k ? `. ${k} saved value${k > 1 ? 's are' : ' is'} not used by this version and ${k > 1 ? 'were' : 'was'} left at the default` : ''));
+  }
+  async function openFile(file) {
+    if (!file) return;
+    let d; try { d = JSON.parse(await file.text()); } catch (e) { msg(`${file.name} could not be read as a saved file`, true); return; }
+    try { const r = await apply(d, file.name); if (!r.reload) done(file.name, r); } catch (e) { msg(`${file.name} was not opened: ${e.message}`, true); }
+  }
+  // plain forms: every input, select and textarea with an id under root; dropdowns are restored first, since choosing a
+  // section often auto-fills its dimensions, which the saved values then override
+  function fields(root) {
+    const els = () => [...(typeof root === 'string' ? document.querySelector(root) : root || document).querySelectorAll('input[id],select[id],textarea[id]')]
+      .filter(el => el.id !== 'ef-file' && !['file', 'button', 'submit', 'reset'].includes(el.type));
+    return {
+      get: () => { const o = {}; els().forEach(el => { o[el.id] = el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value; }); return o; },
+      set: o => {
+        const have = new Map(els().map(el => [el.id, el])), skipped = [], ent = Object.entries(o || {}), fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+        for (const [id, v] of ent) {
+          const el = have.get(id); if (!el) { skipped.push(id); continue; }
+          if (el.tagName === 'SELECT') { if ([...el.options].some(x => x.value === String(v))) { el.value = String(v); fire(el, 'change'); } else skipped.push(id); }
+        }
+        for (const [id, v] of ent) {
+          const el = have.get(id); if (!el || el.tagName === 'SELECT') continue;
+          if (el.type === 'checkbox' || el.type === 'radio') { el.checked = !!v; fire(el, 'change'); } else { el.value = String(v); fire(el, 'input'); fire(el, 'change'); }
+        }
+        return { skipped };
+      },
+    };
+  }
+  // file names lead with the job and member references from the page, e.g. '24-123 Slab S3 RC Slab Design.json'
+  const refOf = ids => () => ids.map(id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; }).filter(Boolean).join(' ');
+  function mount() {
+    const bar = document.createElement('div'); bar.className = 'ef-bar no-print';
+    bar.innerHTML = `<button type="button" class="ef-btn" id="ef-open" title="Open a saved file (Ctrl+O), or drop it onto the page">${ICON.open}Open</button>`
+      + `<button type="button" class="ef-btn" id="ef-save" title="Save the inputs to a file (Ctrl+S)">${ICON.save}Save</button>`;
+    const h = document.querySelector('.page-hdr'); if (h) h.appendChild(bar); else { bar.classList.add('ef-float'); document.body.appendChild(bar); }
+    bar.querySelector('#ef-open').addEventListener('click', open); bar.querySelector('#ef-save').addEventListener('click', save);
+  }
+  function init(c) {
+    C = Object.assign({ tool: (document.querySelector('h1') || {}).textContent || document.title, ref: refOf(['pJob', 'pRef']), calc: () => { const b = document.getElementById('calc'); if (b) b.click(); }, delay: 200 }, c);
+    C.tool = C.tool.trim(); if (!C.key) C.key = C.store;
+    if (C.store && !C.get) C.get = () => collect();   // eslint-disable-line no-undef -- the tool's own serialiser
+    input = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json', id: 'ef-file' }); input.hidden = true;
+    document.body.appendChild(input); input.addEventListener('change', () => openFile(input.files[0]));
+    mount();
+    document.addEventListener('keydown', e => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return; const k = (e.key || '').toLowerCase();
+      if (k === 's') { e.preventDefault(); save(); } else if (k === 'o') { e.preventDefault(); open(); }
+    });
+    document.addEventListener('dragover', e => { if ([...((e.dataTransfer && e.dataTransfer.types) || [])].includes('Files')) e.preventDefault(); });
+    document.addEventListener('drop', e => { const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f && /\.json$/i.test(f.name)) { e.preventDefault(); openFile(f); } });
+    // after an Open that reloaded the page: the tool has restored itself; recalculate and say what was opened
+    const f = sess.get(FLAG);
+    if (f) {
+      sess.del(FLAG); let o = null; try { o = JSON.parse(f); } catch (e) { o = null; }
+      if (o && o.key === C.key) setTimeout(() => { if (C.calc) try { C.calc(); } catch (e) { /* the tool reports its own input errors */ } done(o.name); }, C.delay);
+    }
+  }
+  return { init, save, open, openFile, apply, data, fileName, msg, fields, stateOf, refOf };
+})();
+window.EngFile = EngFile;   // reachable from the page's other scripts and the tests
+EngFile.init({ store: STORE });
+</script>
+<!-- /@@FILEIO -->
+</body>
+</html>
