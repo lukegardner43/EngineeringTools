@@ -1,6 +1,6 @@
 // Drawings on Composite Beam, Floor Vibration, Steel Member, Concrete Tie Force and RC Crack Width (group 1) and on Steel Beam
 // Torsion, Beam Web Openings, Steel Frame Design, Sheet Pile Wall, the RC Section Toolkit tabs, RC Column, Hollowcore Support
-// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages to Working Platforms (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
+// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages to Ground-Bearing Slab (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
 //   NODE_PATH=<jsdom>/node_modules node tests/drawings/test_drawings.js
 const fs = require('fs'), path = require('path'), { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '../..');
@@ -425,6 +425,12 @@ async function sweep(f, cases, expect) {
   await sweep('Working Platforms.html', [
     ['a stiffer subgrade', w => set(w, 'cu', '40')], ['a heavier case 2', w => set(w, 'q2k', '260')], ['a geosynthetic', w => { const c = w.document.getElementById('rOn'); c.checked = true; c.dispatchEvent(new w.Event('change', { bubbles: true })); }],
     ['a granular subgrade', w => { set(w, 'sub', 'granular', 'change'); set(w, 'phiS', '33'); }], ['a proposed thickness', w => set(w, 'Dprop', '0.9')],
+  ], 2);
+  await sweep('Ground-Bearing Slab.html', [
+    ['a thicker slab', w => set(w, 'h', '225')], ['a softer subgrade', w => set(w, 'k', '0.02')], ['fabric', w => set(w, 'reo', 'fabric', 'change')],
+    ['a heavier point load added', w => { w.document.getElementById('addPt').click(); const r = [...w.document.querySelectorAll('#ptRows .row')].pop(), P = r.querySelector('.P'); P.value = '300'; P.dispatchEvent(new w.Event('input', { bubbles: true })); }],
+    ['four loads at a free corner', w => { const r = w.document.querySelector('#ptRows .row'); r.querySelector('.loc').value = 'corner'; r.querySelector('.n').value = '4'; r.querySelector('.sy').value = '1100'; r.querySelector('.n').dispatchEvent(new w.Event('change', { bubbles: true })); }],
+    ['plain concrete', w => set(w, 'reo', 'plain', 'change')],
   ], 2);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();

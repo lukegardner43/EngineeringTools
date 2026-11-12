@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ground-Bearing Slab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* Engineering Tools: shared light style (tasteskill app sheet "Achromatic ledger", seed 959138263).
+   Ink chrome on a blue-grey drawing-office ground; the one hue (#1d5fbf) goes on the main data element
+   (envelopes, utilisation bars); status colour only on the verdict and on a check that is over. */
+:root{
+  --bg:#f2f4f7; --surf:#ffffff; --surf2:#f7f8fa; --bdr:#e3e5e8; --bdr2:#d1d5db; --rule:#eceef1;
+  --txt:#111111; --lbl:#33363a; --mut:#5f6368; --faint:#6b6b6b;
+  --accent:#1d5fbf; --accent-dim:#e3ebf8;
+  --primary:#1d1f20;
+  --pass:#247b50; --warn:#b45309; --fail:#c4242a;
+  --pass-bg:#dcfae5; --pass-ink:#04250e; --fail-bg:#ffedea; --fail-ink:#831c1e;
+  --r:6px; --rc:8px;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:var(--sans);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5;min-height:100svh;padding:28px 32px 40px;
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;}
+.container{max-width:1376px;margin:0 auto;}
+/* title row: a photograph of the member's material (img/<material>.jpg beside the page, set by <body data-material>)
+   under a neutral scrim, with the breadcrumb, the tool's name and one line of scope. Without the photo it is a plain ink band. */
+.page-hdr{position:relative;isolation:isolate;overflow:hidden;border-radius:var(--rc);min-height:164px;padding:18px 24px 20px;margin-bottom:12px;
+  display:flex;flex-direction:column;justify-content:flex-end;color:#fff;background:#2c3036 var(--photo,none) center/cover no-repeat;}
+.page-hdr::before{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.55) 45%,rgba(0,0,0,.18) 100%);} /* taste-skill-ignore: neutral scrim under text on a photograph */
+.page-hdr::after{content:var(--credit,'');position:absolute;right:10px;bottom:8px;font-size:11px;color:rgba(255,255,255,.9);background:rgba(0,0,0,.4);padding:1px 6px;border-radius:4px;}
+.home-lnk{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:rgba(255,255,255,.88);text-decoration:none;font-weight:500;margin-bottom:auto;align-self:flex-start;padding-bottom:12px;}
+.home-lnk:hover{color:#fff;text-decoration:underline;}
+.home-lnk svg{width:14px;height:14px;}
+.page-hdr h1{font-size:26px;font-weight:600;line-height:1.25;letter-spacing:-0.01em;margin-bottom:4px;color:#fff;}
+.page-hdr p{font-size:14px;color:rgba(255,255,255,.92);max-width:900px;}
+body[data-material="steel"]{--photo:url(img/steel.jpg);--credit:'Photo: Chevsapher, CC0';}
+body[data-material="concrete"]{--photo:url(img/concrete.jpg);--credit:'Photo: MassDOT, public domain';}
+body[data-material="masonry"]{--photo:url(img/masonry.jpg);--credit:'Photo: Håkan Svensson, CC BY 2.5';}
+body[data-material="timber"]{--photo:url(img/timber.jpg);--credit:'Photo: Sebastian Wallroth, public domain';}
+body[data-material="frame"]{--photo:url(img/frame.jpg);--credit:'Photo: Wikideas1, CC0';}
+body[data-material="ground"]{--photo:url(img/ground.jpg);--credit:'Photo: Fons Heijnsbroek, CC0';}
+@media print{.page-hdr{display:none;}}
+/* inputs on the left, the answer on the right: (1376 - 12) x 6/13 = 630 | 734 */
+.main-grid{display:grid;grid-template-columns:minmax(380px,6fr) 7fr;gap:12px;align-items:start;}
+@media(max-width:1100px){.main-grid{grid-template-columns:1fr;}}
+.main-grid > div{min-width:0;}
+#results table.t{display:block;overflow-x:auto;white-space:nowrap;}
+.card{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rc);padding:20px 24px;margin-bottom:12px;}
+.section-title{font-size:16px;font-weight:600;color:var(--txt);margin:0 0 14px;display:flex;justify-content:space-between;align-items:baseline;gap:12px;line-height:1.3;}
+.section-title .aux{color:var(--mut);font-size:13px;font-weight:400;text-align:right;}
+.form-group{margin-bottom:14px;}
+.form-group label,.lbl{display:block;font-size:13px;margin-bottom:5px;color:var(--lbl);font-weight:500;line-height:1.35;}
+input[type="number"],input[type="text"],select{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);padding:0 10px;height:36px;border-radius:var(--r);font-family:var(--sans);font-size:14px;width:100%;font-variant-numeric:tabular-nums;transition:border-color .12s;}
+input::placeholder{color:var(--faint);}
+input:hover,select:hover{border-color:#b9bec6;}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);}
+input:disabled,select:disabled{background:var(--surf2);color:var(--mut);}
+select option{background:var(--surf);color:var(--txt);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.grid2 > .form-group,.grid3 > .form-group{display:flex;flex-direction:column;justify-content:flex-end;}
+.chk{display:block;position:relative;padding-left:26px;font-size:13px;color:var(--lbl);margin:8px 0;cursor:pointer;line-height:1.45;}
+.chk input{position:absolute;left:0;top:1px;width:16px;height:16px;accent-color:var(--primary);}
+.help{font-size:13px;color:var(--mut);margin-top:4px;line-height:1.45;}
+/* segmented control: grey track, white pill on the chosen option */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#e9ecf0;border-radius:var(--rc);margin-bottom:14px;}
+.seg button{background:transparent;color:var(--mut);border:1px solid transparent;border-radius:var(--r);height:32px;padding:0 10px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;}
+.seg button:hover{color:var(--txt);}
+.seg button.on{background:var(--surf);color:var(--txt);border-color:var(--bdr);}
+/* repeating rows: spans, supports, loads */
+.rows{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+.row{display:grid;gap:8px;align-items:end;background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--r);padding:10px;}
+.row label{font-size:12px;color:var(--mut);margin-bottom:3px;display:block;font-weight:500;line-height:1.3;}
+.row input,.row select{height:32px;font-size:13px;padding:0 8px;}
+.row.span{grid-template-columns:1fr 1.6fr 1fr 32px;}
+.row.load{grid-template-columns:52px 64px 1.1fr 1.1fr 32px;}
+.row.load .vals{grid-column:1 / span 3;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.xbtn{height:32px;width:32px;background:var(--surf);border:1px solid var(--bdr2);color:var(--mut);border-radius:var(--r);cursor:pointer;font-size:16px;line-height:1;}
+.xbtn:hover{color:var(--fail);border-color:var(--fail);}
+.addbtn{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);border-radius:var(--r);height:36px;padding:0 12px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;width:100%;}
+.addbtn:hover{border-color:#9aa0a8;background:var(--surf2);}
+/* the one primary action, near-black; secondary actions white and outlined */
+.btn{height:44px;padding:0 16px;border:none;border-radius:var(--r);font-weight:600;cursor:pointer;font-family:var(--sans);font-size:15px;width:100%;background:var(--primary);color:#fff;}
+.btn:hover{background:#000;}
+.btn:focus-visible,.btn2:focus-visible,.addbtn:focus-visible,.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.btn2{width:100%;height:38px;padding:0 12px;background:var(--surf);border:1px solid var(--bdr2);border-radius:var(--r);font-size:14px;font-weight:500;color:var(--txt);cursor:pointer;font-family:var(--sans);margin-top:8px;}
+.btn2:hover{border-color:#9aa0a8;background:var(--surf2);}
+.hidden{display:none!important;}
+/* results */
+.placeholder{display:flex;align-items:center;justify-content:center;min-height:160px;color:var(--mut);font-size:14px;text-align:center;padding:0 24px;}
+.verdict{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--bdr);border-radius:var(--rc);background:var(--surf2);margin-bottom:16px;}
+.verdict .big{font-size:24px;font-weight:600;line-height:1.2;color:var(--pass);letter-spacing:-0.01em;}
+.verdict.fail .big{color:var(--fail);}
+.verdict .sub{font-size:13px;color:var(--mut);margin-top:2px;}
+/* the utilisation ledger: check, clause, bar to scale (full track = 1.2, ink tick at the 1.0 limit), figure */
+.checks{display:flex;flex-direction:column;margin-bottom:8px;}
+.ck{display:grid;grid-template-columns:1.25fr 2fr 56px;gap:14px;align-items:center;font-size:13px;padding:7px 0;border-bottom:1px solid var(--rule);}
+.ck:last-child{border-bottom:none;}
+.ck .nm{color:var(--txt);line-height:1.35;} .ck .nm small{display:block;color:var(--mut);font-size:12px;}
+.bar{height:8px;background:#e8ebef;border-radius:4px;position:relative;}
+.bar::after{content:'';position:absolute;left:83.333%;top:-4px;bottom:-4px;width:1.5px;background:var(--txt);border-radius:1px;}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:4px;}
+.bar i.over{background:var(--fail);} /* 0.9-1.0 stays blue: a well-used member is not a warning; the tick shows how close it is */
+.ck .u{text-align:right;font-weight:600;font-size:14px;}
+.ck .u.over{color:var(--fail);}
+.diag{width:100%;height:auto;display:block;margin-bottom:6px;}
+/* screen drawings: the smallest labels lifted to the 11px floor (the print sheet keeps its own sizes) */
+.container svg text[font-size="8"],.container svg text[font-size="8.5"],.container svg text[font-size="9"],.container svg text[font-size="9.5"],
+.container svg text[font-size="10"],.container svg text[font-size="10.5"]{font-size:11px;}
+.dlabel{font-size:14px;font-weight:600;color:var(--txt);margin:20px 0 6px;line-height:1.3;}
+table.t{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px;font-variant-numeric:tabular-nums;}
+table.t th{color:var(--mut);font-weight:500;text-align:right;padding:6px 8px;border-bottom:1px solid var(--bdr);font-size:12px;}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--rule);text-align:right;}
+table.t th:first-child,table.t td:first-child{text-align:left;}
+.note{font-size:13px;color:var(--mut);background:var(--surf2);border:1px solid var(--rule);border-radius:var(--r);padding:10px 12px;margin-top:10px;line-height:1.5;}
+.err{color:var(--fail-ink);background:var(--fail-bg);font-size:13px;padding:10px 12px;border-radius:var(--r);margin-bottom:12px;}
+.busy{opacity:.55;pointer-events:none;}
+a{color:var(--txt);}
+sub,sup{font-size:max(11px,.75em);line-height:0;}
+@media(max-width:560px){body{padding:16px 16px 32px;} .card{padding:16px;} .ck{grid-template-columns:1fr 1fr 48px;gap:10px;} .grid3{grid-template-columns:1fr 1fr;}
+  .row.span{grid-template-columns:1fr 32px;} .row.span > div:nth-child(2),.row.span > div:nth-child(3){display:none;} .row.load .vals{grid-template-columns:1fr 1fr;}
+  .page-hdr{min-height:150px;padding:14px 16px 16px;} .page-hdr h1{font-size:22px;} .page-hdr::after{top:10px;bottom:auto;} .page-hdr::before{background:rgba(0,0,0,.6);} .verdict .big{font-size:22px;}}
+/* disclaimer: on screen at the foot of the page, and printed at the end of the calculation sheet */
+.disclaimer{max-width:1376px;margin:24px auto 0;padding-top:14px;border-top:1px solid var(--bdr,#e3e5e8);font-size:13px;line-height:1.55;color:var(--mut,#5f6368);}
+.disclaimer b{color:var(--txt,#111);font-weight:600;}
+@media print{.disclaimer{display:block!important;max-width:none;margin:4mm 0 0;padding-top:1.5mm;border-top:0.4pt solid #888;font-family:Arial,Helvetica,sans-serif;font-size:7.5pt;color:#000;break-inside:avoid;} .disclaimer b{color:#000;}}
+/* ---------- print: A4 calculation sheet ---------- */
+#report{display:none;}
+@media print{
+  @page{size:A4;margin:12mm 12mm 14mm;}
+  body{background:#fff;color:#000;padding:0;background-image:none;font-size:9.5pt;}
+  .container{display:none;}
+  #report{display:block;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  #report table.wrap{width:100%;border-collapse:collapse;}
+  #report thead td{padding:0 0 3mm;}
+  .rh{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;border:0.6pt solid #000;font-size:8pt;}
+  .rh div{padding:1.2mm 2mm;border-right:0.6pt solid #000;}
+  .rh div:last-child{border-right:none;}
+  .rh b{display:block;font-size:6.5pt;color:#444;font-weight:normal;text-transform:uppercase;letter-spacing:.3pt;}
+  .rh .ttl{grid-column:1 / -1;border-top:0.6pt solid #000;border-right:none;font-weight:bold;font-size:10pt;}
+  .rs{margin:0 0 3.5mm;}
+  .rs h2,.rs h3{break-after:avoid;}
+  .rl,.rt,.rsvg,.rp,.rt tr{break-inside:avoid;}
+  .rs h2{font-size:10pt;margin:3mm 0 1.5mm;padding-bottom:0.8mm;border-bottom:0.8pt solid #000;}
+  .rs h3{font-size:9pt;margin:2mm 0 1mm;}
+  .rl{display:grid;grid-template-columns:1fr 92px 132px;gap:2mm;padding:0.5mm 0;font-size:8.6pt;}
+  .rl .cl{text-align:right;color:#444;font-size:7.5pt;}
+  .rl .rv{text-align:right;font-weight:bold;}
+  .ok{color:#0a7a3e;} .ng{color:#c00;}
+  .rt{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;}
+  .rt th,.rt td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;}
+  .rt th{background:#eee;font-weight:bold;}
+  .rt td:first-child,.rt th:first-child,.rt.lft td,.rt.lft th{text-align:left;}
+  .rp{font-size:8.3pt;line-height:1.45;margin:1mm 0;}
+  .rsvg{width:100%;height:auto;}
+  .rsvg *{vector-effect:non-scaling-stroke;}
+}
+
+[hidden]{display:none!important;}
+.steps{font-size:12px;color:var(--mut);line-height:1.5;margin-bottom:12px;}
+.steps .st{display:grid;grid-template-columns:120px 1fr;gap:8px;padding:3px 0;border-bottom:1px solid var(--bdr);}
+.steps .st span:first-child{font-size:12px;color:var(--faint);}
+.ctab{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:12px;}
+.ctab th{font-size:12px;font-weight:500;color:var(--mut);text-align:right;padding:4px 6px;border-bottom:1px solid var(--rule);}
+.ctab th:first-child,.ctab td:first-child,.ctab th:nth-child(2),.ctab td:nth-child(2){text-align:left;}
+.ctab td{text-align:right;padding:4px 6px;border-bottom:1px solid #f0f0f0;font-variant-numeric:tabular-nums;}
+.ctab td.gov{color:var(--accent);font-weight:600;}
+.tscroll{overflow-x:auto;}
+.chk{display:flex;gap:8px;align-items:center;font-size:13px;margin:6px 0;}
+.chk input{width:auto;height:auto;}
+.row.pt{grid-template-columns:0.6fr 1.3fr 0.8fr 0.7fr 0.7fr 1.1fr 0.6fr 0.7fr 0.7fr 32px;}
+.row.ln{grid-template-columns:0.6fr 0.9fr 1.2fr 0.9fr 32px;}
+</style>
+</head>
+<body data-material="concrete" style="--photo:url(img/concrete.jpg);--credit:'Photo: MassDOT, public domain'">
+<div class="container">
+  <div class="page-hdr">
+    <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
+    <h1>Ground-Bearing Slab</h1>
+    <p>Industrial concrete floors on the ground, after Concrete Society TR34 (4th edition) &nbsp;·&nbsp; plain, fabric, steel or macro-synthetic fibre slabs &nbsp;·&nbsp; racking, materials handling and other point loads, single, paired or in fours, internal, at an edge or at a joint with aggregate interlock and dowels (Meyerhof) &nbsp;·&nbsp; punching with the ground’s support &nbsp;·&nbsp; line loads and uniform loads (Hetényi) &nbsp;·&nbsp; fatigue under heavy trucks</p><!-- @@VERIFY: verification tag (scratchpad/verify/tags.py; the ROADMAP's Verification status) --><div class="vt" role="note"><span class="vt-pill vt-no">Not yet verified</span><span class="vt-why">TR34 has no worked examples: each step is checked only against hand calculations so far, not yet against a published slab design. Check its results independently.</span></div><style id="vt-style">.vt{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;margin:2px 0 8px;max-width:900px;}.vt-pill{flex:none;font-size:12px;font-weight:600;line-height:1.5;padding:1px 10px;border-radius:999px;background:#f2b33d;color:#221500;}.vt-part{background:#fbe3b0;color:#3d2a00;}.vt-why{font-size:13px;line-height:1.45;color:rgba(255,255,255,.92);flex:1 1 320px;}@media print{#report::before{content:"Not yet verified: TR34 has no worked examples: each step is checked only against hand calculations so far, not yet against a published slab design. Check its results independently.";display:block;font-family:Arial,Helvetica,sans-serif;font-size:8.5pt;line-height:1.35;color:#5a3b00;border:1px solid #e0a83a;border-radius:2mm;padding:2mm 3mm;margin:0 0 3mm;}}</style><!-- /@@VERIFY -->
+  </div>
+  <div class="main-grid">
+    <div id="inputs">
+      <div class="card">
+        <div class="section-title">Project</div>
+        <div class="form-group"><label>Project</label><input type="text" id="pName" placeholder="Project name"></div>
+        <div class="grid3"><div class="form-group"><label>Job no.</label><input type="text" id="pJob"></div><div class="form-group"><label>By</label><input type="text" id="pBy"></div><div class="form-group"><label>Ref.</label><input type="text" id="pRef" placeholder="e.g. Warehouse floor"></div></div>
+      </div>
+      <div class="card">
+        <div class="section-title">Slab</div>
+        <div class="grid3">
+          <div class="form-group"><label>Thickness h (mm)</label><input type="number" id="h" value="175" step="5"></div>
+          <div class="form-group"><label>Concrete</label><select id="fck"><option value="25">C25/30</option><option value="28">C28/35</option><option value="30">C30/37</option><option value="32" selected>C32/40</option><option value="35">C35/45</option><option value="40">C40/50</option></select></div>
+          <div class="form-group"><label>k (N/mm³)</label><input type="number" id="k" value="0.05" step="0.005"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Reinforcement</label><select id="reo"><option value="fibre" selected>Fibres</option><option value="fabric">Fabric</option><option value="fibreBar">Fibres with bars</option><option value="plain">Plain</option></select></div>
+          <div class="form-group g-fib"><label>Fibre</label><select id="fibreType"><option value="steel" selected>Steel</option><option value="synthetic">Macro-synthetic</option></select></div>
+        </div>
+        <div class="grid3 g-fib">
+          <div class="form-group"><label>f<sub>R1</sub> (N/mm²)</label><input type="number" id="fR1" value="3.5" step="0.1"></div>
+          <div class="form-group"><label>f<sub>R2</sub></label><input type="number" id="fR2" value="3.4" step="0.1"></div>
+          <div class="form-group"><label>f<sub>R3</sub></label><input type="number" id="fR3" value="3.2" step="0.1"></div>
+          <div class="form-group"><label>f<sub>R4</sub></label><input type="number" id="fR4" value="3.0" step="0.1"></div>
+        </div>
+        <div class="grid3 g-bar" hidden>
+          <div class="form-group"><label>A<sub>s</sub> bottom (mm²/m)</label><input type="number" id="As" value="252" step="1"></div>
+          <div class="form-group"><label>Bar size (mm)</label><input type="number" id="phi" value="8" step="1"></div>
+          <div class="form-group"><label>Bottom cover (mm)</label><input type="number" id="cover" value="50" step="5"></div>
+        </div>
+        <div class="help">k from plate bearing tests on the subgrade at 1.25 mm settlement (TR34 5.1, 5.6), without enhancement for the sub-base. f<sub>R1</sub> to f<sub>R4</sub>: the mean residual flexural strengths of the notched beam tests (EN 14651) for the fibre and dosage specified. Fabric in the bottom of the slab (A142 142, A193 193, A252 252, A393 393 mm²/m).</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Joints</div>
+        <label class="chk"><input type="checkbox" id="interlock" checked> Sawn joints: 15% of the load across by aggregate interlock</label>
+        <div class="grid3">
+          <div class="form-group"><label>Dowels</label><select id="dowels"><option value="none">None</option><option value="bar" selected>Round bars</option><option value="given">Capacity given</option></select></div>
+          <div class="form-group g-dw"><label>Spacing (mm)</label><input type="number" id="sd" value="300" step="25"></div>
+          <div class="form-group g-dbar"><label>Diameter (mm)</label><input type="number" id="dd" value="20" step="1"></div>
+          <div class="form-group g-dbar"><label>Joint opening (mm)</label><input type="number" id="open" value="5" step="1"></div>
+          <div class="form-group g-dgiv" hidden><label>Per dowel (kN)</label><input type="number" id="Pd" value="30" step="1"></div>
+        </div>
+        <div class="help">Loads at joints use the edge capacity, raised by the load passed across (7.9): 15% by aggregate interlock at sawn joints and the dowels within 0.9 l either side, never more than the internal capacity. Plate dowels: give the maker’s capacity per dowel.</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Point loads (characteristic)</div>
+        <div class="rows" id="ptRows"></div>
+        <button class="addbtn" id="addPt" type="button">+ Add a point load</button>
+        <div class="help">x, y: the contact area (baseplates: the stiff part, d + 4t; 100 × 100 for racking if not known; wheels: from the maker or the load over the tyre pressure). No.: 1, 2 or 4 loads at s<sub>x</sub> (and s<sub>y</sub>) centres, each of P. Back-to-back racking uprights: two loads at their spacing. Factors: racking 1.2, other static 1.5, materials handling 1.6 (TR34 7.2).</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Line and uniform loads (characteristic)</div>
+        <div class="rows" id="lnRows"></div>
+        <button class="addbtn" id="addLn" type="button">+ Add a line load</button>
+        <div class="grid3" style="margin-top:10px"><div class="form-group"><label>UDL, random (kN/m²)</label><input type="number" id="udl" value="50" step="5" placeholder="none"></div></div>
+        <div class="help">Line loads (walls, racking runs) and block stacking by Hetényi’s elastic analysis, against the cracking moment with the 1.5 on the concrete (7.11, 7.12). Distance: from the free edge or joint to the line.</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Fatigue under heavy trucks</div>
+        <label class="chk"><input type="checkbox" id="fatOn"> Check fatigue (TR34 Appendix E; plain and fabric slabs only)</label>
+        <div class="grid3 g-fat" hidden>
+          <div class="form-group"><label>Front axle (kg)</label><input type="number" id="ax1" value="12000" step="500"></div>
+          <div class="form-group"><label>Rear axle (kg)</label><input type="number" id="ax2" value="3000" step="500"></div>
+          <div class="form-group"><label>Passes over a point</label><input type="number" id="passes" value="500000" step="10000"></div>
+        </div>
+        <label class="chk g-fat" hidden><input type="checkbox" id="solid" checked> Solid or high-pressure tyres (× 1.3)</label>
+      </div>
+      <button class="btn" id="calc">Check slab</button>
+    </div>
+    <div><div class="card" id="results"><div class="placeholder">Give the slab, the joints and the loads, then Check.</div><div id="drawings"></div></div></div>
+  </div>
+</div>
+<div id="report"></div>
+<script id="engine">
+/* ===== GROUND-BEARING SLAB ENGINE (EngineeringTools) =====
+   Concrete industrial floors on the ground, after Concrete Society TR34, 4th edition (2013, with its amendments), chapters 6
+   and 7 and Appendix E. N and mm in the sections, kN and m for loads, k in N/mm³.
+   - Materials (6.1 to 6.3): f_ctd,fl = f_ctm (1.6 − h/1000)/1.5; the hogging capacity of plain concrete M_n = M_un =
+     f_ctd,fl h²/6 (fabric and fibres do not raise it); the sagging capacity M_p: plain M_un; fabric near the bottom
+     0.95 A_s f_yk d/1.15; steel or macro-synthetic fibres h² (0.29 σ_r4 + 0.16 σ_r1)/1.5 with σ_r1 = 0.45 f_R1, σ_r4 = 0.37 f_R4;
+     fibres with bars under 0.15% that plus A_s f_yk (d − 0.048h)/1.15. The ratio of cracked to uncracked capacity at least
+     50% (7.4); fabric 0.08% at least.
+   - Radius of relative stiffness l = [E_cm h³/(12 (1 − ν²) k)]^0.25, ν 0.2 (7.5).
+   - Point loads (7.8, Meyerhof): internal 2π(M_p + M_n) at a/l = 0 and 4π(M_p + M_n)/(1 − a/3l) from a/l 0.2; edge
+     π(M_p + M_n)/2 + 2M_n and [π(M_p + M_n) + 4M_n]/(1 − 2a/3l); corner 2M_n and 4M_n/(1 − a/l); linear in a/l between 0 and
+     0.2. a the radius of a circle of the contact area (baseplates: the stiff part, d + 4t, 100 × 100 for racking if not
+     known). Two loads closer than 2h as one on their combined area; further apart [2π + 1.8x/l] and [4π/(1 − a/3l) +
+     1.8x/(l − a/2)] × (M_p + M_n), at most the two singles; four loads the least of the singles, the pairs and
+     [2π + 1.8(x + y)/l] / [4π/(1 − a/3l) + 1.8(x + y)/(l − a/2)] × (M_p + M_n). At a joint (7.9): the edge capacity over
+     0.85 for 15% aggregate interlock (sawn joints) plus the dowels within 0.9 l either side (6.5: round bars
+     0.6 f_yd A_v and d_d²(f_cd f_yd)^0.5 [(1 + α²)^0.5 − α]), never more than the internal capacity.
+   - Load factors (7.2): racking 1.2, other static 1.5, materials handling (dynamic) 1.6; line loads and UDLs 1.0 (the 1.5 is
+     on the material).
+   - Punching (6.4, 7.10): at the face v_max = 0.5 k₂ f_cd (k₂ = 0.6(1 − f_ck/250), f_cd = f_ck/1.5) on u₀; at 2d, v_Rd,c
+     (fabric 0.18/1.5 k_s (100ρ f_ck)^⅓, not below 0.035 k_s^1.5 f_ck^0.5) plus v_f = 0.015 Σ f_R for steel fibres, on u₁;
+     d = 0.75h for plain and fibre slabs; the ground's reaction inside the perimeter deducted (internal 1.4 (d/l)² P +
+     0.47 (x + y) d P/l², edge 2.4 (d/l)² P + 0.8 (2y + x) d P/l², a no more than 0.2 l; corner none).
+   - Line loads (7.11, Hetényi): λ = (3k/(E_cm h³))^0.25, P_lin = 4λM_un, 3λM_un at a free edge rising to 4λM_un at 3/λ
+     (1/λ at a joint with 15% transfer).
+   - UDL (7.12): a random pattern, q = 5.95 λ² M_un, at its worst on strips π/λ wide π/2λ apart (the critical aisle width).
+   - Fatigue (Appendix E, plain and fabric slabs only): standard axles (axle/8160 kg)⁴, solid tyres × 1.3, and
+     h = 1935 L^0.196 / f_cm^0.68 (A_s < 300 mm²/m) or 9141 L^0.209 / (f_cm^0.663 A_s^0.296). */
+const GroundSlab = (() => {
+  'use strict';
+  const fin = (v, nm) => { v = typeof v === 'string' && v.trim() !== '' ? +v : v; if (!Number.isFinite(v)) throw new Error(`${nm}: give a number`); return v; };
+  const pos = (v, nm) => { v = fin(v, nm); if (!(v > 0)) throw new Error(`${nm} must be greater than 0`); return v; };
+  const nonneg = (v, nm) => { v = fin(v, nm); if (v < 0) throw new Error(`${nm} cannot be negative`); return v; };
+  const opt = (v, d) => (v === undefined || v === null || v === '' || (typeof v === 'number' && Number.isNaN(v)) ? d : v);
+  const GM = 1.5, GS = 1.15, FYK = 500, NU = 0.2;
+  const CLASSES = { 25: 30, 28: 35, 30: 37, 32: 40, 35: 45, 40: 50 };   // Table 6.1
+  const GAMMA = { racking: 1.2, static: 1.5, dynamic: 1.6 };              // 7.2
+  const KIND = { racking: 'Racking', static: 'Other static', dynamic: 'Materials handling (dynamic)' };
+  const concrete = fck => { const fcm = fck + 8; return { fck, fcu: CLASSES[fck], fcm, fctm: 0.3 * fck ** (2 / 3), Ecm: 22000 * (fcm / 10) ** 0.3 }; };
+  // Meyerhof's capacities (kNm/m moments in, kN out) at a/l = 0 and from a/l = 0.2, interpolated between (7.8.3)
+  function single(loc, Mp, Mn, a, l) {
+    const r = a / l;
+    const f0 = loc === 'internal' ? 2 * Math.PI * (Mp + Mn) : loc === 'edge' ? Math.PI * (Mp + Mn) / 2 + 2 * Mn : 2 * Mn;
+    const f2 = rr => (loc === 'internal' ? 4 * Math.PI * (Mp + Mn) / (1 - rr / 3) : loc === 'edge' ? (Math.PI * (Mp + Mn) + 4 * Mn) / (1 - 2 * rr / 3) : 4 * Mn / (1 - rr));
+    if (r >= 0.2) return { P: f2(r), f0, f2: f2(r), r };
+    return { P: f0 + (f2(0.2) - f0) * r / 0.2, f0, f2: f2(0.2), r };
+  }
+  function multi(Mp, Mn, a, l, s) {   // the dual (s = x) or quadruple (s = x + y) internal formula, interpolated likewise
+    const r = a / l, M = Mp + Mn, f0 = (2 * Math.PI + 1.8 * s / l) * M, f2 = rr => (4 * Math.PI / (1 - rr / 3) + 1.8 * s / (l - rr * l / 2)) * M;
+    return r >= 0.2 ? f2(r) : f0 + (f2(0.2) - f0) * r / 0.2;
+  }
+  // round bar dowels (6.5.1): N, mm in; kN out
+  function dowelBar(dd, open, c) {
+    const fyd = FYK / GS, fcd = c.fck / 1.5, Av = 0.9 * Math.PI * dd * dd / 4, e = open / 2;
+    const Psh = 0.6 * fyd * Av / 1000, alpha = 3 * e * Math.sqrt(fcd / fyd) / dd, Pmax = dd * dd * Math.sqrt(fcd * fyd) * (Math.sqrt(1 + alpha * alpha) - alpha) / 1000;
+    return { Psh, Pmax, alpha, P: Math.min(Psh, Pmax) };
+  }
+
+  function design(inp) {
+    const h = pos(inp.h, 'Slab thickness h');
+    if (h < 150) throw new Error('Slab thickness: at least 150 mm (TR34 7.1)');
+    if (h >= 600) throw new Error('Slab thickness: under 600 mm (TR34 6.1.1)');
+    const fck = fin(opt(inp.fck, 32), 'Concrete class'); if (!CLASSES[fck]) throw new Error('Concrete: C25/30 to C40/50 (TR34 Table 6.1)');
+    const c = concrete(fck), k = pos(inp.k, 'Modulus of subgrade reaction k');
+    const reo = ['plain', 'fabric', 'fibre', 'fibreBar'].includes(inp.reo) ? inp.reo : 'fibre';
+    const f2 = v => v.toFixed(2), f1 = v => v.toFixed(1), f0 = v => Math.round(v).toString(), f3 = v => v.toFixed(3);
+    // ---- moments (kNm/m) ----
+    const fctdfl = c.fctm * (1.6 - h / 1000) / GM, Mun = fctdfl * h * h / 6 / 1000;
+    let Mp = Mun, d = 0.75 * h, As = 0, cover = null, phi = null, sr1 = 0, sr4 = 0, fR = null, vf = 0, steelFibre = inp.fibreType !== 'synthetic';
+    if (reo === 'fabric' || reo === 'fibreBar') {
+      As = pos(inp.As, 'Bottom steel A_s (mm²/m)'); cover = pos(opt(inp.cover, 50), 'Bottom cover'); phi = pos(opt(inp.phi, 10), 'Bar size');
+      d = h - cover - phi / 2; if (!(d > 0)) throw new Error('The effective depth is not positive');
+    }
+    if (reo === 'fibre' || reo === 'fibreBar') {
+      fR = [1, 2, 3, 4].map(i => nonneg(opt(inp[`fR${i}`], i === 1 || i === 4 ? NaN : 0), `f_R${i}`));
+      if (!(fR[0] > 0) || !(fR[3] > 0)) throw new Error('Give f_R1 and f_R4 from the notched beam tests (EN 14651)');
+      sr1 = 0.45 * fR[0]; sr4 = 0.37 * fR[3];
+      vf = steelFibre ? 0.015 * fR.reduce((s, v) => s + v, 0) : 0;
+    }
+    if (reo === 'fabric') Mp = 0.95 * As * FYK * d / GS / 1e6;
+    if (reo === 'fibre') Mp = h * h * (0.29 * sr4 + 0.16 * sr1) / GM / 1000;
+    if (reo === 'fibreBar') {
+      if (As >= 0.0015 * h * 1000) throw new Error('Fibres with bars of 0.15% or more need the full equilibrium analysis (TR34 6.3.5, Equation 9): not covered');
+      Mp = h * h * (0.29 * sr4 + 0.16 * sr1) / GM / 1000 + As * FYK * (d - 0.048 * h) / GS / 1e6;
+    }
+    const Mn = Mun, ratio = Mp / Mun;
+    const l = (c.Ecm * h ** 3 / (12 * (1 - NU * NU) * k)) ** 0.25, lam = (3 * k / (c.Ecm * h ** 3)) ** 0.25;   // mm, 1/mm
+    // ---- punching (6.4) ----
+    const ks = Math.min(2, 1 + Math.sqrt(200 / d)), k2 = 0.6 * (1 - fck / 250), fcd = fck / 1.5, vmax = 0.5 * k2 * fcd;
+    const vmin = 0.035 * ks ** 1.5 * Math.sqrt(fck), rho = reo === 'fabric' || reo === 'fibreBar' ? Math.min(0.02, As / (1000 * d)) : 0;
+    const vRdc = rho > 0 ? Math.max(0.18 / 1.5 * ks * Math.cbrt(100 * rho * fck), vmin) : vmin;
+    // ---- joints ----
+    const J = inp.joint || {};
+    let dowel = null;
+    if (J.dowels === 'bar') { const dd = pos(J.dd, 'Dowel diameter'), sd = pos(J.sd, 'Dowel spacing'), open = nonneg(opt(J.open, 5), 'Joint opening'); dowel = { kind: 'bar', dd, sd, open, ...dowelBar(dd, open, c) }; }
+    else if (J.dowels === 'given') { const P = pos(J.Pd, 'Capacity per dowel'), sd = pos(J.sd, 'Dowel spacing'); dowel = { kind: 'given', sd, P }; }
+    if (dowel) { dowel.n = 2 * 0.9 * l / dowel.sd; dowel.Y = dowel.n * dowel.P; }
+    const interlock = J.interlock === true;
+    // ---- point loads ----
+    const loads = (Array.isArray(inp.points) ? inp.points : []).map((p, i) => {
+      const ref = String(p.ref || `P${i + 1}`), kind = GAMMA[p.kind] ? p.kind : 'static', g = GAMMA[kind];
+      const P = pos(p.P, `${ref}: load`), x = pos(p.x, `${ref}: contact x`), y = pos(opt(p.y, p.x), `${ref}: contact y`);
+      const loc = ['internal', 'edge', 'corner', 'joint'].includes(p.loc) ? p.loc : 'internal';
+      const n = [1, 2, 4].includes(+p.n) ? +p.n : 1, sx = n > 1 ? pos(p.sx, `${ref}: spacing x`) : 0, sy = n === 4 ? pos(p.sy, `${ref}: spacing y`) : 0;
+      const a1 = Math.sqrt(x * y / Math.PI), Pd = g * P;   // per load
+      const notes = [];
+      let Pu, a = a1, how, Ptot = n * Pd, Pshear = Pd;
+      const geo = loc === 'internal' ? 'internal' : loc === 'corner' ? 'corner' : 'edge';
+      if (n === 1) { Pu = single(geo, Mp, Mn, a1, l).P; how = 'single'; }
+      else if (n === 2 && sx < 2 * h) {   // as one load on the combined area (7.8.2)
+        const A = Math.PI * a1 * a1 + 2 * a1 * sx; a = Math.sqrt(A / Math.PI); Pu = single(geo, Mp, Mn, a, l).P; how = `as one load on their combined area (spacing ${f0(sx)} < 2h), a ${f0(a)} mm`; Pshear = 2 * Pd;
+      } else {
+        const s1 = single('internal', Mp, Mn, a1, l).P;
+        if (n === 2) { Pu = Math.min(multi(Mp, Mn, a1, l, sx), 2 * s1); how = 'a pair (Equations 27, 28)'; }
+        else {
+          const pair = s => (s < 2 * h ? single('internal', Mp, Mn, Math.sqrt((Math.PI * a1 * a1 + 2 * a1 * s) / Math.PI), l).P : Math.min(multi(Mp, Mn, a1, l, s), 2 * s1));
+          Pu = Math.min(4 * s1, 2 * pair(sx), 2 * pair(sy), multi(Mp, Mn, a1, l, sx + sy)); how = 'four loads (Equations 29, 30)';
+        }
+        if (geo !== 'internal') { const r = single(geo, Mp, Mn, a1, l).P / s1; Pu *= r; notes.push(`near an edge: the internal capacity × the single edge/internal ratio ${f3(r)} (7.8.4)`); }
+      }
+      // at a joint: aggregate interlock and dowels, never more than internal
+      let Pin = null;
+      if (loc === 'joint') {
+        const Xe = Pu; Pin = n === 1 ? single('internal', Mp, Mn, a, l).P : (n === 2 && sx < 2 * h ? single('internal', Mp, Mn, a, l).P : Pu / (single('edge', Mp, Mn, a1, l).P / single('internal', Mp, Mn, a1, l).P));
+        Pu = Math.min(Pin, Xe / (interlock ? 0.85 : 1) + (dowel ? dowel.Y : 0));
+        notes.push(`at a joint: edge ${f0(Xe)} kN${interlock ? ' / 0.85 (15% by aggregate interlock)' : ''}${dowel ? ` + ${f2(dowel.n)} dowels × ${f1(dowel.P)} = ${f0(dowel.Y)} kN` : ''}, at most internal ${f0(Pin)} kN`);
+      }
+      if (a / l > 0.2 + 1e-9) notes.push(`a/l ${f3(a / l)} over 0.2: the patch equations`);
+      // punching: the face and 2d, per load (pairs closer than 2h together)
+      const xs = n === 2 && sx < 2 * h ? x + sx : x;
+      const u0 = geo === 'internal' ? 2 * (xs + y) : geo === 'edge' ? xs + 2 * y : xs + y;
+      const u1 = geo === 'internal' ? 2 * (xs + y) + 4 * Math.PI * d : geo === 'edge' ? xs + 2 * y + 2 * Math.PI * d : xs + y + Math.PI * d;
+      const Ppmax = vmax * u0 * d / 1000, Pp = (vRdc + vf) * u1 * d / 1000;
+      // the ground's reaction inside the perimeter (7.10.2), the bearing reduced to a ≤ 0.2 l
+      const sc = Math.min(1, 0.2 * l / Math.sqrt(xs * y / Math.PI)), xe = xs * sc, ye = y * sc;
+      const Rp = geo === 'internal' ? 1.4 * (d / l) ** 2 * Pshear + 0.47 * (xe + ye) * d * Pshear / (l * l) : geo === 'edge' ? 2.4 * (d / l) ** 2 * Pshear + 0.8 * (2 * ye + xe) * d * Pshear / (l * l) : 0;
+      return { i, ref, kind, g, P, Pd, n, sx, sy, x, y, a1, a, loc, geo, how, Ptot, Pu, Pin, util: Ptot / Pu, Pshear, u0, u1, Ppmax, Pp, Rp, uFace: Pshear / Ppmax, uPunch: Math.max(0, Pshear - Rp) / Pp, notes };
+    });
+    // ---- line loads (7.11) ----
+    const lines = (Array.isArray(inp.lines) ? inp.lines : []).map((q, i) => {
+      const ref = String(q.ref || `L${i + 1}`), w = pos(q.w, `${ref}: line load`), where = ['remote', 'edge', 'joint'].includes(q.where) ? q.where : 'remote';
+      const dist = nonneg(opt(q.dist, 0), `${ref}: distance from the edge`) * 1000;   // mm
+      const full = 4 * lam * Mun * 1000, reach = where === 'edge' ? 3 / lam : 1 / lam;   // kN/m (λ in 1/mm, M in kNm/m)
+      const cap = where === 'remote' ? full : full * (0.75 + 0.25 * Math.min(1, dist / reach));
+      return { i, ref, w, where, dist: dist / 1000, cap, full, util: w / cap };
+    });
+    // ---- UDL (7.12) ----
+    const udl = opt(inp.udl, 0) > 0 ? (() => { const q = pos(inp.udl, 'UDL'); const cap = 5.95 * lam * lam * Mun * 1e6; return { q, cap, util: q / cap, aisle: Math.PI / (2 * lam) / 1000, strip: Math.PI / lam / 1000 }; })() : null;
+    // ---- fatigue (Appendix E) ----
+    let fat = null;
+    if (inp.fat && inp.fat.on) {
+      if (reo === 'fibre' || reo === 'fibreBar') throw new Error('The fatigue check of Appendix E is not for fibre-reinforced slabs (its Note 2)');
+      const ax = (Array.isArray(inp.fat.axles) ? inp.fat.axles : []).map(v => nonneg(v, 'Axle load')).filter(v => v > 0);
+      if (!ax.length) throw new Error('Give the materials handling axle loads (kg)');
+      if (ax.some(v => v > 25000)) throw new Error('Axle loads over 25 000 kg are outside Appendix E');
+      const solid = !!inp.fat.solid, passes = pos(inp.fat.passes, 'Passes over a point'), margin = nonneg(opt(inp.fat.margin, 7), 'Strength margin');
+      const esa = ax.reduce((s, v) => s + ((solid ? 1.3 : 1) * v / 8160) ** 4, 0), L = esa * passes / 1e6, fcmF = fck + margin;
+      const hreq = As > 300 ? 9141 * L ** 0.209 / (fcmF ** 0.663 * As ** 0.296) : 1935 * L ** 0.196 / fcmF ** 0.68;
+      fat = { ax, solid, passes, esa, L, fcm: fcmF, hreq, eq: As > 300 ? 'E3' : 'E2', util: hreq / h };
+    }
+    // ---- checks ----
+    const checks = [], add = (id, name, ref, util, note) => checks.push({ id, name, ref, util: Math.max(0, util), note });
+    if (reo !== 'plain') add('ratio', 'Reinforcement: cracked to uncracked capacity at least 50%', 'TR34 7.4', 0.5 / ratio, `M_p ${f2(Mp)} / M_un ${f2(Mun)} kNm/m = ${f2(ratio)}`);
+    if (reo === 'fabric') add('fab', 'Fabric at least 0.08%', 'TR34 7.4', 0.0008 * 1000 * h / As, `${f0(As)} mm²/m against ${f0(0.0008 * 1000 * h)} (0.08% of ${f0(h)} mm)`);
+    loads.forEach(L => {
+      add(`flex${L.i}`, `${L.ref}: ${L.n > 1 ? `${L.n} loads, ` : ''}${L.loc === 'joint' ? 'at a joint' : L.geo}, bending`, 'TR34 7.8 (Meyerhof)', L.util, `${KIND[L.kind].toLowerCase()} ${L.g} × ${f1(L.P)} = ${f1(L.Pd)} kN${L.n > 1 ? ` × ${L.n} = ${f1(L.Ptot)}` : ''} on a ${f0(L.a)} mm radius (a/l ${f3(L.a / l)}), ${L.how}: P_u ${f1(L.Pu)} kN${L.notes.length ? '; ' + L.notes.join('; ') : ''}`);
+      add(`punch${L.i}`, `${L.ref}: punching`, 'TR34 6.4, 7.10', Math.max(L.uFace, L.uPunch), `face: ${f1(L.Pshear)} ≤ v_max u₀ d = ${f2(vmax)} × ${f0(L.u0)} × ${f0(d)} = ${f1(L.Ppmax)} kN; at 2d: ${f1(L.Pshear)} − ground ${f1(L.Rp)} = ${f1(Math.max(0, L.Pshear - L.Rp))} ≤ (${f3(vRdc)}${vf ? ` + ${f3(vf)}` : ''}) × ${f0(L.u1)} × ${f0(d)} = ${f1(L.Pp)} kN`);
+    });
+    lines.forEach(Q => add(`line${Q.i}`, `${Q.ref}: line load${Q.where === 'remote' ? '' : Q.where === 'edge' ? ' near a free edge' : ' near a joint'}`, 'TR34 7.11 (Hetényi)', Q.util, `${f1(Q.w)} kN/m ≤ ${Q.where === 'remote' ? '4λM_un' : `3λM_un to 4λM_un over ${Q.where === 'edge' ? '3/λ' : '1/λ'}, at ${f2(Q.dist)} m`} = ${f1(Q.cap)} kN/m`));
+    if (udl) add('udl', 'Uniformly distributed load, a random pattern', 'TR34 7.12', udl.util, `${f1(udl.q)} ≤ 5.95 λ² M_un = ${f1(udl.cap)} kN/m²; worst on strips ${f2(udl.strip)} m wide ${f2(udl.aisle)} m apart`);
+    if (fat) add('fatigue', 'Fatigue under materials handling traffic', 'TR34 Appendix E', fat.util, `${fat.ax.map(v => f0(v)).join(' + ')} kg axles${fat.solid ? ' (solid tyres × 1.3)' : ''}: ${fat.esa.toFixed(3)} standard axles × ${f0(fat.passes)} passes = ${fat.L.toFixed(3)} msa; f_cm ${f0(fat.fcm)}: h ≥ ${f0(fat.hreq)} mm (Equation ${fat.eq}) against ${f0(h)}`);
+    if (!loads.length && !lines.length && !udl && !fat) throw new Error('Give at least one load to check');
+    const warnings = [];
+    if (reo === 'plain') warnings.push('Plain concrete: TR34 7.4 asks for reinforcement giving at least half the uncracked capacity after cracking; the sagging capacity is taken as the cracking moment.');
+    if (reo === 'fibre' && !steelFibre) warnings.push('Macro-synthetic fibres: no shear enhancement (6.4.2), and their long-term creep needs considering (6.2.2).');
+    if (reo === 'fibre' || reo === 'fibreBar') warnings.push('f_R values from notched beam tests on the floor’s own mix and fibre at the design dosage (EN 14651, 12 beams; TR34 6.3.3).');
+    if (loads.some(L => L.geo === 'corner')) warnings.push('Corners: TR34 7.7 finds the capacity at joint intersections as great as at a joint with the same joint details, so free corners are usually only at the building’s perimeter.');
+    if (loads.some(L => L.kind === 'dynamic') && !fat) warnings.push('Heavy materials handling equipment (double pallets, paper reels, heavy engineering): check fatigue to Appendix E.');
+    const steps = [
+      { ref: 'Concrete', text: `C${fck}/${c.fcu}: f_ctm ${f2(c.fctm)}, E_cm ${f0(c.Ecm)} N/mm²; f_ctd,fl = ${f2(c.fctm)} × (1.6 − ${f0(h)}/1000)/1.5 = ${f3(fctdfl)} N/mm²` },
+      { ref: 'Moments', text: `M_un = M_n = ${f3(fctdfl)} × ${f0(h)}²/6 = ${f2(Mun)} kNm/m; M_p ${reo === 'plain' ? '= M_un' : reo === 'fabric' ? `= 0.95 × ${f0(As)} × 500 × ${f0(d)}/1.15 = ${f2(Mp)}` : `${reo === 'fibreBar' ? '(fibres and bars) ' : ''}from σ_r1 ${f3(sr1)}, σ_r4 ${f3(sr4)}: ${f2(Mp)}`} kNm/m` },
+      { ref: 'Stiffness', text: `k ${k} N/mm³: l = [${f0(c.Ecm)} × ${f0(h)}³/(12 × 0.96 × ${k})]^0.25 = ${f0(l)} mm; λ = ${(lam * 1000).toFixed(3)} /m` },
+      { ref: 'Punching', text: `d ${f0(d)} mm${reo === 'plain' || reo === 'fibre' ? ' (0.75h)' : ''}; v_max = 0.5 × ${f3(k2)} × ${f2(fcd)} = ${f3(vmax)}; v_Rd,c ${f3(vRdc)}${vf ? ` + v_f ${f3(vf)}` : ''} N/mm²` },
+      ...(dowel ? [{ ref: 'Dowels', text: `${dowel.kind === 'bar' ? `Ø${dowel.dd} at ${dowel.sd} mm, ${dowel.open} mm opening: shear ${f1(dowel.Psh)}, bearing ${f1(dowel.Pmax)} kN` : `${f1(dowel.P)} kN each at ${dowel.sd} mm`}; ${f2(dowel.n)} within 0.9 l either side: ${f1(dowel.Y)} kN` }] : []),
+    ];
+    const utilMax = Math.max(...checks.map(x => x.util));
+    return { h, c, k, reo, steelFibre, fctdfl, Mun, Mn, Mp, ratio, As, d, cover, phi, sr1, sr4, fR, vf, l, lam, ks, k2, fcd, vmax, vRdc, dowel, interlock, loads, lines, udl, fat, checks, utilMax, steps, warnings, GAMMA, KIND };
+  }
+  return { design, single, multi, dowelBar, concrete, GAMMA, CLASSES };
+})();
+
+</script>
+<script id="drawing-code">
+/* ===== CONNECTION DIAGRAMS (EngineeringTools ConnectionCheck) =====
+   Parametric, to-scale drafting views of each joint, drawn from the current inputs: an elevation and a plan or section,
+   with bolts, welds, dimension chains, labels and the design actions. Pure functions returning SVG strings.
+   Model units mm; each view maps a model box onto a pixel box (x right, y up). */
+const JD = (() => {
+  'use strict';
+  const C = { steel: '#e7ecf1', web: '#eef2f5', edge: '#2f3b47', plate: '#f6d58c', plateEdge: '#94700f', pack: '#e3d3ae', bolt: '#3a424b', boltDark: '#1f252b',
+    weld: '#1a1f24', dim: '#1b67b0', txt: '#222a31', mute: '#7a8590', cl: '#97a2ac', load: '#cc3426', conc: '#f1efea', concEdge: '#8b8478', grout: '#ddd7ca', paper: '#ffffff' };
+  const FS = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"', FM = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"';
+  const W = 920, H = 520;
+  const DEFS = `<defs>
+<pattern id="jdCut" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect width="6" height="6" fill="#c7d0d9"/><line x1="0" y1="0" x2="0" y2="6" stroke="#6f7d8a" stroke-width="0.9"/></pattern>
+<pattern id="jdPlCut" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(-45)"><rect width="5" height="5" fill="#efc560"/><line x1="0" y1="0" x2="0" y2="5" stroke="#94700f" stroke-width="0.8"/></pattern>
+<pattern id="jdConc" patternUnits="userSpaceOnUse" width="26" height="26"><rect width="26" height="26" fill="${C.conc}"/><circle cx="5" cy="6" r="1.3" fill="#b3ab9d"/><circle cx="17" cy="15" r="1.7" fill="#c0b8aa"/><circle cx="9" cy="21" r="1" fill="#a9a091"/><path d="M19 4 l3 2 l-3 2 z" fill="#c5bdaf"/><path d="M2 14 l2.5 -2 l1.5 3 z" fill="#bdb5a7"/></pattern>
+<pattern id="jdGrout" patternUnits="userSpaceOnUse" width="8" height="8"><rect width="8" height="8" fill="${C.grout}"/><circle cx="2" cy="2" r="0.7" fill="#9e9687"/><circle cx="6" cy="6" r="0.7" fill="#9e9687"/></pattern>
+<marker id="jdLd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${C.load}"/></marker>
+</defs>`;
+  const num = v => { const a = Math.abs(v); return a >= 100 || Number.isInteger(+v.toFixed(1)) ? Math.round(v).toString() : v.toFixed(1); };
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // ---------- views ----------
+  function view(box, bb) {
+    const w = bb[2] - bb[0], h = bb[3] - bb[1], k = Math.min(box[2] / w, box[3] / h);
+    const ox = box[0] + (box[2] - w * k) / 2 - bb[0] * k, oy = box[1] + (box[3] - h * k) / 2 + bb[3] * k;
+    return { k, X: x => ox + x * k, Y: y => oy - y * k, box };
+  }
+  const ST = {
+    steel: `fill="${C.steel}" stroke="${C.edge}" stroke-width="1.1"`, web: `fill="${C.web}" stroke="${C.edge}" stroke-width="1.1"`,
+    cut: `fill="url(#jdCut)" stroke="${C.edge}" stroke-width="1.2"`, plate: `fill="${C.plate}" stroke="${C.plateEdge}" stroke-width="1.1"`,
+    plateCut: `fill="url(#jdPlCut)" stroke="${C.plateEdge}" stroke-width="1.1"`, pack: `fill="${C.pack}" stroke="${C.plateEdge}" stroke-width="0.9"`,
+    conc: `fill="url(#jdConc)" stroke="${C.concEdge}" stroke-width="1"`, grout: `fill="url(#jdGrout)" stroke="${C.concEdge}" stroke-width="0.8"`,
+    ghost: `fill="none" stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="6 3"`, outline: `fill="none" stroke="${C.edge}" stroke-width="1.1"`,
+    bg: `fill="${C.paper}" stroke="none"`,
+  };
+  const R = (v, x0, y0, x1, y1, st = 'steel') => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)); return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${(Math.abs(x1 - x0) * v.k).toFixed(1)}" height="${(Math.abs(y1 - y0) * v.k).toFixed(1)}" ${ST[st]}/>`; };
+  const P = (v, pts, st = 'steel') => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + v.X(p[0]).toFixed(1) + ' ' + v.Y(p[1]).toFixed(1)).join(' ')} Z" ${ST[st]}/>`;
+  const LS = { e: `stroke="${C.edge}" stroke-width="1.1"`, t: `stroke="${C.edge}" stroke-width="0.55"`, c: `stroke="${C.cl}" stroke-width="0.7" stroke-dasharray="14 3 2 3"`,
+    h: `stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="5 3"`, d: `stroke="${C.dim}" stroke-width="0.7"` };
+  const Ln = (v, x0, y0, x1, y1, k = 'e') => `<line x1="${v.X(x0).toFixed(1)}" y1="${v.Y(y0).toFixed(1)}" x2="${v.X(x1).toFixed(1)}" y2="${v.Y(y1).toFixed(1)}" ${LS[k]}/>`;
+  const lnP = (x0, y0, x1, y1, k = 'e') => `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" ${LS[k]}/>`;
+  function Tx(x, y, s, o = {}) {
+    const sz = o.size || 11, col = o.color || C.txt, anc = o.anchor || 'start', w = o.weight || 400, rot = o.rot ? ` transform="rotate(${o.rot} ${x.toFixed(1)} ${y.toFixed(1)})"` : '';
+    const body = esc(s).replace(/_\{([^}]*)\}|_([A-Za-z0-9]+)/g, (m, p1, p2) => `<tspan baseline-shift="sub" font-size="78%">${p1 || p2}</tspan>`);
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${sz}" fill="${col}" text-anchor="${anc}" font-weight="${w}" ${o.mono ? FM : FS} paint-order="stroke" stroke="${C.paper}" stroke-width="3" stroke-linejoin="round"${rot}>${body}</text>`;
+  }
+  const tw = (s, sz = 10) => String(s).replace(/_/g, '').length * sz * 0.6;
+  // ---------- dimensions (tick terminators) ----------
+  const tick = (x, y) => `<line x1="${(x - 3.5).toFixed(1)}" y1="${(y + 3.5).toFixed(1)}" x2="${(x + 3.5).toFixed(1)}" y2="${(y - 3.5).toFixed(1)}" stroke="${C.dim}" stroke-width="1.3"/>`;
+  // horizontal chain: xs (model), measured from model level y, dimension line at off px (negative: below)
+  function DH(v, xs, y, off, labels) {
+    const Yf = v.Y(y), Yd = Yf - off, s = Math.sign(off) || 1; let o = '';
+    xs.forEach(x => { o += lnP(v.X(x), Yf - s * 3, v.X(x), Yd - s * 4, 'd'); });
+    o += lnP(v.X(xs[0]) - 4, Yd, v.X(xs[xs.length - 1]) + 4, Yd, 'd');
+    xs.forEach(x => { o += tick(v.X(x), Yd); });
+    for (let i = 0; i < xs.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(xs[i + 1] - xs[i])); if (lab === '') continue;
+      const a = v.X(xs[i]), b = v.X(xs[i + 1]), wpx = Math.abs(b - a), tW = tw(lab);
+      const ty = off > 0 ? Yd - 4 : Yd + 11;
+      if (wpx > tW + 6) o += Tx((a + b) / 2, ty, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true });
+      else o += Tx(Math.max(a, b) + 3 + (i === xs.length - 2 ? 2 : 0), ty + (off > 0 ? -9 : 9) * (i % 2), lab, { size: 10, color: C.dim, mono: true });
+    }
+    return o;
+  }
+  function DV(v, ys, x, off, labels) {
+    const Xf = v.X(x), Xd = Xf + off, s = Math.sign(off) || 1; let o = '';
+    ys.forEach(y => { o += lnP(Xf + s * 3, v.Y(y), Xd + s * 4, v.Y(y), 'd'); });
+    o += lnP(Xd, v.Y(ys[0]) + 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), Xd, v.Y(ys[ys.length - 1]) - 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), 'd');
+    ys.forEach(y => { o += tick(Xd, v.Y(y)); });
+    for (let i = 0; i < ys.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(ys[i + 1] - ys[i])); if (lab === '') continue;
+      const a = v.Y(ys[i]), b = v.Y(ys[i + 1]), hpx = Math.abs(b - a), tW = tw(lab);
+      const tx = off > 0 ? Xd + 11 : Xd - 4;
+      if (hpx > tW + 6) o += Tx(tx, (a + b) / 2, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true, rot: -90 });
+      else o += Tx(off > 0 ? Xd + 5 : Xd - 5, (a + b) / 2 + 3.5, lab, { size: 10, color: C.dim, mono: true, anchor: off > 0 ? 'start' : 'end' });
+    }
+    return o;
+  }
+  // leader with a dot at a model point and text lines at a pixel offset
+  function LD(v, x, y, dx, dy, lines, o = {}) {
+    const px = v.X(x), py = v.Y(y), ex = px + dx, ey = py + dy, s = dx >= 0 ? 1 : -1;
+    let out = `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="1.9" fill="${C.txt}"/>` + lnP(px, py, ex, ey, 't') + lnP(ex, ey, ex + s * 8, ey, 't');
+    [].concat(lines).forEach((t, i) => { out += Tx(ex + s * 11, ey + 4 + i * 13 - ([].concat(lines).length - 1) * 6.5, t, { size: o.size || 10.5, anchor: s > 0 ? 'start' : 'end', weight: i === 0 && o.bold ? 600 : 400, color: i === 0 ? C.txt : '#4b545d' }); });
+    return out;
+  }
+  // load arrow ending at pixel point (px, py); (vx, vy) is the arrow vector in pixels; label near the tail
+  function LA(px, py, vx, vy, label, o = {}) {
+    const x0 = px - vx, y0 = py - vy, lx = x0 + (o.ldx ?? 0), ly = y0 + (o.ldy ?? -6);
+    return `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${px.toFixed(1)}" y2="${py.toFixed(1)}" stroke="${C.load}" stroke-width="2.4" marker-end="url(#jdLd)"/>` +
+      (label ? Tx(lx, ly, label, { size: 11, color: C.load, weight: 600, anchor: o.anchor || 'middle' }) : '');
+  }
+  function moment(px, py, rr, label, cw = true) {
+    const a0 = cw ? 200 : -20, a1 = cw ? 340 : 160, p = a => [px + rr * Math.cos(a * Math.PI / 180), py - rr * Math.sin(a * Math.PI / 180)], [x0, y0] = p(a0), [x1, y1] = p(a1);
+    return `<path d="M${x0.toFixed(1)} ${y0.toFixed(1)} A${rr} ${rr} 0 1 ${cw ? 1 : 0} ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="${C.load}" stroke-width="2.2" marker-end="url(#jdLd)"/>` + Tx(px, py - rr - 7, label, { size: 11, color: C.load, weight: 600, anchor: 'middle' });
+  }
+  // ---------- steel symbols ----------
+  function BE(v, x, y, d) {   // bolt seen end-on: washer ring, head, centre cross
+    const px = v.X(x), py = v.Y(y), r1 = Math.max(0.95 * d * v.k, 3.2), r2 = Math.max(0.55 * d * v.k, 1.9), c = r1 + 3;
+    return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r1.toFixed(1)}" fill="#fff" stroke="${C.boltDark}" stroke-width="1"/><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r2.toFixed(1)}" fill="${C.bolt}"/>` +
+      lnP(px - c, py, px + c, py, 't') + lnP(px, py - c, px, py + c, 't');
+  }
+  // bolt seen side-on with its axis along x (dir 'x') or y: shank a0..a1 at c, head at a0, nut at a1
+  function BS(v, a0, a1, c, d, dir = 'x') {
+    const sg = Math.sign(a1 - a0) || 1, hd = 0.65 * d, nt = 0.8 * d, wh = 0.8 * d, wa = 0.15 * d, pr = 0.45 * d;
+    const seg = (s0, s1, half, fill) => dir === 'x' ? R(v, s0, c - half, s1, c + half, fill) : R(v, c - half, s0, c + half, s1, fill);
+    let o = seg(a0, a1 + sg * (wa + nt + pr), d / 2, 'bolt');
+    o += seg(a0 - sg * wa, a0, d, 'bolt') + seg(a0 - sg * (wa + hd), a0 - sg * wa, wh, 'boltH');
+    o += seg(a1, a1 + sg * wa, d, 'bolt') + seg(a1 + sg * wa, a1 + sg * (wa + nt), wh, 'boltH');
+    o += dir === 'x' ? Ln(v, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), c, 'c') : Ln(v, c, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), 'c');
+    return o;
+  }
+  ST.bolt = `fill="#59626c" stroke="${C.boltDark}" stroke-width="0.6"`; ST.boltH = `fill="${C.bolt}" stroke="${C.boltDark}" stroke-width="0.6"`;
+  // fillet weld at the corner (x, y): legs along sx (x) and sy (y), sized a (mm) but at least 4 px
+  function WD(v, x, y, a, sx, sy) {
+    const L = Math.max(a * v.k, 4.5), px = v.X(x), py = v.Y(y);
+    return `<path d="M${px.toFixed(1)} ${py.toFixed(1)} L${(px + sx * L).toFixed(1)} ${py.toFixed(1)} L${px.toFixed(1)} ${(py - sy * L).toFixed(1)} Z" fill="${C.weld}"/>`;
+  }
+  // weld seen along its length (elevation): narrow strip
+  const WS = (v, x0, y0, x1, y1) => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)), w = Math.max(Math.abs(x1 - x0) * v.k, 2.5), h = Math.max(Math.abs(y1 - y0) * v.k, 2.5);
+    return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${C.weld}" fill-opacity="0.82"/>`; };
+  // zigzag break lines through a member
+  function BK(v, x, y0, y1) {   // vertical break at model x between y0 and y1
+    const px = v.X(x), a = v.Y(Math.max(y0, y1)) - 4, b = v.Y(Math.min(y0, y1)) + 4, m = (a + b) / 2;
+    return `<path d="M${px} ${a} L${px} ${m - 7} L${px - 5} ${m - 3} L${px + 5} ${m + 3} L${px} ${m + 7} L${px} ${b}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  function BKH(v, y, x0, x1) {
+    const py = v.Y(y), a = v.X(Math.min(x0, x1)) - 4, b = v.X(Math.max(x0, x1)) + 4, m = (a + b) / 2;
+    return `<path d="M${a} ${py} L${m - 7} ${py} L${m - 3} ${py - 5} L${m + 3} ${py + 5} L${m + 7} ${py} L${b} ${py}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  // white mask to fade member ends beyond a break
+  const mask = (v, x0, y0, x1, y1) => R(v, x0, y0, x1, y1, 'bg');
+  // I section cross-section (cut), centred at (cx, cy); 'v': web vertical (depth along y), 'h': depth along x
+  function ISec(v, cx, cy, s, o = 'v', st = 'cut') {
+    const b = s.b, h = s.h, tf = s.tf, t = s.tw, r = Math.min(s.r || 0, (b - t) / 2 - 1), pts = [];
+    const arc = (ux, uy, a0, a1) => { for (let i = 0; i <= 6; i++) { const a = (a0 + (a1 - a0) * i / 6) * Math.PI / 180; pts.push([ux + r * Math.cos(a), uy + r * Math.sin(a)]); } };
+    pts.push([-b / 2, h / 2], [b / 2, h / 2], [b / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, h / 2 - tf - r, 90, 180); else pts.push([t / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, -h / 2 + tf + r, 180, 270); else pts.push([t / 2, -h / 2 + tf]);
+    pts.push([b / 2, -h / 2 + tf], [b / 2, -h / 2], [-b / 2, -h / 2], [-b / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, -h / 2 + tf + r, 270, 360); else pts.push([-t / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, h / 2 - tf - r, 0, 90); else pts.push([-t / 2, h / 2 - tf]);
+    pts.push([-b / 2, h / 2 - tf]);
+    return P(v, pts.map(([u, w]) => o === 'v' ? [cx + u, cy + w] : [cx + w, cy + u]), st);
+  }
+  // I member in side elevation: length along 'x' (a0..a1) with the depth c0..c1 across, or along 'y'
+  function IEl(v, a0, a1, c0, c1, s, dir = 'x', o = {}) {
+    const lo = Math.min(c0, c1), hi = Math.max(c0, c1), rr = s.r || 0;
+    const ln = (c, k) => dir === 'x' ? Ln(v, a0, c, a1, c, k) : Ln(v, c, a0, c, a1, k);
+    let out = dir === 'x' ? R(v, a0, lo, a1, hi, 'steel') : R(v, lo, a0, hi, a1, 'steel');
+    out += dir === 'x' ? R(v, a0, lo + s.tf, a1, hi - s.tf, 'web') : R(v, lo + s.tf, a0, hi - s.tf, a1, 'web');
+    out += ln(lo + s.tf, 'e') + ln(hi - s.tf, 'e');
+    if (rr > 0 && !o.noRoot) out += ln(lo + s.tf + rr, 't') + ln(hi - s.tf - rr, 't');
+    return out;
+  }
+  // I member seen on the flange face: width b, length along dir
+  const IFl = (v, a0, a1, cc, s, dir = 'y') => (dir === 'y' ? R(v, cc - s.b / 2, a0, cc + s.b / 2, a1, 'steel') + Ln(v, cc - s.tw / 2 - (s.r || 0), a0, cc - s.tw / 2 - (s.r || 0), a1, 'h') + Ln(v, cc + s.tw / 2 + (s.r || 0), a0, cc + s.tw / 2 + (s.r || 0), a1, 'h')
+    : R(v, a0, cc - s.b / 2, a1, cc + s.b / 2, 'steel'));
+  const title = (x, y, t, sub) => Tx(x, y, t, { size: 11.5, weight: 700, anchor: 'middle', color: C.txt }) + `<line x1="${(x - tw(t, 11.5) / 2).toFixed(1)}" y1="${(y + 3).toFixed(1)}" x2="${(x + tw(t, 11.5) / 2).toFixed(1)}" y2="${(y + 3).toFixed(1)}" stroke="${C.txt}" stroke-width="0.8"/>` + (sub ? Tx(x, y + 16, sub, { size: 10, anchor: 'middle', color: C.mute }) : '');
+  const svg = (body, h = H) => `<svg class="jd" viewBox="0 0 ${W} ${h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;background:${C.paper}" role="img">${DEFS}<rect width="${W}" height="${h}" fill="${C.paper}"/>${body}</svg>`;
+  const BOX = { L: [40, 46, 520, 400], Rt: [612, 46, 280, 400] };
+  const fv = x => { const n = parseFloat(x); return Number.isFinite(n) ? n : 0; };
+  const secName = x => x && x !== '0' ? x : '';   // a form without that selector reads as '0'
+  const BOLTD = { M12: 12, M16: 16, M20: 20, M24: 24, M27: 27, M30: 30, M36: 36 };
+  const bd = sz => BOLTD[sz] || 20;
+  const range = (n, f) => Array.from({ length: Math.max(0, n) }, (_, i) => f(i));
+  return { C, W, H, BOX, DEFS, view, R, P, Ln, lnP, Tx, tw, DH, DV, LD, LA, moment, BE, BS, WD, WS, BK, BKH, mask, ISec, IEl, IFl, title, svg, num, fv, secName, bd, range, esc, ST };
+})();
+
+/* ===== DRAWING KIT EXTRAS (EngineeringTools) =====
+   Additions to the JD drafting kit (joints/diagrams.js) for the member, floor and wall drawings: a page-width SVG wrapper,
+   arrows, supports, distributed loads, result fills, cross-section outlines (I, PFC, RHS, CHS) and SVG to PNG for PDF reports.
+   Source: scratchpad/drawings/kit.js. Pixel helpers take pixel coordinates; JD views map model mm to pixels. */
+const DK = (() => {
+  'use strict';
+  const { Tx, lnP, esc } = JD;
+  const BLUE = '#1d5fbf', FILL = 'rgba(29,95,191,.15)', RED = '#c4242a', REDF = 'rgba(196,36,42,.10)', INK = '#222a31', MUTE = '#6b7680', LINE = '#c9d0d7';
+  const DEFS = `<defs><marker id="dkB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${BLUE}"/></marker>`
+    + `<marker id="dkK" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${INK}"/></marker>`
+    + `<marker id="dkR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${RED}"/></marker>`
+    + `<pattern id="dkHatch" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)"><rect width="7" height="7" fill="#f3f1ec"/><line x1="0" y1="0" x2="0" y2="7" stroke="#8b8478" stroke-width="1"/></pattern></defs>`;
+  const f1 = v => (+v).toFixed(1);
+  // the page-width drawing: viewBox w x h, scales to its container
+  const svg = (body, w, h, label) => `<svg class="jd dk" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" role="img"${label ? ` aria-label="${esc(label)}"` : ''} `
+    + `style="width:100%;height:auto;display:block;background:#fff">${JD.DEFS}${DEFS}<rect width="${w}" height="${h}" fill="#fff"/>${body}</svg>`;
+  const col = c => ({ blue: BLUE, red: RED, ink: INK, mute: MUTE }[c] || c || INK);
+  const mk = c => ({ blue: 'dkB', red: 'dkR' }[c] || 'dkK');
+  // arrow from (x0, y0) to (x1, y1), head at the end (both: heads at both ends)
+  const arrow = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1.6}"`
+    + `${o.dash ? ` stroke-dasharray="${o.dash}"` : ''} marker-end="url(#${mk(o.c)})"${o.both ? ` marker-start="url(#${mk(o.c)})"` : ''}/>`;
+  const line = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.cap ? ` stroke-linecap="${o.cap}"` : ''}/>`;
+  const rect = (x, y, w, h, o = {}) => `<rect x="${f1(Math.min(x, x + w))}" y="${f1(Math.min(y, y + h))}" width="${f1(Math.abs(w))}" height="${f1(Math.abs(h))}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.rx ? ` rx="${o.rx}"` : ''}/>`;
+  const poly = (pts, o = {}) => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + f1(p[0]) + ' ' + f1(p[1])).join(' ')}${o.open ? '' : ' Z'}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+  const text = (x, y, s, o = {}) => Tx(x, y, s, Object.assign({ size: 11 }, o, { color: o.color ? col(o.color) : o.color }));
+  // pinned support under (px, py): triangle and ground line; dir 'down' (default) or 'up' (hanging, above the point)
+  function pin(px, py, dir = 'down') {
+    const s = dir === 'up' ? -1 : 1;
+    return poly([[px, py], [px - 8, py + s * 13], [px + 8, py + s * 13]], { fill: '#fff', stroke: 'ink', w: 1.3 }) + line(px - 12, py + s * 13, px + 12, py + s * 13, { w: 1.3 })
+      + [0, 1, 2, 3].map(k => line(px - 10 + k * 6, py + s * 13, px - 14 + k * 6, py + s * 18, { c: 'mute', w: 0.8 })).join('');
+  }
+  // hatched ground or wall strip: rectangle with the hatch fill and an edge line on the restrained side ('t', 'b', 'l', 'r')
+  function ground(x, y, w, h, edge = 't') {
+    const e = { t: [x, y, x + w, y], b: [x, y + h, x + w, y + h], l: [x, y, x, y + h], r: [x + w, y, x + w, y + h] }[edge];
+    return rect(x, y, w, h, { fill: 'url(#dkHatch)' }) + line(e[0], e[1], e[2], e[3], { w: 1.4 });
+  }
+  // a row of load arrows pointing from yTop to yBase between x0 and x1, with the bar along the tails and a label above
+  function udl(x0, x1, yTop, yBase, label, o = {}) {
+    const n = Math.max(2, Math.round((x1 - x0) / (o.pitch || 28)) + 1), c = o.c || 'red';
+    let g = line(x0, yTop, x1, yTop, { c, w: 1.3 });
+    for (let i = 0; i < n; i++) { const x = x0 + (x1 - x0) * i / (n - 1); g += arrow(x, yTop, x, yBase, { c, w: 1.2 }); }
+    return g + (label ? text((x0 + x1) / 2, yTop - 6, label, { anchor: 'middle', color: c === 'red' ? RED : col(c), weight: 600 }) : '');
+  }
+  // a result diagram: polyline pts (pixels) closed to the base line through the first and last points' base, filled blue
+  function fillDiagram(pts, base, o = {}) {
+    const vert = o.vertical;   // base is an x (diagram plotted sideways) when vertical
+    const close = vert ? [[base, pts[pts.length - 1][1]], [base, pts[0][1]]] : [[pts[pts.length - 1][0], base], [pts[0][0], base]];
+    return poly(pts.concat(close), { fill: o.fill || FILL, stroke: 'none' }) + poly(pts, { open: true, stroke: o.stroke || 'ink', w: 1.1 });
+  }
+  // cross-section outline, cut, centred at pixel (cx, cy) at scale k (px/mm); web vertical; returns svg
+  function section(s, cx, cy, k, o = {}) {
+    const st = o.style || 'cut', fill = st === 'cut' ? 'url(#jdCut)' : '#e7ecf1', edge = '#2f3b47';
+    if (s.shape === 'CHS') {
+      const ro = s.d / 2 * k, ri = (s.d / 2 - s.t) * k;
+      return `<path d="M${f1(cx - ro)} ${f1(cy)} a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(2 * ro)} 0 a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(-2 * ro)} 0 Z M${f1(cx - ri)} ${f1(cy)} a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(2 * ri)} 0 a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(-2 * ri)} 0 Z" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'RHS') {
+      const w = s.b * k, h = s.h * k, t = Math.max(s.t * k, 1.2), ro = Math.min((s.ro || 1.5 * s.t) * k, w / 2), ri = Math.max(0, ro - t);
+      const rr = (x, y, W, H, r) => `M${f1(x + r)} ${f1(y)} H${f1(x + W - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W)} ${f1(y + r)} V${f1(y + H - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W - r)} ${f1(y + H)} H${f1(x + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x)} ${f1(y + H - r)} V${f1(y + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + r)} ${f1(y)} Z`;
+      return `<path d="${rr(cx - w / 2, cy - h / 2, w, h, ro)} ${rr(cx - w / 2 + t, cy - h / 2 + t, w - 2 * t, h - 2 * t, ri)}" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'PFC') {   // channel, toes to the right, web on the left
+      const b = s.b * k, h = s.h * k, tf = Math.max(s.tf * k, 1.2), tw = Math.max(s.tw * k, 1.2), x0 = cx - b / 2, y0 = cy - h / 2;
+      return poly([[x0, y0], [x0 + b, y0], [x0 + b, y0 + tf], [x0 + tw, y0 + tf], [x0 + tw, y0 + h - tf], [x0 + b, y0 + h - tf], [x0 + b, y0 + h], [x0, y0 + h]], { fill, stroke: edge, w: 1.1 });
+    }
+    const v = { k, X: x => cx + x * k, Y: y => cy - y * k };   // I sections: JD's outline with root radii
+    return JD.ISec(v, 0, 0, s, 'v', st === 'cut' ? 'cut' : 'steel');
+  }
+  // SVG markup to a PNG data URL (for the jsPDF reports); resolves { url, w, h } with w, h the viewBox size
+  function toPNG(markup, wpx = 1800) {
+    return new Promise((resolve, reject) => {
+      const m = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(markup); if (!m) { reject(new Error('no viewBox')); return; }
+      const w = +m[1], h = +m[2], k = wpx / w, img = new Image();
+      const src = markup.replace(/style="[^"]*"/, `width="${f1(w * k)}" height="${f1(h * k)}"`);
+      img.onload = () => { const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k); const g = c.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height); resolve({ url: c.toDataURL('image/png'), w, h }); };
+      img.onerror = () => reject(new Error('drawing could not be rendered'));
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
+    });
+  }
+  // drawings for the page (heading + drawing) and for the A4 sheet (each kept whole on a page)
+  const page = blocks => blocks.map(([t, s]) => `<div class="dlabel">${t}</div>${s}`).join('');
+  const sheet = blocks => blocks.map(([t, s]) => `<div class="rfig" style="break-inside:avoid;page-break-inside:avoid;margin:1mm 0 3mm"><h3>${t}</h3><div class="rsvg">${s}</div></div>`).join('');
+  const fmt = (v, d = 0) => Number.isFinite(v) ? (+v).toFixed(d) : '–';
+  return { page, sheet, BLUE, FILL, RED, REDF, INK, MUTE, LINE, svg, arrow, line, rect, poly, text, pin, ground, udl, fillDiagram, section, toPNG, fmt, lnP };
+})();
+
+/* ===== GROUND-BEARING SLAB DRAWINGS (EngineeringTools) =====
+   The slab in section to scale: its thickness, the reinforcement (fibres, or the fabric or bars at their cover and d),
+   the sub-base and the subgrade with its modulus k, and the radius of relative stiffness l to the same horizontal
+   scale. And Meyerhof's capacities against the radius of the contact area (internal, edge and corner, with the joint's
+   enhanced edge where given), with each point load's design load at its own radius.
+   Source: scratchpad/drawings/slab.js. Needs JD, DK; takes GroundSlab.design results. */
+const DrawSlab = (() => {
+  'use strict';
+  const { svg, line, rect, text, arrow, page, sheet, RED, MUTE, BLUE, INK } = DK;
+  const r0 = v => Math.round(v).toString(), r2 = v => (Math.round(v * 100) / 100).toFixed(2);
+  const GREY = '#7d8893';
+  function section(D) {
+    const Wd = 700, span = Math.max(2.4 * D.l, 1500), k = 560 / span, kv = Math.min(1.2, 90 / D.h), x0 = 60, yT = 70;
+    const X = x => x0 + x * k, yB = yT + D.h * kv;
+    let g = text(0, 14, `Section: ${r0(D.h)} mm slab on k ${D.k} N/mm³ (depth ×${(kv / k).toFixed(1)} the horizontal scale)`, { size: 9.5, color: MUTE });
+    g += rect(X(0), yB, span * k, 22, { fill: '#e2dccf', stroke: 'none' }) + text(X(span) - 4, yB + 15, `sub-base on the subgrade, k ${D.k} N/mm³`, { size: 9, anchor: 'end', color: MUTE });
+    g += rect(X(0), yT, span * k, D.h * kv, { fill: '#d5dbe1', stroke: INK, w: 1.2 });
+    if (D.reo === 'fibre' || D.reo === 'fibreBar') { for (let i = 0; i < 160; i++) { const x = X(span * ((i * 0.618) % 1)), y = yT + 4 + (D.h * kv - 8) * ((i * 0.382) % 1); g += line(x, y, x + 4, y + 1.5, { c: '#5b6570', w: 0.8 }); } }
+    if (D.reo === 'fabric' || D.reo === 'fibreBar') { const ys = yT + (D.h - D.cover - D.phi / 2) * kv; g += line(X(0), ys, X(span), ys, { c: BLUE, w: 1.6 }) + text(X(span) - 4, ys - 4, `${r0(D.As)} mm²/m at d ${r0(D.d)} mm`, { size: 9, anchor: 'end', color: BLUE }); }
+    // a point load and l
+    const xp = X(span / 2);
+    g += arrow(xp, yT - 40, xp, yT - 2, { c: 'red', w: 2 }) + text(xp + 6, yT - 26, 'P', { size: 10, color: RED, weight: 600 });
+    g += line(xp, yT - 50, X(span / 2 + D.l), yT - 50, { c: INK, w: 0.8 }) + line(X(span / 2 + D.l), yT - 54, X(span / 2 + D.l), yT - 46, { w: 0.8 }) + text((xp + X(span / 2 + D.l)) / 2, yT - 54, `l ${r0(D.l)} mm`, { size: 9.5, anchor: 'middle' });
+    g += line(X(span) + 10, yT, X(span) + 10, yB, { w: 0.8 }) + text(X(span) + 14, (yT + yB) / 2 + 3, `h ${r0(D.h)}`, { size: 9.5 });
+    g += text(X(0) + 4, yT + 13, `${{ plain: 'plain concrete', fabric: 'fabric near the bottom', fibre: D.steelFibre ? 'steel fibres' : 'macro-synthetic fibres', fibreBar: 'fibres with bars' }[D.reo]}, C${D.c.fck}/${D.c.fcu}: M_{un} ${r2(D.Mun)}, M_{p} ${r2(D.Mp)} kNm/m`, { size: 9.5 });
+    return svg(g, Wd, yB + 30, 'Section through the ground-bearing slab');
+  }
+  function capacity(D) {
+    const Wd = 700, x0 = 60, y0 = 40, w = 520, h = 220, L = D.loads;
+    const amax = Math.max(0.3 * D.l, ...L.map(p => p.a * 1.2)), cur = loc => a => GroundSlab.single(loc, D.Mp, D.Mn, a, D.l).P;
+    const series = [['internal', cur('internal'), 2, ''], ['edge', cur('edge'), 1.4, '6 4'], ['corner', cur('corner'), 1.2, '2 3']];
+    const Pmax = Math.max(...series.map(s => s[1](amax)), ...L.map(p => p.Ptot)) * 1.08;
+    const X = a => x0 + a / amax * w, Y = P => y0 + h - P / Pmax * h;
+    let g = text(0, 14, 'Single-load bending capacity P_{u} against the contact radius a (Meyerhof), and each load’s design value', { size: 9.5, color: MUTE });
+    const sa = amax > 300 ? 100 : 50; for (let a = 0; a <= amax + 1e-9; a += sa) g += line(X(a), y0, X(a), y0 + h, { c: '#eceff2', w: 0.8 }) + text(X(a), y0 + h + 13, r0(a), { size: 9, anchor: 'middle', color: MUTE });
+    const sp = (() => { const p = Math.pow(10, Math.floor(Math.log10(Pmax / 4))), n = Pmax / 4 / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p; })();
+    for (let P = 0; P <= Pmax; P += sp) g += line(x0, Y(P), x0 + w, Y(P), { c: '#eceff2', w: 0.8 }) + text(x0 - 6, Y(P) + 3, r0(P), { size: 9, anchor: 'end', color: MUTE });
+    g += line(x0, y0, x0, y0 + h, { w: 0.9 }) + line(x0, y0 + h, x0 + w, y0 + h, { w: 0.9 }) + text(x0 - 6, y0 - 6, 'kN', { size: 9, anchor: 'end', color: MUTE }) + text(x0 + w, y0 + h + 26, 'equivalent contact radius a (mm)', { size: 9, anchor: 'end', color: MUTE });
+    series.forEach(([nm, f, sw, dash]) => {
+      const pts = []; for (let i = 0; i <= 80; i++) { const a = amax * i / 80; pts.push(`${i ? 'L' : 'M'}${X(a).toFixed(1)} ${Y(f(a)).toFixed(1)}`); }
+      g += `<path d="${pts.join(' ')}" fill="none" stroke="${BLUE}" stroke-width="${sw}"${dash ? ` stroke-dasharray="${dash}"` : ''}/>` + text(X(amax) + 4, Y(f(amax)) + 3, nm, { size: 9.5, color: BLUE });
+    });
+    g += line(X(0.2 * D.l), y0, X(0.2 * D.l), y0 + h, { c: INK, w: 0.8, dash: '2 3' }) + text(X(0.2 * D.l) + 3, y0 + 10, 'a = 0.2 l', { size: 9, color: MUTE });
+    // short refs by the dots (alternating above and below where two sit close), the detail in a key under the chart
+    const placed = [];
+    L.forEach(p => {
+      const over = p.util > 1, cx = X(p.a), cy = Y(p.Ptot), near = placed.some(q => Math.abs(q[0] - cx) < 40 && Math.abs(q[1] - cy) < 16 && !q[2]);
+      placed.push([cx, cy, near]);
+      g += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="4" fill="${over ? RED : INK}"/>` + text(cx + 6, near ? cy + 14 : cy - 6, p.ref, { size: 9.5, color: over ? RED : INK, weight: 600 });
+    });
+    L.forEach((p, i) => { const over = p.util > 1, yy = y0 + h + 46 + i * 14; g += text(x0, yy, `${p.ref}: ${r0(p.Ptot)} kN design on a ${r0(p.a)} mm radius, ${p.loc}${p.n > 1 ? `, ${p.n} loads as one` : ''}: P_{u} ${r0(p.Pu)} kN (${r2(p.util)})`, { size: 9.5, color: over ? RED : INK }); });
+    return svg(g, Wd, y0 + h + 40 + L.length * 14 + 6, 'Point load capacity against the contact radius, with the design loads');
+  }
+  const blocks = D => [['Section', section(D)], ...(D.loads.length ? [['Point loads', capacity(D)]] : [])];
+  return { html: D => page(blocks(D)), report: D => sheet(blocks(D)), section, capacity };
+})();
+
+</script>
+<script id="ui">
+'use strict';
+const $ = id => document.getElementById(id);
+const STORE = 'et-slab-v1';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ufmt = u => !Number.isFinite(u) ? '&gt;99' : u.toFixed(3);
+const f0 = v => Number.isFinite(v) ? Math.round(v).toString() : '–', f1 = v => Number.isFinite(v) ? v.toFixed(1) : '–', f2 = v => Number.isFinite(v) ? v.toFixed(2) : '–';
+const sub = s => esc(s).replace(/_\{([^}]*)\}|_([A-Za-zα-ω0-9,′]+)/g, (m, a, b) => `<sub>${a || b}</sub>`).replace(/\^([0-9.]+)/g, '<sup>$1</sup>');
+function refreshVis() {
+  const r = $('reo').value, dw = $('dowels').value;
+  document.querySelectorAll('.g-fib').forEach(e => { e.hidden = !(r === 'fibre' || r === 'fibreBar'); });
+  document.querySelectorAll('.g-bar').forEach(e => { e.hidden = !(r === 'fabric' || r === 'fibreBar'); });
+  document.querySelectorAll('.g-dw').forEach(e => { e.hidden = dw === 'none'; }); document.querySelectorAll('.g-dbar').forEach(e => { e.hidden = dw !== 'bar'; }); document.querySelectorAll('.g-dgiv').forEach(e => { e.hidden = dw !== 'given'; });
+  document.querySelectorAll('.g-fat').forEach(e => { e.hidden = !$('fatOn').checked; });
+  document.querySelectorAll('#ptRows .row').forEach(rw => { const n = rw.querySelector('.n').value; rw.querySelector('.sx').disabled = n === '1'; rw.querySelector('.sy').disabled = n !== '4'; });
+}
+// ---------- point loads ----------
+const PF = ['ref', 'kind', 'P', 'x', 'y', 'loc', 'n', 'sx', 'sy'];
+const DEFP = [{ ref: 'R1', kind: 'racking', P: 60, x: 100, y: 100, loc: 'internal', n: '2', sx: 300 }, { ref: 'R2', kind: 'racking', P: 60, x: 100, y: 100, loc: 'joint', n: '1' }, { ref: 'F1', kind: 'dynamic', P: 45, x: 150, y: 150, loc: 'joint', n: '1' }];
+function ptRow(o = {}) {
+  const r = document.createElement('div'); r.className = 'row pt';
+  r.innerHTML = `<div><label>Ref</label><input type="text" class="ref"></div><div><label>Kind</label><select class="kind"><option value="racking">Racking</option><option value="static">Other static</option><option value="dynamic">Handling</option></select></div><div><label>P (kN)</label><input type="number" class="P" step="1"></div><div><label>x (mm)</label><input type="number" class="x" step="10"></div><div><label>y (mm)</label><input type="number" class="y" step="10"></div>`
+    + `<div><label>Where</label><select class="loc"><option value="internal">Internal</option><option value="joint">At a joint</option><option value="edge">Free edge</option><option value="corner">Free corner</option></select></div><div><label>No.</label><select class="n"><option>1</option><option>2</option><option>4</option></select></div><div><label>s<sub>x</sub></label><input type="number" class="sx" step="10"></div><div><label>s<sub>y</sub></label><input type="number" class="sy" step="10"></div><div><label>&nbsp;</label><button class="xbtn" type="button" title="Remove">×</button></div>`;
+  PF.forEach(k => { if (o[k] !== undefined) r.querySelector('.' + k).value = o[k]; });
+  r.querySelector('.xbtn').onclick = () => { r.remove(); queueDraw(); };
+  $('ptRows').appendChild(r); return r;
+}
+$('addPt').onclick = () => { ptRow({ ref: `P${document.querySelectorAll('#ptRows .row').length + 1}`, kind: 'static', P: 40, x: 150, y: 150, loc: 'internal', n: '1' }); refreshVis(); queueDraw(); };
+// ---------- line loads ----------
+const LF = ['ref', 'w', 'where', 'dist'];
+const DEFL = [{ ref: 'L1', w: 20, where: 'remote', dist: '' }];
+function lnRow(o = {}) {
+  const r = document.createElement('div'); r.className = 'row ln';
+  r.innerHTML = `<div><label>Ref</label><input type="text" class="ref"></div><div><label>w (kN/m)</label><input type="number" class="w" step="1"></div><div><label>Where</label><select class="where"><option value="remote">Away from joints</option><option value="joint">Near a joint</option><option value="edge">Near a free edge</option></select></div><div><label>Distance (m)</label><input type="number" class="dist" step="0.1" placeholder="0"></div><div><label>&nbsp;</label><button class="xbtn" type="button" title="Remove">×</button></div>`;
+  LF.forEach(k => { if (o[k] !== undefined) r.querySelector('.' + k).value = o[k]; });
+  r.querySelector('.xbtn').onclick = () => { r.remove(); queueDraw(); };
+  $('lnRows').appendChild(r); return r;
+}
+$('addLn').onclick = () => { lnRow({ ref: `L${document.querySelectorAll('#lnRows .row').length + 1}`, w: 15, where: 'edge', dist: 0 }); queueDraw(); };
+const rows = (box, F) => [...document.querySelectorAll(`#${box} .row`)].map(r => Object.fromEntries(F.map(k => [k, r.querySelector('.' + k).value])));
+// ---------- state ----------
+const FIELDS = ['pName', 'pJob', 'pBy', 'pRef', 'h', 'fck', 'k', 'reo', 'fibreType', 'fR1', 'fR2', 'fR3', 'fR4', 'As', 'phi', 'cover', 'dowels', 'sd', 'dd', 'open', 'Pd', 'udl', 'ax1', 'ax2', 'passes'], CHK = ['interlock', 'fatOn', 'solid'];
+function collect() { const s = { v: 1, points: rows('ptRows', PF), lines: rows('lnRows', LF) }; FIELDS.forEach(id => { s[id] = $(id).value; }); CHK.forEach(id => { s[id] = $(id).checked; }); return s; }
+function restore(s) {
+  $('ptRows').innerHTML = ''; $('lnRows').innerHTML = '';
+  (s.points ? s.points : DEFP).forEach(ptRow); (s.lines ? s.lines : DEFL).forEach(lnRow);
+  FIELDS.forEach(id => { if (s[id] !== undefined && $(id)) $(id).value = s[id]; }); CHK.forEach(id => { if (s[id] !== undefined) $(id).checked = !!s[id]; }); refreshVis();
+}
+const num = v => (v === '' || v === undefined || v === null ? undefined : +v), req = v => (v === '' || v === undefined || v === null ? NaN : +v);
+const input = s => ({ h: req(s.h), fck: num(s.fck), k: req(s.k), reo: s.reo, fibreType: s.fibreType, fR1: num(s.fR1), fR2: num(s.fR2), fR3: num(s.fR3), fR4: num(s.fR4), As: num(s.As), phi: num(s.phi), cover: num(s.cover),
+  joint: { interlock: s.interlock, dowels: s.dowels, sd: num(s.sd), dd: num(s.dd), open: num(s.open), Pd: num(s.Pd) },
+  points: s.points.map(p => ({ ref: p.ref, kind: p.kind, P: req(p.P), x: req(p.x), y: num(p.y), loc: p.loc, n: +p.n, sx: num(p.sx), sy: num(p.sy) })),
+  lines: s.lines.map(q => ({ ref: q.ref, w: req(q.w), where: q.where, dist: num(q.dist) })), udl: num(s.udl),
+  fat: { on: s.fatOn, axles: [num(s.ax1), num(s.ax2)].filter(v => v !== undefined), solid: s.solid, passes: num(s.passes) } });
+const compute = s => GroundSlab.design(input(s));
+// ---------- results ----------
+const bar = c => `<div class="ck"><div class="nm">${sub(c.name)}<small>${sub(c.ref)} &nbsp;${sub(c.note || '')}</small></div><div class="bar"><i class="${c.util > 1 ? 'over' : c.util > 0.9 ? 'hi' : ''}" style="width:${Math.min(100, c.util * 100 / 1.2)}%"></i></div><div class="u ${c.util > 1 ? 'over' : ''}">${ufmt(c.util)}</div></div>`;
+const stepsHTML = S => `<div class="steps">${S.map(s => `<div class="st"><span>${esc(s.ref)}</span><span>${sub(s.text)}</span></div>`).join('')}</div>`;
+function loadTable(D, cls) {
+  if (!D.loads.length) return '';
+  return `<div class="tscroll"><table class="${cls}"><thead><tr><th>Load</th><th>Where</th><th>Design (kN)</th><th>a (mm)</th><th>P<sub>u</sub> (kN)</th><th>Bending</th><th>Punching</th></tr></thead><tbody>${D.loads.map(L => `<tr><td>${esc(L.ref)}</td><td>${L.loc}${L.n > 1 ? `, ${L.n} loads` : ''}</td><td>${f1(L.Ptot)}</td><td>${f0(L.a)}</td><td>${f1(L.Pu)}</td><td${L.util > 1 ? ' class="over"' : ''}>${ufmt(L.util)}</td><td${Math.max(L.uFace, L.uPunch) > 1 ? ' class="over"' : ''}>${ufmt(Math.max(L.uFace, L.uPunch))}</td></tr>`).join('')}</tbody></table></div>`;
+}
+const key = D => `${f0(D.h)} mm C${D.c.fck}/${D.c.fcu} slab, ${{ plain: 'plain', fabric: `fabric ${f0(D.As)} mm²/m`, fibre: D.steelFibre ? 'steel fibres' : 'macro-synthetic fibres', fibreBar: `fibres with ${f0(D.As)} mm²/m bars` }[D.reo]}, on k ${D.k} N/mm³: l ${f0(D.l)} mm, M<sub>un</sub> ${f2(D.Mun)} and M<sub>p</sub> ${f2(D.Mp)} kNm/m`;
+function verdict(D) {
+  const W = [...D.checks].sort((a, b) => b.util - a.util)[0];
+  return `<div class="verdict ${D.utilMax > 1 ? 'fail' : ''}"><div><div class="big">${D.utilMax > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(D.utilMax)}</div><div class="sub">Governs: ${sub(W.name.charAt(0).toLowerCase() + W.name.slice(1))} (${sub(W.ref)})<br>${key(D)}</div></div></div>`;
+}
+const notes = D => ['After Concrete Society TR34, 4th edition (2013, amended): Meyerhof’s yield line capacities for point loads with the hogging moment limited to plain concrete’s cracking moment, punching to Eurocode 2 with the ground’s reaction, and Hetényi’s elastic analysis for line and uniform loads. TR34 has no worked examples: check the figures independently.',
+  'Not covered: pile-supported slabs (TR34 chapter 8), loads near joints for line loads beyond the 15% transfer case and for UDLs (TR34 ignores joints for UDLs), the wheel-interaction factor of Figure E1, plate dowels’ own capacity (the maker’s), surface regularity, joint layout and the floor’s specification.'];
+let last = null;
+function render(D, s) {
+  let h = verdict(D) + `<div id="drawings"></div>`;
+  h += `<div class="dlabel">Checks</div><div class="checks">${[...D.checks].sort((a, b) => b.util - a.util).map(bar).join('')}</div>`;
+  D.warnings.forEach(t => { h += `<div class="note">${sub(t)}</div>`; });
+  if (D.loads.length) h += `<div class="dlabel">Point loads</div>${loadTable(D, 'ctab')}`;
+  h += `<div class="dlabel">Calculation</div>${stepsHTML(D.steps)}`;
+  h += `<div class="note">${notes(D).join(' ')}</div><button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  $('results').innerHTML = h; redraw(D);
+  $('printBtn').onclick = () => { $('report').innerHTML = report(D, s); window.print(); };
+}
+function run() {
+  const s = collect(); try { localStorage.setItem(STORE, JSON.stringify(s)); } catch (e) { /* storage unavailable */ }
+  clearTimeout(drawT);
+  try { const D = compute(s); last = { D, s }; render(D, s); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div><div id="drawings"></div>`; redraw(); }
+}
+$('calc').onclick = run;
+// ---------- A4 sheet ----------
+const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
+const okng = u => u <= 1 ? `<span class="ok">${ufmt(u)} OK</span>` : `<span class="ng">${ufmt(u)} FAIL</span>`;
+function report(D, s) {
+  const today = new Date().toLocaleDateString('en-GB');
+  const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.pRef) || '&nbsp;'}</div><div class="ttl">Ground-bearing slab, Concrete Society TR34 4th edition</div></div>`;
+  let b = `<div class="rs"><h2>1 Slab and support</h2>${rl(key(D), '', '')}${D.steps.map(x => rl(sub(x.text), esc(x.ref), '')).join('')}</div>`;
+  b += `<div class="rs"><h2>2 Drawings</h2>${DrawSlab.report(D)}</div>`;
+  b += `<div class="rs"><h2>3 Checks</h2>${D.checks.map(c => rl(`${sub(c.name)}: ${sub(c.note)}`, sub(c.ref), okng(c.util))).join('')}${loadTable(D, 'rt')}</div>`;
+  if (D.warnings.length) b += `<div class="rs">${D.warnings.map(t => `<p class="rp">${sub(t)}</p>`).join('')}</div>`;
+  b += `<div class="rs"><p class="rp">${notes(D).join(' ')}</p><p class="rp" style="color:#555">Concrete Society TR34 Concrete industrial ground floors, 4th edition; BS EN 1992-1-1. Generated by EngineeringTools — Ground-Bearing Slab.</p></div>`;
+  return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
+}
+let drawT = 0;
+function redraw(D) {
+  const el = $('drawings'); if (!el) return;
+  try { el.innerHTML = DrawSlab.html(D || compute(collect())); }
+  catch (e) { el.innerHTML = `<div class="note">The drawings will appear when the inputs are complete: ${esc(e.message)}</div>`; }
+}
+const queueDraw = () => { clearTimeout(drawT); drawT = setTimeout(() => redraw(), 200); };
+$('inputs').addEventListener('input', () => { refreshVis(); queueDraw(); }); $('inputs').addEventListener('change', () => { refreshVis(); queueDraw(); });
+$('inputs').addEventListener('click', e => { const t = e.target.closest('button'); if (t && !t.classList.contains('btn') && !t.classList.contains('btn2')) queueDraw(); });
+(function init() {
+  let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
+  restore(s && s.v === 1 ? s : {});
+  redraw();
+})();
+</script>
+<footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent structural engineer with relevant experience to check and approve all calculations before they are used.</footer>
+<!-- @@FILEIO: save / open, shared by every tool (scratchpad/common/fileio.*) -->
+<style id="ef-style">
+/* Save / open buttons on the page header, and the status message (source: scratchpad/common/fileio.css) */
+.ef-bar{position:absolute;top:14px;right:16px;z-index:3;display:flex;gap:8px;}
+.ef-bar.ef-float{position:fixed;top:12px;right:12px;}
+.ef-btn{height:32px;padding:0 12px;display:inline-flex;align-items:center;gap:6px;border:0;border-radius:6px;background:rgba(255,255,255,.94);color:#111;font-family:inherit;font-size:13px;font-weight:500;line-height:1;cursor:pointer;}
+.ef-btn:hover{background:#fff;}
+.ef-btn:focus-visible{outline:2px solid #fff;outline-offset:2px;}
+.ef-btn svg{width:15px;height:15px;flex:none;}
+.ef-msg{position:fixed;left:50%;bottom:20px;z-index:1000;width:max-content;max-width:min(560px,calc(100vw - 32px));transform:translate(-50%,8px);opacity:0;pointer-events:none;
+  background:#1d1f20;color:#fff;font-family:inherit;font-size:13px;line-height:1.45;padding:10px 14px;border-radius:6px;transition:opacity .15s,transform .15s;}
+.ef-msg.on{opacity:1;transform:translate(-50%,0);}
+.ef-msg.bad{background:#b3261e;}
+@media(max-width:560px){.ef-bar{position:static;margin-top:12px;align-self:flex-start;}}
+@media print{.ef-bar,.ef-msg{display:none!important;}}
+</style>
+<script id="ef-script">
+/* Save / open: a tool's inputs as a .json file. Shared by every Engineering Tools page (source: scratchpad/common/fileio.js),
+   configured per page with EngFile.init({...}).
+   File: { app: 'EngineeringTools', tool, key, format, saved, state }.
+   Two ways to open:
+   - store: the tool already restores itself from browser storage on load. Open writes the file's state there and reloads,
+     so the tool rebuilds everything (load tables, spans, models) exactly as on a return visit, then recalculates.
+   - set: the page applies the state itself (pages without saved state); EngFile.fields() covers plain forms. */
+const EngFile = (() => {
+  'use strict';
+  const APP = 'EngineeringTools', FMT = 1, FLAG = 'ef-opened';
+  let C = null, input = null, timer = 0;
+  const ICON = {
+    open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+    save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v5h8V3"/><path d="M7 21v-7h10v7"/></svg>',
+  };
+  const sess = {
+    get: k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
+    set: (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } },
+    del: k => { try { sessionStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
+  };
+
+  function msg(t, bad) {
+    let m = document.getElementById('ef-msg');
+    if (!m) { m = document.createElement('div'); m.id = 'ef-msg'; m.className = 'ef-msg no-print'; m.setAttribute('role', 'status'); m.setAttribute('aria-live', 'polite'); document.body.appendChild(m); }
+    m.textContent = t || ''; m.classList.toggle('bad', !!bad); m.classList.toggle('on', !!t);
+    clearTimeout(timer); if (t) timer = setTimeout(() => m.classList.remove('on'), bad ? 9000 : 5000);
+  }
+  function data() { return { app: APP, tool: C.tool, key: C.key, format: FMT, saved: new Date().toISOString(), state: C.get() }; }
+  function fileName() {
+    let ref = '', nm = ''; try { ref = C.ref ? String(C.ref() || '').trim() : ''; nm = C.name ? String(C.name() || '').trim() : ''; } catch (e) { ref = ''; }
+    return `${ref ? ref + ' ' : ''}${nm || C.tool}.json`.replace(/[\\/:*?"<>|]+/g, '-');
+  }
+  async function save() {
+    let d; try { d = data(); } catch (e) { msg(`Could not save: ${e.message}`, true); return; }
+    const name = fileName(), text = JSON.stringify(d, null, 1);
+    if (window.showSaveFilePicker) {   // Chrome / Edge: a Save As dialog, so the file can go straight into the job folder
+      try {
+        const h = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: `${C.tool} file`, accept: { 'application/json': ['.json'] } }] });
+        const w = await h.createWritable(); await w.write(text); await w.close(); msg(`Saved ${h.name}`); return;
+      } catch (e) { if (e && e.name === 'AbortError') return; }   // cancelled; any other failure falls back to a download
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    msg(`Saved ${name} to your downloads folder`);
+  }
+  function open() { input.value = ''; input.click(); }
+  // the saved state, or an error saying what the file is
+  function stateOf(d) {
+    const old = C.legacy ? C.legacy(d) : null; if (old) return old;
+    if (!d || d.app !== APP || !d.state || typeof d.state !== 'object') throw new Error('this is not an Engineering Tools file');
+    if (d.key !== C.key) throw new Error(d.tool ? `it was saved in ${d.tool}, so open it there` : 'it was saved in another tool');
+    if (!(d.format >= 1) || d.format > FMT) throw new Error('this file was saved by a newer version of the tools');
+    return d.state;
+  }
+  async function apply(d, name) {
+    const s = stateOf(d);
+    if (C.store) {
+      try { localStorage.setItem(C.store, JSON.stringify(s)); } catch (e) { throw new Error('this browser is blocking site storage for this page, which Open needs'); }
+      sess.set(FLAG, JSON.stringify({ name, key: C.key }));
+      history.replaceState(null, '', location.href.split('#')[0]);   // a #in= hand-over in the address would otherwise win over the file
+      location.reload(); return { reload: true };
+    }
+    const r = (await C.set(s)) || {};
+    if (C.calc) try { C.calc(); } catch (e) { /* the tool reports its own input errors */ }
+    return r;
+  }
+  function done(name, r) {
+    const k = r && r.skipped ? r.skipped.length : 0;
+    msg(`Opened ${name}` + (k ? `. ${k} saved value${k > 1 ? 's are' : ' is'} not used by this version and ${k > 1 ? 'were' : 'was'} left at the default` : ''));
+  }
+  async function openFile(file) {
+    if (!file) return;
+    let d; try { d = JSON.parse(await file.text()); } catch (e) { msg(`${file.name} could not be read as a saved file`, true); return; }
+    try { const r = await apply(d, file.name); if (!r.reload) done(file.name, r); } catch (e) { msg(`${file.name} was not opened: ${e.message}`, true); }
+  }
+  // plain forms: every input, select and textarea with an id under root; dropdowns are restored first, since choosing a
+  // section often auto-fills its dimensions, which the saved values then override
+  function fields(root) {
+    const els = () => [...(typeof root === 'string' ? document.querySelector(root) : root || document).querySelectorAll('input[id],select[id],textarea[id]')]
+      .filter(el => el.id !== 'ef-file' && !['file', 'button', 'submit', 'reset'].includes(el.type));
+    return {
+      get: () => { const o = {}; els().forEach(el => { o[el.id] = el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value; }); return o; },
+      set: o => {
+        const have = new Map(els().map(el => [el.id, el])), skipped = [], ent = Object.entries(o || {}), fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+        for (const [id, v] of ent) {
+          const el = have.get(id); if (!el) { skipped.push(id); continue; }
+          if (el.tagName === 'SELECT') { if ([...el.options].some(x => x.value === String(v))) { el.value = String(v); fire(el, 'change'); } else skipped.push(id); }
+        }
+        for (const [id, v] of ent) {
+          const el = have.get(id); if (!el || el.tagName === 'SELECT') continue;
+          if (el.type === 'checkbox' || el.type === 'radio') { el.checked = !!v; fire(el, 'change'); } else { el.value = String(v); fire(el, 'input'); fire(el, 'change'); }
+        }
+        return { skipped };
+      },
+    };
+  }
+  // file names lead with the job and member references from the page, e.g. '24-123 Slab S3 RC Slab Design.json'
+  const refOf = ids => () => ids.map(id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; }).filter(Boolean).join(' ');
+  function mount() {
+    const bar = document.createElement('div'); bar.className = 'ef-bar no-print';
+    bar.innerHTML = `<button type="button" class="ef-btn" id="ef-open" title="Open a saved file (Ctrl+O), or drop it onto the page">${ICON.open}Open</button>`
+      + `<button type="button" class="ef-btn" id="ef-save" title="Save the inputs to a file (Ctrl+S)">${ICON.save}Save</button>`;
+    const h = document.querySelector('.page-hdr'); if (h) h.appendChild(bar); else { bar.classList.add('ef-float'); document.body.appendChild(bar); }
+    bar.querySelector('#ef-open').addEventListener('click', open); bar.querySelector('#ef-save').addEventListener('click', save);
+  }
+  function init(c) {
+    C = Object.assign({ tool: (document.querySelector('h1') || {}).textContent || document.title, ref: refOf(['pJob', 'pRef']), calc: () => { const b = document.getElementById('calc'); if (b) b.click(); }, delay: 200 }, c);
+    C.tool = C.tool.trim(); if (!C.key) C.key = C.store;
+    if (C.store && !C.get) C.get = () => collect();   // eslint-disable-line no-undef -- the tool's own serialiser
+    input = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json', id: 'ef-file' }); input.hidden = true;
+    document.body.appendChild(input); input.addEventListener('change', () => openFile(input.files[0]));
+    mount();
+    document.addEventListener('keydown', e => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return; const k = (e.key || '').toLowerCase();
+      if (k === 's') { e.preventDefault(); save(); } else if (k === 'o') { e.preventDefault(); open(); }
+    });
+    document.addEventListener('dragover', e => { if ([...((e.dataTransfer && e.dataTransfer.types) || [])].includes('Files')) e.preventDefault(); });
+    document.addEventListener('drop', e => { const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f && /\.json$/i.test(f.name)) { e.preventDefault(); openFile(f); } });
+    // after an Open that reloaded the page: the tool has restored itself; recalculate and say what was opened
+    const f = sess.get(FLAG);
+    if (f) {
+      sess.del(FLAG); let o = null; try { o = JSON.parse(f); } catch (e) { o = null; }
+      if (o && o.key === C.key) setTimeout(() => { if (C.calc) try { C.calc(); } catch (e) { /* the tool reports its own input errors */ } done(o.name); }, C.delay);
+    }
+  }
+  return { init, save, open, openFile, apply, data, fileName, msg, fields, stateOf, refOf };
+})();
+window.EngFile = EngFile;   // reachable from the page's other scripts and the tests
+EngFile.init({ store: STORE });
+</script>
+<!-- /@@FILEIO -->
+</body>
+</html>
