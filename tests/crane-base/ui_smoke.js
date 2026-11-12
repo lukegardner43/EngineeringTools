@@ -13,8 +13,12 @@ const set = (id, v) => { const el = $(id); el.value = v; el.dispatchEvent(new w.
 truth('page loads without script errors', w.errs.length === 0);
 truth('defaults: four load cases, torque only in service, two drawings', d.querySelectorAll('#caseRows .row').length === 4 && !d.querySelectorAll('#caseRows .T')[0].disabled && d.querySelectorAll('#caseRows .T')[1].disabled && $('drawings').querySelectorAll('svg.dk').length === 2);
 $('calc').click();
-truth('checked: PASS, overturning governs', /PASS/.test(res()) && /Governs: overturning \(EQU\)/.test(res()) && !err());
-truth('checks, the load-case table and the calculation', $('results').querySelectorAll('.ck').length === 11 && $('results').querySelectorAll('table.ctab tbody tr').length === 4 && /C761 Table A3\.2/.test(res()));
+truth('checked: PASS, the mast\'s tilt governs', /PASS/.test(res()) && /Governs: settlement and tilt/.test(res()) && !err());
+truth('checks (13, with tilt and pull-out), the load-case table and the calculation', $('results').querySelectorAll('.ck').length === 13 && $('results').querySelectorAll('table.ctab tbody tr').length === 4 && /C761 Table A3\.2/.test(res()) && /Pull-out/.test(res()) && /jib at 0° to 45°/.test(res()));
+set('E', ''); $('calc').click(); truth('no E: no settlement check, overturning governs', $('results').querySelectorAll('.ck').length === 12 && /Governs: overturning \(EQU\)/.test(res()));
+set('E', '100'); set('qpBasis', 'gross'); $('calc').click(); truth('presumed bearing gross', /characteristic, gross/.test(res()) && !/overburden =/.test(res()));
+set('qpBasis', 'net'); set('tc', '1400'); $('calc').click(); truth('the compression going in below the bottom steel is refused', /below the bottom steel/.test(err()));
+set('tc', '235');
 set('L', '5'); $('calc').click(); truth('a 5 m base overturns', /FAIL/.test(res()) && /Overturning/.test(res()));
 set('L', '6');
 $('dyn').checked = true; $('dyn').dispatchEvent(new w.Event('change', { bubbles: true })); $('calc').click(); truth('loads with dynamic effects: Table A3.3', /Table A3\.3/.test(res()));
