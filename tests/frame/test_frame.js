@@ -64,5 +64,19 @@ const sec = n => EC3.fromRow(SECTION_DATA.find(r => r[0].startsWith(n)));
     members: [{ i: 0, j: 1, sec: col, grade: 'S355', role: 'column', nLT: 1 }, { i: 1, j: 2, sec: bm, grade: 'S355', role: 'beam', nLT: 4 }, { i: 3, j: 2, sec: col, grade: 'S355', role: 'column', nLT: 1 }],
     cases: { G: { nodal: [{ node: 1, Fy: -40e3 }, { node: 2, Fy: -40e3 }], udl: [{ member: 1, wy: -10 }] }, Q: { nodal: [], udl: [] }, W: { nodal: [{ node: 1, Fx: 5e3 }], udl: [] } }, rule: '6.10', imperfection: true });
   truth(`slender pinned-base portal: alpha_cr < 10 (${R.acrMin.toFixed(2)}) triggers second-order analysis`, R.acrMin < 10 && R.combos.some(c => c.second)); }
+// hinges on two members: each released end gets its own rotation after all the nodes' freedoms (a hinge on the second
+// member used to share a number with the first member's internal nodes, and the frame was reported as a mechanism)
+{ const md = F.build({ nodes: [{ x: 0, y: 0, sup: { ux: 1, uy: 1, rz: 1 } }, { x: 0, y: 4000 }, { x: 3000, y: 4000 }, { x: 6000, y: 4000 }, { x: 6000, y: 0, sup: { ux: 1, uy: 1, rz: 1 } }],
+    members: [{ i: 0, j: 1, A: 1e4, I: 1e8 }, { i: 1, j: 2, A: 1e4, I: 2e8, relI: true }, { i: 2, j: 3, A: 1e4, I: 2e8, relJ: true }, { i: 4, j: 3, A: 1e4, I: 1e8 }] });
+  const res = F.analyse(md, { nodal: [], udl: [{ member: 1, wy: -10 }, { member: 2, wy: -10 }] }, false);
+  const b1 = F.memberResults(md, res, 1), b2 = F.memberResults(md, res, 2), c1 = F.memberResults(md, res, 0);
+  near('beam pinned to both columns through hinges on two members: mid-span moment wL²/8', b1[b1.length - 1].M, 10 * 6000 * 6000 / 8, 1e-6);
+  near('... no moment at the hinges', Math.abs(b1[0].M) + Math.abs(b2[b2.length - 1].M), 0, 1e-6, 1e6);
+  near('... no moment into the column', Math.abs(c1[0].M), 0, 1e-6, 1e6);
+  // per-member E (timber frames): halving E doubles the deflection of a determinate beam
+  const mdE = F.build({ nodes: [{ x: 0, y: 0, sup: { ux: 1, uy: 1 } }, { x: 6000, y: 0, sup: { uy: 1 } }], members: [{ i: 0, j: 1, A: 1e4, I: 1e8, E: 105000 }] });
+  const mdS = F.build({ nodes: [{ x: 0, y: 0, sup: { ux: 1, uy: 1 } }, { x: 6000, y: 0, sup: { uy: 1 } }], members: [{ i: 0, j: 1, A: 1e4, I: 1e8 }] });
+  const dE = Math.min(...F.analyse(mdE, { nodal: [], udl: [{ member: 0, wy: -10 }] }, false).u), dS = Math.min(...F.analyse(mdS, { nodal: [], udl: [{ member: 0, wy: -10 }] }, false).u);
+  near('a member with its own E (half of steel) deflects twice as much', dE / dS, 2, 1e-9); }
 console.log(`\n${n - fails}/${n} frame checks passed`);
 if (fails) process.exit(1);
