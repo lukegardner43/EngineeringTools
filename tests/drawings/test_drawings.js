@@ -379,13 +379,13 @@ async function sweep(f, cases, expect) {
     ['masonry', w => wset(w, 0, 'type', 'masonry')], ['given k', w => wset(w, 1, 'type', 'k')], ['a wall moved', w => wset(w, 5, 'at', '12')], ['a wall removed', w => wrow(w, 4).querySelector('.xbtn').click()],
     ['walls along Y only (Y load)', w => { set(w, 'Fx', '0'); [0, 1, 2, 3, 4].forEach(i => { if (wrow(w, i)) wset(w, i, 'dir', 'y'); }); }], ['racking strength', w => { [0, 1, 2, 3, 4].forEach(i => { if (wrow(w, i)) wset(w, i, 'FRd', '20'); }); set(w, 'basis', 'strength', 'change'); }],
   ], 2);
-  const lrow = (w, i) => w.document.querySelectorAll('#levRows .row')[i], lset = (w, i, cls, v) => { const e = lrow(w, i).querySelector('.' + cls); e.value = v; e.dispatchEvent(new w.Event('change', { bubbles: true })); };
+  const tset = (w, i, cls, v) => { const e = w.document.querySelectorAll('#tdRows tr')[i].querySelector('.' + cls); e.value = v; e.dispatchEvent(new w.Event('input', { bubbles: true })); };
   await sweep('Load Take-down.html', [
-    ['wider roof', w => lset(w, 0, 'trib', '6')], ['taller storeys', w => { lset(w, 1, 'h', '3.6'); lset(w, 2, 'h', '3.6'); }], ['no footing size', w => set(w, 'qa', '')],
-    ['column', w => { set(w, 'type', 'column', 'change'); lset(w, 0, 'trib', '20'); lset(w, 1, 'trib', '20'); lset(w, 2, 'trib', '20'); set(w, 'qa', '150'); }],
+    ['a bigger roof area', w => tset(w, 0, 'A', '6')], ['a point load on a floor', w => tset(w, 1, 'pD', '12')], ['a sum in a cell', w => tset(w, 3, 'aD', '0.215*20')], ['a footing size', w => set(w, 'qa', '100')],
+    ['column', w => { set(w, 'type', 'column', 'change'); tset(w, 0, 'A', '20'); tset(w, 1, 'A', '20'); tset(w, 2, 'A', '20'); set(w, 'qa', '150'); }],
     ['best of α_n and α_A', w => set(w, 'red', 'best', 'change')], ['(6.10a), (6.10b)', w => set(w, 'comb', '6.10ab', 'change')],
     ['hipped roof', w => { set(w, 'type', 'wall', 'change'); const c = w.document.getElementById('hipOn'); c.checked = true; c.dispatchEvent(new w.Event('change', { bubbles: true })); }],
-    ['hip, half to the plates', w => set(w, 'hF', '0.5')], ['a level removed', w => lrow(w, 3).querySelector('.xbtn').click()],
+    ['hip, half to the plates', w => set(w, 'hF', '0.5')], ['a row added', w => { w.document.getElementById('addRow').click(); tset(w, 4, 'pD', '20'); }], ['a row removed', w => w.document.querySelectorAll('#tdRows .xbtn')[3].click()],
   ], 1);
   await sweep('Rolling Load Analysis.html', [
     ['longer span', w => { const e = w.document.querySelector('#spanRows .L'); e.value = '12'; e.dispatchEvent(new w.Event('input', { bubbles: true })); }],
