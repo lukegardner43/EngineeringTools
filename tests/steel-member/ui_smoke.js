@@ -60,5 +60,26 @@ const block = (h, id) => h.match(new RegExp(`<script id="${id}">([\\s\\S]*?)</sc
     const w2 = page(BEAM, { 'et-steel-beam-v1': JSON.stringify(old) }), d2 = w2.document;
     truth('a state saved with a cantilever length opens as a free end', d2.getElementById('endL').value === 'free' && [...d2.querySelectorAll('#spanRows .L')].map(e => e.value).join(',') === '1.5,6');
     truth('no script errors (supports)', w.errs.length === 0 && w2.errs.length === 0); }
+  // historic sections and the steel's strength
+  { const w = page(MEM), d = w.document, $ = id => d.getElementById(id), res = () => $('results').textContent, sel = (id, v) => { $(id).value = v; $(id).onchange(); };
+    const og = [...$('series').querySelectorAll('optgroup')].find(o => /Historic/.test(o.label));
+    truth('historic: thirteen series of the BCSA handbook offered after today’s', og && og.querySelectorAll('option').length === 13);
+    truth('historic: grades S235 to S460, BS 15, BS 548, BS 968 and a given f_y; the f_y box hidden', ['S235', 'S275', 'S355', 'S460', 'BS15', 'BS548', 'BS968A', 'BS968', 'GIVEN'].every(v => [...$('grade').options].some(o => o.value === v)) && $('fyBox').classList.contains('hidden'));
+    sel('series', 'H-BSB1903');
+    truth('a 1903 series with S355: the grade turns to a given f_y, its box shown, the note explains', $('grade').value === 'GIVEN' && !$('fyBox').classList.contains('hidden') && /wrought iron/.test($('gradeHelp').textContent) && $('section').options.length === 30);
+    $('section').value = 'BSB 26 15×6 in × 59 lb (BS 4:1903)'; $('section').onchange();
+    truth('the section line names the handbook table and the derived properties', /BS 4:1903 \(handbook Table 3\.7\)/.test($('secInfo').textContent) && /derived/.test($('secInfo').textContent));
+    await calc(w); truth('no f_y given: asked for', /Give the steel’s yield strength/.test(res()));
+    $('fyG').value = '230'; await calc(w);
+    truth('f_y 230 given: checked, the verdict says so, the historic note shown', !$('results').querySelector('.err') && /f_y given|fy given/.test($('results').querySelector('.verdict').textContent.replace(/\s+/g, ' ').replace('fy', 'f_y')) && /230 N\/mm²/.test(res()) && /BS 449/.test(res()));
+    $('printBtn').click(); truth('the A4 sheet gives the source of the properties and the given f_y', /Historical Structural Steelwork Handbook/.test($('report').textContent) && /given by the engineer/.test($('report').textContent));
+    sel('series', 'H-UB1962'); truth('a 1962 series keeps the chosen given f_y', $('grade').value === 'GIVEN');
+    sel('grade', 'S355'); sel('series', 'H-UC1962'); truth('… and from S355 turns to BS 15 (1948–68)', $('grade').value === 'BS15' && $('fyBox').classList.contains('hidden') && /BS 15:1948/.test($('gradeHelp').textContent));
+    await calc(w); truth('BS 15 on a 1962 UC: checked', !$('results').querySelector('.err') && /BS 15/.test($('results').querySelector('.verdict').textContent));
+    sel('series', 'H-BSC1932'); await calc(w); truth('a 1932 channel: checked', !$('results').querySelector('.err') && /BSC/.test($('results').querySelector('.verdict').textContent));
+    sel('grade', 'S275'); sel('series', 'H-UB1972'); truth('a 1972 series keeps S275 (BS 4360 grade 43)', $('grade').value === 'S275' && /BS 4360/.test($('gradeHelp').textContent));
+    const st = w.localStorage.getItem('et-steel-member-v1'), w2 = page(MEM, { 'et-steel-member-v1': st });
+    truth('restored: the historic series, section and grade', w2.document.getElementById('series').value === 'H-BSC1932' && /BSC/.test(w2.document.getElementById('section').value) && w2.document.getElementById('grade').value === 'BS15');
+    truth('no script errors (historic)', w.errs.length === 0 && w2.errs.length === 0); }
   console.log(`\n${n - fails}/${n} passed`); if (fails) process.exit(1);
 })();

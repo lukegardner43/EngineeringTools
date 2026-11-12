@@ -500,11 +500,25 @@ const EC3 = (() => {
     S275: { std: 'BS EN 10025-2', fy: [[16, 275], [40, 265], [63, 255], [80, 245], [100, 235], [150, 225]] },
     S355: { std: 'BS EN 10025-2', fy: [[16, 355], [40, 345], [63, 335], [80, 325], [100, 315], [150, 295]] },
     S460: { std: 'BS EN 10025-4', fy: [[16, 460], [40, 440], [63, 430], [80, 410], [100, 400], [120, 385]] },
+    // historic British specifications, the yield strengths by thickness in the BCSA Historical Structural Steelwork Handbook
+    // 2.5 (tons/in² × 15.444 N/mm², rounded down); BS 15 before 1948 gave no yield strength
+    BS15: { std: 'BS 15:1948 and 1961 mild steel (16, 15, 14.75 tons/in² to ¾", 1½", over)', label: 'BS 15 (1948–68)', hist: true, fy: [[19.05, 247], [38.1, 231], [Infinity, 227]] },
+    BS548: { std: 'BS 548:1934 high tensile steel (23 to 19 tons/in² by thickness)', label: 'BS 548 (1934–65)', hist: true, fy: [[31.75, 355], [44.45, 339], [57.15, 324], [69.85, 308], [Infinity, 293]] },
+    BS968A: { std: 'BS 968, 1943 amendment, high tensile steel (21 tons/in² to ¾", 19 over)', label: 'BS 968 (1943)', hist: true, fy: [[19.05, 324], [Infinity, 293]] },
+    BS968: { std: 'BS 968:1962 high tensile steel (23, 22.5, 22 tons/in² to ⅝", 1¼", 2")', label: 'BS 968 (1962–68)', hist: true, fy: [[15.875, 355], [31.75, 347], [50.8, 339]] },
+    GIVEN: { std: 'given by the engineer', label: 'f_y given', given: true, fy: [] },
   };
-  function yieldStrength(grade, t) {
+  function yieldStrength(grade, t, given) {
     const g = GRADES[grade];
+    if (!g) throw new Error(`Steel grade ${grade} is not known`);
+    if (g.given) {
+      const f = typeof given === 'string' ? parseFloat(given) : given;
+      if (!Number.isFinite(f) || f <= 0) throw new Error('Give the steel’s yield strength f_y (N/mm²): for historic steel, from tests or an assessed value');
+      if (f < 150 || f > 700) throw new Error('Yield strength f_y: 150 to 700 N/mm²');
+      return f;
+    }
     for (const [lim, f] of g.fy) if (t <= lim) return f;
-    throw new Error(`${grade}: element thickness ${t} mm outside the product standard table`);
+    throw new Error(`${grade}: element thickness ${t} mm outside the ${g.hist ? 'specification' : 'product standard'} table`);
   }
 
   // ---------- Sections ----------
@@ -523,6 +537,40 @@ const EC3 = (() => {
     return { shape: 'PFC', nw: 1, name, mass, h, b, tw, tf, r: rr, A: A * 1e2, Iy: Iy * 1e4, Iz: Iz * 1e4, Wely: Wely * 1e3, Welz: Welz * 1e3,
       Wply: Wply * 1e3, Wplz: Wplz * 1e3, It: It * 1e4, Iw: Iw * 1e12, cy: cy * 10, eSC: e, y0: cy * 10 - tw / 2 + e,
       rolled: true, productStd: 'BS EN 10025-2 (S460: -4)' };
+  }
+  // A historic section from the BCSA handbook's tables (sections/historic.js): [name, mass, h, b, tw, tf, A cm², Iy, Iz cm⁴,
+  // (channels: cy mm), note]. The tables give no root radii, mean flange thicknesses (many flanges tapered) and no plastic
+  // or torsion constants: A, Iy and Iz are the handbook's; W_el from them (I/(h/2), I/(b/2), channels I_z/(b − c_y));
+  // W_pl = W_el × the shape factor of the idealised plates (parallel flanges, no fillets); I_t = Σ bt³/3 of the plates and
+  // I_w = I_z (h − t_f)²/4 (channels the thin-walled formula), conservative without the fillets; r = 0 in the class limits.
+  function fromHist(row, kind, series) {
+    const ch = kind === 'C';
+    const [name, mass, h, b, tw, tf, A, Iy, Iz] = row, cy = ch ? row[9] : null, note = row[ch ? 10 : 9] || '';
+    const s = { shape: ch ? 'PFC' : 'I', nw: 1, name, mass, h, b, tw, tf, r: 0, A: A * 1e2, Iy: Iy * 1e4, Iz: Iz * 1e4, rolled: true,
+      productStd: 'historic', hist: { series: series ? series.label : '', std: series ? series.std : '', year: series ? series.year : null, note } };
+    if (!ch) {
+      const p = customI({ h, b, tw, tf, r: 0 });
+      s.Wely = s.Iy / (h / 2); s.Welz = s.Iz / (b / 2);
+      s.Wply = s.Wely * p.Wply / p.Wely; s.Wplz = s.Welz * p.Wplz / p.Welz;
+      s.It = p.It; s.Iw = s.Iz * (h - tf) ** 2 / 4;
+      return s;
+    }
+    // channel plates: the web against the back (y from 0 to tw), the flanges from tw to b
+    const hw = h - 2 * tf, Ap = 2 * b * tf + hw * tw, yc = (2 * b * tf * b / 2 + hw * tw * tw / 2) / Ap;
+    const Izp = 2 * (tf * b ** 3 / 12 + b * tf * (b / 2 - yc) ** 2) + hw * tw ** 3 / 12 + hw * tw * (tw / 2 - yc) ** 2;
+    const Iyp = (b * h ** 3 - (b - tw) * hw ** 3) / 12;
+    // the plastic neutral axis about z: equal areas either side
+    let yp; if (h * tw >= Ap / 2) yp = Ap / 2 / h; else yp = tw + (Ap / 2 - h * tw) / (2 * tf);
+    const part = (y0, y1, wd) => { const a = Math.max(y0, Math.min(y1, yp)); return wd * ((a - y0) * (yp - (y0 + a) / 2) + (y1 - a) * ((a + y1) / 2 - yp)); };
+    const Wplzp = part(0, tw, h) + 2 * part(tw, b, tf);
+    const Wplyp = b * tf * (h - tf) + tw * hw * hw / 4;
+    s.cy = cy; s.Wely = s.Iy / (h / 2); s.Welz = s.Iz / (b - cy);
+    s.Wply = s.Wely * Wplyp / (Iyp / (h / 2)); s.Wplz = s.Welz * Wplzp / (Izp / (b - yc));
+    const bp = b - tw / 2, hp = h - tf, e = 3 * bp * bp * tf / (6 * bp * tf + hp * tw);
+    s.It = (2 * bp * tf ** 3 + hp * tw ** 3) / 3;
+    s.Iw = tf * bp ** 3 * hp * hp / 12 * (3 * bp * tf + 2 * hp * tw) / (6 * bp * tf + hp * tw);
+    s.eSC = e; s.y0 = cy - tw / 2 + e;
+    return s;
   }
   // Spandrel (square r x r minus the quarter disc centred at the far corner): area, centroid offset from the corner,
   // second moment about its own centroid (verified by direct integration).
@@ -1208,7 +1256,7 @@ const EC3 = (() => {
   function cm0Linear(psi, N, Ncr) { return 0.79 + 0.21 * psi + 0.36 * (psi - 0.33) * N / Ncr; }
   function cm0Transverse(EI, L, delta, Mmax, N, Ncr) { return Mmax > 0 ? 1 + (Math.PI ** 2 * EI * Math.abs(delta) / (L * L * Math.abs(Mmax)) - 1) * N / Ncr : 1; }
 
-  return { E, G, GM0, GM1, ETA, GRADES, ALPHA, yieldStrength, fromRow, fromRowPFC, customI, rhs, chs, hollowRadii, isHollow, spandrel, classify, webBearing, internalLimits, kSigmaInternal, rhoInternal, rhoOutstand, aeffCompression, weffBending, wyByClass, ncrFE, shear, shearZ, chsMN,
+  return { E, G, GM0, GM1, ETA, GRADES, ALPHA, yieldStrength, fromRow, fromRowPFC, fromHist, customI, rhs, chs, hollowRadii, isHollow, spandrel, classify, webBearing, internalLimits, kSigmaInternal, rhoInternal, rhoOutstand, aeffCompression, weffBending, wyByClass, ncrFE, shear, shearZ, chsMN,
     sectionCheck, fbCurves, chiFlex, ltbParams, chiLT, ltbModel, mcrFE, mcrUniform, cmFactor, annexB, annexA, cm0Linear, cm0Transverse, symEigenvalues };
 })();
 if (typeof module !== 'undefined') module.exports = { EC3 };
