@@ -1,0 +1,40 @@
+// Drives "Concealed Plate Glulam Connections.html" in jsdom (NODE_PATH=<dir with node_modules> node ui_smoke.js).
+const { JSDOM } = require('jsdom');
+const fs = require('fs'), path = require('path');
+const html = fs.readFileSync(path.join(__dirname, '..', '..', 'Concealed Plate Glulam Connections.html'), 'utf8');
+let n = 0, fails = 0;
+const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`); if (!c) fails++; };
+function page(store) {
+  const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.org/', beforeParse(w) { w.print = () => { w.printed = true; }; if (store) w.localStorage.setItem('et-concealed-plate-v1', store); } });
+  const w = dom.window; w.errs = []; w.addEventListener('error', e => w.errs.push(e.message)); return w;
+}
+const w = page(), d = w.document, $ = id => d.getElementById(id), res = () => $('results').textContent;
+const set = (id, v) => { const el = $(id); el.value = v; el.dispatchEvent(new w.Event('change', { bubbles: true })); };
+const shown = id => !$(id).closest('.hidden');
+const calc = () => $('calc').click(), err = () => ($('results').querySelector('.err') || {}).textContent || '';
+truth('page loads without script errors', w.errs.length === 0);
+truth('the connection drawn on load, before Calculate', $('drawings').querySelectorAll('svg').length === 2 && !/PASS|FAIL/.test(res()));
+truth('defaults: 140 × 450 GL24h, one 10 mm plate, 3 × 4 Ø12 S275 dowels, V 30 kN', $('cls').value === 'GL24h' && $('arr').value === 'inside' && $('kind').value === 'dowel' && $('fu').value === 'S275 dowel' && $('V').value === '30');
+calc();
+truth('the default passes', /PASS/.test(res()) && !err());
+truth('the checks: the worst fastener, rows, splitting, shear, spacings, plate bearing, the plate at the face', ['The most loaded fastener', 'Each row along the grain', 'Splitting', 'Shear of the timber at the connection', 'Spacings and distances in the timber', 'Bearing on the plates', 'The plates at the timber end face'].every(s => res().includes(s)));
+truth('the fastener table, most loaded first', d.querySelectorAll('#results table.ff tbody tr').length === 12);
+set('N', '40'); calc(); truth('tension adds block shear and the net sections', ['Block and plug shear', 'Timber net section in tension', 'Plate net section in tension'].every(s => res().includes(s)));
+set('N', '0');
+set('np', '2'); truth('two plates: the inner timber shown', shown('t2')); calc(); truth('two plates calculate, with four shear planes', /4 shear planes/.test(res()) && !err());
+set('np', '1');
+set('kind', 'bolt'); truth('bolts: grades 4.6 / 8.8 and the washer', $('fu').value === 'bolt 4.6' && shown('dw')); calc(); truth('bolts calculate with the rope effect', /F/.test(res()) && /washer/.test(res()) && !err());
+set('kind', 'dowel');
+set('arr', 'outside'); truth('plates on the faces: no slot or plate count', !shown('slot') && !shown('np')); calc(); truth('outside plates calculate', /plates on the faces/.test(res()) && !err()); set('arr', 'inside');
+set('V', '80'); calc(); truth('80 kN fails', /FAIL/.test(res())); set('V', '30');
+set('n', '9'); calc(); truth('rows beyond the depth: an error', /do not fit/.test(err())); set('n', '4');
+set('m', '3'); set('n', '3'); $('omitC').checked = true; calc(); truth('3 × 3 less the middle: 8 fasteners', d.querySelectorAll('#results table.ff tbody tr').length === 8); $('omitC').checked = false; set('n', '4');
+calc();
+$('printBtn').click();
+truth('print: the drawings, the calculation, the table and the verdict', w.printed && $('report').querySelectorAll('svg').length === 2 && /largest utilisation/.test($('report').textContent) && /BS EN 1993-1-8/.test($('report').textContent));
+truth('the disclaimer', /competent structural engineer/.test(d.body.textContent));
+const w2 = page(w.localStorage.getItem('et-concealed-plate-v1')), $2 = id => w2.document.getElementById(id);
+truth('stored state restored', w2.errs.length === 0 && $2('V').value === '30' && $2('fu').value === 'S275 dowel' && $2('n').value === '4');
+truth('no script errors along the way', w.errs.length === 0);
+console.log(`\n${n - fails}/${n} concealed plate UI checks passed`);
+process.exit(fails ? 1 : 0);

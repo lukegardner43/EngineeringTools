@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Concealed Plate Glulam Connections</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* Engineering Tools: shared light style (tasteskill app sheet "Achromatic ledger", seed 959138263).
+   Ink chrome on a blue-grey drawing-office ground; the one hue (#1d5fbf) goes on the main data element
+   (envelopes, utilisation bars); status colour only on the verdict and on a check that is over. */
+:root{
+  --bg:#f2f4f7; --surf:#ffffff; --surf2:#f7f8fa; --bdr:#e3e5e8; --bdr2:#d1d5db; --rule:#eceef1;
+  --txt:#111111; --lbl:#33363a; --mut:#5f6368; --faint:#6b6b6b;
+  --accent:#1d5fbf; --accent-dim:#e3ebf8;
+  --primary:#1d1f20;
+  --pass:#247b50; --warn:#b45309; --fail:#c4242a;
+  --pass-bg:#dcfae5; --pass-ink:#04250e; --fail-bg:#ffedea; --fail-ink:#831c1e;
+  --r:6px; --rc:8px;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:var(--sans);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5;min-height:100svh;padding:28px 32px 40px;
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;}
+.container{max-width:1376px;margin:0 auto;}
+/* title row: a photograph of the member's material (img/<material>.jpg beside the page, set by <body data-material>)
+   under a neutral scrim, with the breadcrumb, the tool's name and one line of scope. Without the photo it is a plain ink band. */
+.page-hdr{position:relative;isolation:isolate;overflow:hidden;border-radius:var(--rc);min-height:164px;padding:18px 24px 20px;margin-bottom:12px;
+  display:flex;flex-direction:column;justify-content:flex-end;color:#fff;background:#2c3036 var(--photo,none) center/cover no-repeat;}
+.page-hdr::before{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.55) 45%,rgba(0,0,0,.18) 100%);} /* taste-skill-ignore: neutral scrim under text on a photograph */
+.page-hdr::after{content:var(--credit,'');position:absolute;right:10px;bottom:8px;font-size:11px;color:rgba(255,255,255,.9);background:rgba(0,0,0,.4);padding:1px 6px;border-radius:4px;}
+.home-lnk{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:rgba(255,255,255,.88);text-decoration:none;font-weight:500;margin-bottom:auto;align-self:flex-start;padding-bottom:12px;}
+.home-lnk:hover{color:#fff;text-decoration:underline;}
+.home-lnk svg{width:14px;height:14px;}
+.page-hdr h1{font-size:26px;font-weight:600;line-height:1.25;letter-spacing:-0.01em;margin-bottom:4px;color:#fff;}
+.page-hdr p{font-size:14px;color:rgba(255,255,255,.92);max-width:900px;}
+body[data-material="steel"]{--photo:url(img/steel.jpg);--credit:'Photo: Chevsapher, CC0';}
+body[data-material="concrete"]{--photo:url(img/concrete.jpg);--credit:'Photo: MassDOT, public domain';}
+body[data-material="masonry"]{--photo:url(img/masonry.jpg);--credit:'Photo: Håkan Svensson, CC BY 2.5';}
+body[data-material="timber"]{--photo:url(img/timber.jpg);--credit:'Photo: Sebastian Wallroth, public domain';}
+body[data-material="frame"]{--photo:url(img/frame.jpg);--credit:'Photo: Wikideas1, CC0';}
+body[data-material="ground"]{--photo:url(img/ground.jpg);--credit:'Photo: Fons Heijnsbroek, CC0';}
+@media print{.page-hdr{display:none;}}
+/* inputs on the left, the answer on the right: (1376 - 12) x 6/13 = 630 | 734 */
+.main-grid{display:grid;grid-template-columns:minmax(380px,6fr) 7fr;gap:12px;align-items:start;}
+@media(max-width:1100px){.main-grid{grid-template-columns:1fr;}}
+.main-grid > div{min-width:0;}
+#results table.t{display:block;overflow-x:auto;white-space:nowrap;}
+.card{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rc);padding:20px 24px;margin-bottom:12px;}
+.section-title{font-size:16px;font-weight:600;color:var(--txt);margin:0 0 14px;display:flex;justify-content:space-between;align-items:baseline;gap:12px;line-height:1.3;}
+.section-title .aux{color:var(--mut);font-size:13px;font-weight:400;text-align:right;}
+.form-group{margin-bottom:14px;}
+.form-group label,.lbl{display:block;font-size:13px;margin-bottom:5px;color:var(--lbl);font-weight:500;line-height:1.35;}
+input[type="number"],input[type="text"],select{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);padding:0 10px;height:36px;border-radius:var(--r);font-family:var(--sans);font-size:14px;width:100%;font-variant-numeric:tabular-nums;transition:border-color .12s;}
+input::placeholder{color:var(--faint);}
+input:hover,select:hover{border-color:#b9bec6;}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);}
+input:disabled,select:disabled{background:var(--surf2);color:var(--mut);}
+select option{background:var(--surf);color:var(--txt);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.grid2 > .form-group,.grid3 > .form-group{display:flex;flex-direction:column;justify-content:flex-end;}
+.chk{display:block;position:relative;padding-left:26px;font-size:13px;color:var(--lbl);margin:8px 0;cursor:pointer;line-height:1.45;}
+.chk input{position:absolute;left:0;top:1px;width:16px;height:16px;accent-color:var(--primary);}
+.help{font-size:13px;color:var(--mut);margin-top:4px;line-height:1.45;}
+/* segmented control: grey track, white pill on the chosen option */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#e9ecf0;border-radius:var(--rc);margin-bottom:14px;}
+.seg button{background:transparent;color:var(--mut);border:1px solid transparent;border-radius:var(--r);height:32px;padding:0 10px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;}
+.seg button:hover{color:var(--txt);}
+.seg button.on{background:var(--surf);color:var(--txt);border-color:var(--bdr);}
+/* repeating rows: spans, supports, loads */
+.rows{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+.row{display:grid;gap:8px;align-items:end;background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--r);padding:10px;}
+.row label{font-size:12px;color:var(--mut);margin-bottom:3px;display:block;font-weight:500;line-height:1.3;}
+.row input,.row select{height:32px;font-size:13px;padding:0 8px;}
+.row.span{grid-template-columns:1fr 1.6fr 1fr 32px;}
+.row.load{grid-template-columns:52px 64px 1.1fr 1.1fr 32px;}
+.row.load .vals{grid-column:1 / span 3;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.xbtn{height:32px;width:32px;background:var(--surf);border:1px solid var(--bdr2);color:var(--mut);border-radius:var(--r);cursor:pointer;font-size:16px;line-height:1;}
+.xbtn:hover{color:var(--fail);border-color:var(--fail);}
+.addbtn{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);border-radius:var(--r);height:36px;padding:0 12px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;width:100%;}
+.addbtn:hover{border-color:#9aa0a8;background:var(--surf2);}
+/* the one primary action, near-black; secondary actions white and outlined */
+.btn{height:44px;padding:0 16px;border:none;border-radius:var(--r);font-weight:600;cursor:pointer;font-family:var(--sans);font-size:15px;width:100%;background:var(--primary);color:#fff;}
+.btn:hover{background:#000;}
+.btn:focus-visible,.btn2:focus-visible,.addbtn:focus-visible,.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.btn2{width:100%;height:38px;padding:0 12px;background:var(--surf);border:1px solid var(--bdr2);border-radius:var(--r);font-size:14px;font-weight:500;color:var(--txt);cursor:pointer;font-family:var(--sans);margin-top:8px;}
+.btn2:hover{border-color:#9aa0a8;background:var(--surf2);}
+.hidden{display:none!important;}
+/* results */
+.placeholder{display:flex;align-items:center;justify-content:center;min-height:160px;color:var(--mut);font-size:14px;text-align:center;padding:0 24px;}
+.verdict{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--bdr);border-radius:var(--rc);background:var(--surf2);margin-bottom:16px;}
+.verdict .big{font-size:24px;font-weight:600;line-height:1.2;color:var(--pass);letter-spacing:-0.01em;}
+.verdict.fail .big{color:var(--fail);}
+.verdict .sub{font-size:13px;color:var(--mut);margin-top:2px;}
+/* the utilisation ledger: check, clause, bar to scale (full track = 1.2, ink tick at the 1.0 limit), figure */
+.checks{display:flex;flex-direction:column;margin-bottom:8px;}
+.ck{display:grid;grid-template-columns:1.25fr 2fr 56px;gap:14px;align-items:center;font-size:13px;padding:7px 0;border-bottom:1px solid var(--rule);}
+.ck:last-child{border-bottom:none;}
+.ck .nm{color:var(--txt);line-height:1.35;} .ck .nm small{display:block;color:var(--mut);font-size:12px;}
+.bar{height:8px;background:#e8ebef;border-radius:4px;position:relative;}
+.bar::after{content:'';position:absolute;left:83.333%;top:-4px;bottom:-4px;width:1.5px;background:var(--txt);border-radius:1px;}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:4px;}
+.bar i.over{background:var(--fail);} /* 0.9-1.0 stays blue: a well-used member is not a warning; the tick shows how close it is */
+.ck .u{text-align:right;font-weight:600;font-size:14px;}
+.ck .u.over{color:var(--fail);}
+.diag{width:100%;height:auto;display:block;margin-bottom:6px;}
+/* screen drawings: the smallest labels lifted to the 11px floor (the print sheet keeps its own sizes) */
+.container svg text[font-size="8"],.container svg text[font-size="8.5"],.container svg text[font-size="9"],.container svg text[font-size="9.5"],
+.container svg text[font-size="10"],.container svg text[font-size="10.5"]{font-size:11px;}
+.dlabel{font-size:14px;font-weight:600;color:var(--txt);margin:20px 0 6px;line-height:1.3;}
+table.t{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px;font-variant-numeric:tabular-nums;}
+table.t th{color:var(--mut);font-weight:500;text-align:right;padding:6px 8px;border-bottom:1px solid var(--bdr);font-size:12px;}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--rule);text-align:right;}
+table.t th:first-child,table.t td:first-child{text-align:left;}
+.note{font-size:13px;color:var(--mut);background:var(--surf2);border:1px solid var(--rule);border-radius:var(--r);padding:10px 12px;margin-top:10px;line-height:1.5;}
+.err{color:var(--fail-ink);background:var(--fail-bg);font-size:13px;padding:10px 12px;border-radius:var(--r);margin-bottom:12px;}
+.busy{opacity:.55;pointer-events:none;}
+a{color:var(--txt);}
+sub,sup{font-size:max(11px,.75em);line-height:0;}
+@media(max-width:560px){body{padding:16px 16px 32px;} .card{padding:16px;} .ck{grid-template-columns:1fr 1fr 48px;gap:10px;} .grid3{grid-template-columns:1fr 1fr;}
+  .row.span{grid-template-columns:1fr 32px;} .row.span > div:nth-child(2),.row.span > div:nth-child(3){display:none;} .row.load .vals{grid-template-columns:1fr 1fr;}
+  .page-hdr{min-height:150px;padding:14px 16px 16px;} .page-hdr h1{font-size:22px;} .page-hdr::after{top:10px;bottom:auto;} .page-hdr::before{background:rgba(0,0,0,.6);} .verdict .big{font-size:22px;}}
+/* disclaimer: on screen at the foot of the page, and printed at the end of the calculation sheet */
+.disclaimer{max-width:1376px;margin:24px auto 0;padding-top:14px;border-top:1px solid var(--bdr,#e3e5e8);font-size:13px;line-height:1.55;color:var(--mut,#5f6368);}
+.disclaimer b{color:var(--txt,#111);font-weight:600;}
+@media print{.disclaimer{display:block!important;max-width:none;margin:4mm 0 0;padding-top:1.5mm;border-top:0.4pt solid #888;font-family:Arial,Helvetica,sans-serif;font-size:7.5pt;color:#000;break-inside:avoid;} .disclaimer b{color:#000;}}
+/* ---------- print: A4 calculation sheet ---------- */
+#report{display:none;}
+@media print{
+  @page{size:A4;margin:12mm 12mm 14mm;}
+  body{background:#fff;color:#000;padding:0;background-image:none;font-size:9.5pt;}
+  .container{display:none;}
+  #report{display:block;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  #report table.wrap{width:100%;border-collapse:collapse;}
+  #report thead td{padding:0 0 3mm;}
+  .rh{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;border:0.6pt solid #000;font-size:8pt;}
+  .rh div{padding:1.2mm 2mm;border-right:0.6pt solid #000;}
+  .rh div:last-child{border-right:none;}
+  .rh b{display:block;font-size:6.5pt;color:#444;font-weight:normal;text-transform:uppercase;letter-spacing:.3pt;}
+  .rh .ttl{grid-column:1 / -1;border-top:0.6pt solid #000;border-right:none;font-weight:bold;font-size:10pt;}
+  .rs{margin:0 0 3.5mm;}
+  .rs h2,.rs h3{break-after:avoid;}
+  .rl,.rt,.rsvg,.rp,.rt tr{break-inside:avoid;}
+  .rs h2{font-size:10pt;margin:3mm 0 1.5mm;padding-bottom:0.8mm;border-bottom:0.8pt solid #000;}
+  .rs h3{font-size:9pt;margin:2mm 0 1mm;}
+  .rl{display:grid;grid-template-columns:1fr 92px 132px;gap:2mm;padding:0.5mm 0;font-size:8.6pt;}
+  .rl .cl{text-align:right;color:#444;font-size:7.5pt;}
+  .rl .rv{text-align:right;font-weight:bold;}
+  .ok{color:#0a7a3e;} .ng{color:#c00;}
+  .rt{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;}
+  .rt th,.rt td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;}
+  .rt th{background:#eee;font-weight:bold;}
+  .rt td:first-child,.rt th:first-child,.rt.lft td,.rt.lft th{text-align:left;}
+  .rp{font-size:8.3pt;line-height:1.45;margin:1mm 0;}
+  .rsvg{width:100%;height:auto;}
+  .rsvg *{vector-effect:non-scaling-stroke;}
+}
+
+.steps{font-size:12px;color:var(--mut);line-height:1.5;margin-bottom:12px;}
+.steps .st{display:grid;grid-template-columns:120px 1fr;gap:8px;padding:3px 0;border-bottom:1px solid var(--bdr);}
+.steps .st span:first-child{font-size:12px;color:var(--faint);}
+#results table.t.ff td{white-space:nowrap;}
+</style>
+</head>
+<body data-material="timber">
+<div class="container">
+  <div class="page-hdr">
+    <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
+    <h1>Concealed Plate Glulam Connections</h1>
+    <p>Steel plates slotted into glulam or timber (or on its faces) with a group of dowels or bolts, to BS EN 1995-1-1 + UK NA Section 8 and Annex A and BS EN 1993-1-8 &nbsp;·&nbsp; shear, axial force and moment shared over the group, each fastener at its angle to the grain &nbsp;·&nbsp; every shear plane by the Johansen equations &nbsp;·&nbsp; the effective number along the grain, splitting, block shear &nbsp;·&nbsp; spacings &nbsp;·&nbsp; the plates in bearing, shear, bending and tension</p><!-- @@VERIFY: verification tag (scratchpad/verify/tags.py; the ROADMAP's Verification status) --><div class="vt" role="note"><span class="vt-pill vt-part">Partly verified</span><span class="vt-why">The group forces, embedment at an angle, the shear-plane resistances, the rope effect and the effective number reproduce a published example (Porteous and Kermani, steel plates on the faces); the slotted-in arrangements, splitting, block shear and the plates are checked only against hand calculations.</span></div><style id="vt-style">.vt{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;margin:2px 0 8px;max-width:900px;}.vt-pill{flex:none;font-size:12px;font-weight:600;line-height:1.5;padding:1px 10px;border-radius:999px;background:#f2b33d;color:#221500;}.vt-part{background:#fbe3b0;color:#3d2a00;}.vt-why{font-size:13px;line-height:1.45;color:rgba(255,255,255,.92);flex:1 1 320px;}@media print{#report::before{content:"Partly verified: The group forces, embedment at an angle, the shear-plane resistances, the rope effect and the effective number reproduce a published example (Porteous and Kermani, steel plates on the faces); the slotted-in arrangements, splitting, block shear and the plates are checked only against hand calculations.";display:block;font-family:Arial,Helvetica,sans-serif;font-size:8.5pt;line-height:1.35;color:#5a3b00;border:1px solid #e0a83a;border-radius:2mm;padding:2mm 3mm;margin:0 0 3mm;}}</style><!-- /@@VERIFY -->
+  </div>
+  <div class="main-grid">
+    <div id="inputs">
+      <div class="card">
+        <div class="section-title">Project</div>
+        <div class="form-group"><label>Project</label><input type="text" id="pName" placeholder="Project name"></div>
+        <div class="grid3"><div class="form-group"><label>Job no.</label><input type="text" id="pJob"></div><div class="form-group"><label>By</label><input type="text" id="pBy"></div><div class="form-group"><label>Member ref.</label><input type="text" id="pRef" placeholder="e.g. Beam B3 end"></div></div>
+      </div>
+      <div class="card">
+        <div class="section-title">Timber member</div>
+        <div class="grid3">
+          <div class="form-group"><label>Material</label><select id="fam"><option value="glulam" selected>Glulam</option><option value="solid">Softwood (C classes)</option><option value="hard">Hardwood (D classes)</option></select></div>
+          <div class="form-group"><label>Strength class</label><select id="cls"></select></div>
+          <div class="form-group"><label>Service class</label><select id="sc"><option value="1" selected>1 (heated, inside)</option><option value="2">2 (covered, unheated)</option><option value="3">3 (exposed)</option></select></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Breadth b (mm)</label><input type="number" id="b" value="140" step="5"></div>
+          <div class="form-group"><label>Depth h (mm)</label><input type="number" id="h" value="450" step="5"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="section-title">Steel plates</div>
+        <div class="grid3">
+          <div class="form-group"><label>Arrangement</label><select id="arr"><option value="inside" selected>Slotted in (concealed)</option><option value="outside">One on each face</option></select></div>
+          <div class="form-group p-in"><label>Number of plates</label><select id="np"><option value="1" selected>1</option><option value="2">2</option><option value="3">3</option></select></div>
+          <div class="form-group"><label>Grade</label><select id="grade"><option value="S275" selected>S275</option><option value="S355">S355</option></select></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Thickness t (mm)</label><input type="number" id="ts" value="10" step="1"></div>
+          <div class="form-group p-in"><label>Slot width (mm)</label><input type="number" id="slot" value="12" step="1"></div>
+          <div class="form-group p-t2"><label>Inner timber t<sub>2</sub> (mm)</label><input type="number" id="t2" value="" step="1" placeholder="2 t₁"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Plate depth (mm)</label><input type="number" id="hp" value="" step="5" placeholder="rows + 2e₂"></div>
+          <div class="form-group"><label>Plate end distance e<sub>1</sub> (mm)</label><input type="number" id="e1p" value="30" step="1"></div>
+          <div class="form-group"><label>Plate edge distance e<sub>2</sub> (mm)</label><input type="number" id="e2p" value="30" step="1"></div>
+        </div>
+        <label class="chk"><input type="checkbox" id="holeOK" checked> Fastener holes in the plates under d + 0.1d (fitted): thick-plate rules when t ≥ d (8.2.3)</label>
+        <div class="help">Slotted plates sit in slots a millimetre or two wider than the plate, the timber split equally either side; with two or three plates the inner pieces default to twice the outer, as they work on both faces. The plate&rsquo;s own connection to the support (welds, bolts, a column) is not checked here.</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Fasteners</div>
+        <div class="grid3">
+          <div class="form-group"><label>Type</label><select id="kind"><option value="dowel" selected>Dowels</option><option value="bolt">Bolts</option></select></div>
+          <div class="form-group"><label>Diameter d (mm)</label><select id="d"><option>8</option><option>10</option><option selected>12</option><option>16</option><option>20</option><option>24</option></select></div>
+          <div class="form-group"><label>Steel</label><select id="fu"></select></div>
+        </div>
+        <div class="grid3 f-bolt">
+          <div class="form-group"><label>Washer diameter (mm)</label><input type="number" id="dw" value="36" step="1"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Columns along the grain</label><input type="number" id="m" value="3" step="1" min="1"></div>
+          <div class="form-group"><label>Rows across</label><input type="number" id="n" value="4" step="1" min="1"></div>
+          <div class="form-group"><label>&nbsp;</label><label class="chk" style="margin:6px 0 0"><input type="checkbox" id="omitC"> Leave out the middle one</label></div>
+        </div>
+        <div class="grid2">
+          <div class="form-group"><label>a<sub>1</sub> along the grain (mm)</label><input type="number" id="a1" value="84" step="1"></div>
+          <div class="form-group"><label>a<sub>2</sub> across (mm)</label><input type="number" id="a2" value="60" step="1"></div>
+          <div class="form-group"><label>a<sub>3</sub> to the timber end (mm)</label><input type="number" id="a3" value="100" step="1"></div>
+          <div class="form-group"><label>Bottom edge to the lowest row (mm)</label><input type="number" id="a4" value="60" step="1"></div>
+        </div>
+        <div class="help">Dowels in holes of their own diameter in the timber, d + 1 in the plates; bolts with washers on the outer faces (d + 2 holes). Holding a beam up, put the fasteners low in the depth: splitting (8.1.4) depends on their distance from the top edge.</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Design forces <span class="aux">ULS</span></div>
+        <div class="grid3">
+          <div class="form-group"><label>Shear V (kN)</label><input type="number" id="V" value="30" step="1"></div>
+          <div class="form-group"><label>Axial N (kN, + tension)</label><input type="number" id="N" value="0" step="1"></div>
+          <div class="form-group"><label>Load duration</label><select id="dur"><option value="permanent">Permanent</option><option value="long">Long term</option><option value="medium" selected>Medium term</option><option value="short">Short term</option><option value="instantaneous">Instantaneous</option></select></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Zero moment to the timber end g (mm)</label><input type="number" id="g" value="20" step="5"></div>
+          <div class="form-group"><label>Added moment (kNm)</label><input type="number" id="Madd" value="0" step="0.5"></div>
+        </div>
+        <div class="help">V across the grain (+ when the plate holds the member up, as at a beam end), N along it. The group takes M = V e about its centroid, e from the line of zero moment (the pin, or the face of the support for a pinned connection) to the centroid: g + the centroid&rsquo;s distance from the timber&rsquo;s end. k<sub>mod</sub> from the shortest-duration action in the combination.</div>
+      </div>
+      <button class="btn" id="calc">Calculate</button>
+    </div>
+    <div><div class="card" id="results"><div id="drawings"></div><div class="placeholder">The drawing follows the inputs. Calculate for the checks, each fastener&rsquo;s force and the A4 sheet.</div></div></div>
+  </div>
+</div>
+<div id="report"></div>
+<script id="engine">
+/* ===== EC5 CORE (EngineeringTools) =====
+   Timber to BS EN 1995-1-1:2004+A2:2014 with the UK National Annex (and BS EN 1990 + UK NA for actions). Shared by the
+   timber tools.
+   - Materials: softwood C classes and hardwood D classes of BS EN 338:2016 (Tables 1 and 3: f_m,k, f_t,0,k, f_t,90,k,
+     f_c,0,k, f_c,90,k, f_v,k, E_0,mean, E_0,05, E_90,mean, G_mean, ρ_k, ρ_mean); glulam of BS EN 14080:2013 (homogeneous
+     GL20h, GL24h, GL28h, GL30h, GL32h, combined GL20c, GL24c, GL28c, GL30c, GL32c, with E_90,mean 300 and G_mean 650 N/mm², G_05 540); other products (LVL and
+     so on) by their declared properties, as glulam (k_h, γ_M 1.25, k_cr 0.67) when declared so (props.kind 'glulam').
+   - k_mod (Table 3.1) and k_def (Table 3.2) for solid timber, glulam and LVL; γ_M (UK NA Table NA.3): 1.3 solid timber,
+     1.25 glulam, 1.2 LVL, plywood and OSB, 1.3 connections; 1.0 accidental.
+   - Load-duration classes (UK NA NA.2.1): self-weight permanent; storage long term; imposed floor loads medium term;
+     snow, roof imposed and maintenance short term; wind instantaneous. ψ factors from the UK NA to BS EN 1990 Table
+     NA.A1.1.
+   - Size factor k_h (3.2(3), 3.3(3), 3.4(3)); k_cr = 0.67 for solid timber and glulam, 1.0 otherwise (6.1.7(2));
+     k_c,90 (6.1.5, A1); k_crit (6.3.3) from σ_m,crit (eq. 6.32 for solid softwood, 6.31 otherwise); k_c (6.3.2).
+   Units: N, mm; densities kg/m³. */
+const EC5 = (() => {
+  'use strict';
+  // EN 338:2016: [fm, ft0, ft90, fc0, fc90, fv, E0mean (kN/mm²), E005, E90mean, Gmean, ρk, ρmean]
+  const C = { C14: [14, 7.2, 0.4, 16, 2.0, 3.0, 7.0, 4.7, 0.23, 0.44, 290, 350], C16: [16, 8.5, 0.4, 17, 2.2, 3.2, 8.0, 5.4, 0.27, 0.50, 310, 370],
+    C18: [18, 10, 0.4, 18, 2.2, 3.4, 9.0, 6.0, 0.30, 0.56, 320, 380], C20: [20, 11.5, 0.4, 19, 2.3, 3.6, 9.5, 6.4, 0.32, 0.59, 330, 400],
+    C22: [22, 13, 0.4, 20, 2.4, 3.8, 10.0, 6.7, 0.33, 0.63, 340, 410], C24: [24, 14.5, 0.4, 21, 2.5, 4.0, 11.0, 7.4, 0.37, 0.69, 350, 420],
+    C27: [27, 16.5, 0.4, 22, 2.5, 4.0, 11.5, 7.7, 0.38, 0.72, 360, 430], C30: [30, 19, 0.4, 24, 2.7, 4.0, 12.0, 8.0, 0.40, 0.75, 380, 460],
+    C35: [35, 22.5, 0.4, 25, 2.7, 4.0, 13.0, 8.7, 0.43, 0.81, 390, 470], C40: [40, 26, 0.4, 27, 2.8, 4.0, 14.0, 9.4, 0.47, 0.88, 400, 480],
+    C45: [45, 30, 0.4, 29, 2.9, 4.0, 15.0, 10.1, 0.50, 0.94, 410, 490], C50: [50, 33.5, 0.4, 30, 3.0, 4.0, 16.0, 10.7, 0.53, 1.00, 430, 520] };
+  const D = { D18: [18, 11, 0.6, 18, 4.8, 3.5, 9.5, 8.0, 0.63, 0.59, 475, 570], D24: [24, 14, 0.6, 21, 4.9, 3.7, 10.0, 8.4, 0.67, 0.63, 485, 580],
+    D27: [27, 16, 0.6, 22, 5.1, 3.8, 10.5, 8.8, 0.70, 0.66, 510, 610], D30: [30, 18, 0.6, 24, 5.3, 3.9, 11.0, 9.2, 0.73, 0.69, 530, 640],
+    D35: [35, 21, 0.6, 25, 5.4, 4.1, 12.0, 10.1, 0.80, 0.75, 540, 650], D40: [40, 24, 0.6, 27, 5.5, 4.2, 13.0, 10.9, 0.87, 0.81, 550, 660],
+    D45: [45, 27, 0.6, 29, 5.8, 4.4, 13.5, 11.3, 0.90, 0.84, 580, 700], D50: [50, 30, 0.6, 30, 6.2, 4.5, 14.0, 11.8, 0.93, 0.88, 620, 740],
+    D55: [55, 33, 0.6, 32, 6.6, 4.7, 15.5, 13.0, 1.03, 0.97, 660, 790], D60: [60, 36, 0.6, 33, 10.5, 4.8, 17.0, 14.3, 1.13, 1.06, 700, 840],
+    D65: [65, 39, 0.6, 35, 11.3, 5.0, 18.5, 15.5, 1.23, 1.16, 750, 900], D70: [70, 42, 0.6, 36, 12.0, 5.0, 20.0, 16.8, 1.33, 1.25, 800, 960],
+    D75: [75, 45, 0.6, 37, 12.8, 5.0, 22.0, 18.5, 1.47, 1.38, 850, 1020], D80: [80, 48, 0.6, 38, 13.5, 5.0, 24.0, 20.2, 1.60, 1.50, 900, 1080] };
+  // EN 14080:2013: [fm, ft0, fc0, E0mean (N/mm²), E005, ρk, ρmean]; ft90 0.5, fc90 2.5, fv 3.5, E90 300, G 650, G05 540
+  const GL = { GL20h: [20, 16, 20, 8400, 7000, 340, 370], GL24h: [24, 19.2, 24, 11500, 9600, 385, 420],
+    GL28h: [28, 22.3, 28, 12600, 10500, 425, 460], GL30h: [30, 24, 30, 13600, 11300, 430, 480],
+    GL32h: [32, 25.6, 32, 14200, 11800, 440, 490], GL20c: [20, 15, 18.5, 10400, 8600, 355, 390],
+    GL24c: [24, 17, 21.5, 11000, 9100, 365, 400], GL28c: [28, 19.5, 24, 12500, 10400, 390, 420],
+    GL30c: [30, 19.5, 24.5, 13000, 10800, 390, 430], GL32c: [32, 19.5, 24.5, 13500, 11200, 400, 440] };
+  const CLASSES = { solid: Object.keys(C), hard: Object.keys(D), glulam: Object.keys(GL) };
+
+  /* a material: { family: 'solid'|'hard'|'glulam'|'other', cls, props? } → strengths in N/mm², E and G in N/mm²,
+     plus gM, kdef family, kh rule, kcr */
+  function material(m) {
+    const fam = m.family;
+    if (fam === 'solid' || fam === 'hard') {
+      const r = (fam === 'solid' ? C : D)[m.cls]; if (!r) throw new Error(`Choose a strength class (${m.cls} is not in BS EN 338)`);
+      return { family: fam, name: m.cls, src: 'BS EN 338:2016', fmk: r[0], ft0k: r[1], ft90k: r[2], fc0k: r[3], fc90k: r[4], fvk: r[5], E0mean: r[6] * 1e3, E005: r[7] * 1e3, E90mean: r[8] * 1e3,
+        Gmean: r[9] * 1e3, G005: r[9] * 1e3 * r[7] / r[6], rhok: r[10], rhomean: r[11], gM: 1.3, kind: 'solid', kcr: 0.67, softwood: fam === 'solid' };
+    }
+    if (fam === 'glulam') {
+      const r = GL[m.cls]; if (!r) throw new Error(`Choose a glulam class (${m.cls} is not in BS EN 14080)`);
+      return { family: fam, name: m.cls, src: 'BS EN 14080:2013', fmk: r[0], ft0k: r[1], ft90k: 0.5, fc0k: r[2], fc90k: 2.5, fvk: 3.5, E0mean: r[3], E005: r[4], E90mean: 300,
+        Gmean: 650, G005: 540, rhok: r[5], rhomean: r[6], gM: 1.25, kind: 'glulam', kcr: 0.67, softwood: true };
+    }
+    const p = m.props || {}, need = (k, nm) => { const v = +p[k]; if (!(v > 0)) throw new Error(`Give the product's ${nm}`); return v; };
+    return { family: 'other', name: p.name || 'product', src: 'declared values', fmk: need('fmk', 'f_m,k'), ft0k: +p.ft0k || 0, ft90k: +p.ft90k || 0, fc0k: +p.fc0k || 0, fc90k: need('fc90k', 'f_c,90,k'),
+      fvk: need('fvk', 'f_v,k'), E0mean: need('E0mean', 'E_0,mean'), E005: need('E005', 'E_0,05'), E90mean: +p.E90mean || 0, Gmean: need('Gmean', 'G_mean'), G005: +p.G005 || need('Gmean', 'G_mean') * need('E005', 'E_0,05') / need('E0mean', 'E_0,mean'),
+      rhok: +p.rhok || 0, rhomean: need('rhomean', 'mean density'), gM: +p.gM || (p.kind === 'glulam' ? 1.25 : 1.2), kind: p.kind === 'glulam' ? 'glulam' : 'lvl', kcr: +p.kcr || (p.kind === 'glulam' ? 0.67 : 1.0), sExp: +p.s || 0.12, softwood: p.kind === 'glulam' };
+  }
+
+  // k_mod (Table 3.1) for solid timber, glulam and LVL; durations from permanent to instantaneous
+  const DUR = ['permanent', 'long', 'medium', 'short', 'instantaneous'];
+  const KMOD = { 1: [0.60, 0.70, 0.80, 0.90, 1.10], 2: [0.60, 0.70, 0.80, 0.90, 1.10], 3: [0.50, 0.55, 0.65, 0.70, 0.90] };
+  const KDEF = { 1: 0.60, 2: 0.80, 3: 2.00 };
+  const kmod = (sc, dur) => KMOD[sc][typeof dur === 'number' ? dur : DUR.indexOf(dur)];
+  const kdef = sc => KDEF[sc];
+
+  // actions: ψ0, ψ1, ψ2 (UK NA to BS EN 1990, Table NA.A1.1) and load-duration class (UK NA to BS EN 1995-1-1, NA.2.1)
+  const ACTIONS = {
+    A: { name: 'Imposed, domestic (A)', psi: [0.7, 0.5, 0.3], dur: 2 }, B: { name: 'Imposed, office (B)', psi: [0.7, 0.5, 0.3], dur: 2 },
+    C: { name: 'Imposed, congregation (C)', psi: [0.7, 0.7, 0.6], dur: 2 }, D: { name: 'Imposed, shopping (D)', psi: [0.7, 0.7, 0.6], dur: 2 },
+    E: { name: 'Imposed, storage (E)', psi: [1.0, 0.9, 0.8], dur: 1 }, H: { name: 'Imposed, roof (H)', psi: [0.7, 0, 0], dur: 3 },
+    S: { name: 'Snow', psi: [0.5, 0.2, 0], dur: 3 }, W: { name: 'Wind', psi: [0.5, 0.2, 0], dur: 4 },
+  };
+
+  /* the ULS combinations for one permanent action group and a set of variable action groups { key, cat } (EN 1990 6.10
+     or 6.10a/b, UK NA): every subset of the variable actions, each as leading, with G unfavourable and, when any variable
+     action acts upward, favourable. An action acting upward is not combined with one acting downward: in a simply
+     supported member one of the two is then favourable and is taken as zero (EN 1990 6.4.3.2).
+     Returns [{ name, gG, gQ: { key: factor }, dur (index), kmod }], each named by its factors, e.g. 1.35G + 1.5Q + 0.75S. */
+  function combinations(vars, o = {}) {
+    const sc = o.sc || 1, ab = o.combo === '6.10ab', xi = 0.925, out = [], seen = new Set();
+    const add = (c) => { const k = JSON.stringify([c.gG, c.gQ]); if (!seen.has(k)) { seen.add(k); c.kmod = kmod(sc, c.dur); out.push(c); } };
+    add({ name: ab ? '1.35G (6.10a)' : '1.35G', gG: 1.35, gQ: {}, dur: 0 });
+    const n = vars.length, fx = v => { const t = String(+v.toFixed(2)); return t.includes('.') ? t : t + '.0'; };
+    const nm = (gG, gQ, lead, tag) => `${fx(gG)}G` + [lead, ...Object.keys(gQ).filter(k => k !== lead)].filter(k => k && gQ[k]).map(k => ` + ${fx(gQ[k])}${k}`).join('') + (tag ? ` (${tag})` : '');
+    for (let mask = 1; mask < 1 << n; mask++) {
+      const set = vars.filter((_, i) => mask & (1 << i));
+      if (set.some(v => v.up) && set.some(v => !v.up)) continue;
+      for (const lead of set) {
+        const dur = Math.max(...set.map(v => ACTIONS[v.cat].dur));
+        if (!ab) {
+          const gQ = {}; set.forEach(v => { gQ[v.key] = v === lead ? 1.5 : 1.5 * ACTIONS[v.cat].psi[0]; });
+          add({ name: nm(1.35, gQ, lead.key), gG: 1.35, gQ, dur, lead: lead.key });
+          if (set.some(v => v.up)) add({ name: nm(1.0, gQ, lead.key), gG: 1.0, gQ, dur, lead: lead.key, fav: true });
+        } else {
+          const gA = {}, gB = {}; set.forEach(v => { gA[v.key] = 1.5 * ACTIONS[v.cat].psi[0]; gB[v.key] = v === lead ? 1.5 : 1.5 * ACTIONS[v.cat].psi[0]; });
+          add({ name: nm(1.35, gA, null, '6.10a'), gG: 1.35, gQ: gA, dur });
+          add({ name: nm(xi * 1.35, gB, lead.key, '6.10b'), gG: xi * 1.35, gQ: gB, dur, lead: lead.key });
+          if (set.some(v => v.up)) add({ name: nm(1.0, gB, lead.key, '6.10b'), gG: 1.0, gQ: gB, dur, lead: lead.key, fav: true });
+        }
+      }
+    }
+    return out;
+  }
+
+  // size factor k_h on f_m,k and f_t,0,k for a depth (bending) or width h, mm
+  function kh(M, h) {
+    if (M.kind === 'solid') return M.rhok <= 700 && h < 150 ? Math.min(Math.pow(150 / h, 0.2), 1.3) : 1;
+    if (M.kind === 'glulam') return h < 600 ? Math.min(Math.pow(600 / h, 0.1), 1.1) : 1;
+    return h < 300 ? Math.min(Math.pow(300 / h, M.sExp || 0.12), 1.2) : 1;
+  }
+  /* lateral torsional buckling of a rectangular section b × h over l_ef (6.3.3): σ_m,crit by eq. 6.32 (solid softwood)
+     or 6.31 with I_tor of the rectangle; λ_rel,m and k_crit */
+  function kcrit(M, b, h, lef) {
+    let s;
+    if (M.kind === 'solid' && M.softwood) s = 0.78 * b * b * M.E005 / (h * lef);
+    else { const Iz = h * b * b * b / 12, It = h * b * b * b / 3 * (1 - 0.63 * b / h), W = b * h * h / 6; s = Math.PI * Math.sqrt(M.E005 * Iz * M.G005 * It) / (lef * W); }
+    const lam = Math.sqrt(M.fmk / s), k = lam <= 0.75 ? 1 : lam <= 1.4 ? 1.56 - 0.75 * lam : 1 / (lam * lam);
+    return { scrit: s, lam, k };
+  }
+  /* flexural buckling of a member (6.3.2) for a slenderness λ = l_ef/i: λ_rel = λ/π √(f_c,0,k/E_0,05), β_c 0.2 for solid
+     timber and 0.1 for glulam and LVL (6.29), k = 0.5(1 + β_c(λ_rel − 0.3) + λ_rel²), k_c = 1/(k + √(k² − λ_rel²)) (6.25 to
+     6.28); k_c = 1 for λ_rel ≤ 0.3 */
+  function kc(M, lam) {
+    const lr = lam / Math.PI * Math.sqrt(M.fc0k / M.E005), bc = M.kind === 'solid' ? 0.2 : 0.1, k = 0.5 * (1 + bc * (lr - 0.3) + lr * lr);
+    return { lam, lr, bc, k, kc: lr <= 0.3 ? 1 : 1 / (k + Math.sqrt(k * k - lr * lr)) };
+  }
+  /* k_c,90 for a member on discrete supports (6.1.5(4), A1): 1.5 solid softwood, 1.75 glulam (bearing length l ≤ 400 mm),
+     when l1 ≥ 2h; otherwise 1.0. l_ef = l + 30 mm each side where the member continues, not more than a, l or l1/2. */
+  function bearing(M, l, h, l1, aOut) {
+    const big = l1 >= 2 * h;
+    let k = 1, why = 'k_c,90 = 1.0';
+    if (big && M.kind === 'solid' && M.softwood) { k = 1.5; why = 'discrete supports, solid softwood, l₁ ≥ 2h: k_c,90 = 1.5'; }
+    else if (big && M.kind === 'glulam' && l <= 400) { k = 1.75; why = 'discrete supports, glulam, l ≤ 400 mm, l₁ ≥ 2h: k_c,90 = 1.75'; }
+    else if (!big) why = 'k_c,90 = 1.0 (l₁ < 2h)';
+    else why = `k_c,90 = 1.0 (${M.kind === 'lvl' ? 'product values: see the declaration' : 'hardwood'})`;
+    const inIn = Math.min(30, l, l1 / 2), inOut = Math.min(30, Math.max(0, aOut || 0), l, l1 / 2);
+    return { k, why, lef: l + inIn + inOut, inIn, inOut };
+  }
+  return { C, D, GL, CLASSES, material, DUR, kmod, kdef, ACTIONS, combinations, kh, kcrit, kc, bearing };
+})();
+
+/* ===== EC5 FASTENERS (EngineeringTools) =====
+   Metal dowel-type fasteners to BS EN 1995-1-1:2004+A2:2014 Section 8 (with the UK NA: γ_M 1.3 for connections). Shared by
+   Timber Connections and Timber Racking Wall. Needs nothing else. Units: N, mm.
+   - Embedment: nails up to 8 mm (8.15 not pre-drilled, 8.16 pre-drilled) in timber; plywood (8.20), OSB and particleboard
+     (8.22) for nails; bolts, dowels, nails over 8 mm and screws over 6 mm (8.31, 8.32 with k_90 by Hankinson) in timber,
+     plywood (8.36), OSB (8.37).
+   - Yield moment: round nails 0.3 f_u d^2.6 (8.14), bolts and dowels 0.3 f_u,k d^2.6 (8.30); screws with d_ef (8.7.1).
+   - Lateral capacity per shear plane: timber and panels in single shear (8.6, modes a–f) and double shear (8.7, g, h, j, k);
+     steel to timber, single shear thin (8.9) and thick (8.10) plates, double shear with a central plate (8.11) and with
+     thin (8.12) or thick (8.13) outer plates, interpolated for 0.5d < t < d (8.2.3(1)); the rope effect F_ax,Rk/4 capped at
+     15 % round nails, 25 % square nails and bolts, 50 % other nails, 100 % screws, 0 dowels of the Johansen part (8.2.2(2)).
+   - Withdrawal: smooth nails (8.24 with the headside shank) and other nails (8.23), f_ax,k = 20 × 10⁻⁶ρ_k², f_head,k =
+     70 × 10⁻⁶ρ_k² (8.25, 8.26) or declared, the penetration factors (8d/12d smooth, 6d/8d other), × 2/3 for timber
+     installed near saturation (8.3.2(7)); screws by A1 (8.38–8.40: 0.52 d^-0.5 l_ef^-0.1 ρ_k^0.8, k_d, the angle, n^0.9) or
+     declared values; bolts by the washer at 3 f_c,90,k (8.5.2).
+   - Effective number in a row along the grain: nails (8.17, Table 8.1), bolts and dowels (8.34); minimum spacings and
+     distances (Tables 8.2, 8.4, 8.5, with 0.85 for panels and 0.7 for steel on nail spacings); splitting (8.1.4, eq. 8.4);
+     slip modulus K_ser (Table 7.1). */
+const EC5F = (() => {
+  'use strict';
+  const ROPE = { smooth: 0.15, square: 0.25, ring: 0.5, screw: 1.0, bolt: 0.25, dowel: 0 };
+  const kef = a1d => { const T = [[4, 0.5], [7, 0.7], [8, 0.75], [9, 0.8], [10, 0.85], [12, 0.925], [14, 1]]; if (a1d >= 14) return 1; if (a1d <= 4) return 0.5;
+    for (let i = 1; i < T.length; i++) if (a1d <= T[i][0]) { const [x0, y0] = T[i - 1], [x1, y1] = T[i]; return y0 + (y1 - y0) * (a1d - x0) / (x1 - x0); } return 1; };
+  const rad = a => a * Math.PI / 180;
+
+  // ---------- embedment (N/mm²) ----------
+  /* m: { kind: 'timber'|'ply'|'osb', rhok, t (panel thickness), hard (hardwood), lvl }, f: { d, dowel: true for bolt-type rules,
+     predrilled }, alpha (degrees, load to grain) */
+  function fh(m, f, alpha = 0) {
+    const d = f.d;
+    if (!f.dowel) {   // nails ≤ 8 mm, screws ≤ 6 mm
+      if (m.kind === 'ply') return { v: 0.11 * m.rhok * d ** -0.3, eq: '8.20' };
+      if (m.kind === 'osb') return { v: 65 * d ** -0.7 * m.t ** 0.1, eq: '8.22' };
+      return f.predrilled ? { v: 0.082 * (1 - 0.01 * d) * m.rhok, eq: '8.16' } : { v: 0.082 * m.rhok * d ** -0.3, eq: '8.15' };
+    }
+    if (m.kind === 'ply') return { v: 0.11 * (1 - 0.01 * d) * m.rhok, eq: '8.36' };
+    if (m.kind === 'osb') return { v: 50 * d ** -0.6 * m.t ** 0.2, eq: '8.37' };
+    const f0 = 0.082 * (1 - 0.01 * d) * m.rhok, k90 = (m.hard ? 0.9 : m.lvl ? 1.3 : 1.35) + 0.015 * d, s = Math.sin(rad(alpha)), c = Math.cos(rad(alpha));
+    return { v: f0 / (k90 * s * s + c * c), f0, k90, eq: alpha ? '8.31, 8.32' : '8.32' };
+  }
+  const My = (fu, d) => 0.3 * fu * d ** 2.6;
+
+  // ---------- lateral capacity per shear plane (N) ----------
+  const ropeAdd = (J, Fax, cap) => J + Math.min(Fax / 4, cap * J);
+  /* timber or panel to timber, single shear (8.6): fh1, fh2, t1, t2, d, My, Fax, cap */
+  function single(p) {
+    const { fh1, fh2, t1, t2, d, My: M, Fax = 0, cap = 0 } = p, b = fh2 / fh1, r = t2 / t1, R = J => ropeAdd(J, Fax, cap);
+    const m = {
+      a: fh1 * t1 * d, b: fh2 * t2 * d,
+      c: R(fh1 * t1 * d / (1 + b) * (Math.sqrt(b + 2 * b * b * (1 + r + r * r) + b ** 3 * r * r) - b * (1 + r))),
+      d: R(1.05 * fh1 * t1 * d / (2 + b) * (Math.sqrt(2 * b * (1 + b) + 4 * b * (2 + b) * M / (fh1 * d * t1 * t1)) - b)),
+      e: R(1.05 * fh1 * t2 * d / (1 + 2 * b) * (Math.sqrt(2 * b * b * (1 + b) + 4 * b * (1 + 2 * b) * M / (fh1 * d * t2 * t2)) - b)),
+      f: R(1.15 * Math.sqrt(2 * b / (1 + b)) * Math.sqrt(2 * M * fh1 * d)),
+    };
+    return pick(m, b);
+  }
+  /* timber or panel, double shear (8.7): t1 the side members, t2 the central member */
+  function double(p) {
+    const { fh1, fh2, t1, t2, d, My: M, Fax = 0, cap = 0 } = p, b = fh2 / fh1, R = J => ropeAdd(J, Fax, cap);
+    const m = { g: fh1 * t1 * d, h: 0.5 * fh2 * t2 * d,
+      j: R(1.05 * fh1 * t1 * d / (2 + b) * (Math.sqrt(2 * b * (1 + b) + 4 * b * (2 + b) * M / (fh1 * d * t1 * t1)) - b)),
+      k: R(1.15 * Math.sqrt(2 * b / (1 + b)) * Math.sqrt(2 * M * fh1 * d)) };
+    return pick(m, b);
+  }
+  /* steel plate to timber, single shear: thin (8.9) and thick (8.10), interpolated between t ≤ 0.5d and t ≥ d (and a hole
+     clearance under 0.1d for thick); fh, t (timber), d, My, Fax, cap, ts (plate), thickOK */
+  function steelSingle(p) {
+    const { fh: f, t, d, My: M, Fax = 0, cap = 0 } = p, R = J => ropeAdd(J, Fax, cap);
+    const thin = { a: 0.4 * f * t * d, b: R(1.15 * Math.sqrt(2 * M * f * d)) };
+    const thick = { c: R(f * t * d * (Math.sqrt(2 + 4 * M / (f * d * t * t)) - 1)), d: R(2.3 * Math.sqrt(M * f * d)), e: f * t * d };
+    return blend(thin, thick, p);
+  }
+  /* steel plate in the middle, double shear (8.11): fh (side timber), t (side timber thickness) */
+  function steelCentral(p) {
+    const { fh: f, t, d, My: M, Fax = 0, cap = 0 } = p, R = J => ropeAdd(J, Fax, cap);
+    return pick({ f: f * t * d, g: R(f * t * d * (Math.sqrt(2 + 4 * M / (f * d * t * t)) - 1)), h: R(2.3 * Math.sqrt(M * f * d)) });
+  }
+  /* steel plates outside, double shear: thin (8.12) and thick (8.13), interpolated; fh and t of the central timber */
+  function steelOuter(p) {
+    const { fh: f, t, d, My: M, Fax = 0, cap = 0 } = p, R = J => ropeAdd(J, Fax, cap);
+    return blend({ j: 0.5 * f * t * d, k: R(1.15 * Math.sqrt(2 * M * f * d)) }, { l: 0.5 * f * t * d, m: R(2.3 * Math.sqrt(M * f * d)) }, p);
+  }
+  function pick(m, beta) { const k = Object.keys(m).reduce((a, b) => (m[b] < m[a] ? b : a)); return { modes: m, mode: k, F: m[k], beta }; }
+  function blend(thin, thick, p) {
+    const d = p.d, ts = p.ts, okThick = p.thickOK !== false, A = pick(thin), B = pick(thick);
+    if (!okThick || ts <= 0.5 * d) return { ...A, plate: 'thin', modes: { ...thin } };
+    if (ts >= d) return { ...B, plate: 'thick', modes: { ...thick } };
+    const w = (ts - 0.5 * d) / (0.5 * d), F = A.F + w * (B.F - A.F);
+    return { modes: { ...thin, ...thick }, mode: `${A.mode}/${B.mode}`, F, plate: `between (t = ${(ts / d).toFixed(2)}d, interpolated)`, w };
+  }
+
+  // ---------- withdrawal (N) ----------
+  // nails: smooth (8.24) or other (8.23); pointside penetration tp, headside thickness th; rho the point- and head-side ρ_k
+  function nailAx(o) {
+    const { type, d, tp, th, rhoP, rhoH, dh } = o, wet = o.wet ? 2 / 3 : 1, smooth = type !== 'ring';
+    const faxP = (o.faxk ?? 20e-6 * rhoP * rhoP) * wet, faxH = 20e-6 * rhoH * rhoH * wet, fhead = (o.fheadk ?? 70e-6 * rhoH * rhoH) * wet;
+    const pf = t => (smooth ? (t < 8 * d ? 0 : t < 12 * d ? t / (4 * d) - 2 : 1) : (t < 6 * d ? 0 : t < 8 * d ? t / (2 * d) - 3 : 1));
+    const point = faxP * pf(tp) * d * tp, head = (smooth ? faxH * pf(th) * d * th : 0) + fhead * dh * dh;
+    return { F: Math.min(point, head), point, head, faxP, fhead, kp: pf(tp), kh: smooth ? pf(th) : 0, eq: smooth ? '8.24' : '8.23' };
+  }
+  // screws, A1 (8.38–8.40) for 6 ≤ d ≤ 12 and 0.6 ≤ d1/d ≤ 0.75; otherwise from declared f_ax,k and ρ_a
+  function screwAx(o) {
+    const { d, d1, lef, rhok, alpha = 90, n = 1 } = o, nef = n ** 0.9, s = Math.sin(rad(alpha)), c = Math.cos(rad(alpha)), den = 1.2 * c * c + s * s;
+    const std = d >= 6 && d <= 12 && d1 / d >= 0.6 && d1 / d <= 0.75;
+    let fax, F1, how;
+    if (o.faxk > 0) { fax = o.faxk; F1 = fax * d * lef * (rhok / (o.rhoa || rhok)) ** 0.8 / den; how = '8.40a (declared)'; }
+    else if (std) { fax = 0.52 * d ** -0.5 * lef ** -0.1 * rhok ** 0.8; F1 = Math.min(d / 8, 1) * fax * d * lef / den; how = '8.38–8.40'; }
+    else return { F: NaN, why: 'outside 6 ≤ d ≤ 12 mm, 0.6 ≤ d₁/d ≤ 0.75: give the declared f_ax,k' };
+    return { F: F1, Fgroup: nef * F1, nef, fax, kd: Math.min(d / 8, 1), den, how };
+  }
+  // bolts: the washer bearing at 3 f_c,90,k; under a steel plate the washer diameter is not more than 12t or 4d
+  function boltAx(o) { const dw = o.plate ? Math.min(o.dw, 12 * o.plate, 4 * o.d) : o.dw, A = Math.PI / 4 * (dw * dw - (o.d + 1) ** 2); return { F: 3 * o.fc90k * Math.max(A, 0), A, dw }; }
+
+  // ---------- effective number in a row along the grain ----------
+  function nef(kind, n, a1, d, predrilled) {
+    if (n <= 1) return { v: n, k: 1 };
+    if (kind === 'nail' || kind === 'smallscrew') { const k = kef(a1 / d); return { v: n ** k, k, why: `k_ef = ${k.toFixed(3)} for a₁ = ${(a1 / d).toFixed(1)}d (8.17, Table 8.1)` }; }
+    const v = Math.min(n, n ** 0.9 * (a1 / (13 * d)) ** 0.25); return { v, why: 'min(n, n^0.9 (a₁/13d)^0.25) (8.34)' };
+  }
+
+  // ---------- minimum spacings and distances (mm) for an angle α (0–90) between force and grain ----------
+  function spacing(kind, d, rhok, opt = {}) {
+    const a = rad(opt.alpha || 0), s = Math.sin(a), c = Math.abs(Math.cos(a)), out = {};
+    if (kind === 'nail' || kind === 'smallscrew') {
+      const pd = opt.predrilled, big = !pd && rhok > 420, sm = d < 5;
+      if (pd) Object.assign(out, { a1: (4 + c) * d, a2: (3 + s) * d, a3t: (7 + 5 * c) * d, a3c: 7 * d, a4t: (sm ? 3 + 2 * s : 3 + 4 * s) * d, a4c: 3 * d, src: 'Table 8.2, pre-drilled' });
+      else if (big) Object.assign(out, { a1: (7 + 8 * c) * d, a2: 7 * d, a3t: (15 + 5 * c) * d, a3c: 15 * d, a4t: (sm ? 7 + 2 * s : 7 + 5 * s) * d, a4c: 7 * d, src: 'Table 8.2, 420 < ρ_k ≤ 500' });
+      else Object.assign(out, { a1: (sm ? 5 + 5 * c : 5 + 7 * c) * d, a2: 5 * d, a3t: (10 + 5 * c) * d, a3c: 10 * d, a4t: (sm ? 5 + 2 * s : 5 + 5 * s) * d, a4c: 5 * d, src: 'Table 8.2, ρ_k ≤ 420' });
+      const f = opt.panel ? 0.85 : opt.steel ? 0.7 : 1; if (f < 1) { out.a1 *= f; out.a2 *= f; out.src += `, spacings × ${f}`; }
+    } else if (kind === 'bolt' || kind === 'bigscrew') {
+      Object.assign(out, { a1: (4 + c) * d, a2: 4 * d, a3t: Math.max(7 * d, 80), a3c: s < 0.5 ? 4 * d : Math.max((1 + 6 * s) * d, 4 * d), a4t: Math.max((2 + 2 * s) * d, 3 * d), a4c: 3 * d, src: 'Table 8.4' });
+    } else {
+      const a3t = Math.max(7 * d, 80);
+      Object.assign(out, { a1: (3 + 2 * c) * d, a2: 3 * d, a3t, a3c: s < 0.5 ? 3 * d : Math.max(a3t * s, 3 * d), a4t: Math.max((2 + 2 * s) * d, 3 * d), a4c: 3 * d, src: 'Table 8.5' });
+    }
+    return out;
+  }
+  // splitting by a force at an angle to the grain (8.1.4, eq. 8.4), softwood: N
+  const F90 = (b, he, h) => (he < h ? 14 * b * Math.sqrt(he / (1 - he / h)) : Infinity);
+  // slip modulus per shear plane per fastener (Table 7.1), N/mm; ρ_m mean of the two members
+  const Kser = (kind, rhom, d, predrilled, steel) => (kind === 'nail' && !predrilled ? rhom ** 1.5 * d ** 0.8 / 30 : rhom ** 1.5 * d / 23) * (steel ? 2 : 1);
+  return { ROPE, kef, fh, My, single, double, steelSingle, steelCentral, steelOuter, nailAx, screwAx, boltAx, nef, spacing, F90, Kser };
+})();
+
+/* ===== CONCEALED PLATE GLULAM CONNECTION ENGINE (EngineeringTools) =====
+   A glulam (or solid timber) member end joined by steel plates and a group of dowels or bolts, to BS EN 1995-1-1 + UK NA
+   Section 8 and Annex A, and BS EN 1993-1-8 for the plates. The plates slotted into the timber (concealed: one to three
+   plates, the timber in outer pieces t₁ and inner pieces t₂) or one on each face. Needs EC5 (ec5/core.js) and EC5F
+   (ec5/fasteners.js). Design forces at the ULS with the load-duration class of the shortest action.
+   - The fastener group: the shear V (across the grain), the axial force N (along it, + tension) and the moment M = V e +
+     M_add about the group's centroid shared elastically (F = F_V/n + M r/Σr²); each fastener's force at its angle α to
+     the grain.
+   - Each fastener: every shear plane by the Johansen equations with f_h,α,k (8.31–8.33): a plate in the timber with the
+     timber each side (8.11 f, g, h) for the outer pieces, the inner pieces between two plates (8.12, 8.13 j–m, thick
+     plates with a hole clearance under 0.1d, interpolated for 0.5d < t < d); the rope effect for bolts (the washers,
+     F_ax/4 ≤ 25 %); F_v,Rd = k_mod F_v,Rk/γ_M with γ_M 1.3 (UK NA). The worst fastener against its own F_v,α,Rd.
+   - Along the grain, each row: the parallel components against n_ef/n F_v,0,Rd (8.34); splitting by the shear (8.1.4,
+     8.4) with h_e from the loaded edge; block and plug shear for tension (Annex A, each timber piece by its failure mode);
+     the timber's shear (6.13, k_cr) and net tension at the connection; spacings and distances (Table 8.4 or 8.5) at the
+     angles that occur.
+   - The plates: bearing of each fastener (EN 1993-1-8 Table 3.4), shear, bending and axial force at the timber's end face,
+     the net section in tension; the spacings of Table 3.3.
+   Units: N, mm. */
+const GlulamPlate = (() => {
+  'use strict';
+  const r0 = v => Math.round(v).toString(), r2 = v => (Math.round(v * 100) / 100).toFixed(2), r3 = v => (Math.round(v * 1000) / 1000).toFixed(3);
+  const pos = (v, nm) => { if (!(v > 0) || !Number.isFinite(v)) throw new Error(`${nm} must be a positive number`); return v; };
+  const GMC = 1.3, GM0 = 1.0, GM2 = 1.25;
+  const STEEL = { S275: { fy: t => (t <= 16 ? 275 : t <= 40 ? 265 : 255), fu: 410 }, S355: { fy: t => (t <= 16 ? 355 : t <= 40 ? 345 : 335), fu: 470 } };
+  const FU = { 'S235 dowel': 360, 'S275 dowel': 410, 'S355 dowel': 470, 'bolt 4.6': 400, 'bolt 8.8': 800 };
+
+  /* inp: { mat, sc, b, h, dur, plates: { arr: 'inside'|'outside', n, ts, slot, t2, grade, hp, holeOK, e1p, e2p },
+     fast: { kind: 'dowel'|'bolt', d, fu, dw }, layout: { m, n, a1, a2, a3, a4, omit: [[i, j]...] }, act: { V, N, g | e, M } (kN, mm, kNm) } */
+  function design(inp) {
+    const M = EC5.material(inp.mat || { family: 'glulam', cls: 'GL24h' }), sc = +inp.sc || 1, kmod = EC5.kmod(sc, inp.dur || 'medium');
+    if (kmod == null) throw new Error('Choose the load-duration class');
+    const b = pos(+inp.b, 'The breadth b'), h = pos(+inp.h, 'The depth h'), P = inp.plates || {}, F = inp.fast || {}, Lo = inp.layout || {}, A = inp.act || {};
+    const kind = F.kind === 'bolt' ? 'bolt' : 'dowel', d = pos(+F.d, 'The fastener diameter'), fu = pos(+F.fu, 'The fastener f_u,k'), d0 = d + (kind === 'bolt' ? 2 : 1);
+    const inside = P.arr !== 'outside', np = inside ? Math.round(+P.n || 1) : 2, ts = pos(+P.ts, 'The plate thickness'), St = STEEL[P.grade] || STEEL.S275, fyp = St.fy(ts), fup = St.fu;
+    if (inside && !(np >= 1 && np <= 3)) throw new Error('One, two or three slotted-in plates');
+    const slot = inside ? Math.max(+P.slot || ts + 2, ts) : 0;
+    // the timber pieces
+    let t1, t2 = 0;
+    if (inside) {
+      if (np === 1) t1 = (b - slot) / 2;
+      else { t2 = +P.t2 > 0 ? +P.t2 : 2 * (b - np * slot) / (2 + 2 * (np - 1)); t1 = (b - np * slot - (np - 1) * t2) / 2; }
+      if (!(t1 > 0)) throw new Error('The plates and slots leave no timber at the sides');
+    } else t2 = b;
+    const bt = inside ? b - np * slot : b;   // the timber's net breadth
+    const steps = [], checks = [], warnings = [];
+    steps.push({ ref: M.src, text: `${M.name}: f_t,0,k = ${M.ft0k}, f_v,k = ${M.fvk}, f_c,90,k = ${M.fc90k} N/mm², ρ_k = ${M.rhok} kg/m³; γ_M ${M.gM} (timber), ${GMC} (connections); k_mod = ${kmod} (service class ${sc}, ${inp.dur || 'medium'}-term)` });
+    steps.push({ ref: 'geometry', text: inside ? `${np} slotted-in plate${np > 1 ? 's' : ''} ${r0(ts)} mm in ${r0(slot)} mm slots in ${r0(b)} × ${r0(h)} timber: outer pieces t₁ = ${r2(t1)} mm${np > 1 ? `, inner t₂ = ${r2(t2)} mm` : ''}; ${2 * np} shear planes` : `${r0(ts)} mm plates on both faces of ${r0(b)} × ${r0(h)} timber: 2 shear planes` });
+    // the fasteners
+    const m = Math.round(pos(+Lo.m, 'The number of columns')), n = Math.round(pos(+Lo.n, 'The number of rows')), a1 = m > 1 ? pos(+Lo.a1, 'a₁') : 0, a2 = n > 1 ? pos(+Lo.a2, 'a₂') : 0;
+    const a3 = pos(+Lo.a3, 'The end distance a₃'), a4 = pos(+Lo.a4, 'The edge distance to the lowest row');
+    const omit = new Set((Lo.omit || []).map(([i, j]) => `${i},${j}`)), pts = [];
+    for (let j = 0; j < m; j++) for (let i = 0; i < n; i++) if (!omit.has(`${i},${j}`)) pts.push({ i, j, x: a3 + j * a1, y: a4 + i * a2 });
+    if (!pts.length) throw new Error('No fasteners');
+    const top = a4 + (n - 1) * a2;
+    if (top >= h) throw new Error('The rows do not fit in the depth');
+    const nf = pts.length, xc = pts.reduce((s, p) => s + p.x, 0) / nf, yc = pts.reduce((s, p) => s + p.y, 0) / nf;
+    const Ip = pts.reduce((s, p) => s + (p.x - xc) ** 2 + (p.y - yc) ** 2, 0);
+    // e: from the line of zero moment (the pin or the support face, beyond the timber's end) to the group's centroid; or g,
+    // to the timber's end. The fasteners' forces on the timber: V up (+), N holding the member against tension (toward
+    // the end), and the moment that puts their resultant on the line of zero moment: M = −V e (+ an added moment)
+    const V = (+A.V || 0) * 1e3, N = (+A.N || 0) * 1e3, e = A.g != null && A.g !== '' ? +A.g + xc : +A.e || 0, Mz = -V * e + (+A.M || 0) * 1e6;
+    if (!V && !N && !Mz) throw new Error('Give a force');
+    if (Mz && !(Ip > 0)) throw new Error('One fastener cannot carry a moment');
+    steps.push({ ref: 'group', text: `${nf} fasteners (${m} column${m > 1 ? 's' : ''} along the grain × ${n} row${n > 1 ? 's' : ''}${omit.size ? `, ${omit.size} left out` : ''}); centroid ${r2(xc)} mm from the end, ${r2(yc)} mm above the bottom; Σr² = ${r0(Ip)} mm²; V = ${r2(V / 1e3)} kN, N = ${r2(N / 1e3)} kN, M = ${A.M ? 'M − V e' : '−V e'} = ${r2(Mz / 1e6)} kNm (the resultant through the line of zero moment)` });
+    for (const p of pts) { p.Fx = -N / nf - Mz * (p.y - yc) / (Ip || 1); p.Fy = V / nf + Mz * (p.x - xc) / (Ip || 1); p.F = Math.hypot(p.Fx, p.Fy); p.alpha = p.F > 0 ? Math.atan2(Math.abs(p.Fy), Math.abs(p.Fx)) * 180 / Math.PI : 0; }
+    // resistance of one fastener at an angle α (all its shear planes)
+    const My = EC5F.My(fu, d), thickOK = P.holeOK !== false, tm = { kind: 'timber', rhok: M.rhok, lvl: M.kind === 'lvl' }, ff = { d, dowel: true };
+    const Fax = kind === 'bolt' ? EC5F.boltAx({ dw: +F.dw || 3 * d, d, fc90k: M.fc90k, plate: inside ? 0 : ts }) : { F: 0 };
+    const cap = kind === 'bolt' ? EC5F.ROPE.bolt : 0;
+    function resist(alpha) {
+      const fh = EC5F.fh(tm, ff, alpha), out = [], add = (nm, r, k) => { for (let i = 0; i < k; i++) out.push({ nm, ...r }); };
+      if (inside) {
+        add('outer piece, 8.11', EC5F.steelCentral({ fh: fh.v, t: t1, d, My, Fax: Fax.F, cap }), 2);
+        if (np > 1) add('inner piece, 8.13', EC5F.steelOuter({ fh: fh.v, t: t2, d, My, Fax: Fax.F, cap, ts, thickOK }), 2 * (np - 1));
+      } else add('central timber, 8.12/8.13', EC5F.steelOuter({ fh: fh.v, t: b, d, My, Fax: Fax.F, cap, ts, thickOK }), 2);
+      const Rk = out.reduce((s, p) => s + p.F, 0);
+      return { fh, planes: out, Rk, Rd: kmod * Rk / GMC };
+    }
+    const R0 = resist(0), R90 = resist(90);
+    steps.push({ ref: '8.30–8.33', text: `M_y,Rk = 0.3 f_u,k d^2.6 = ${r0(My)} N mm; f_h,0,k = ${r2(R0.fh.v)}, k_90 = ${r3(R0.fh.k90)}, f_h,90,k = ${r2(R90.fh.v)} N/mm²${kind === 'bolt' ? `; F_ax,Rk = ${r0(Fax.F)} N (washer ${r0(Fax.dw)} mm at 3f_c,90,k), F_ax/4 ≤ 25 % of the Johansen part` : '; dowels: no rope effect'}` });
+    const planeTxt = R => R.planes.filter((p, i, a) => a.findIndex(q => q.nm === p.nm) === i).map(p => `${p.nm}: mode ${p.mode} ${r2(p.F / 1e3)} kN${p.plate ? ` (${p.plate} plate)` : ''}`).join('; ');
+    steps.push({ ref: '8.2.3', text: `per shear plane, along the grain: ${planeTxt(R0)}; F_v,0,Rk = ${r2(R0.Rk / 1e3)} kN per fastener, F_v,0,Rd = ${r2(R0.Rd / 1e3)} kN. Across: ${planeTxt(R90)}; F_v,90,Rd = ${r2(R90.Rd / 1e3)} kN` });
+    // the worst fastener at its own angle
+    for (const p of pts) { p.R = resist(p.alpha); p.u = p.F / p.R.Rd; }
+    const W = pts.reduce((a, p) => (p.u > a.u ? p : a));
+    checks.push({ id: 'f', name: 'The most loaded fastener', ref: '8.2.3, 8.31', util: W.u, note: `row ${W.i + 1}, column ${W.j + 1}: F = √(F_x² + F_y²) = ${r2(W.F / 1e3)} kN at α = ${r2(W.alpha)}° to the grain; f_h,α,k = ${r2(W.R.fh.v)} N/mm²; F_v,α,Rd = k_mod ΣF_v,Rk/γ_M = ${r2(W.R.Rd / 1e3)} kN (${W.R.planes.length} planes)` });
+    // rows along the grain (8.34)
+    let rowW = null;
+    for (let i = 0; i < n; i++) {
+      const row = pts.filter(p => p.i === i); if (!row.length) continue;
+      const ne = EC5F.nef('dowel', row.length, a1 || 13 * d, d), Fx = Math.max(...row.map(p => Math.abs(p.Fx))), cap0 = ne.v / row.length * R0.Rd, u = Fx / cap0;
+      if (!rowW || u > rowW.u) rowW = { i, n: row.length, nef: ne.v, Fx, cap0, u };
+    }
+    if (rowW.Fx > 0) checks.push({ id: 'row', name: 'Each row along the grain', ref: '8.1.2(4), 8.34', util: rowW.u, note: `row ${rowW.i + 1}: ${rowW.n} in the row, n_ef = min(n, n^0.9 (a₁/13d)^¼) = ${r3(rowW.nef)}; the largest component along the grain ${r2(rowW.Fx / 1e3)} kN ≤ n_ef/n F_v,0,Rd = ${r2(rowW.cap0 / 1e3)} kN` });
+    // splitting (8.1.4): the force on the timber is upward for V > 0 (the plate holds the member up), so the loaded edge is the top
+    const fd = (fk, g = M.gM) => kmod * fk / g;
+    if (V) {
+      const ymin = Math.min(...pts.map(p => p.y)), ymax = Math.max(...pts.map(p => p.y)), he = V > 0 ? h - ymin : ymax;
+      const F90 = EC5F.F90(bt, he, h), F90d = fd(F90), Vd = Math.abs(V);
+      checks.push({ id: 'split', name: 'Splitting', ref: '8.1.4 (8.4)', util: Vd / F90d, note: `h_e = ${r0(he)} mm from the ${V > 0 ? 'top' : 'bottom'} (loaded) edge to the ${V > 0 ? 'lowest' : 'highest'} fastener; F_90,Rk = 14 b √(h_e/(1 − h_e/h)) = ${r2(F90 / 1e3)} kN on b = ${r2(bt)} mm; V = ${r2(Vd / 1e3)} ≤ ${r2(F90d / 1e3)} kN` });
+      const tau = 1.5 * Vd / (M.kcr * bt * h), fvd = fd(M.fvk);
+      checks.push({ id: 'shear', name: 'Shear of the timber at the connection', ref: '6.1.7', util: tau / fvd, note: `τ = 1.5 V/(k_cr b h) = ${r3(tau)} ≤ f_v,d = ${r3(fvd)} N/mm² (b = ${r2(bt)} mm net of the slots)` });
+    }
+    // tension: block and plug shear (Annex A), the net section
+    if (N > 0) {
+      const Lt = (n - 1) * Math.max(0, a2 - d), Lv = 2 * Math.max(0, a3 + (m - 1) * a1 - (m - 0.5) * d), fv = M.fvk, ft = M.ft0k;
+      const pieces = inside ? [...Array(2).fill({ t: t1, mode: R0.planes[0].mode, outer: true }), ...Array(np - 1).fill({ t: t2, mode: np > 1 ? R0.planes[2].mode : 'l', outer: false })] : [{ t: b, mode: R0.planes[0].mode, outer: false }];
+      let Fbs = 0; const desc = [];
+      // A.3: the full thickness for modes e, f, j/l, k, m; t_ef by A.4 otherwise (8.11's g taken as A.4's c, h as d/h)
+      for (const pc of pieces) {
+        const fh = R0.fh.v; let tef = pc.t, how = 'full';
+        if (pc.outer && pc.mode === 'g') { tef = pc.t * (Math.sqrt(2 + My / (fh * d * pc.t * pc.t)) - 1); how = 't_ef = t[√(2 + M_y/(f_h d t²)) − 1]'; }
+        else if (pc.outer && pc.mode === 'h') { tef = 2 * Math.sqrt(My / (fh * d)); how = 't_ef = 2√(M_y/(f_h d))'; }
+        const Anv = how === 'full' ? Lv * pc.t : Lv / 2 * (Lt + 2 * tef), Fp = Math.max(1.5 * Lt * pc.t * ft, 0.7 * Anv * fv);
+        Fbs += Fp; desc.push(`${r2(pc.t)} mm, mode ${pc.mode}: ${how === 'full' ? 'A_net,v = L_net,v t' : `A_net,v = L_net,v/2 (L_net,t + 2t_ef), ${how} = ${r2(tef)} mm`} → ${r2(Fp / 1e3)} kN`);
+      }
+      const Fbsd = fd(Fbs);
+      checks.push({ id: 'bs', name: 'Block and plug shear', ref: 'Annex A', util: N / Fbsd, note: `L_net,t = ${r0(Lt)}, L_net,v = ${r0(Lv)} mm; each piece max(1.5 A_net,t f_t,0,k, 0.7 A_net,v f_v,k): ${desc.join('; ')}; F_bs,Rd = ${r2(Fbsd / 1e3)} kN ≥ N = ${r2(N / 1e3)} kN` });
+      const Anet = bt * h - n * d * bt, kh = EC5.kh(M, Math.max(b, h)), ftd = kh * fd(ft);
+      checks.push({ id: 'tn', name: 'Timber net section in tension', ref: '6.1.2', util: N / Anet / ftd, note: `A_net = b(h − n d) = ${r0(Anet)} mm²: σ = ${r3(N / Anet)} ≤ k_h f_t,0,d = ${r3(ftd)} N/mm²` });
+    }
+    // spacings and distances in the timber (Table 8.4 bolts, 8.5 dowels) at the angles that occur
+    const sk = kind === 'bolt' ? 'bolt' : 'dowel', req = { a1: 0, a2: 0, a3: 0, a4t: 0, a4c: 0 };
+    for (const p of pts) { const s = EC5F.spacing(sk, d, M.rhok, { alpha: p.alpha }); req.a1 = Math.max(req.a1, s.a1); req.a2 = Math.max(req.a2, s.a2); req.a3 = Math.max(req.a3, N > 0 || p.Fx < -1e-9 ? s.a3t : s.a3c); req.a4t = Math.max(req.a4t, s.a4t); req.a4c = Math.max(req.a4c, s.a4c); }
+    const src = EC5F.spacing(sk, d, M.rhok).src, eT = V >= 0 ? h - top : a4, eC = V >= 0 ? a4 : h - top, sp = [];
+    if (m > 1) sp.push(['a₁ along the grain', a1, req.a1]); if (n > 1) sp.push(['a₂ across', a2, req.a2]);
+    sp.push(['a₃ to the end', a3, req.a3], ['a₄,t to the loaded edge', eT, req.a4t], ['a₄,c to the unloaded edge', eC, req.a4c]);
+    const spU = Math.max(...sp.map(([, g, r]) => r / g));
+    checks.push({ id: 'sp', name: 'Spacings and distances in the timber', ref: src, util: spU, note: sp.map(([nm, g, r]) => `${nm} ${r0(g)} ≥ ${r0(r)}`).join('; ') + ' mm' });
+    // the plates (EN 1993-1-8)
+    const hp = pos(+P.hp || (top - a4 + 2 * (+P.e2p || 2 * d0)), 'The plate depth'), e1p = pos(+P.e1p || 2 * d0, 'The plate end distance e₁'), e2p = pos(+P.e2p || 2 * d0, 'The plate edge distance e₂');
+    const ab = Math.min(e1p / (3 * d0), m > 1 ? a1 / (3 * d0) - 0.25 : 1, kind === 'bolt' ? +F.fu / fup : fu / fup, 1), k1 = Math.min(2.8 * e2p / d0 - 1.7, n > 1 ? 1.4 * a2 / d0 - 1.7 : 2.5, 2.5);
+    const Fb = k1 * ab * fup * d * ts / GM2, share = inside ? np : 2, Fbe = W.F / share;
+    const pl = [['e₁', e1p, 1.2 * d0], ['e₂', e2p, 1.2 * d0]]; if (m > 1) pl.push(['p₁', a1, 2.2 * d0]); if (n > 1) pl.push(['p₂', a2, 2.4 * d0]);
+    checks.push({ id: 'pb', name: 'Bearing on the plates', ref: 'EN 1993-1-8 Table 3.4', util: Math.max(...pts.map(p => p.F)) / share / Fb, note: `k₁ = ${r3(k1)}, α_b = ${r3(ab)}: F_b,Rd = k₁ α_b f_u d t/γ_M2 = ${r2(Fb / 1e3)} kN per plate; the worst fastener ${r2(W.F / 1e3)} kN over ${share} plates = ${r2(Fbe / 1e3)} kN; ${pl.map(([nm, g, r]) => `${nm} ${r0(g)} ≥ ${r2(r)}`).join(', ')} mm (Table 3.3)` });
+    if (pl.some(([, g, r]) => g < r - 1e-9)) warnings.push('A plate spacing or edge distance is under the minimum of EN 1993-1-8 Table 3.3.');
+    // the plates at the timber's end face: V, M there (M = V × the distance from the zero-moment line to the face) and N
+    const g = e - xc, Mf = Math.abs(-V * g + (+A.M || 0) * 1e6), Ag = share * ts * hp, Wg = share * ts * hp * hp / 6, Vpl = Ag * fyp / Math.sqrt(3) / GM0;
+    const uMN = Math.abs(N) / (Ag * fyp / GM0) + Mf / (Wg * fyp / GM0), uV = Math.abs(V) / Vpl;
+    checks.push({ id: 'pf', name: 'The plates at the timber end face', ref: 'EN 1993-1-1 6.2', util: Math.max(uMN, uV), note: `${share} × ${r0(ts)} × ${r0(hp)} mm ${P.grade || 'S275'} (f_y ${fyp}): V/V_pl,Rd = ${r3(uV)}; N/N_pl,Rd + M/M_el,Rd = ${r3(uMN)} with M = ${r2(Mf / 1e6)} kNm at ${r0(Math.max(0, g))} mm from the zero-moment line` });
+    if (N > 0) { const An = share * ts * (hp - n * d0), Nu = 0.9 * An * fup / GM2; checks.push({ id: 'pn', name: 'Plate net section in tension', ref: 'EN 1993-1-1 6.2.3', util: N / Nu, note: `A_net = ${r0(An)} mm²: N_u,Rd = 0.9 A_net f_u/γ_M2 = ${r2(Nu / 1e3)} kN` }); }
+    if (V > 0 && h - Math.min(...pts.map(p => p.y)) < 0.5 * h) warnings.push('The fasteners sit in the upper half of the depth: for a member supported on them, splitting is better resisted with the fasteners low (h_e/h large).');
+    if (inside && slot - ts > 3) warnings.push(`The slot is ${r0(slot - ts)} mm wider than the plate: the dowels bend more (not covered by 8.11).`);
+    const utilMax = Math.max(...checks.map(c => c.util));
+    return { inp, M, sc, kmod, b, h, bt, inside, np, ts, slot, t1, t2, kind, d, d0, fu, My, Fax, pts, xc, yc, Ip, V, N, Mz, e, R0, R90, W, rowW, hp, e1p, e2p, fyp, fup, checks, utilMax, steps, warnings };
+  }
+  return { design, FU, STEEL };
+})();
+
+</script>
+<script id="drawing-code">
+/* ===== CONNECTION DIAGRAMS (EngineeringTools ConnectionCheck) =====
+   Parametric, to-scale drafting views of each joint, drawn from the current inputs: an elevation and a plan or section,
+   with bolts, welds, dimension chains, labels and the design actions. Pure functions returning SVG strings.
+   Model units mm; each view maps a model box onto a pixel box (x right, y up). */
+const JD = (() => {
+  'use strict';
+  const C = { steel: '#e7ecf1', web: '#eef2f5', edge: '#2f3b47', plate: '#f6d58c', plateEdge: '#94700f', pack: '#e3d3ae', bolt: '#3a424b', boltDark: '#1f252b',
+    weld: '#1a1f24', dim: '#1b67b0', txt: '#222a31', mute: '#7a8590', cl: '#97a2ac', load: '#cc3426', conc: '#f1efea', concEdge: '#8b8478', grout: '#ddd7ca', paper: '#ffffff' };
+  const FS = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"', FM = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"';
+  const W = 920, H = 520;
+  const DEFS = `<defs>
+<pattern id="jdCut" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect width="6" height="6" fill="#c7d0d9"/><line x1="0" y1="0" x2="0" y2="6" stroke="#6f7d8a" stroke-width="0.9"/></pattern>
+<pattern id="jdPlCut" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(-45)"><rect width="5" height="5" fill="#efc560"/><line x1="0" y1="0" x2="0" y2="5" stroke="#94700f" stroke-width="0.8"/></pattern>
+<pattern id="jdConc" patternUnits="userSpaceOnUse" width="26" height="26"><rect width="26" height="26" fill="${C.conc}"/><circle cx="5" cy="6" r="1.3" fill="#b3ab9d"/><circle cx="17" cy="15" r="1.7" fill="#c0b8aa"/><circle cx="9" cy="21" r="1" fill="#a9a091"/><path d="M19 4 l3 2 l-3 2 z" fill="#c5bdaf"/><path d="M2 14 l2.5 -2 l1.5 3 z" fill="#bdb5a7"/></pattern>
+<pattern id="jdGrout" patternUnits="userSpaceOnUse" width="8" height="8"><rect width="8" height="8" fill="${C.grout}"/><circle cx="2" cy="2" r="0.7" fill="#9e9687"/><circle cx="6" cy="6" r="0.7" fill="#9e9687"/></pattern>
+<marker id="jdLd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${C.load}"/></marker>
+</defs>`;
+  const num = v => { const a = Math.abs(v); return a >= 100 || Number.isInteger(+v.toFixed(1)) ? Math.round(v).toString() : v.toFixed(1); };
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // ---------- views ----------
+  function view(box, bb) {
+    const w = bb[2] - bb[0], h = bb[3] - bb[1], k = Math.min(box[2] / w, box[3] / h);
+    const ox = box[0] + (box[2] - w * k) / 2 - bb[0] * k, oy = box[1] + (box[3] - h * k) / 2 + bb[3] * k;
+    return { k, X: x => ox + x * k, Y: y => oy - y * k, box };
+  }
+  const ST = {
+    steel: `fill="${C.steel}" stroke="${C.edge}" stroke-width="1.1"`, web: `fill="${C.web}" stroke="${C.edge}" stroke-width="1.1"`,
+    cut: `fill="url(#jdCut)" stroke="${C.edge}" stroke-width="1.2"`, plate: `fill="${C.plate}" stroke="${C.plateEdge}" stroke-width="1.1"`,
+    plateCut: `fill="url(#jdPlCut)" stroke="${C.plateEdge}" stroke-width="1.1"`, pack: `fill="${C.pack}" stroke="${C.plateEdge}" stroke-width="0.9"`,
+    conc: `fill="url(#jdConc)" stroke="${C.concEdge}" stroke-width="1"`, grout: `fill="url(#jdGrout)" stroke="${C.concEdge}" stroke-width="0.8"`,
+    ghost: `fill="none" stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="6 3"`, outline: `fill="none" stroke="${C.edge}" stroke-width="1.1"`,
+    bg: `fill="${C.paper}" stroke="none"`,
+  };
+  const R = (v, x0, y0, x1, y1, st = 'steel') => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)); return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${(Math.abs(x1 - x0) * v.k).toFixed(1)}" height="${(Math.abs(y1 - y0) * v.k).toFixed(1)}" ${ST[st]}/>`; };
+  const P = (v, pts, st = 'steel') => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + v.X(p[0]).toFixed(1) + ' ' + v.Y(p[1]).toFixed(1)).join(' ')} Z" ${ST[st]}/>`;
+  const LS = { e: `stroke="${C.edge}" stroke-width="1.1"`, t: `stroke="${C.edge}" stroke-width="0.55"`, c: `stroke="${C.cl}" stroke-width="0.7" stroke-dasharray="14 3 2 3"`,
+    h: `stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="5 3"`, d: `stroke="${C.dim}" stroke-width="0.7"` };
+  const Ln = (v, x0, y0, x1, y1, k = 'e') => `<line x1="${v.X(x0).toFixed(1)}" y1="${v.Y(y0).toFixed(1)}" x2="${v.X(x1).toFixed(1)}" y2="${v.Y(y1).toFixed(1)}" ${LS[k]}/>`;
+  const lnP = (x0, y0, x1, y1, k = 'e') => `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" ${LS[k]}/>`;
+  function Tx(x, y, s, o = {}) {
+    const sz = o.size || 11, col = o.color || C.txt, anc = o.anchor || 'start', w = o.weight || 400, rot = o.rot ? ` transform="rotate(${o.rot} ${x.toFixed(1)} ${y.toFixed(1)})"` : '';
+    const body = esc(s).replace(/_\{([^}]*)\}|_([A-Za-z0-9]+)/g, (m, p1, p2) => `<tspan baseline-shift="sub" font-size="78%">${p1 || p2}</tspan>`);
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${sz}" fill="${col}" text-anchor="${anc}" font-weight="${w}" ${o.mono ? FM : FS} paint-order="stroke" stroke="${C.paper}" stroke-width="3" stroke-linejoin="round"${rot}>${body}</text>`;
+  }
+  const tw = (s, sz = 10) => String(s).replace(/_/g, '').length * sz * 0.6;
+  // ---------- dimensions (tick terminators) ----------
+  const tick = (x, y) => `<line x1="${(x - 3.5).toFixed(1)}" y1="${(y + 3.5).toFixed(1)}" x2="${(x + 3.5).toFixed(1)}" y2="${(y - 3.5).toFixed(1)}" stroke="${C.dim}" stroke-width="1.3"/>`;
+  // horizontal chain: xs (model), measured from model level y, dimension line at off px (negative: below)
+  function DH(v, xs, y, off, labels) {
+    const Yf = v.Y(y), Yd = Yf - off, s = Math.sign(off) || 1; let o = '';
+    xs.forEach(x => { o += lnP(v.X(x), Yf - s * 3, v.X(x), Yd - s * 4, 'd'); });
+    o += lnP(v.X(xs[0]) - 4, Yd, v.X(xs[xs.length - 1]) + 4, Yd, 'd');
+    xs.forEach(x => { o += tick(v.X(x), Yd); });
+    for (let i = 0; i < xs.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(xs[i + 1] - xs[i])); if (lab === '') continue;
+      const a = v.X(xs[i]), b = v.X(xs[i + 1]), wpx = Math.abs(b - a), tW = tw(lab);
+      const ty = off > 0 ? Yd - 4 : Yd + 11;
+      if (wpx > tW + 6) o += Tx((a + b) / 2, ty, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true });
+      else o += Tx(Math.max(a, b) + 3 + (i === xs.length - 2 ? 2 : 0), ty + (off > 0 ? -9 : 9) * (i % 2), lab, { size: 10, color: C.dim, mono: true });
+    }
+    return o;
+  }
+  function DV(v, ys, x, off, labels) {
+    const Xf = v.X(x), Xd = Xf + off, s = Math.sign(off) || 1; let o = '';
+    ys.forEach(y => { o += lnP(Xf + s * 3, v.Y(y), Xd + s * 4, v.Y(y), 'd'); });
+    o += lnP(Xd, v.Y(ys[0]) + 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), Xd, v.Y(ys[ys.length - 1]) - 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), 'd');
+    ys.forEach(y => { o += tick(Xd, v.Y(y)); });
+    for (let i = 0; i < ys.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(ys[i + 1] - ys[i])); if (lab === '') continue;
+      const a = v.Y(ys[i]), b = v.Y(ys[i + 1]), hpx = Math.abs(b - a), tW = tw(lab);
+      const tx = off > 0 ? Xd + 11 : Xd - 4;
+      if (hpx > tW + 6) o += Tx(tx, (a + b) / 2, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true, rot: -90 });
+      else o += Tx(off > 0 ? Xd + 5 : Xd - 5, (a + b) / 2 + 3.5, lab, { size: 10, color: C.dim, mono: true, anchor: off > 0 ? 'start' : 'end' });
+    }
+    return o;
+  }
+  // leader with a dot at a model point and text lines at a pixel offset
+  function LD(v, x, y, dx, dy, lines, o = {}) {
+    const px = v.X(x), py = v.Y(y), ex = px + dx, ey = py + dy, s = dx >= 0 ? 1 : -1;
+    let out = `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="1.9" fill="${C.txt}"/>` + lnP(px, py, ex, ey, 't') + lnP(ex, ey, ex + s * 8, ey, 't');
+    [].concat(lines).forEach((t, i) => { out += Tx(ex + s * 11, ey + 4 + i * 13 - ([].concat(lines).length - 1) * 6.5, t, { size: o.size || 10.5, anchor: s > 0 ? 'start' : 'end', weight: i === 0 && o.bold ? 600 : 400, color: i === 0 ? C.txt : '#4b545d' }); });
+    return out;
+  }
+  // load arrow ending at pixel point (px, py); (vx, vy) is the arrow vector in pixels; label near the tail
+  function LA(px, py, vx, vy, label, o = {}) {
+    const x0 = px - vx, y0 = py - vy, lx = x0 + (o.ldx ?? 0), ly = y0 + (o.ldy ?? -6);
+    return `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${px.toFixed(1)}" y2="${py.toFixed(1)}" stroke="${C.load}" stroke-width="2.4" marker-end="url(#jdLd)"/>` +
+      (label ? Tx(lx, ly, label, { size: 11, color: C.load, weight: 600, anchor: o.anchor || 'middle' }) : '');
+  }
+  function moment(px, py, rr, label, cw = true) {
+    const a0 = cw ? 200 : -20, a1 = cw ? 340 : 160, p = a => [px + rr * Math.cos(a * Math.PI / 180), py - rr * Math.sin(a * Math.PI / 180)], [x0, y0] = p(a0), [x1, y1] = p(a1);
+    return `<path d="M${x0.toFixed(1)} ${y0.toFixed(1)} A${rr} ${rr} 0 1 ${cw ? 1 : 0} ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="${C.load}" stroke-width="2.2" marker-end="url(#jdLd)"/>` + Tx(px, py - rr - 7, label, { size: 11, color: C.load, weight: 600, anchor: 'middle' });
+  }
+  // ---------- steel symbols ----------
+  function BE(v, x, y, d) {   // bolt seen end-on: washer ring, head, centre cross
+    const px = v.X(x), py = v.Y(y), r1 = Math.max(0.95 * d * v.k, 3.2), r2 = Math.max(0.55 * d * v.k, 1.9), c = r1 + 3;
+    return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r1.toFixed(1)}" fill="#fff" stroke="${C.boltDark}" stroke-width="1"/><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r2.toFixed(1)}" fill="${C.bolt}"/>` +
+      lnP(px - c, py, px + c, py, 't') + lnP(px, py - c, px, py + c, 't');
+  }
+  // bolt seen side-on with its axis along x (dir 'x') or y: shank a0..a1 at c, head at a0, nut at a1
+  function BS(v, a0, a1, c, d, dir = 'x') {
+    const sg = Math.sign(a1 - a0) || 1, hd = 0.65 * d, nt = 0.8 * d, wh = 0.8 * d, wa = 0.15 * d, pr = 0.45 * d;
+    const seg = (s0, s1, half, fill) => dir === 'x' ? R(v, s0, c - half, s1, c + half, fill) : R(v, c - half, s0, c + half, s1, fill);
+    let o = seg(a0, a1 + sg * (wa + nt + pr), d / 2, 'bolt');
+    o += seg(a0 - sg * wa, a0, d, 'bolt') + seg(a0 - sg * (wa + hd), a0 - sg * wa, wh, 'boltH');
+    o += seg(a1, a1 + sg * wa, d, 'bolt') + seg(a1 + sg * wa, a1 + sg * (wa + nt), wh, 'boltH');
+    o += dir === 'x' ? Ln(v, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), c, 'c') : Ln(v, c, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), 'c');
+    return o;
+  }
+  ST.bolt = `fill="#59626c" stroke="${C.boltDark}" stroke-width="0.6"`; ST.boltH = `fill="${C.bolt}" stroke="${C.boltDark}" stroke-width="0.6"`;
+  // fillet weld at the corner (x, y): legs along sx (x) and sy (y), sized a (mm) but at least 4 px
+  function WD(v, x, y, a, sx, sy) {
+    const L = Math.max(a * v.k, 4.5), px = v.X(x), py = v.Y(y);
+    return `<path d="M${px.toFixed(1)} ${py.toFixed(1)} L${(px + sx * L).toFixed(1)} ${py.toFixed(1)} L${px.toFixed(1)} ${(py - sy * L).toFixed(1)} Z" fill="${C.weld}"/>`;
+  }
+  // weld seen along its length (elevation): narrow strip
+  const WS = (v, x0, y0, x1, y1) => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)), w = Math.max(Math.abs(x1 - x0) * v.k, 2.5), h = Math.max(Math.abs(y1 - y0) * v.k, 2.5);
+    return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${C.weld}" fill-opacity="0.82"/>`; };
+  // zigzag break lines through a member
+  function BK(v, x, y0, y1) {   // vertical break at model x between y0 and y1
+    const px = v.X(x), a = v.Y(Math.max(y0, y1)) - 4, b = v.Y(Math.min(y0, y1)) + 4, m = (a + b) / 2;
+    return `<path d="M${px} ${a} L${px} ${m - 7} L${px - 5} ${m - 3} L${px + 5} ${m + 3} L${px} ${m + 7} L${px} ${b}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  function BKH(v, y, x0, x1) {
+    const py = v.Y(y), a = v.X(Math.min(x0, x1)) - 4, b = v.X(Math.max(x0, x1)) + 4, m = (a + b) / 2;
+    return `<path d="M${a} ${py} L${m - 7} ${py} L${m - 3} ${py - 5} L${m + 3} ${py + 5} L${m + 7} ${py} L${b} ${py}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  // white mask to fade member ends beyond a break
+  const mask = (v, x0, y0, x1, y1) => R(v, x0, y0, x1, y1, 'bg');
+  // I section cross-section (cut), centred at (cx, cy); 'v': web vertical (depth along y), 'h': depth along x
+  function ISec(v, cx, cy, s, o = 'v', st = 'cut') {
+    const b = s.b, h = s.h, tf = s.tf, t = s.tw, r = Math.min(s.r || 0, (b - t) / 2 - 1), pts = [];
+    const arc = (ux, uy, a0, a1) => { for (let i = 0; i <= 6; i++) { const a = (a0 + (a1 - a0) * i / 6) * Math.PI / 180; pts.push([ux + r * Math.cos(a), uy + r * Math.sin(a)]); } };
+    pts.push([-b / 2, h / 2], [b / 2, h / 2], [b / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, h / 2 - tf - r, 90, 180); else pts.push([t / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, -h / 2 + tf + r, 180, 270); else pts.push([t / 2, -h / 2 + tf]);
+    pts.push([b / 2, -h / 2 + tf], [b / 2, -h / 2], [-b / 2, -h / 2], [-b / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, -h / 2 + tf + r, 270, 360); else pts.push([-t / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, h / 2 - tf - r, 0, 90); else pts.push([-t / 2, h / 2 - tf]);
+    pts.push([-b / 2, h / 2 - tf]);
+    return P(v, pts.map(([u, w]) => o === 'v' ? [cx + u, cy + w] : [cx + w, cy + u]), st);
+  }
+  // I member in side elevation: length along 'x' (a0..a1) with the depth c0..c1 across, or along 'y'
+  function IEl(v, a0, a1, c0, c1, s, dir = 'x', o = {}) {
+    const lo = Math.min(c0, c1), hi = Math.max(c0, c1), rr = s.r || 0;
+    const ln = (c, k) => dir === 'x' ? Ln(v, a0, c, a1, c, k) : Ln(v, c, a0, c, a1, k);
+    let out = dir === 'x' ? R(v, a0, lo, a1, hi, 'steel') : R(v, lo, a0, hi, a1, 'steel');
+    out += dir === 'x' ? R(v, a0, lo + s.tf, a1, hi - s.tf, 'web') : R(v, lo + s.tf, a0, hi - s.tf, a1, 'web');
+    out += ln(lo + s.tf, 'e') + ln(hi - s.tf, 'e');
+    if (rr > 0 && !o.noRoot) out += ln(lo + s.tf + rr, 't') + ln(hi - s.tf - rr, 't');
+    return out;
+  }
+  // I member seen on the flange face: width b, length along dir
+  const IFl = (v, a0, a1, cc, s, dir = 'y') => (dir === 'y' ? R(v, cc - s.b / 2, a0, cc + s.b / 2, a1, 'steel') + Ln(v, cc - s.tw / 2 - (s.r || 0), a0, cc - s.tw / 2 - (s.r || 0), a1, 'h') + Ln(v, cc + s.tw / 2 + (s.r || 0), a0, cc + s.tw / 2 + (s.r || 0), a1, 'h')
+    : R(v, a0, cc - s.b / 2, a1, cc + s.b / 2, 'steel'));
+  const title = (x, y, t, sub) => Tx(x, y, t, { size: 11.5, weight: 700, anchor: 'middle', color: C.txt }) + `<line x1="${(x - tw(t, 11.5) / 2).toFixed(1)}" y1="${(y + 3).toFixed(1)}" x2="${(x + tw(t, 11.5) / 2).toFixed(1)}" y2="${(y + 3).toFixed(1)}" stroke="${C.txt}" stroke-width="0.8"/>` + (sub ? Tx(x, y + 16, sub, { size: 10, anchor: 'middle', color: C.mute }) : '');
+  const svg = (body, h = H) => `<svg class="jd" viewBox="0 0 ${W} ${h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;background:${C.paper}" role="img">${DEFS}<rect width="${W}" height="${h}" fill="${C.paper}"/>${body}</svg>`;
+  const BOX = { L: [40, 46, 520, 400], Rt: [612, 46, 280, 400] };
+  const fv = x => { const n = parseFloat(x); return Number.isFinite(n) ? n : 0; };
+  const secName = x => x && x !== '0' ? x : '';   // a form without that selector reads as '0'
+  const BOLTD = { M12: 12, M16: 16, M20: 20, M24: 24, M27: 27, M30: 30, M36: 36 };
+  const bd = sz => BOLTD[sz] || 20;
+  const range = (n, f) => Array.from({ length: Math.max(0, n) }, (_, i) => f(i));
+  return { C, W, H, BOX, DEFS, view, R, P, Ln, lnP, Tx, tw, DH, DV, LD, LA, moment, BE, BS, WD, WS, BK, BKH, mask, ISec, IEl, IFl, title, svg, num, fv, secName, bd, range, esc, ST };
+})();
+
+/* ===== DRAWING KIT EXTRAS (EngineeringTools) =====
+   Additions to the JD drafting kit (joints/diagrams.js) for the member, floor and wall drawings: a page-width SVG wrapper,
+   arrows, supports, distributed loads, result fills, cross-section outlines (I, PFC, RHS, CHS) and SVG to PNG for PDF reports.
+   Source: scratchpad/drawings/kit.js. Pixel helpers take pixel coordinates; JD views map model mm to pixels. */
+const DK = (() => {
+  'use strict';
+  const { Tx, lnP, esc } = JD;
+  const BLUE = '#1d5fbf', FILL = 'rgba(29,95,191,.15)', RED = '#c4242a', REDF = 'rgba(196,36,42,.10)', INK = '#222a31', MUTE = '#6b7680', LINE = '#c9d0d7';
+  const DEFS = `<defs><marker id="dkB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${BLUE}"/></marker>`
+    + `<marker id="dkK" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${INK}"/></marker>`
+    + `<marker id="dkR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${RED}"/></marker>`
+    + `<pattern id="dkHatch" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)"><rect width="7" height="7" fill="#f3f1ec"/><line x1="0" y1="0" x2="0" y2="7" stroke="#8b8478" stroke-width="1"/></pattern></defs>`;
+  const f1 = v => (+v).toFixed(1);
+  // the page-width drawing: viewBox w x h, scales to its container
+  const svg = (body, w, h, label) => `<svg class="jd dk" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" role="img"${label ? ` aria-label="${esc(label)}"` : ''} `
+    + `style="width:100%;height:auto;display:block;background:#fff">${JD.DEFS}${DEFS}<rect width="${w}" height="${h}" fill="#fff"/>${body}</svg>`;
+  const col = c => ({ blue: BLUE, red: RED, ink: INK, mute: MUTE }[c] || c || INK);
+  const mk = c => ({ blue: 'dkB', red: 'dkR' }[c] || 'dkK');
+  // arrow from (x0, y0) to (x1, y1), head at the end (both: heads at both ends)
+  const arrow = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1.6}"`
+    + `${o.dash ? ` stroke-dasharray="${o.dash}"` : ''} marker-end="url(#${mk(o.c)})"${o.both ? ` marker-start="url(#${mk(o.c)})"` : ''}/>`;
+  const line = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.cap ? ` stroke-linecap="${o.cap}"` : ''}/>`;
+  const rect = (x, y, w, h, o = {}) => `<rect x="${f1(Math.min(x, x + w))}" y="${f1(Math.min(y, y + h))}" width="${f1(Math.abs(w))}" height="${f1(Math.abs(h))}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.rx ? ` rx="${o.rx}"` : ''}/>`;
+  const poly = (pts, o = {}) => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + f1(p[0]) + ' ' + f1(p[1])).join(' ')}${o.open ? '' : ' Z'}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+  const text = (x, y, s, o = {}) => Tx(x, y, s, Object.assign({ size: 11 }, o, { color: o.color ? col(o.color) : o.color }));
+  // pinned support under (px, py): triangle and ground line; dir 'down' (default) or 'up' (hanging, above the point)
+  function pin(px, py, dir = 'down') {
+    const s = dir === 'up' ? -1 : 1;
+    return poly([[px, py], [px - 8, py + s * 13], [px + 8, py + s * 13]], { fill: '#fff', stroke: 'ink', w: 1.3 }) + line(px - 12, py + s * 13, px + 12, py + s * 13, { w: 1.3 })
+      + [0, 1, 2, 3].map(k => line(px - 10 + k * 6, py + s * 13, px - 14 + k * 6, py + s * 18, { c: 'mute', w: 0.8 })).join('');
+  }
+  // hatched ground or wall strip: rectangle with the hatch fill and an edge line on the restrained side ('t', 'b', 'l', 'r')
+  function ground(x, y, w, h, edge = 't') {
+    const e = { t: [x, y, x + w, y], b: [x, y + h, x + w, y + h], l: [x, y, x, y + h], r: [x + w, y, x + w, y + h] }[edge];
+    return rect(x, y, w, h, { fill: 'url(#dkHatch)' }) + line(e[0], e[1], e[2], e[3], { w: 1.4 });
+  }
+  // a row of load arrows pointing from yTop to yBase between x0 and x1, with the bar along the tails and a label above
+  function udl(x0, x1, yTop, yBase, label, o = {}) {
+    const n = Math.max(2, Math.round((x1 - x0) / (o.pitch || 28)) + 1), c = o.c || 'red';
+    let g = line(x0, yTop, x1, yTop, { c, w: 1.3 });
+    for (let i = 0; i < n; i++) { const x = x0 + (x1 - x0) * i / (n - 1); g += arrow(x, yTop, x, yBase, { c, w: 1.2 }); }
+    return g + (label ? text((x0 + x1) / 2, yTop - 6, label, { anchor: 'middle', color: c === 'red' ? RED : col(c), weight: 600 }) : '');
+  }
+  // a result diagram: polyline pts (pixels) closed to the base line through the first and last points' base, filled blue
+  function fillDiagram(pts, base, o = {}) {
+    const vert = o.vertical;   // base is an x (diagram plotted sideways) when vertical
+    const close = vert ? [[base, pts[pts.length - 1][1]], [base, pts[0][1]]] : [[pts[pts.length - 1][0], base], [pts[0][0], base]];
+    return poly(pts.concat(close), { fill: o.fill || FILL, stroke: 'none' }) + poly(pts, { open: true, stroke: o.stroke || 'ink', w: 1.1 });
+  }
+  // cross-section outline, cut, centred at pixel (cx, cy) at scale k (px/mm); web vertical; returns svg
+  function section(s, cx, cy, k, o = {}) {
+    const st = o.style || 'cut', fill = st === 'cut' ? 'url(#jdCut)' : '#e7ecf1', edge = '#2f3b47';
+    if (s.shape === 'CHS') {
+      const ro = s.d / 2 * k, ri = (s.d / 2 - s.t) * k;
+      return `<path d="M${f1(cx - ro)} ${f1(cy)} a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(2 * ro)} 0 a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(-2 * ro)} 0 Z M${f1(cx - ri)} ${f1(cy)} a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(2 * ri)} 0 a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(-2 * ri)} 0 Z" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'RHS') {
+      const w = s.b * k, h = s.h * k, t = Math.max(s.t * k, 1.2), ro = Math.min((s.ro || 1.5 * s.t) * k, w / 2), ri = Math.max(0, ro - t);
+      const rr = (x, y, W, H, r) => `M${f1(x + r)} ${f1(y)} H${f1(x + W - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W)} ${f1(y + r)} V${f1(y + H - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W - r)} ${f1(y + H)} H${f1(x + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x)} ${f1(y + H - r)} V${f1(y + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + r)} ${f1(y)} Z`;
+      return `<path d="${rr(cx - w / 2, cy - h / 2, w, h, ro)} ${rr(cx - w / 2 + t, cy - h / 2 + t, w - 2 * t, h - 2 * t, ri)}" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'PFC') {   // channel, toes to the right, web on the left
+      const b = s.b * k, h = s.h * k, tf = Math.max(s.tf * k, 1.2), tw = Math.max(s.tw * k, 1.2), x0 = cx - b / 2, y0 = cy - h / 2;
+      return poly([[x0, y0], [x0 + b, y0], [x0 + b, y0 + tf], [x0 + tw, y0 + tf], [x0 + tw, y0 + h - tf], [x0 + b, y0 + h - tf], [x0 + b, y0 + h], [x0, y0 + h]], { fill, stroke: edge, w: 1.1 });
+    }
+    const v = { k, X: x => cx + x * k, Y: y => cy - y * k };   // I sections: JD's outline with root radii
+    return JD.ISec(v, 0, 0, s, 'v', st === 'cut' ? 'cut' : 'steel');
+  }
+  // SVG markup to a PNG data URL (for the jsPDF reports); resolves { url, w, h } with w, h the viewBox size
+  function toPNG(markup, wpx = 1800) {
+    return new Promise((resolve, reject) => {
+      const m = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(markup); if (!m) { reject(new Error('no viewBox')); return; }
+      const w = +m[1], h = +m[2], k = wpx / w, img = new Image();
+      const src = markup.replace(/style="[^"]*"/, `width="${f1(w * k)}" height="${f1(h * k)}"`);
+      img.onload = () => { const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k); const g = c.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height); resolve({ url: c.toDataURL('image/png'), w, h }); };
+      img.onerror = () => reject(new Error('drawing could not be rendered'));
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
+    });
+  }
+  // drawings for the page (heading + drawing) and for the A4 sheet (each kept whole on a page)
+  const page = blocks => blocks.map(([t, s]) => `<div class="dlabel">${t}</div>${s}`).join('');
+  const sheet = blocks => blocks.map(([t, s]) => `<div class="rfig" style="break-inside:avoid;page-break-inside:avoid;margin:1mm 0 3mm"><h3>${t}</h3><div class="rsvg">${s}</div></div>`).join('');
+  const fmt = (v, d = 0) => Number.isFinite(v) ? (+v).toFixed(d) : '–';
+  return { page, sheet, BLUE, FILL, RED, REDF, INK, MUTE, LINE, svg, arrow, line, rect, poly, text, pin, ground, udl, fillDiagram, section, toPNG, fmt, lnP };
+})();
+
+/* ===== CONCEALED PLATE CONNECTION DRAWINGS (EngineeringTools) =====
+   The member's end in elevation to scale: the timber, the slotted-in plate (dashed) or the plates on the faces, the
+   support line, the fasteners with the force each one takes (the most loaded in red), and the spacings; beside it the
+   section through the fasteners: the timber pieces, the plates in their slots and a fastener through them.
+   Source: scratchpad/drawings/cpg.js. Needs JD, DK; takes GlulamPlate.design results. */
+const DrawCPG = (() => {
+  'use strict';
+  const { svg, arrow, line, rect, text, page, sheet, RED, MUTE, BLUE } = DK;
+  const r0 = v => Math.round(v).toLocaleString('en-GB'), r2 = v => (Math.round(v * 100) / 100).toFixed(2);
+  const WOOD = '#ead9b6', GRAIN = '#c7ab7c', STEEL = '#9aa5b1';
+  const dimH = (x0, x1, y, lab) => line(x0, y, x1, y, { w: 0.7 }) + line(x0, y - 4, x0, y + 4, { w: 0.7 }) + line(x1, y - 4, x1, y + 4, { w: 0.7 }) + text((x0 + x1) / 2, y - 4, lab, { size: 9.5, anchor: 'middle' });
+  const dimV = (x, y0, y1, lab) => line(x, y0, x, y1, { w: 0.7 }) + line(x - 4, y0, x + 4, y0, { w: 0.7 }) + line(x - 4, y1, x + 4, y1, { w: 0.7 }) + text(x - 5, (y0 + y1) / 2 + 3, lab, { size: 9.5, anchor: 'end' });
+
+  function elevation(D, W0) {
+    const xs = D.pts.map(p => p.x), xmax = Math.max(...xs), g = Math.max(0, D.e - D.xc), Lx = g + xmax + Math.max(120, 0.4 * D.h);
+    const k = Math.min((W0 - 150) / Lx, 260 / D.h), ox = 70, oy = 40, X = x => ox + (x + g) * k, Y = y => oy + (D.h - y) * k;
+    let s = '';
+    // support line and the timber
+    s += rect(X(-g) - 10, Y(D.h) - 14, 10, D.h * k + 28, { fill: 'url(#dkHatch)' }) + line(X(-g), Y(D.h) - 14, X(-g), Y(0) + 14, { w: 1.4 });
+    s += rect(X(0), Y(D.h), (Lx - g) * k, D.h * k, { fill: WOOD, stroke: 'ink', w: 1.2 });
+    for (let i = 1; i < 6; i++) s += line(X(0) + 2, Y(D.h * i / 6), X(Lx - g) - 2, Y(D.h * i / 6), { c: GRAIN, w: 0.5 });
+    // the plate(s): dashed inside, solid on the faces
+    const yb = Math.min(...D.pts.map(p => p.y)) - D.e2p, ytp = yb + D.hp;
+    s += rect(X(-g), Y(ytp), (g + xmax + D.e1p) * k, D.hp * k, D.inside ? { stroke: STEEL, w: 1.3, dash: '6 3' } : { fill: 'rgba(154,165,177,.35)', stroke: STEEL, w: 1.3 });
+    // fasteners and their forces (on the timber)
+    const Fm = Math.max(...D.pts.map(p => p.F)) || 1, L = Math.min(46, 0.8 * Math.min(D.inp.layout.a1 || 999, D.inp.layout.a2 || 999) * k + 18);
+    for (const p of D.pts) {
+      const worst = p === D.W, c = worst ? RED : BLUE;
+      s += `<circle cx="${X(p.x).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="${Math.max(3, D.d0 * k / 2).toFixed(1)}" fill="#fff" stroke="${worst ? RED : '#2f3b47'}" stroke-width="${worst ? 1.6 : 1.1}"/>`;
+      if (p.F > 0) { const lx = p.Fx / Fm * L, ly = -p.Fy / Fm * L; if (Math.hypot(lx, ly) > 4) s += arrow(X(p.x), Y(p.y), X(p.x) + lx, Y(p.y) + ly, { c: worst ? 'red' : 'blue', w: worst ? 1.6 : 1.1 }); }
+    }
+    s += text(X(D.W.x) + 8, Y(D.W.y) + 16, `${r2(D.W.F / 1e3)} kN at ${r0(D.W.alpha)}°`, { size: 9.5, color: RED, weight: 600 });
+    // dimensions
+    const yd = Y(0) + 22, Lo = D.inp.layout;
+    s += dimH(X(0), X(Lo.a3), yd, `a₃ ${r0(Lo.a3)}`);
+    if (Lo.m > 1) s += dimH(X(Lo.a3), X(Lo.a3 + Lo.a1), yd, `a₁ ${r0(Lo.a1)}`);
+    if (g > 0) s += dimH(X(-g), X(0), yd, `g ${r0(g)}`);
+    const xr = X(Lx - g) + 40;
+    s += dimV(xr, Y(0), Y(Lo.a4), `a₄ ${r0(Lo.a4)}`);
+    if (Lo.n > 1) s += dimV(xr, Y(Lo.a4), Y(Lo.a4 + Lo.a2), `a₂ ${r0(Lo.a2)}`);
+    s += dimV(xr + 34, Y(0), Y(D.h), `h ${r0(D.h)}`);
+    // the actions
+    const act = [D.V ? `V ${r2(D.V / 1e3)} kN` : '', D.N ? `N ${r2(D.N / 1e3)} kN` : '', D.Mz ? `M ${r2(Math.abs(D.Mz) / 1e6)} kNm about the centroid` : ''].filter(Boolean).join(', ');
+    s += text(X(-g) - 12, Y(D.h) - 22, `${act}; zero moment ${r0(D.e)} mm from the centroid`, { size: 10, color: MUTE });
+    s += `<circle cx="${X(D.xc).toFixed(1)}" cy="${Y(D.yc).toFixed(1)}" r="2.5" fill="${MUTE}"/>`;
+    return svg(s, W0, yd + 24, 'Connection in elevation with the fastener forces');
+  }
+
+  function section(D, W0) {
+    const k = Math.min(200 / D.h, 260 / (D.b + 2 * (D.inside ? 0 : D.ts) + 40)), cx = W0 / 2, oy = 24, Y = y => oy + (D.h - y) * k, wb = D.b * k, x0 = cx - wb / 2;
+    let s = '';
+    if (D.inside) {
+      let x = 0; const parts = [];
+      parts.push(['t', D.t1]);
+      for (let i = 0; i < D.np; i++) { parts.push(['s', D.slot]); parts.push(['t', i < D.np - 1 ? D.t2 : D.t1]); }
+      for (const [kd, t] of parts) {
+        if (kd === 't') s += rect(x0 + x * k, Y(D.h), t * k, D.h * k, { fill: WOOD, stroke: 'ink', w: 1 }) + text(x0 + (x + t / 2) * k, Y(D.h) - 6, r2(t), { size: 9, anchor: 'middle' });
+        else { const py = Math.min(...D.pts.map(p => p.y)) - D.e2p; s += rect(x0 + x * k, Y(D.h), t * k, D.h * k, { fill: '#fff', stroke: 'ink', w: 0.6 }) + rect(x0 + (x + (t - D.ts) / 2) * k, Y(py + D.hp), D.ts * k, D.hp * k, { fill: STEEL, stroke: '#4b5563', w: 0.8 }); }
+        x += t;
+      }
+    } else {
+      s += rect(x0, Y(D.h), wb, D.h * k, { fill: WOOD, stroke: 'ink', w: 1 });
+      const py = Math.min(...D.pts.map(p => p.y)) - D.e2p;
+      for (const sx of [x0 - D.ts * k, x0 + wb]) s += rect(sx, Y(py + D.hp), D.ts * k, D.hp * k, { fill: STEEL, stroke: '#4b5563', w: 0.8 });
+    }
+    // one fastener through each row
+    const ext = D.inside ? 0 : D.ts * k, rows = [...new Set(D.pts.map(p => p.y))];
+    for (const y of rows) {
+      s += line(x0 - ext - (D.kind === 'bolt' ? 6 : 0), Y(y), x0 + wb + ext + (D.kind === 'bolt' ? 6 : 0), Y(y), { c: '#2f3b47', w: Math.max(1.5, D.d * k) });
+      if (D.kind === 'bolt') for (const sx of [x0 - ext - 8, x0 + wb + ext + 4]) s += rect(sx, Y(y) - 2 * D.d * k, 4, 4 * D.d * k, { fill: '#6b7280' });
+    }
+    s += text(cx, Y(0) + 16, `b = ${r0(D.b)} mm; ${D.inside ? `${D.np} × ${r0(D.ts)} mm plate${D.np > 1 ? 's' : ''} in ${r0(D.slot)} mm slots` : `${r0(D.ts)} mm plates on the faces`}; ${D.kind === 'bolt' ? 'M' : 'Ø'}${r0(D.d)} ${D.kind}s`, { size: 10, anchor: 'middle' });
+    return svg(s, W0, Y(0) + 26, 'Section through the connection');
+  }
+  const blocks = D => [['The connection, to scale', elevation(D, 680)], ['Section through the fasteners', section(D, 680)]];
+  return { html: D => page(blocks(D)), report: D => sheet(blocks(D)) };
+})();
+
+</script>
+<script id="ui">
+'use strict';
+const $ = id => document.getElementById(id);
+const STORE = 'et-concealed-plate-v1';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ufmt = u => !Number.isFinite(u) ? '&gt;99' : u.toFixed(3);
+const f0 = v => Number.isFinite(v) ? Math.round(v).toString() : '–', f2 = v => Number.isFinite(v) ? (Math.abs(v) < 0.005 ? 0 : v).toFixed(2) : '–', f3 = v => Number.isFinite(v) ? v.toFixed(3) : '–';
+const sub = s => esc(s).replace(/_\{([^}]*)\}|_([A-Za-zα-ω0-9,]+)/g, (m, a, b) => `<sub>${a || b}</sub>`).replace(/\^([0-9.]+)/g, '<sup>$1</sup>');
+const IDS = ['pName', 'pJob', 'pBy', 'pRef', 'fam', 'cls', 'sc', 'b', 'h', 'arr', 'np', 'grade', 'ts', 'slot', 't2', 'hp', 'e1p', 'e2p', 'kind', 'd', 'fu', 'dw', 'm', 'n', 'a1', 'a2', 'a3', 'a4', 'V', 'N', 'dur', 'g', 'Madd'];
+const CHK = ['holeOK', 'omitC'];
+function fillClasses(keep) { const fam = $('fam').value, list = EC5.CLASSES[fam] || [], cur = keep || $('cls').value; $('cls').innerHTML = list.map(c => `<option>${c}</option>`).join(''); $('cls').value = list.includes(cur) ? cur : fam === 'solid' ? 'C24' : fam === 'hard' ? 'D30' : 'GL24h'; }
+function fillSteel(keep) {
+  const k = $('kind').value, opts = k === 'bolt' ? [['bolt 4.6', 'Grade 4.6 (f_u 400)'], ['bolt 8.8', 'Grade 8.8 (f_u 800)']] : [['S235 dowel', 'S235 (f_u 360)'], ['S275 dowel', 'S275 (f_u 410)'], ['S355 dowel', 'S355 (f_u 470)']];
+  const cur = keep || $('fu').value; $('fu').innerHTML = opts.map(([v, t]) => `<option value="${v}">${sub(t)}</option>`).join(''); $('fu').value = opts.some(o => o[0] === cur) ? cur : opts[k === 'bolt' ? 0 : 1][0];
+}
+function collect() { const s = { v: 1 }; IDS.forEach(k => s[k] = $(k).value); CHK.forEach(k => s[k] = $(k).checked); return s; }
+function restore(s) { $('fam').value = s.fam || 'glulam'; fillClasses(s.cls); $('kind').value = s.kind || 'dowel'; fillSteel(s.fu); IDS.forEach(k => { if (s[k] !== undefined && !['fam', 'kind'].includes(k)) $(k).value = s[k]; }); CHK.forEach(k => { if (s[k] !== undefined) $(k).checked = !!s[k]; }); }
+function refreshVis() {
+  const show = (sel, on) => document.querySelectorAll(sel).forEach(e => e.classList.toggle('hidden', !on));
+  const inside = $('arr').value === 'inside';
+  show('.p-in', inside); show('.p-t2', inside && +$('np').value > 1); show('.f-bolt', $('kind').value === 'bolt');
+}
+$('fam').addEventListener('change', () => { fillClasses(); });
+$('kind').addEventListener('change', () => { fillSteel(); refreshVis(); });
+['arr', 'np'].forEach(id => $(id).addEventListener('change', refreshVis));
+const num = (id, nm) => { const v = parseFloat($(id).value); if (!Number.isFinite(v)) throw new Error(`${nm}: give a number`); return v; };
+const opt = id => { const v = parseFloat($(id).value); return Number.isFinite(v) ? v : undefined; };
+function input() {
+  const m = Math.round(num('m', 'Columns')), n = Math.round(num('n', 'Rows')), omit = $('omitC').checked && m % 2 && n % 2 ? [[(n - 1) / 2, (m - 1) / 2]] : [];
+  return { mat: { family: $('fam').value, cls: $('cls').value }, sc: +$('sc').value, b: num('b', 'b'), h: num('h', 'h'), dur: $('dur').value,
+    plates: { arr: $('arr').value, n: +$('np').value, ts: num('ts', 'Plate thickness'), slot: opt('slot'), t2: opt('t2'), grade: $('grade').value, hp: opt('hp'), e1p: num('e1p', 'e₁'), e2p: num('e2p', 'e₂'), holeOK: $('holeOK').checked },
+    fast: { kind: $('kind').value, d: +$('d').value, fu: GlulamPlate.FU[$('fu').value], dw: opt('dw') },
+    layout: { m, n, a1: opt('a1'), a2: opt('a2'), a3: num('a3', 'a₃'), a4: num('a4', 'Edge distance'), omit },
+    act: { V: parseFloat($('V').value) || 0, N: parseFloat($('N').value) || 0, g: num('g', 'g'), M: parseFloat($('Madd').value) || 0 } };
+}
+// ---------- results ----------
+const bar = c => `<div class="ck"><div class="nm">${esc(c.name)}<small>${esc(c.ref)} &nbsp;${sub(c.note || '')}</small></div><div class="bar"><i class="${c.util > 1 ? 'over' : c.util > 0.9 ? 'hi' : ''}" style="width:${Math.min(100, c.util * 100 / 1.2)}%"></i></div><div class="u ${c.util > 1 ? 'over' : ''}">${ufmt(c.util)}</div></div>`;
+const stepsHTML = S => `<div class="steps">${S.map(s => `<div class="st"><span>${esc(s.ref)}</span><span>${sub(s.text)}</span></div>`).join('')}</div>`;
+function table(D) {
+  const r = [...D.pts].sort((a, b) => b.u - a.u).map(p => `<tr><td>${p.i + 1}, ${p.j + 1}</td><td>${f0(p.x)}, ${f0(p.y)}</td><td>${f2(p.Fx / 1e3)}</td><td>${f2(p.Fy / 1e3)}</td><td>${f2(p.F / 1e3)}</td><td>${f2(p.alpha)}°</td><td>${f2(p.R.fh.v)}</td><td>${f2(p.R.Rd / 1e3)}</td><td>${ufmt(p.u)}</td></tr>`).join('');
+  return `<table class="t ff"><thead><tr><th>Row, column</th><th>x, y mm</th><th>F<sub>x</sub> kN</th><th>F<sub>y</sub> kN</th><th>F kN</th><th>α</th><th>f<sub>h,α,k</sub></th><th>F<sub>v,α,Rd</sub> kN</th><th>Util.</th></tr></thead><tbody>${r}</tbody></table>`;
+}
+function summary(D) { return `${f0(D.b)} × ${f0(D.h)} mm ${esc(D.M.name)}, service class ${D.sc}, k<sub>mod</sub> ${D.kmod}; ${D.inside ? `${D.np} × ${f0(D.ts)} mm plate${D.np > 1 ? 's' : ''} slotted in` : `${f0(D.ts)} mm plates on the faces`}; ${D.pts.length} ${D.kind === 'bolt' ? 'M' : 'Ø'}${f0(D.d)} ${D.kind}s`; }
+function verdict(D) {
+  const W = [...D.checks].sort((a, b) => b.util - a.util)[0];
+  return `<div class="verdict ${D.utilMax > 1 ? 'fail' : ''}"><div><div class="big">${D.utilMax > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(D.utilMax)}</div><div class="sub">Governs: ${esc(W.name.charAt(0).toLowerCase() + W.name.slice(1))} (${esc(W.ref)})<br>${summary(D)}</div></div></div>`;
+}
+let last = null;
+function runIt() {
+  const inp = input(), D = GlulamPlate.design(inp); last = { D, inp };
+  $('results').innerHTML = verdict(D) + `<div id="drawings">${DrawCPG.html(D)}</div>`
+    + `<div class="dlabel">Checks</div><div class="checks">${D.checks.map(bar).join('')}</div>`
+    + `<div class="dlabel">Each fastener, most loaded first</div>${table(D)}`
+    + `<div class="dlabel">Calculation</div>${stepsHTML(D.steps)}`
+    + (D.warnings.length ? `<div class="note">${D.warnings.map(sub).join('<br>')}</div>` : '')
+    + `<div class="note">${notes().join(' ')}</div><button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  $('printBtn').onclick = () => { $('report').innerHTML = report(); window.print(); };
+}
+const notes = () => ['The group shares V, N and M elastically about its centroid (every fastener equally stiff); each fastener is checked at the angle of its own force to the grain, and each row along the grain against n<sub>ef</sub> (8.34) for its components along the grain. The shear planes add: the outer pieces each side of a slotted plate by 8.11, pieces between two plates by 8.12/8.13. Block shear (Annex A) for tension toward the end; splitting (8.1.4) for the shear across the grain.',
+  'Not covered: fire (the cover to the plates and fasteners, BS EN 1995-1-2), the plate&rsquo;s connection to the support, moisture movement across the depth of deep groups (keep the rows within about 300 mm or slot the holes), self-drilling dowels and screws, reinforcement against splitting, fatigue, the slip of the connection in a frame analysis.'];
+function run() {
+  try { localStorage.setItem(STORE, JSON.stringify(collect())); } catch (e) { /* storage unavailable */ }
+  clearTimeout(drawT);
+  try { runIt(); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div><div id="drawings"></div>`; redraw(); }
+}
+$('calc').onclick = run;
+// ---------- A4 sheet ----------
+const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
+const okng = u => u <= 1 ? `<span class="ok">${ufmt(u)} OK</span>` : `<span class="ng">${ufmt(u)} FAIL</span>`;
+function report() {
+  const s = collect(), today = new Date().toLocaleDateString('en-GB'), { D } = last;
+  const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.pRef) || '&nbsp;'}</div><div class="ttl">Steel plate and dowel connection in timber (BS EN 1995-1-1 Section 8 + UK NA, BS EN 1993-1-8)</div></div>`;
+  let b = `<div class="rs"><h2>Basis</h2>${rl('BS EN 1995-1-1:2004+A2:2014 Section 8 and Annex A with the UK NA (γ<sub>M</sub> 1.3 for connections); BS EN 1993-1-1 and 1-8 for the plates', '', '')}${rl(summary(D), '', '')}${rl(`Design forces: V ${f2(D.V / 1e3)} kN, N ${f2(D.N / 1e3)} kN, M ${f2(D.Mz / 1e6)} kNm about the centroid (${esc(D.inp.dur)}-term)`, '', '')}</div>`;
+  b += `<div class="rs"><h2>Drawing</h2>${DrawCPG.report(D)}</div>`;
+  b += `<div class="rs"><h2>Calculation</h2>${D.steps.map(x => rl(sub(x.text), esc(x.ref), '')).join('')}${table(D)}</div>`;
+  b += `<div class="rs"><h2>Checks</h2>${D.checks.map(c => rl(`${esc(c.name)}: ${sub(c.note)}`, esc(c.ref), okng(c.util))).join('')}` + rl(`<b>${D.utilMax > 1 ? 'FAIL' : 'PASS'}</b>, largest utilisation`, '', okng(D.utilMax)) + '</div>';
+  if (D.warnings.length) b += `<div class="rs"><p class="rp">${D.warnings.map(sub).join(' ')}</p></div>`;
+  b += `<div class="rs"><p class="rp">${notes().join(' ')}</p><p class="rp" style="color:#555">Generated by EngineeringTools &mdash; Concealed Plate Glulam Connections.</p></div>`;
+  return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
+}
+let drawT = 0;
+function redraw() {
+  const el = $('drawings'); if (!el) return;
+  try { el.innerHTML = DrawCPG.html(GlulamPlate.design(input())); }
+  catch (e) { el.innerHTML = `<div class="note">The drawing will appear when the inputs are complete: ${esc(e.message)}</div>`; }
+}
+const queueDraw = () => { clearTimeout(drawT); drawT = setTimeout(redraw, 200); };
+$('inputs').addEventListener('input', queueDraw); $('inputs').addEventListener('change', queueDraw);
+(function init() {
+  let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
+  if (s && s.v === 1) restore(s); else { fillClasses('GL24h'); fillSteel('S275 dowel'); }
+  refreshVis(); redraw();
+})();
+</script>
+<footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent structural engineer with relevant experience to check and approve all calculations before they are used.</footer>
+
+<!-- @@FILEIO: save / open, shared by every tool (scratchpad/common/fileio.*) -->
+<style id="ef-style">
+/* Save / open buttons on the page header, and the status message (source: scratchpad/common/fileio.css) */
+.ef-bar{position:absolute;top:14px;right:16px;z-index:3;display:flex;gap:8px;}
+.ef-bar.ef-float{position:fixed;top:12px;right:12px;}
+.ef-btn{height:32px;padding:0 12px;display:inline-flex;align-items:center;gap:6px;border:0;border-radius:6px;background:rgba(255,255,255,.94);color:#111;font-family:inherit;font-size:13px;font-weight:500;line-height:1;cursor:pointer;}
+.ef-btn:hover{background:#fff;}
+.ef-btn:focus-visible{outline:2px solid #fff;outline-offset:2px;}
+.ef-btn svg{width:15px;height:15px;flex:none;}
+.ef-msg{position:fixed;left:50%;bottom:20px;z-index:1000;width:max-content;max-width:min(560px,calc(100vw - 32px));transform:translate(-50%,8px);opacity:0;pointer-events:none;
+  background:#1d1f20;color:#fff;font-family:inherit;font-size:13px;line-height:1.45;padding:10px 14px;border-radius:6px;transition:opacity .15s,transform .15s;}
+.ef-msg.on{opacity:1;transform:translate(-50%,0);}
+.ef-msg.bad{background:#b3261e;}
+@media(max-width:560px){.ef-bar{position:static;margin-top:12px;align-self:flex-start;}}
+@media print{.ef-bar,.ef-msg{display:none!important;}}
+</style>
+<script id="ef-script">
+/* Save / open: a tool's inputs as a .json file. Shared by every Engineering Tools page (source: scratchpad/common/fileio.js),
+   configured per page with EngFile.init({...}).
+   File: { app: 'EngineeringTools', tool, key, format, saved, state }.
+   Two ways to open:
+   - store: the tool already restores itself from browser storage on load. Open writes the file's state there and reloads,
+     so the tool rebuilds everything (load tables, spans, models) exactly as on a return visit, then recalculates.
+   - set: the page applies the state itself (pages without saved state); EngFile.fields() covers plain forms. */
+const EngFile = (() => {
+  'use strict';
+  const APP = 'EngineeringTools', FMT = 1, FLAG = 'ef-opened';
+  let C = null, input = null, timer = 0;
+  const ICON = {
+    open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+    save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v5h8V3"/><path d="M7 21v-7h10v7"/></svg>',
+  };
+  const sess = {
+    get: k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
+    set: (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } },
+    del: k => { try { sessionStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
+  };
+
+  function msg(t, bad) {
+    let m = document.getElementById('ef-msg');
+    if (!m) { m = document.createElement('div'); m.id = 'ef-msg'; m.className = 'ef-msg no-print'; m.setAttribute('role', 'status'); m.setAttribute('aria-live', 'polite'); document.body.appendChild(m); }
+    m.textContent = t || ''; m.classList.toggle('bad', !!bad); m.classList.toggle('on', !!t);
+    clearTimeout(timer); if (t) timer = setTimeout(() => m.classList.remove('on'), bad ? 9000 : 5000);
+  }
+  function data() { return { app: APP, tool: C.tool, key: C.key, format: FMT, saved: new Date().toISOString(), state: C.get() }; }
+  function fileName() {
+    let ref = '', nm = ''; try { ref = C.ref ? String(C.ref() || '').trim() : ''; nm = C.name ? String(C.name() || '').trim() : ''; } catch (e) { ref = ''; }
+    return `${ref ? ref + ' ' : ''}${nm || C.tool}.json`.replace(/[\\/:*?"<>|]+/g, '-');
+  }
+  async function save() {
+    let d; try { d = data(); } catch (e) { msg(`Could not save: ${e.message}`, true); return; }
+    const name = fileName(), text = JSON.stringify(d, null, 1);
+    if (window.showSaveFilePicker) {   // Chrome / Edge: a Save As dialog, so the file can go straight into the job folder
+      try {
+        const h = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: `${C.tool} file`, accept: { 'application/json': ['.json'] } }] });
+        const w = await h.createWritable(); await w.write(text); await w.close(); msg(`Saved ${h.name}`); return;
+      } catch (e) { if (e && e.name === 'AbortError') return; }   // cancelled; any other failure falls back to a download
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    msg(`Saved ${name} to your downloads folder`);
+  }
+  function open() { input.value = ''; input.click(); }
+  // the saved state, or an error saying what the file is
+  function stateOf(d) {
+    const old = C.legacy ? C.legacy(d) : null; if (old) return old;
+    if (!d || d.app !== APP || !d.state || typeof d.state !== 'object') throw new Error('this is not an Engineering Tools file');
+    if (d.key !== C.key) throw new Error(d.tool ? `it was saved in ${d.tool}, so open it there` : 'it was saved in another tool');
+    if (!(d.format >= 1) || d.format > FMT) throw new Error('this file was saved by a newer version of the tools');
+    return d.state;
+  }
+  async function apply(d, name) {
+    const s = stateOf(d);
+    if (C.store) {
+      try { localStorage.setItem(C.store, JSON.stringify(s)); } catch (e) { throw new Error('this browser is blocking site storage for this page, which Open needs'); }
+      sess.set(FLAG, JSON.stringify({ name, key: C.key }));
+      history.replaceState(null, '', location.href.split('#')[0]);   // a #in= hand-over in the address would otherwise win over the file
+      location.reload(); return { reload: true };
+    }
+    const r = (await C.set(s)) || {};
+    if (C.calc) try { C.calc(); } catch (e) { /* the tool reports its own input errors */ }
+    return r;
+  }
+  function done(name, r) {
+    const k = r && r.skipped ? r.skipped.length : 0;
+    msg(`Opened ${name}` + (k ? `. ${k} saved value${k > 1 ? 's are' : ' is'} not used by this version and ${k > 1 ? 'were' : 'was'} left at the default` : ''));
+  }
+  async function openFile(file) {
+    if (!file) return;
+    let d; try { d = JSON.parse(await file.text()); } catch (e) { msg(`${file.name} could not be read as a saved file`, true); return; }
+    try { const r = await apply(d, file.name); if (!r.reload) done(file.name, r); } catch (e) { msg(`${file.name} was not opened: ${e.message}`, true); }
+  }
+  // plain forms: every input, select and textarea with an id under root; dropdowns are restored first, since choosing a
+  // section often auto-fills its dimensions, which the saved values then override
+  function fields(root) {
+    const els = () => [...(typeof root === 'string' ? document.querySelector(root) : root || document).querySelectorAll('input[id],select[id],textarea[id]')]
+      .filter(el => el.id !== 'ef-file' && !['file', 'button', 'submit', 'reset'].includes(el.type));
+    return {
+      get: () => { const o = {}; els().forEach(el => { o[el.id] = el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value; }); return o; },
+      set: o => {
+        const have = new Map(els().map(el => [el.id, el])), skipped = [], ent = Object.entries(o || {}), fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+        for (const [id, v] of ent) {
+          const el = have.get(id); if (!el) { skipped.push(id); continue; }
+          if (el.tagName === 'SELECT') { if ([...el.options].some(x => x.value === String(v))) { el.value = String(v); fire(el, 'change'); } else skipped.push(id); }
+        }
+        for (const [id, v] of ent) {
+          const el = have.get(id); if (!el || el.tagName === 'SELECT') continue;
+          if (el.type === 'checkbox' || el.type === 'radio') { el.checked = !!v; fire(el, 'change'); } else { el.value = String(v); fire(el, 'input'); fire(el, 'change'); }
+        }
+        return { skipped };
+      },
+    };
+  }
+  // file names lead with the job and member references from the page, e.g. '24-123 Slab S3 RC Slab Design.json'
+  const refOf = ids => () => ids.map(id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; }).filter(Boolean).join(' ');
+  function mount() {
+    const bar = document.createElement('div'); bar.className = 'ef-bar no-print';
+    bar.innerHTML = `<button type="button" class="ef-btn" id="ef-open" title="Open a saved file (Ctrl+O), or drop it onto the page">${ICON.open}Open</button>`
+      + `<button type="button" class="ef-btn" id="ef-save" title="Save the inputs to a file (Ctrl+S)">${ICON.save}Save</button>`;
+    const h = document.querySelector('.page-hdr'); if (h) h.appendChild(bar); else { bar.classList.add('ef-float'); document.body.appendChild(bar); }
+    bar.querySelector('#ef-open').addEventListener('click', open); bar.querySelector('#ef-save').addEventListener('click', save);
+  }
+  function init(c) {
+    C = Object.assign({ tool: (document.querySelector('h1') || {}).textContent || document.title, ref: refOf(['pJob', 'pRef']), calc: () => { const b = document.getElementById('calc'); if (b) b.click(); }, delay: 200 }, c);
+    C.tool = C.tool.trim(); if (!C.key) C.key = C.store;
+    if (C.store && !C.get) C.get = () => collect();   // eslint-disable-line no-undef -- the tool's own serialiser
+    input = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json', id: 'ef-file' }); input.hidden = true;
+    document.body.appendChild(input); input.addEventListener('change', () => openFile(input.files[0]));
+    mount();
+    document.addEventListener('keydown', e => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return; const k = (e.key || '').toLowerCase();
+      if (k === 's') { e.preventDefault(); save(); } else if (k === 'o') { e.preventDefault(); open(); }
+    });
+    document.addEventListener('dragover', e => { if ([...((e.dataTransfer && e.dataTransfer.types) || [])].includes('Files')) e.preventDefault(); });
+    document.addEventListener('drop', e => { const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f && /\.json$/i.test(f.name)) { e.preventDefault(); openFile(f); } });
+    // after an Open that reloaded the page: the tool has restored itself; recalculate and say what was opened
+    const f = sess.get(FLAG);
+    if (f) {
+      sess.del(FLAG); let o = null; try { o = JSON.parse(f); } catch (e) { o = null; }
+      if (o && o.key === C.key) setTimeout(() => { if (C.calc) try { C.calc(); } catch (e) { /* the tool reports its own input errors */ } done(o.name); }, C.delay);
+    }
+  }
+  return { init, save, open, openFile, apply, data, fileName, msg, fields, stateOf, refOf };
+})();
+window.EngFile = EngFile;   // reachable from the page's other scripts and the tests
+EngFile.init({ store: STORE });
+</script>
+<!-- /@@FILEIO -->
+</body>
+</html>

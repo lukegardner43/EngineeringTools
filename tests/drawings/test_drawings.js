@@ -469,5 +469,11 @@ async function sweep(f, cases, expect) {
     ['a wall', w => { set(w, 'dir', 'main', 'change'); set(w, 'use', 'wall', 'change'); }], ['a taller wall', w => set(w, 'H', '3200')], ['more eccentricity', w => set(w, 'e', '30')],
     ['stronger wind', w => set(w, 'wind', '1.2')], ['a thicker wall', w => set(w, 'layup', '6', 'change')], ['the section alone', w => set(w, 'use', 'section', 'change')],
   ], 1);
+  await sweep('Concealed Plate Glulam Connections.html', [
+    ['more shear', w => set(w, 'V', '40')], ['tension as well', w => set(w, 'N', '30')], ['a longer lever', w => set(w, 'g', '120')], ['five rows', w => set(w, 'n', '5')],
+    ['two columns', w => set(w, 'm', '2')], ['wider spacing along', w => set(w, 'a1', '100')], ['rows higher up', w => set(w, 'a4', '90')], ['two plates', w => set(w, 'np', '2', 'change')],
+    ['bolts', w => set(w, 'kind', 'bolt', 'change')], ['plates on the faces', w => set(w, 'arr', 'outside', 'change')], ['a deeper member', w => set(w, 'h', '600')],
+    ['16 mm fasteners', w => set(w, 'd', '16', 'change')],
+  ], 1);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
