@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Piles and Pile Groups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* Engineering Tools: shared light style (tasteskill app sheet "Achromatic ledger", seed 959138263).
+   Ink chrome on a blue-grey drawing-office ground; the one hue (#1d5fbf) goes on the main data element
+   (envelopes, utilisation bars); status colour only on the verdict and on a check that is over. */
+:root{
+  --bg:#f2f4f7; --surf:#ffffff; --surf2:#f7f8fa; --bdr:#e3e5e8; --bdr2:#d1d5db; --rule:#eceef1;
+  --txt:#111111; --lbl:#33363a; --mut:#5f6368; --faint:#6b6b6b;
+  --accent:#1d5fbf; --accent-dim:#e3ebf8;
+  --primary:#1d1f20;
+  --pass:#247b50; --warn:#b45309; --fail:#c4242a;
+  --pass-bg:#dcfae5; --pass-ink:#04250e; --fail-bg:#ffedea; --fail-ink:#831c1e;
+  --r:6px; --rc:8px;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:var(--sans);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5;min-height:100svh;padding:28px 32px 40px;
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;}
+.container{max-width:1376px;margin:0 auto;}
+/* title row: a photograph of the member's material (img/<material>.jpg beside the page, set by <body data-material>)
+   under a neutral scrim, with the breadcrumb, the tool's name and one line of scope. Without the photo it is a plain ink band. */
+.page-hdr{position:relative;isolation:isolate;overflow:hidden;border-radius:var(--rc);min-height:164px;padding:18px 24px 20px;margin-bottom:12px;
+  display:flex;flex-direction:column;justify-content:flex-end;color:#fff;background:#2c3036 var(--photo,none) center/cover no-repeat;}
+.page-hdr::before{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.55) 45%,rgba(0,0,0,.18) 100%);} /* taste-skill-ignore: neutral scrim under text on a photograph */
+.page-hdr::after{content:var(--credit,'');position:absolute;right:10px;bottom:8px;font-size:11px;color:rgba(255,255,255,.9);background:rgba(0,0,0,.4);padding:1px 6px;border-radius:4px;}
+.home-lnk{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:rgba(255,255,255,.88);text-decoration:none;font-weight:500;margin-bottom:auto;align-self:flex-start;padding-bottom:12px;}
+.home-lnk:hover{color:#fff;text-decoration:underline;}
+.home-lnk svg{width:14px;height:14px;}
+.page-hdr h1{font-size:26px;font-weight:600;line-height:1.25;letter-spacing:-0.01em;margin-bottom:4px;color:#fff;}
+.page-hdr p{font-size:14px;color:rgba(255,255,255,.92);max-width:900px;}
+body[data-material="steel"]{--photo:url(img/steel.jpg);--credit:'Photo: Chevsapher, CC0';}
+body[data-material="concrete"]{--photo:url(img/concrete.jpg);--credit:'Photo: MassDOT, public domain';}
+body[data-material="masonry"]{--photo:url(img/masonry.jpg);--credit:'Photo: Håkan Svensson, CC BY 2.5';}
+body[data-material="timber"]{--photo:url(img/timber.jpg);--credit:'Photo: Sebastian Wallroth, public domain';}
+body[data-material="frame"]{--photo:url(img/frame.jpg);--credit:'Photo: Wikideas1, CC0';}
+body[data-material="ground"]{--photo:url(img/ground.jpg);--credit:'Photo: Fons Heijnsbroek, CC0';}
+@media print{.page-hdr{display:none;}}
+/* inputs on the left, the answer on the right: (1376 - 12) x 6/13 = 630 | 734 */
+.main-grid{display:grid;grid-template-columns:minmax(380px,6fr) 7fr;gap:12px;align-items:start;}
+@media(max-width:1100px){.main-grid{grid-template-columns:1fr;}}
+.main-grid > div{min-width:0;}
+#results table.t{display:block;overflow-x:auto;white-space:nowrap;}
+.card{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rc);padding:20px 24px;margin-bottom:12px;}
+.section-title{font-size:16px;font-weight:600;color:var(--txt);margin:0 0 14px;display:flex;justify-content:space-between;align-items:baseline;gap:12px;line-height:1.3;}
+.section-title .aux{color:var(--mut);font-size:13px;font-weight:400;text-align:right;}
+.form-group{margin-bottom:14px;}
+.form-group label,.lbl{display:block;font-size:13px;margin-bottom:5px;color:var(--lbl);font-weight:500;line-height:1.35;}
+input[type="number"],input[type="text"],select{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);padding:0 10px;height:36px;border-radius:var(--r);font-family:var(--sans);font-size:14px;width:100%;font-variant-numeric:tabular-nums;transition:border-color .12s;}
+input::placeholder{color:var(--faint);}
+input:hover,select:hover{border-color:#b9bec6;}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);}
+input:disabled,select:disabled{background:var(--surf2);color:var(--mut);}
+select option{background:var(--surf);color:var(--txt);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.grid2 > .form-group,.grid3 > .form-group{display:flex;flex-direction:column;justify-content:flex-end;}
+.chk{display:block;position:relative;padding-left:26px;font-size:13px;color:var(--lbl);margin:8px 0;cursor:pointer;line-height:1.45;}
+.chk input{position:absolute;left:0;top:1px;width:16px;height:16px;accent-color:var(--primary);}
+.help{font-size:13px;color:var(--mut);margin-top:4px;line-height:1.45;}
+/* segmented control: grey track, white pill on the chosen option */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#e9ecf0;border-radius:var(--rc);margin-bottom:14px;}
+.seg button{background:transparent;color:var(--mut);border:1px solid transparent;border-radius:var(--r);height:32px;padding:0 10px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;}
+.seg button:hover{color:var(--txt);}
+.seg button.on{background:var(--surf);color:var(--txt);border-color:var(--bdr);}
+/* repeating rows: spans, supports, loads */
+.rows{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+.row{display:grid;gap:8px;align-items:end;background:var(--surf2);border:1px solid var(--bdr);border-radius:var(--r);padding:10px;}
+.row label{font-size:12px;color:var(--mut);margin-bottom:3px;display:block;font-weight:500;line-height:1.3;}
+.row input,.row select{height:32px;font-size:13px;padding:0 8px;}
+.row.span{grid-template-columns:1fr 1.6fr 1fr 32px;}
+.row.load{grid-template-columns:52px 64px 1.1fr 1.1fr 32px;}
+.row.load .vals{grid-column:1 / span 3;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.xbtn{height:32px;width:32px;background:var(--surf);border:1px solid var(--bdr2);color:var(--mut);border-radius:var(--r);cursor:pointer;font-size:16px;line-height:1;}
+.xbtn:hover{color:var(--fail);border-color:var(--fail);}
+.addbtn{background:var(--surf);border:1px solid var(--bdr2);color:var(--txt);border-radius:var(--r);height:36px;padding:0 12px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;width:100%;}
+.addbtn:hover{border-color:#9aa0a8;background:var(--surf2);}
+/* the one primary action, near-black; secondary actions white and outlined */
+.btn{height:44px;padding:0 16px;border:none;border-radius:var(--r);font-weight:600;cursor:pointer;font-family:var(--sans);font-size:15px;width:100%;background:var(--primary);color:#fff;}
+.btn:hover{background:#000;}
+.btn:focus-visible,.btn2:focus-visible,.addbtn:focus-visible,.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.btn2{width:100%;height:38px;padding:0 12px;background:var(--surf);border:1px solid var(--bdr2);border-radius:var(--r);font-size:14px;font-weight:500;color:var(--txt);cursor:pointer;font-family:var(--sans);margin-top:8px;}
+.btn2:hover{border-color:#9aa0a8;background:var(--surf2);}
+.hidden{display:none!important;}
+/* results */
+.placeholder{display:flex;align-items:center;justify-content:center;min-height:160px;color:var(--mut);font-size:14px;text-align:center;padding:0 24px;}
+.verdict{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--bdr);border-radius:var(--rc);background:var(--surf2);margin-bottom:16px;}
+.verdict .big{font-size:24px;font-weight:600;line-height:1.2;color:var(--pass);letter-spacing:-0.01em;}
+.verdict.fail .big{color:var(--fail);}
+.verdict .sub{font-size:13px;color:var(--mut);margin-top:2px;}
+/* the utilisation ledger: check, clause, bar to scale (full track = 1.2, ink tick at the 1.0 limit), figure */
+.checks{display:flex;flex-direction:column;margin-bottom:8px;}
+.ck{display:grid;grid-template-columns:1.25fr 2fr 56px;gap:14px;align-items:center;font-size:13px;padding:7px 0;border-bottom:1px solid var(--rule);}
+.ck:last-child{border-bottom:none;}
+.ck .nm{color:var(--txt);line-height:1.35;} .ck .nm small{display:block;color:var(--mut);font-size:12px;}
+.bar{height:8px;background:#e8ebef;border-radius:4px;position:relative;}
+.bar::after{content:'';position:absolute;left:83.333%;top:-4px;bottom:-4px;width:1.5px;background:var(--txt);border-radius:1px;}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:4px;}
+.bar i.over{background:var(--fail);} /* 0.9-1.0 stays blue: a well-used member is not a warning; the tick shows how close it is */
+.ck .u{text-align:right;font-weight:600;font-size:14px;}
+.ck .u.over{color:var(--fail);}
+.diag{width:100%;height:auto;display:block;margin-bottom:6px;}
+/* screen drawings: the smallest labels lifted to the 11px floor (the print sheet keeps its own sizes) */
+.container svg text[font-size="8"],.container svg text[font-size="8.5"],.container svg text[font-size="9"],.container svg text[font-size="9.5"],
+.container svg text[font-size="10"],.container svg text[font-size="10.5"]{font-size:11px;}
+.dlabel{font-size:14px;font-weight:600;color:var(--txt);margin:20px 0 6px;line-height:1.3;}
+table.t{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px;font-variant-numeric:tabular-nums;}
+table.t th{color:var(--mut);font-weight:500;text-align:right;padding:6px 8px;border-bottom:1px solid var(--bdr);font-size:12px;}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--rule);text-align:right;}
+table.t th:first-child,table.t td:first-child{text-align:left;}
+.note{font-size:13px;color:var(--mut);background:var(--surf2);border:1px solid var(--rule);border-radius:var(--r);padding:10px 12px;margin-top:10px;line-height:1.5;}
+.err{color:var(--fail-ink);background:var(--fail-bg);font-size:13px;padding:10px 12px;border-radius:var(--r);margin-bottom:12px;}
+.busy{opacity:.55;pointer-events:none;}
+a{color:var(--txt);}
+sub,sup{font-size:max(11px,.75em);line-height:0;}
+@media(max-width:560px){body{padding:16px 16px 32px;} .card{padding:16px;} .ck{grid-template-columns:1fr 1fr 48px;gap:10px;} .grid3{grid-template-columns:1fr 1fr;}
+  .row.span{grid-template-columns:1fr 32px;} .row.span > div:nth-child(2),.row.span > div:nth-child(3){display:none;} .row.load .vals{grid-template-columns:1fr 1fr;}
+  .page-hdr{min-height:150px;padding:14px 16px 16px;} .page-hdr h1{font-size:22px;} .page-hdr::after{top:10px;bottom:auto;} .page-hdr::before{background:rgba(0,0,0,.6);} .verdict .big{font-size:22px;}}
+/* disclaimer: on screen at the foot of the page, and printed at the end of the calculation sheet */
+.disclaimer{max-width:1376px;margin:24px auto 0;padding-top:14px;border-top:1px solid var(--bdr,#e3e5e8);font-size:13px;line-height:1.55;color:var(--mut,#5f6368);}
+.disclaimer b{color:var(--txt,#111);font-weight:600;}
+@media print{.disclaimer{display:block!important;max-width:none;margin:4mm 0 0;padding-top:1.5mm;border-top:0.4pt solid #888;font-family:Arial,Helvetica,sans-serif;font-size:7.5pt;color:#000;break-inside:avoid;} .disclaimer b{color:#000;}}
+/* ---------- print: A4 calculation sheet ---------- */
+#report{display:none;}
+@media print{
+  @page{size:A4;margin:12mm 12mm 14mm;}
+  body{background:#fff;color:#000;padding:0;background-image:none;font-size:9.5pt;}
+  .container{display:none;}
+  #report{display:block;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  #report table.wrap{width:100%;border-collapse:collapse;}
+  #report thead td{padding:0 0 3mm;}
+  .rh{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;border:0.6pt solid #000;font-size:8pt;}
+  .rh div{padding:1.2mm 2mm;border-right:0.6pt solid #000;}
+  .rh div:last-child{border-right:none;}
+  .rh b{display:block;font-size:6.5pt;color:#444;font-weight:normal;text-transform:uppercase;letter-spacing:.3pt;}
+  .rh .ttl{grid-column:1 / -1;border-top:0.6pt solid #000;border-right:none;font-weight:bold;font-size:10pt;}
+  .rs{margin:0 0 3.5mm;}
+  .rs h2,.rs h3{break-after:avoid;}
+  .rl,.rt,.rsvg,.rp,.rt tr{break-inside:avoid;}
+  .rs h2{font-size:10pt;margin:3mm 0 1.5mm;padding-bottom:0.8mm;border-bottom:0.8pt solid #000;}
+  .rs h3{font-size:9pt;margin:2mm 0 1mm;}
+  .rl{display:grid;grid-template-columns:1fr 92px 132px;gap:2mm;padding:0.5mm 0;font-size:8.6pt;}
+  .rl .cl{text-align:right;color:#444;font-size:7.5pt;}
+  .rl .rv{text-align:right;font-weight:bold;}
+  .ok{color:#0a7a3e;} .ng{color:#c00;}
+  .rt{width:100%;border-collapse:collapse;font-size:8pt;margin:1mm 0 2mm;}
+  .rt th,.rt td{border:0.4pt solid #888;padding:0.6mm 1.2mm;text-align:right;}
+  .rt th{background:#eee;font-weight:bold;}
+  .rt td:first-child,.rt th:first-child,.rt.lft td,.rt.lft th{text-align:left;}
+  .rp{font-size:8.3pt;line-height:1.45;margin:1mm 0;}
+  .rsvg{width:100%;height:auto;}
+  .rsvg *{vector-effect:non-scaling-stroke;}
+}
+
+[hidden]{display:none!important;}
+.steps{font-size:12px;color:var(--mut);line-height:1.5;margin-bottom:12px;}
+.steps .st{display:grid;grid-template-columns:104px 1fr;gap:8px;padding:3px 0;border-bottom:1px solid var(--bdr);}
+.steps .st span:first-child{font-size:12px;color:var(--faint);}
+.row.lay{grid-template-columns:1.2fr repeat(6,1fr) 32px;}
+.row.pile{grid-template-columns:1fr 1fr 32px;}
+.ctab{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:12px;}
+.ctab th{font-size:12px;font-weight:500;color:var(--mut);text-align:right;padding:4px 6px;border-bottom:1px solid var(--rule);}
+.ctab th:first-child,.ctab td:first-child{text-align:left;}
+.ctab td{text-align:right;padding:4px 6px;border-bottom:1px solid #f0f0f0;font-variant-numeric:tabular-nums;}
+.ctab td.over{color:var(--fail);font-weight:600;}
+.tscroll{overflow-x:auto;}
+.chk{display:flex;gap:8px;align-items:center;font-size:13px;margin:6px 0;}
+.chk input{width:auto;height:auto;}
+</style>
+</head>
+<body data-material="ground" style="--photo:url(img/ground.jpg);--credit:'Photo: Fons Heijnsbroek, CC0'">
+<div class="container">
+  <div class="page-hdr">
+    <a href="index.html" class="home-lnk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Engineering Tools</a>
+    <h1>Piles and Pile Groups</h1>
+    <p>Bored, CFA and driven piles in layered clay and sand &nbsp;·&nbsp; shaft and base resistance from the ground, BS EN 1997-1 Design Approach 1 with the UK NA factors and model factor &nbsp;·&nbsp; the length needed &nbsp;·&nbsp; a group under a rigid cap: each pile's load, tension and block failure</p><!-- @@VERIFY: verification tag (scratchpad/verify/tags.py; the ROADMAP's Verification status) --><div class="vt" role="note"><span class="vt-pill vt-no">Not yet verified</span><span class="vt-why">Checked only against hand calculations so far, not yet against a published worked example: check its results independently.</span></div><style id="vt-style">.vt{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;margin:2px 0 8px;max-width:900px;}.vt-pill{flex:none;font-size:12px;font-weight:600;line-height:1.5;padding:1px 10px;border-radius:999px;background:#f2b33d;color:#221500;}.vt-part{background:#fbe3b0;color:#3d2a00;}.vt-why{font-size:13px;line-height:1.45;color:rgba(255,255,255,.92);flex:1 1 320px;}@media print{#report::before{content:"Not yet verified: Checked only against hand calculations so far, not yet against a published worked example: check its results independently.";display:block;font-family:Arial,Helvetica,sans-serif;font-size:8.5pt;line-height:1.35;color:#5a3b00;border:1px solid #e0a83a;border-radius:2mm;padding:2mm 3mm;margin:0 0 3mm;}}</style><!-- /@@VERIFY -->
+  </div>
+  <div class="main-grid">
+    <div id="inputs">
+      <div class="card">
+        <div class="section-title">Project</div>
+        <div class="form-group"><label>Project</label><input type="text" id="pName" placeholder="Project name"></div>
+        <div class="grid3"><div class="form-group"><label>Job no.</label><input type="text" id="pJob"></div><div class="form-group"><label>By</label><input type="text" id="pBy"></div><div class="form-group"><label>Ref.</label><input type="text" id="pRef" placeholder="e.g. Pile group PG1"></div></div>
+      </div>
+      <div class="card">
+        <div class="section-title">Pile</div>
+        <div class="grid3">
+          <div class="form-group"><label>Type</label><select id="type"><option value="bored" selected>Bored</option><option value="cfa">CFA</option><option value="driven">Driven precast</option></select></div>
+          <div class="form-group"><label>Section</label><select id="shape"><option value="circle" selected>Circular, diameter</option><option value="square">Square, side</option></select></div>
+          <div class="form-group"><label>Size (mm)</label><input type="number" id="D" value="600" step="50"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>Length (m)</label><input type="number" id="L" value="25" step="0.5"></div>
+          <div class="form-group"><label>No shaft over the top (m)</label><input type="number" id="skip" value="1" step="0.5"></div>
+          <div class="form-group"><label>Concrete</label><select id="fck"><option value="25">C25/30</option><option value="28">C28/35</option><option value="30">C30/37</option><option value="32" selected>C32/40</option><option value="35">C35/45</option><option value="40">C40/50</option></select></div>
+        </div>
+        <label class="chk"><input type="checkbox" id="selfW" checked> Add the pile's own weight as a permanent load</label>
+        <label class="chk"><input type="checkbox" id="sls"> Serviceability verified explicitly (the lower R4 factors, UK NA)</label>
+        <label class="chk"><input type="checkbox" id="test"> A maintained load test to the calculated ultimate resistance (model factor 1.2, not 1.4)</label>
+        <div class="help">Depths are from the pile head (the underside of the cap). The shaft is usually ignored over the top metre, in the ground disturbed by the cap's excavation.</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Ground</div>
+        <div class="rows" id="layRows"></div>
+        <button class="addbtn" id="addLay" type="button">+ Add a layer below</button>
+        <div class="grid3" style="margin-top:10px"><div class="form-group"><label>Water table (m below)</label><input type="number" id="zw" value="3" step="0.5" placeholder="none"></div></div>
+        <div class="help">Clay: c<sub>u</sub> at the top and bottom of the layer (kPa) and the adhesion factor α (0.5 for bored piles in London Clay; lower in very stiff clay). Sand: φ′, K<sub>s</sub> (0.7 to 1.0 for bored, 1.0 to 2.0 for driven) and N<sub>q</sub> from Berezantsev's chart for the pile's length to diameter. The limit caps the shaft friction (for example 110 kPa in London Clay). Fill counts for its weight only.</div>
+      </div>
+      <div class="card">
+        <div class="section-title">Group and loads (characteristic, at the cap)</div>
+        <div class="rows" id="pileRows"></div>
+        <button class="addbtn" id="addPile" type="button">+ Add a pile</button>
+        <div class="grid3" style="margin-top:10px">
+          <div class="form-group"><label>Vertical G (kN)</label><input type="number" id="G" value="3000" step="50"></div>
+          <div class="form-group"><label>Vertical Q (kN)</label><input type="number" id="Q" value="1000" step="50"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>M<sub>x</sub> G (kNm)</label><input type="number" id="MxG" value="0" step="10"></div>
+          <div class="form-group"><label>M<sub>x</sub> Q (kNm)</label><input type="number" id="MxQ" value="150" step="10"></div>
+          <div class="form-group"></div>
+        </div>
+        <div class="grid3">
+          <div class="form-group"><label>M<sub>y</sub> G (kNm)</label><input type="number" id="MyG" value="0" step="10"></div>
+          <div class="form-group"><label>M<sub>y</sub> Q (kNm)</label><input type="number" id="MyQ" value="0" step="10"></div>
+        </div>
+        <div class="help">Pile positions in metres; the loads act at the group's centroid. M<sub>y</sub> loads the piles at +x more, M<sub>x</sub> those at +y. One pile alone: give one position.</div>
+      </div>
+      <button class="btn" id="calc">Check piles</button>
+    </div>
+    <div><div class="card" id="results"><div class="placeholder">Give the pile, the ground and the loads, then Check.</div><div id="drawings"></div></div></div>
+  </div>
+</div>
+<div id="report"></div>
+<script id="engine">
+/* ===== PILES AND PILE GROUPS ENGINE (EngineeringTools) =====
+   The axial resistance of a single pile from the ground, by calculation to BS EN 1997-1 + UK NA (Design Approach 1), and a
+   group of identical piles under a rigid cap. kN, m and kPa.
+   - The ground: layers from the pile head down, each clay (undrained: c_u varying linearly through the layer), sand
+     (drained: φ′) or fill (no resistance counted); a water table; σ′_v from the layers' unit weights less the pore pressure.
+   - Shaft: clay q_s = α c_u, sand q_s = K_s tan δ σ′_v with δ = φ′ (bored and CFA, concrete cast against the ground) or
+     0.8 φ′ (driven precast), each capped at the layer's limit if one is given; none over the top length given (the
+     disturbed zone under the cap). Base: clay q_b = 9 c_u, sand q_b = N_q σ′_v (N_q from Berezantsev's chart for the pile's
+     L/D, given per layer), capped if a limit is given.
+   - Characteristic resistances R_b,k = R_b,cal/γ_Rd and R_s,k = R_s,cal/γ_Rd, the model factor 1.4 (1.2 where a maintained
+     load test is taken to the calculated ultimate resistance), UK NA A.3.3.2. Design R_c,d = R_b,k/γ_b + R_s,k/γ_s and
+     R_t,d = R_s,k/γ_s,t: combination 1 A1 + M1 + R1 (actions 1.35 / 1.5, resistance factors 1.0) and combination 2
+     A2 + M1 + R4 (1.0 / 1.3; Tables A.NA.6 driven, A.NA.7 bored, A.NA.8 CFA, with or without explicit verification of the
+     serviceability limit state). The pile's own weight is a permanent action when asked for.
+   - Group: identical piles under a rigid cap, the vertical load and the moments about the group's centroid shared by
+     P_i = V/n + a x_i + b y_i with [Σx² Σxy; Σxy Σy²][a b]ᵀ = [M_y M_x]ᵀ (x, y from the centroid; M_y compresses the piles
+     at +x, M_x those at +y); every pile against R_c,d (or R_t,d in tension). In clay at the base, block failure of the
+     group (Terzaghi and Peck): the full c_u over the block's perimeter and Skempton's N_c = 5(1 + 0.2 D/B)(1 + 0.2 B/L) ≤ 9
+     on its base, over γ_Rd and γ_t, against the whole group's load.
+   - The shaft's concrete: N_Ed (combination 1) against A_c f_cd with α_cc 0.85 (UK NA) on the section reduced for cast in
+     place piles without casing (BS EN 1992-1-1 2.3.4.2(2)), no steel counted. */
+const PileDesign = (() => {
+  'use strict';
+  const GW = 9.81;
+  const fin = (v, nm) => { v = typeof v === 'string' && v.trim() !== '' ? +v : v; if (!Number.isFinite(v)) throw new Error(`${nm}: give a number`); return v; };
+  const pos = (v, nm) => { v = fin(v, nm); if (!(v > 0)) throw new Error(`${nm} must be greater than 0`); return v; };
+  const nonneg = (v, nm) => { v = fin(v, nm); if (v < 0) throw new Error(`${nm} cannot be negative`); return v; };
+  const opt = (v, d) => (v === undefined || v === null || v === '' || (typeof v === 'number' && Number.isNaN(v)) ? d : v);
+  const rad = d => d * Math.PI / 180;
+  // UK NA Tables A.NA.6 to A.NA.8: R4 [without explicit SLS verification, with]
+  const R4 = { driven: { b: [1.7, 1.5], s: [1.5, 1.3], t: [1.7, 1.5], st: [2.0, 1.7] }, bored: { b: [2.0, 1.7], s: [1.6, 1.4], t: [2.0, 1.7], st: [2.0, 1.7] }, cfa: { b: [2.0, 1.7], s: [1.6, 1.4], t: [2.0, 1.7], st: [2.0, 1.7] } };
+  const TYPES = { bored: 'bored', cfa: 'CFA', driven: 'driven precast' };
+  const skemptonNc = (D, B, L) => Math.min(9, 5 * (1 + 0.2 * Math.min(D / B, 2.5)) * (1 + 0.2 * B / L));
+
+  // ---- the ground: layers with their top and bottom depths; σ′_v at a depth ----
+  function ground(layers, zw) {
+    let z = 0;
+    const L = layers.map((l, i) => {
+      const o = { i, type: ['clay', 'sand', 'fill'].includes(l.type) ? l.type : 'clay', t: pos(l.t, `Layer ${i + 1} thickness`), g: pos(l.g, `Layer ${i + 1} unit weight`), qmax: opt(l.qmax, null), qbmax: opt(l.qbmax, null) };
+      o.top = z; o.bot = z + o.t; z = o.bot;
+      if (o.type === 'clay') { o.cu0 = nonneg(l.cu0, `Layer ${i + 1} c_u at the top`); o.cu1 = nonneg(opt(l.cu1, o.cu0), `Layer ${i + 1} c_u at the bottom`); o.alpha = nonneg(opt(l.alpha, 0.5), `Layer ${i + 1} α`); if (o.alpha > 1) throw new Error(`Layer ${i + 1}: α is at most 1`); }
+      if (o.type === 'sand') { o.phi = fin(l.phi, `Layer ${i + 1} φ′`); if (!(o.phi > 0 && o.phi < 45)) throw new Error(`Layer ${i + 1}: φ′ between 0 and 45°`); o.Ks = nonneg(opt(l.Ks, 0.7), `Layer ${i + 1} K_s`); o.Nq = nonneg(opt(l.Nq, 30), `Layer ${i + 1} N_q`); }
+      if (o.qmax != null) o.qmax = nonneg(o.qmax, `Layer ${i + 1} shaft limit`);
+      return o;
+    });
+    const at = zz => L.find(l => zz >= l.top - 1e-9 && zz < l.bot - 1e-9) || L[L.length - 1];
+    const sv = zz => { let s = 0; for (const l of L) { if (zz <= l.top) break; s += l.g * (Math.min(zz, l.bot) - l.top); } return s; };
+    const u = zz => (zz > zw ? GW * (zz - zw) : 0);
+    const cu = (l, zz) => l.cu0 + (l.cu1 - l.cu0) * (zz - l.top) / l.t;
+    return { L, at, sv, u, sve: zz => sv(zz) - u(zz), cu, bottom: z };
+  }
+
+  function design(inp) {
+    const type = ['bored', 'cfa', 'driven'].includes(inp.type) ? inp.type : 'bored';
+    const shape = inp.shape === 'square' ? 'square' : 'circle', D = pos(inp.D, 'Pile size') / 1000;
+    const per = shape === 'circle' ? Math.PI * D : 4 * D, Ab = shape === 'circle' ? Math.PI * D * D / 4 : D * D;
+    const Lp = pos(inp.L, 'Pile length'), zw = nonneg(opt(inp.zw, 1e9), 'Water table depth'), skip = nonneg(opt(inp.skip, 0), 'Shaft ignored over the top');
+    const layers = Array.isArray(inp.layers) ? inp.layers : [];
+    if (!layers.length) throw new Error('Give the ground: at least one layer');
+    const Gd = ground(layers, zw);
+    if (Lp > Gd.bottom + 1e-9) throw new Error(`The pile (${Lp.toFixed(2)} m) goes below the layers given (${Gd.bottom.toFixed(2)} m): extend the ground`);
+    const gRd = inp.test ? 1.2 : 1.4, sls = inp.sls ? 1 : 0, F4 = R4[type];
+    const fac = { R1: { b: 1, s: 1, t: 1, st: 1 }, R4: { b: F4.b[sls], s: F4.s[sls], t: F4.t[sls], st: F4.st[sls] } };
+    const kDelta = type === 'driven' ? 0.8 : 1.0;
+    const fck = pos(opt(inp.fck, 32), 'f_ck'), gc = pos(opt(inp.gc, 25), 'Concrete density');
+    const selfW = inp.selfW !== false;
+
+    // ---- shaft friction per metre and the cumulative shaft resistance down the pile (0.02 m steps) ----
+    const dz = 0.02, nz = Math.round(Gd.bottom / dz), zs = new Float64Array(nz + 1), Rs = new Float64Array(nz + 1), qs = new Float64Array(nz + 1);
+    // the friction at the middle of each step (exact for c_u linear within a layer whose boundaries fall on the steps)
+    for (let i = 0; i <= nz; i++) {
+      zs[i] = i * dz; if (!i) continue;
+      const z = (i - 0.5) * dz, l = Gd.at(Math.min(z, Gd.bottom - 1e-9));
+      let q = 0;
+      if (z >= skip) {
+        if (l.type === 'clay') q = l.alpha * Gd.cu(l, z);
+        else if (l.type === 'sand') q = l.Ks * Math.tan(rad(kDelta * l.phi)) * Math.max(0, Gd.sve(z));
+        if (l.qmax != null && l.qmax > 0) q = Math.min(q, l.qmax);
+      }
+      qs[i] = q;
+      Rs[i] = Rs[i - 1] + per * dz * q;
+    }
+    const RsAt = z => { const i = Math.min(nz, Math.floor(z / dz)), f = (z - zs[i]) / dz; return i >= nz ? Rs[nz] : Rs[i] + f * (Rs[i + 1] - Rs[i]); };
+    const qbAt = z => {
+      const l = Gd.at(Math.min(z, Gd.bottom - 1e-9)); let q = 0;
+      if (l.type === 'clay') q = 9 * Gd.cu(l, Math.min(z, l.bot));
+      else if (l.type === 'sand') q = l.Nq * Math.max(0, Gd.sve(z));
+      if (l.qbmax != null && l.qbmax > 0) q = Math.min(q, l.qbmax);
+      return { q, l };
+    };
+    const resist = (z, R) => { const Rsc = RsAt(z), b = qbAt(z), Rbc = b.q * Ab, Rsk = Rsc / gRd, Rbk = Rbc / gRd; return { z, Rsc, Rbc, qb: b.q, base: b.l, Rsk, Rbk, Rcd: Rbk / R.b + Rsk / R.s, Rtd: Rsk / R.st }; };
+    const P1 = resist(Lp, fac.R1), P2 = resist(Lp, fac.R4);
+    const Wp = selfW ? gc * Ab * Lp : 0;
+
+    // ---- the group ----
+    const piles = (Array.isArray(inp.piles) && inp.piles.length ? inp.piles : [{ x: 0, y: 0 }]).map((p, i) => ({ i, x: fin(p.x, `Pile ${i + 1} x`), y: fin(p.y, `Pile ${i + 1} y`) }));
+    const n = piles.length, cx = piles.reduce((s, p) => s + p.x, 0) / n, cy = piles.reduce((s, p) => s + p.y, 0) / n;
+    piles.forEach(p => { p.dx = p.x - cx; p.dy = p.y - cy; });
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) { const s = Math.hypot(piles[i].x - piles[j].x, piles[i].y - piles[j].y); if (s < D - 1e-9) throw new Error(`Piles ${i + 1} and ${j + 1} overlap`); }
+    const Sxx = piles.reduce((s, p) => s + p.dx * p.dx, 0), Syy = piles.reduce((s, p) => s + p.dy * p.dy, 0), Sxy = piles.reduce((s, p) => s + p.dx * p.dy, 0);
+    const ld = { G: nonneg(opt(inp.G, 0), 'Vertical G'), Q: nonneg(opt(inp.Q, 0), 'Vertical Q'), MxG: fin(opt(inp.MxG, 0), 'M_x G'), MxQ: fin(opt(inp.MxQ, 0), 'M_x Q'), MyG: fin(opt(inp.MyG, 0), 'M_y G'), MyQ: fin(opt(inp.MyQ, 0), 'M_y Q') };
+    if (!(ld.G + ld.Q > 0)) throw new Error('Give the group a vertical load');
+    const det = Sxx * Syy - Sxy * Sxy;
+    if ((Math.abs(ld.MxG) + Math.abs(ld.MxQ) + Math.abs(ld.MyG) + Math.abs(ld.MyQ) > 0) && !(det > 1e-12)) throw new Error('The piles lie in a line (or there is one): the group cannot take a moment about that line');
+    const share = (V, Mx, My) => { const a = det > 1e-12 ? (My * Syy - Mx * Sxy) / det : 0, b = det > 1e-12 ? (Mx * Sxx - My * Sxy) / det : 0; return piles.map(p => V / n + a * p.dx + b * p.dy); };
+    // the variable action at its factor or absent, and the permanent action unfavourable (γ_G) or, for the least load, favourable (1.0)
+    const loads = (g, q) => share(g * ld.G + q * ld.Q, g * ld.MxG + q * ld.MxQ, g * ld.MyG + q * ld.MyQ).map(P => P + g * Wp);
+    const combo = (gG, gQ) => {
+      const up = [loads(gG, gQ), loads(gG, 0)], down = [loads(1, gQ), loads(1, 0)];
+      return { P: up[0], pmax: Math.max(...up.flat()), pmin: Math.min(...down.flat()), V: gG * ld.G + gQ * ld.Q + n * gG * Wp };
+    };
+    const C = { C1: combo(1.35, 1.5), C2: combo(1.0, 1.3), K: combo(1, 1) };
+    const pminAll = Math.min(C.C1.pmin, C.C2.pmin);
+
+    // ---- block failure in clay at the base ----
+    const xsP = piles.map(p => p.x), ysP = piles.map(p => p.y);
+    const Bx = Math.max(...xsP) - Math.min(...xsP) + D, By = Math.max(...ysP) - Math.min(...ysP) + D;
+    let block = null;
+    if (n > 1 && P2.base.type === 'clay') {
+      const B = Math.min(Bx, By), Lb = Math.max(Bx, By), perB = 2 * (Bx + By);
+      let Rsb = 0; for (let i = 1; i <= nz && zs[i] <= Lp + 1e-9; i++) { const z = zs[i], l = Gd.at(z - dz / 2); if (z - dz / 2 >= skip && l.type === 'clay') Rsb += perB * dz * Gd.cu(l, z - dz / 2); else if (z - dz / 2 >= skip && l.type === 'sand') Rsb += perB * dz * Math.tan(rad(l.phi)) * l.Ks * Math.max(0, Gd.sve(z - dz / 2)); }
+      const Nc = skemptonNc(Lp, B, Lb), cub = Gd.cu(P2.base, Math.min(Lp, P2.base.bot)), Rbb = Nc * cub * Bx * By, Rcal = Rsb + Rbb;
+      block = { Bx, By, Nc, cub, Rsb, Rbb, Rcal, eff: Math.min(1, Rcal / (n * (P1.Rsc + P1.Rbc))), d1: Rcal / gRd / fac.R1.t, d2: Rcal / gRd / fac.R4.t };
+    }
+
+    // ---- the pile's concrete ----
+    const Dred = type === 'driven' ? D : D * 1000 < 400 ? D - 0.02 : D <= 1 ? 0.95 * D : D - 0.05;
+    const Ared = shape === 'circle' ? Math.PI * Dred * Dred / 4 : Dred * Dred, fcd = 0.85 * fck / 1.5, NRd = Ared * fcd * 1000;
+
+    // ---- checks ----
+    const checks = [], add = (id, name, ref, util, note, o = {}) => checks.push({ id, name, ref, util: Math.max(0, util), note, ...o });
+    const f0 = v => Math.round(v).toString(), f1 = v => v.toFixed(1), f2 = v => v.toFixed(2);
+    add('c1', 'Pile in compression, combination 1 (A1 + M1 + R1)', 'BS EN 1997-1 7.6.2, UK NA', C.C1.pmax / P1.Rcd, `F_c,d ${f1(C.C1.pmax)} ≤ R_c,d = ${f1(P1.Rbk)}/1.0 + ${f1(P1.Rsk)}/1.0 = ${f1(P1.Rcd)} kN`);
+    add('c2', 'Pile in compression, combination 2 (A2 + M1 + R4)', `BS EN 1997-1 7.6.2, UK NA Table ${type === 'driven' ? 'A.NA.6' : type === 'bored' ? 'A.NA.7' : 'A.NA.8'}`, C.C2.pmax / P2.Rcd, `F_c,d ${f1(C.C2.pmax)} ≤ R_c,d = ${f1(P2.Rbk)}/${f2(fac.R4.b)} + ${f1(P2.Rsk)}/${f2(fac.R4.s)} = ${f1(P2.Rcd)} kN`);
+    if (pminAll < -1e-6) add('t2', 'Pile in tension, combination 2', 'BS EN 1997-1 7.6.3, UK NA', -pminAll / P2.Rtd, `F_t,d ${f1(-pminAll)} ≤ R_t,d = ${f1(P2.Rsk)}/${f2(fac.R4.st)} = ${f1(P2.Rtd)} kN`);
+    if (block) add('block', 'Group block failure', 'BS EN 1997-1 7.6.2.1(4)', C.C2.V / block.d2, `ΣF_d ${f0(C.C2.V)} ≤ R_block/γ_Rd/γ_t = ${f0(block.Rcal)}/${f2(gRd)}/${f2(fac.R4.t)} = ${f0(block.d2)} kN (efficiency ${f2(block.eff)})`);
+    add('conc', 'Pile shaft concrete', 'BS EN 1992-1-1 3.1.6, 2.3.4.2', C.C1.pmax / NRd, `N_Ed ${f1(C.C1.pmax)} ≤ A_c f_cd = ${(Ared * 1e6).toFixed(0)} mm² × ${f2(fcd)} = ${f0(NRd)} kN (Ø ${f0(Dred * 1000)} mm, no steel)`);
+    const warnings = [];
+    if (n > 1) { let smin = Infinity; for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) smin = Math.min(smin, Math.hypot(piles[i].x - piles[j].x, piles[i].y - piles[j].y)); if (smin < 3 * D - 1e-9) warnings.push(`The piles are ${f2(smin / D)} diameters apart, closer than the usual 3: the group effects and installation need care.`); }
+    if (P2.base.type === 'fill') warnings.push('The pile ends in fill: no base resistance is counted.');
+    if (n > 1 && P2.base.type === 'sand') warnings.push('No block check in sand: groups in granular ground are usually at least as strong as the piles together; check settlement.');
+    if (Lp - P2.base.top < 3 * D && P2.base.i > 0) warnings.push('The toe is within three diameters of the top of the layer it ends in: the base resistance may be governed by the layer above.');
+
+    // ---- the resistance down the ground (design, combination 2) ----
+    const curve = []; for (let z = Math.max(1, 2 * D); z <= Gd.bottom + 1e-9; z += Math.max(0.25, Gd.bottom / 120)) { const r = resist(Math.min(z, Gd.bottom - 1e-6), fac.R4), r1 = resist(Math.min(z, Gd.bottom - 1e-6), fac.R1); curve.push({ z, Rcd2: r.Rcd, Rcd1: r1.Rcd }); }
+    // the shortest pile that passes both combinations (from the curve, refined by bisection)
+    const need = zz => { const w = selfW ? gc * Ab * zz : 0, d1 = resist(zz, fac.R1), d2 = resist(zz, fac.R4); const u1 = (C.C1.pmax - (selfW ? 1.35 * (Wp - w) : 0)) / d1.Rcd, u2 = (C.C2.pmax - (selfW ? Wp - w : 0)) / d2.Rcd; return Math.max(u1, u2); };
+    let Lmin = null; { let lo = Math.max(2 * D, 1), hi = Gd.bottom - 1e-6; if (need(hi) <= 1) { if (need(lo) <= 1) Lmin = lo; else { for (let i = 0; i < 50; i++) { const m = (lo + hi) / 2; if (need(m) > 1) lo = m; else hi = m; } Lmin = hi; } } }
+
+    const steps = [
+      { ref: 'Pile', text: `${TYPES[type]}, ${shape === 'circle' ? `Ø${f0(D * 1000)}` : `${f0(D * 1000)} square`} mm, ${f2(Lp)} m long: perimeter ${f2(per)} m, base ${(Ab).toFixed(3)} m²${selfW ? `; self-weight ${f1(Wp)} kN` : ''}` },
+      { ref: 'Shaft', text: `R_s,cal = Σ q_s × perimeter × length = ${f1(P1.Rsc)} kN${skip > 0 ? ` (none over the top ${f2(skip)} m)` : ''}` },
+      { ref: 'Base', text: `in ${P2.base.type} at ${f2(Lp)} m: q_b = ${P2.base.type === 'clay' ? `9 c_u = 9 × ${f1(Gd.cu(P2.base, Lp))}` : P2.base.type === 'sand' ? `N_q σ′_v = ${f1(P2.base.Nq)} × ${f1(Gd.sve(Lp))}` : '0'} = ${f0(P2.qb)} kPa; R_b,cal = ${f1(P1.Rbc)} kN` },
+      { ref: 'Characteristic', text: `γ_Rd ${f2(gRd)}${inp.test ? ' (maintained load test)' : ''}: R_s,k ${f1(P1.Rsk)}, R_b,k ${f1(P1.Rbk)} kN` },
+      { ref: 'R4', text: `${TYPES[type]}, ${sls ? 'with' : 'without'} explicit SLS verification: γ_b ${f2(fac.R4.b)}, γ_s ${f2(fac.R4.s)}, γ_t ${f2(fac.R4.t)}, γ_s,t ${f2(fac.R4.st)}` },
+      { ref: 'Group', text: `${n} pile${n > 1 ? 's' : ''}; centroid (${f2(cx)}, ${f2(cy)}) m; Σx² ${f2(Sxx)}, Σy² ${f2(Syy)} m²; pile loads ${C.C2.P.map(f0).join(', ')} kN (combination 2)` },
+    ];
+    if (block) steps.push({ ref: 'Block', text: `${f2(Bx)} × ${f2(By)} m: shaft ${f0(block.Rsb)} kN (full c_u), base N_c ${f2(block.Nc)} × ${f1(block.cub)} × ${f2(Bx * By)} = ${f0(block.Rbb)} kN` });
+    steps.push({ ref: 'Length', text: Lmin ? `the shortest pile that passes both combinations: ${f2(Lmin)} m` : 'no length within the ground given carries the load' });
+    const utilMax = Math.max(...checks.map(c => c.util));
+    return { type, shape, D, per, Ab, Lp, zw, skip, ground: Gd, gRd, fac, sls, P1, P2, Wp, piles, n, cx, cy, ld, C, block, Bx, By, Dred, NRd, checks, utilMax, steps, warnings, curve, Lmin, qs, zs, TYPES };
+  }
+  return { design, R4, skemptonNc, ground };
+})();
+
+</script>
+<script id="drawing-code">
+/* ===== CONNECTION DIAGRAMS (EngineeringTools ConnectionCheck) =====
+   Parametric, to-scale drafting views of each joint, drawn from the current inputs: an elevation and a plan or section,
+   with bolts, welds, dimension chains, labels and the design actions. Pure functions returning SVG strings.
+   Model units mm; each view maps a model box onto a pixel box (x right, y up). */
+const JD = (() => {
+  'use strict';
+  const C = { steel: '#e7ecf1', web: '#eef2f5', edge: '#2f3b47', plate: '#f6d58c', plateEdge: '#94700f', pack: '#e3d3ae', bolt: '#3a424b', boltDark: '#1f252b',
+    weld: '#1a1f24', dim: '#1b67b0', txt: '#222a31', mute: '#7a8590', cl: '#97a2ac', load: '#cc3426', conc: '#f1efea', concEdge: '#8b8478', grout: '#ddd7ca', paper: '#ffffff' };
+  const FS = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"', FM = 'font-family="IBM Plex Sans,Arial,Helvetica,sans-serif"';
+  const W = 920, H = 520;
+  const DEFS = `<defs>
+<pattern id="jdCut" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect width="6" height="6" fill="#c7d0d9"/><line x1="0" y1="0" x2="0" y2="6" stroke="#6f7d8a" stroke-width="0.9"/></pattern>
+<pattern id="jdPlCut" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(-45)"><rect width="5" height="5" fill="#efc560"/><line x1="0" y1="0" x2="0" y2="5" stroke="#94700f" stroke-width="0.8"/></pattern>
+<pattern id="jdConc" patternUnits="userSpaceOnUse" width="26" height="26"><rect width="26" height="26" fill="${C.conc}"/><circle cx="5" cy="6" r="1.3" fill="#b3ab9d"/><circle cx="17" cy="15" r="1.7" fill="#c0b8aa"/><circle cx="9" cy="21" r="1" fill="#a9a091"/><path d="M19 4 l3 2 l-3 2 z" fill="#c5bdaf"/><path d="M2 14 l2.5 -2 l1.5 3 z" fill="#bdb5a7"/></pattern>
+<pattern id="jdGrout" patternUnits="userSpaceOnUse" width="8" height="8"><rect width="8" height="8" fill="${C.grout}"/><circle cx="2" cy="2" r="0.7" fill="#9e9687"/><circle cx="6" cy="6" r="0.7" fill="#9e9687"/></pattern>
+<marker id="jdLd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${C.load}"/></marker>
+</defs>`;
+  const num = v => { const a = Math.abs(v); return a >= 100 || Number.isInteger(+v.toFixed(1)) ? Math.round(v).toString() : v.toFixed(1); };
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // ---------- views ----------
+  function view(box, bb) {
+    const w = bb[2] - bb[0], h = bb[3] - bb[1], k = Math.min(box[2] / w, box[3] / h);
+    const ox = box[0] + (box[2] - w * k) / 2 - bb[0] * k, oy = box[1] + (box[3] - h * k) / 2 + bb[3] * k;
+    return { k, X: x => ox + x * k, Y: y => oy - y * k, box };
+  }
+  const ST = {
+    steel: `fill="${C.steel}" stroke="${C.edge}" stroke-width="1.1"`, web: `fill="${C.web}" stroke="${C.edge}" stroke-width="1.1"`,
+    cut: `fill="url(#jdCut)" stroke="${C.edge}" stroke-width="1.2"`, plate: `fill="${C.plate}" stroke="${C.plateEdge}" stroke-width="1.1"`,
+    plateCut: `fill="url(#jdPlCut)" stroke="${C.plateEdge}" stroke-width="1.1"`, pack: `fill="${C.pack}" stroke="${C.plateEdge}" stroke-width="0.9"`,
+    conc: `fill="url(#jdConc)" stroke="${C.concEdge}" stroke-width="1"`, grout: `fill="url(#jdGrout)" stroke="${C.concEdge}" stroke-width="0.8"`,
+    ghost: `fill="none" stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="6 3"`, outline: `fill="none" stroke="${C.edge}" stroke-width="1.1"`,
+    bg: `fill="${C.paper}" stroke="none"`,
+  };
+  const R = (v, x0, y0, x1, y1, st = 'steel') => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)); return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${(Math.abs(x1 - x0) * v.k).toFixed(1)}" height="${(Math.abs(y1 - y0) * v.k).toFixed(1)}" ${ST[st]}/>`; };
+  const P = (v, pts, st = 'steel') => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + v.X(p[0]).toFixed(1) + ' ' + v.Y(p[1]).toFixed(1)).join(' ')} Z" ${ST[st]}/>`;
+  const LS = { e: `stroke="${C.edge}" stroke-width="1.1"`, t: `stroke="${C.edge}" stroke-width="0.55"`, c: `stroke="${C.cl}" stroke-width="0.7" stroke-dasharray="14 3 2 3"`,
+    h: `stroke="${C.mute}" stroke-width="0.8" stroke-dasharray="5 3"`, d: `stroke="${C.dim}" stroke-width="0.7"` };
+  const Ln = (v, x0, y0, x1, y1, k = 'e') => `<line x1="${v.X(x0).toFixed(1)}" y1="${v.Y(y0).toFixed(1)}" x2="${v.X(x1).toFixed(1)}" y2="${v.Y(y1).toFixed(1)}" ${LS[k]}/>`;
+  const lnP = (x0, y0, x1, y1, k = 'e') => `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" ${LS[k]}/>`;
+  function Tx(x, y, s, o = {}) {
+    const sz = o.size || 11, col = o.color || C.txt, anc = o.anchor || 'start', w = o.weight || 400, rot = o.rot ? ` transform="rotate(${o.rot} ${x.toFixed(1)} ${y.toFixed(1)})"` : '';
+    const body = esc(s).replace(/_\{([^}]*)\}|_([A-Za-z0-9]+)/g, (m, p1, p2) => `<tspan baseline-shift="sub" font-size="78%">${p1 || p2}</tspan>`);
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${sz}" fill="${col}" text-anchor="${anc}" font-weight="${w}" ${o.mono ? FM : FS} paint-order="stroke" stroke="${C.paper}" stroke-width="3" stroke-linejoin="round"${rot}>${body}</text>`;
+  }
+  const tw = (s, sz = 10) => String(s).replace(/_/g, '').length * sz * 0.6;
+  // ---------- dimensions (tick terminators) ----------
+  const tick = (x, y) => `<line x1="${(x - 3.5).toFixed(1)}" y1="${(y + 3.5).toFixed(1)}" x2="${(x + 3.5).toFixed(1)}" y2="${(y - 3.5).toFixed(1)}" stroke="${C.dim}" stroke-width="1.3"/>`;
+  // horizontal chain: xs (model), measured from model level y, dimension line at off px (negative: below)
+  function DH(v, xs, y, off, labels) {
+    const Yf = v.Y(y), Yd = Yf - off, s = Math.sign(off) || 1; let o = '';
+    xs.forEach(x => { o += lnP(v.X(x), Yf - s * 3, v.X(x), Yd - s * 4, 'd'); });
+    o += lnP(v.X(xs[0]) - 4, Yd, v.X(xs[xs.length - 1]) + 4, Yd, 'd');
+    xs.forEach(x => { o += tick(v.X(x), Yd); });
+    for (let i = 0; i < xs.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(xs[i + 1] - xs[i])); if (lab === '') continue;
+      const a = v.X(xs[i]), b = v.X(xs[i + 1]), wpx = Math.abs(b - a), tW = tw(lab);
+      const ty = off > 0 ? Yd - 4 : Yd + 11;
+      if (wpx > tW + 6) o += Tx((a + b) / 2, ty, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true });
+      else o += Tx(Math.max(a, b) + 3 + (i === xs.length - 2 ? 2 : 0), ty + (off > 0 ? -9 : 9) * (i % 2), lab, { size: 10, color: C.dim, mono: true });
+    }
+    return o;
+  }
+  function DV(v, ys, x, off, labels) {
+    const Xf = v.X(x), Xd = Xf + off, s = Math.sign(off) || 1; let o = '';
+    ys.forEach(y => { o += lnP(Xf + s * 3, v.Y(y), Xd + s * 4, v.Y(y), 'd'); });
+    o += lnP(Xd, v.Y(ys[0]) + 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), Xd, v.Y(ys[ys.length - 1]) - 4 * Math.sign(ys[0] - ys[ys.length - 1] || 1), 'd');
+    ys.forEach(y => { o += tick(Xd, v.Y(y)); });
+    for (let i = 0; i < ys.length - 1; i++) {
+      const lab = labels && labels[i] !== undefined ? labels[i] : num(Math.abs(ys[i + 1] - ys[i])); if (lab === '') continue;
+      const a = v.Y(ys[i]), b = v.Y(ys[i + 1]), hpx = Math.abs(b - a), tW = tw(lab);
+      const tx = off > 0 ? Xd + 11 : Xd - 4;
+      if (hpx > tW + 6) o += Tx(tx, (a + b) / 2, lab, { size: 10, color: C.dim, anchor: 'middle', mono: true, rot: -90 });
+      else o += Tx(off > 0 ? Xd + 5 : Xd - 5, (a + b) / 2 + 3.5, lab, { size: 10, color: C.dim, mono: true, anchor: off > 0 ? 'start' : 'end' });
+    }
+    return o;
+  }
+  // leader with a dot at a model point and text lines at a pixel offset
+  function LD(v, x, y, dx, dy, lines, o = {}) {
+    const px = v.X(x), py = v.Y(y), ex = px + dx, ey = py + dy, s = dx >= 0 ? 1 : -1;
+    let out = `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="1.9" fill="${C.txt}"/>` + lnP(px, py, ex, ey, 't') + lnP(ex, ey, ex + s * 8, ey, 't');
+    [].concat(lines).forEach((t, i) => { out += Tx(ex + s * 11, ey + 4 + i * 13 - ([].concat(lines).length - 1) * 6.5, t, { size: o.size || 10.5, anchor: s > 0 ? 'start' : 'end', weight: i === 0 && o.bold ? 600 : 400, color: i === 0 ? C.txt : '#4b545d' }); });
+    return out;
+  }
+  // load arrow ending at pixel point (px, py); (vx, vy) is the arrow vector in pixels; label near the tail
+  function LA(px, py, vx, vy, label, o = {}) {
+    const x0 = px - vx, y0 = py - vy, lx = x0 + (o.ldx ?? 0), ly = y0 + (o.ldy ?? -6);
+    return `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${px.toFixed(1)}" y2="${py.toFixed(1)}" stroke="${C.load}" stroke-width="2.4" marker-end="url(#jdLd)"/>` +
+      (label ? Tx(lx, ly, label, { size: 11, color: C.load, weight: 600, anchor: o.anchor || 'middle' }) : '');
+  }
+  function moment(px, py, rr, label, cw = true) {
+    const a0 = cw ? 200 : -20, a1 = cw ? 340 : 160, p = a => [px + rr * Math.cos(a * Math.PI / 180), py - rr * Math.sin(a * Math.PI / 180)], [x0, y0] = p(a0), [x1, y1] = p(a1);
+    return `<path d="M${x0.toFixed(1)} ${y0.toFixed(1)} A${rr} ${rr} 0 1 ${cw ? 1 : 0} ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="${C.load}" stroke-width="2.2" marker-end="url(#jdLd)"/>` + Tx(px, py - rr - 7, label, { size: 11, color: C.load, weight: 600, anchor: 'middle' });
+  }
+  // ---------- steel symbols ----------
+  function BE(v, x, y, d) {   // bolt seen end-on: washer ring, head, centre cross
+    const px = v.X(x), py = v.Y(y), r1 = Math.max(0.95 * d * v.k, 3.2), r2 = Math.max(0.55 * d * v.k, 1.9), c = r1 + 3;
+    return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r1.toFixed(1)}" fill="#fff" stroke="${C.boltDark}" stroke-width="1"/><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r2.toFixed(1)}" fill="${C.bolt}"/>` +
+      lnP(px - c, py, px + c, py, 't') + lnP(px, py - c, px, py + c, 't');
+  }
+  // bolt seen side-on with its axis along x (dir 'x') or y: shank a0..a1 at c, head at a0, nut at a1
+  function BS(v, a0, a1, c, d, dir = 'x') {
+    const sg = Math.sign(a1 - a0) || 1, hd = 0.65 * d, nt = 0.8 * d, wh = 0.8 * d, wa = 0.15 * d, pr = 0.45 * d;
+    const seg = (s0, s1, half, fill) => dir === 'x' ? R(v, s0, c - half, s1, c + half, fill) : R(v, c - half, s0, c + half, s1, fill);
+    let o = seg(a0, a1 + sg * (wa + nt + pr), d / 2, 'bolt');
+    o += seg(a0 - sg * wa, a0, d, 'bolt') + seg(a0 - sg * (wa + hd), a0 - sg * wa, wh, 'boltH');
+    o += seg(a1, a1 + sg * wa, d, 'bolt') + seg(a1 + sg * wa, a1 + sg * (wa + nt), wh, 'boltH');
+    o += dir === 'x' ? Ln(v, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), c, 'c') : Ln(v, c, a0 - sg * (wa + hd + 0.3 * d), c, a1 + sg * (wa + nt + pr + 0.3 * d), 'c');
+    return o;
+  }
+  ST.bolt = `fill="#59626c" stroke="${C.boltDark}" stroke-width="0.6"`; ST.boltH = `fill="${C.bolt}" stroke="${C.boltDark}" stroke-width="0.6"`;
+  // fillet weld at the corner (x, y): legs along sx (x) and sy (y), sized a (mm) but at least 4 px
+  function WD(v, x, y, a, sx, sy) {
+    const L = Math.max(a * v.k, 4.5), px = v.X(x), py = v.Y(y);
+    return `<path d="M${px.toFixed(1)} ${py.toFixed(1)} L${(px + sx * L).toFixed(1)} ${py.toFixed(1)} L${px.toFixed(1)} ${(py - sy * L).toFixed(1)} Z" fill="${C.weld}"/>`;
+  }
+  // weld seen along its length (elevation): narrow strip
+  const WS = (v, x0, y0, x1, y1) => { const a = v.X(Math.min(x0, x1)), b = v.Y(Math.max(y0, y1)), w = Math.max(Math.abs(x1 - x0) * v.k, 2.5), h = Math.max(Math.abs(y1 - y0) * v.k, 2.5);
+    return `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${C.weld}" fill-opacity="0.82"/>`; };
+  // zigzag break lines through a member
+  function BK(v, x, y0, y1) {   // vertical break at model x between y0 and y1
+    const px = v.X(x), a = v.Y(Math.max(y0, y1)) - 4, b = v.Y(Math.min(y0, y1)) + 4, m = (a + b) / 2;
+    return `<path d="M${px} ${a} L${px} ${m - 7} L${px - 5} ${m - 3} L${px + 5} ${m + 3} L${px} ${m + 7} L${px} ${b}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  function BKH(v, y, x0, x1) {
+    const py = v.Y(y), a = v.X(Math.min(x0, x1)) - 4, b = v.X(Math.max(x0, x1)) + 4, m = (a + b) / 2;
+    return `<path d="M${a} ${py} L${m - 7} ${py} L${m - 3} ${py - 5} L${m + 3} ${py + 5} L${m + 7} ${py} L${b} ${py}" fill="none" stroke="${C.edge}" stroke-width="0.9"/>`;
+  }
+  // white mask to fade member ends beyond a break
+  const mask = (v, x0, y0, x1, y1) => R(v, x0, y0, x1, y1, 'bg');
+  // I section cross-section (cut), centred at (cx, cy); 'v': web vertical (depth along y), 'h': depth along x
+  function ISec(v, cx, cy, s, o = 'v', st = 'cut') {
+    const b = s.b, h = s.h, tf = s.tf, t = s.tw, r = Math.min(s.r || 0, (b - t) / 2 - 1), pts = [];
+    const arc = (ux, uy, a0, a1) => { for (let i = 0; i <= 6; i++) { const a = (a0 + (a1 - a0) * i / 6) * Math.PI / 180; pts.push([ux + r * Math.cos(a), uy + r * Math.sin(a)]); } };
+    pts.push([-b / 2, h / 2], [b / 2, h / 2], [b / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, h / 2 - tf - r, 90, 180); else pts.push([t / 2, h / 2 - tf]);
+    if (r > 0) arc(t / 2 + r, -h / 2 + tf + r, 180, 270); else pts.push([t / 2, -h / 2 + tf]);
+    pts.push([b / 2, -h / 2 + tf], [b / 2, -h / 2], [-b / 2, -h / 2], [-b / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, -h / 2 + tf + r, 270, 360); else pts.push([-t / 2, -h / 2 + tf]);
+    if (r > 0) arc(-t / 2 - r, h / 2 - tf - r, 0, 90); else pts.push([-t / 2, h / 2 - tf]);
+    pts.push([-b / 2, h / 2 - tf]);
+    return P(v, pts.map(([u, w]) => o === 'v' ? [cx + u, cy + w] : [cx + w, cy + u]), st);
+  }
+  // I member in side elevation: length along 'x' (a0..a1) with the depth c0..c1 across, or along 'y'
+  function IEl(v, a0, a1, c0, c1, s, dir = 'x', o = {}) {
+    const lo = Math.min(c0, c1), hi = Math.max(c0, c1), rr = s.r || 0;
+    const ln = (c, k) => dir === 'x' ? Ln(v, a0, c, a1, c, k) : Ln(v, c, a0, c, a1, k);
+    let out = dir === 'x' ? R(v, a0, lo, a1, hi, 'steel') : R(v, lo, a0, hi, a1, 'steel');
+    out += dir === 'x' ? R(v, a0, lo + s.tf, a1, hi - s.tf, 'web') : R(v, lo + s.tf, a0, hi - s.tf, a1, 'web');
+    out += ln(lo + s.tf, 'e') + ln(hi - s.tf, 'e');
+    if (rr > 0 && !o.noRoot) out += ln(lo + s.tf + rr, 't') + ln(hi - s.tf - rr, 't');
+    return out;
+  }
+  // I member seen on the flange face: width b, length along dir
+  const IFl = (v, a0, a1, cc, s, dir = 'y') => (dir === 'y' ? R(v, cc - s.b / 2, a0, cc + s.b / 2, a1, 'steel') + Ln(v, cc - s.tw / 2 - (s.r || 0), a0, cc - s.tw / 2 - (s.r || 0), a1, 'h') + Ln(v, cc + s.tw / 2 + (s.r || 0), a0, cc + s.tw / 2 + (s.r || 0), a1, 'h')
+    : R(v, a0, cc - s.b / 2, a1, cc + s.b / 2, 'steel'));
+  const title = (x, y, t, sub) => Tx(x, y, t, { size: 11.5, weight: 700, anchor: 'middle', color: C.txt }) + `<line x1="${(x - tw(t, 11.5) / 2).toFixed(1)}" y1="${(y + 3).toFixed(1)}" x2="${(x + tw(t, 11.5) / 2).toFixed(1)}" y2="${(y + 3).toFixed(1)}" stroke="${C.txt}" stroke-width="0.8"/>` + (sub ? Tx(x, y + 16, sub, { size: 10, anchor: 'middle', color: C.mute }) : '');
+  const svg = (body, h = H) => `<svg class="jd" viewBox="0 0 ${W} ${h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;background:${C.paper}" role="img">${DEFS}<rect width="${W}" height="${h}" fill="${C.paper}"/>${body}</svg>`;
+  const BOX = { L: [40, 46, 520, 400], Rt: [612, 46, 280, 400] };
+  const fv = x => { const n = parseFloat(x); return Number.isFinite(n) ? n : 0; };
+  const secName = x => x && x !== '0' ? x : '';   // a form without that selector reads as '0'
+  const BOLTD = { M12: 12, M16: 16, M20: 20, M24: 24, M27: 27, M30: 30, M36: 36 };
+  const bd = sz => BOLTD[sz] || 20;
+  const range = (n, f) => Array.from({ length: Math.max(0, n) }, (_, i) => f(i));
+  return { C, W, H, BOX, DEFS, view, R, P, Ln, lnP, Tx, tw, DH, DV, LD, LA, moment, BE, BS, WD, WS, BK, BKH, mask, ISec, IEl, IFl, title, svg, num, fv, secName, bd, range, esc, ST };
+})();
+
+/* ===== DRAWING KIT EXTRAS (EngineeringTools) =====
+   Additions to the JD drafting kit (joints/diagrams.js) for the member, floor and wall drawings: a page-width SVG wrapper,
+   arrows, supports, distributed loads, result fills, cross-section outlines (I, PFC, RHS, CHS) and SVG to PNG for PDF reports.
+   Source: scratchpad/drawings/kit.js. Pixel helpers take pixel coordinates; JD views map model mm to pixels. */
+const DK = (() => {
+  'use strict';
+  const { Tx, lnP, esc } = JD;
+  const BLUE = '#1d5fbf', FILL = 'rgba(29,95,191,.15)', RED = '#c4242a', REDF = 'rgba(196,36,42,.10)', INK = '#222a31', MUTE = '#6b7680', LINE = '#c9d0d7';
+  const DEFS = `<defs><marker id="dkB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${BLUE}"/></marker>`
+    + `<marker id="dkK" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${INK}"/></marker>`
+    + `<marker id="dkR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${RED}"/></marker>`
+    + `<pattern id="dkHatch" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)"><rect width="7" height="7" fill="#f3f1ec"/><line x1="0" y1="0" x2="0" y2="7" stroke="#8b8478" stroke-width="1"/></pattern></defs>`;
+  const f1 = v => (+v).toFixed(1);
+  // the page-width drawing: viewBox w x h, scales to its container
+  const svg = (body, w, h, label) => `<svg class="jd dk" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" role="img"${label ? ` aria-label="${esc(label)}"` : ''} `
+    + `style="width:100%;height:auto;display:block;background:#fff">${JD.DEFS}${DEFS}<rect width="${w}" height="${h}" fill="#fff"/>${body}</svg>`;
+  const col = c => ({ blue: BLUE, red: RED, ink: INK, mute: MUTE }[c] || c || INK);
+  const mk = c => ({ blue: 'dkB', red: 'dkR' }[c] || 'dkK');
+  // arrow from (x0, y0) to (x1, y1), head at the end (both: heads at both ends)
+  const arrow = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1.6}"`
+    + `${o.dash ? ` stroke-dasharray="${o.dash}"` : ''} marker-end="url(#${mk(o.c)})"${o.both ? ` marker-start="url(#${mk(o.c)})"` : ''}/>`;
+  const line = (x0, y0, x1, y1, o = {}) => `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${col(o.c)}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.cap ? ` stroke-linecap="${o.cap}"` : ''}/>`;
+  const rect = (x, y, w, h, o = {}) => `<rect x="${f1(Math.min(x, x + w))}" y="${f1(Math.min(y, y + h))}" width="${f1(Math.abs(w))}" height="${f1(Math.abs(h))}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.rx ? ` rx="${o.rx}"` : ''}/>`;
+  const poly = (pts, o = {}) => `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + f1(p[0]) + ' ' + f1(p[1])).join(' ')}${o.open ? '' : ' Z'}" fill="${o.fill || 'none'}" stroke="${o.stroke ? col(o.stroke) : 'none'}" stroke-width="${o.w || 1}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+  const text = (x, y, s, o = {}) => Tx(x, y, s, Object.assign({ size: 11 }, o, { color: o.color ? col(o.color) : o.color }));
+  // pinned support under (px, py): triangle and ground line; dir 'down' (default) or 'up' (hanging, above the point)
+  function pin(px, py, dir = 'down') {
+    const s = dir === 'up' ? -1 : 1;
+    return poly([[px, py], [px - 8, py + s * 13], [px + 8, py + s * 13]], { fill: '#fff', stroke: 'ink', w: 1.3 }) + line(px - 12, py + s * 13, px + 12, py + s * 13, { w: 1.3 })
+      + [0, 1, 2, 3].map(k => line(px - 10 + k * 6, py + s * 13, px - 14 + k * 6, py + s * 18, { c: 'mute', w: 0.8 })).join('');
+  }
+  // hatched ground or wall strip: rectangle with the hatch fill and an edge line on the restrained side ('t', 'b', 'l', 'r')
+  function ground(x, y, w, h, edge = 't') {
+    const e = { t: [x, y, x + w, y], b: [x, y + h, x + w, y + h], l: [x, y, x, y + h], r: [x + w, y, x + w, y + h] }[edge];
+    return rect(x, y, w, h, { fill: 'url(#dkHatch)' }) + line(e[0], e[1], e[2], e[3], { w: 1.4 });
+  }
+  // a row of load arrows pointing from yTop to yBase between x0 and x1, with the bar along the tails and a label above
+  function udl(x0, x1, yTop, yBase, label, o = {}) {
+    const n = Math.max(2, Math.round((x1 - x0) / (o.pitch || 28)) + 1), c = o.c || 'red';
+    let g = line(x0, yTop, x1, yTop, { c, w: 1.3 });
+    for (let i = 0; i < n; i++) { const x = x0 + (x1 - x0) * i / (n - 1); g += arrow(x, yTop, x, yBase, { c, w: 1.2 }); }
+    return g + (label ? text((x0 + x1) / 2, yTop - 6, label, { anchor: 'middle', color: c === 'red' ? RED : col(c), weight: 600 }) : '');
+  }
+  // a result diagram: polyline pts (pixels) closed to the base line through the first and last points' base, filled blue
+  function fillDiagram(pts, base, o = {}) {
+    const vert = o.vertical;   // base is an x (diagram plotted sideways) when vertical
+    const close = vert ? [[base, pts[pts.length - 1][1]], [base, pts[0][1]]] : [[pts[pts.length - 1][0], base], [pts[0][0], base]];
+    return poly(pts.concat(close), { fill: o.fill || FILL, stroke: 'none' }) + poly(pts, { open: true, stroke: o.stroke || 'ink', w: 1.1 });
+  }
+  // cross-section outline, cut, centred at pixel (cx, cy) at scale k (px/mm); web vertical; returns svg
+  function section(s, cx, cy, k, o = {}) {
+    const st = o.style || 'cut', fill = st === 'cut' ? 'url(#jdCut)' : '#e7ecf1', edge = '#2f3b47';
+    if (s.shape === 'CHS') {
+      const ro = s.d / 2 * k, ri = (s.d / 2 - s.t) * k;
+      return `<path d="M${f1(cx - ro)} ${f1(cy)} a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(2 * ro)} 0 a${f1(ro)} ${f1(ro)} 0 1 0 ${f1(-2 * ro)} 0 Z M${f1(cx - ri)} ${f1(cy)} a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(2 * ri)} 0 a${f1(ri)} ${f1(ri)} 0 1 1 ${f1(-2 * ri)} 0 Z" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'RHS') {
+      const w = s.b * k, h = s.h * k, t = Math.max(s.t * k, 1.2), ro = Math.min((s.ro || 1.5 * s.t) * k, w / 2), ri = Math.max(0, ro - t);
+      const rr = (x, y, W, H, r) => `M${f1(x + r)} ${f1(y)} H${f1(x + W - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W)} ${f1(y + r)} V${f1(y + H - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W - r)} ${f1(y + H)} H${f1(x + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x)} ${f1(y + H - r)} V${f1(y + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + r)} ${f1(y)} Z`;
+      return `<path d="${rr(cx - w / 2, cy - h / 2, w, h, ro)} ${rr(cx - w / 2 + t, cy - h / 2 + t, w - 2 * t, h - 2 * t, ri)}" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'PFC') {   // channel, toes to the right, web on the left
+      const b = s.b * k, h = s.h * k, tf = Math.max(s.tf * k, 1.2), tw = Math.max(s.tw * k, 1.2), x0 = cx - b / 2, y0 = cy - h / 2;
+      return poly([[x0, y0], [x0 + b, y0], [x0 + b, y0 + tf], [x0 + tw, y0 + tf], [x0 + tw, y0 + h - tf], [x0 + b, y0 + h - tf], [x0 + b, y0 + h], [x0, y0 + h]], { fill, stroke: edge, w: 1.1 });
+    }
+    const v = { k, X: x => cx + x * k, Y: y => cy - y * k };   // I sections: JD's outline with root radii
+    return JD.ISec(v, 0, 0, s, 'v', st === 'cut' ? 'cut' : 'steel');
+  }
+  // SVG markup to a PNG data URL (for the jsPDF reports); resolves { url, w, h } with w, h the viewBox size
+  function toPNG(markup, wpx = 1800) {
+    return new Promise((resolve, reject) => {
+      const m = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(markup); if (!m) { reject(new Error('no viewBox')); return; }
+      const w = +m[1], h = +m[2], k = wpx / w, img = new Image();
+      const src = markup.replace(/style="[^"]*"/, `width="${f1(w * k)}" height="${f1(h * k)}"`);
+      img.onload = () => { const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k); const g = c.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height); resolve({ url: c.toDataURL('image/png'), w, h }); };
+      img.onerror = () => reject(new Error('drawing could not be rendered'));
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
+    });
+  }
+  // drawings for the page (heading + drawing) and for the A4 sheet (each kept whole on a page)
+  const page = blocks => blocks.map(([t, s]) => `<div class="dlabel">${t}</div>${s}`).join('');
+  const sheet = blocks => blocks.map(([t, s]) => `<div class="rfig" style="break-inside:avoid;page-break-inside:avoid;margin:1mm 0 3mm"><h3>${t}</h3><div class="rsvg">${s}</div></div>`).join('');
+  const fmt = (v, d = 0) => Number.isFinite(v) ? (+v).toFixed(d) : '–';
+  return { page, sheet, BLUE, FILL, RED, REDF, INK, MUTE, LINE, svg, arrow, line, rect, poly, text, pin, ground, udl, fillDiagram, section, toPNG, fmt, lnP };
+})();
+
+/* ===== PILES AND PILE GROUPS DRAWINGS (EngineeringTools) =====
+   The ground and the pile to scale in depth: each layer shaded with its name and strength, the water table, the pile to its
+   toe; beside it the design compressive resistance against the depth of the toe (combination 2 solid, combination 1
+   dashed) with the most loaded pile's design load, so the length needed reads straight off. And the group on plan with
+   each pile's design load (combination 2), tension in red.
+   Source: scratchpad/drawings/piles.js. Needs JD, DK; takes PileDesign.design results. */
+const DrawPiles = (() => {
+  'use strict';
+  const { svg, line, rect, text, page, sheet, RED, MUTE, BLUE, INK } = DK;
+  const r0 = v => Math.round(v).toString(), r1 = v => (Math.round(v * 10) / 10).toFixed(1), r2 = v => (Math.round(v * 100) / 100).toFixed(2);
+  const FILL = { clay: '#e6dccb', sand: '#f1e7c6', fill: '#dcdcdc' };
+  function profile(D) {
+    const W = 700, G = D.ground, Hm = G.bottom, top = 34, H = 380, k = H / Hm, Y = z => top + z * k, x0 = 20, wG = 190;
+    let g = text(0, 14, `The ground and the pile, ${r2(D.Lp)} m; design resistance against the depth of the toe`, { size: 9.5, color: MUTE });
+    G.L.forEach(l => {
+      g += rect(x0, Y(l.top), wG, l.t * k, { fill: FILL[l.type], stroke: '#b9b2a6', w: 0.6 });
+      const lab = l.type === 'clay' ? `clay, c_{u} ${r0(l.cu0)}–${r0(l.cu1)} kPa, α ${r2(l.alpha)}` : l.type === 'sand' ? `sand, φ′ ${r1(l.phi)}°, K_{s} ${r2(l.Ks)}, N_{q} ${r0(l.Nq)}` : 'fill (no resistance)';
+      if (l.t * k > 12) g += text(x0 + 4, Y(l.top) + Math.min(13, l.t * k - 2), lab, { size: 9, color: INK });
+    });
+    if (D.zw < Hm) g += line(x0 + wG, Y(D.zw), x0 + wG + 40, Y(D.zw), { c: BLUE, w: 1.2 }) + `<path d="M${x0 + wG + 14} ${Y(D.zw) - 7} l6 7 l6 -7 z" fill="${BLUE}"/>` + text(x0 + wG + 42, Y(D.zw) + 3, `water ${r2(D.zw)} m`, { size: 9, color: BLUE });
+    const pw = Math.max(8, Math.min(26, D.D * k)), px = x0 + wG * 0.72;
+    g += rect(px - pw / 2, Y(0), pw, D.Lp * k, { fill: '#9aa3ad', stroke: '#2f3b47', w: 1 });
+    // depth ticks
+    for (let z = 0; z <= Hm + 1e-9; z += Hm > 30 ? 10 : 5) g += line(x0 + wG, Y(z), x0 + wG + 4, Y(z), { w: 0.8 }) + text(x0 + wG + 6, Y(z) + 3, `${r0(z)} m`, { size: 9, color: MUTE });
+    // resistance against depth
+    const ax = 300, aw = 340, Rmax = Math.max(...D.curve.map(c => c.Rcd1), D.C.C2.pmax, D.C.C1.pmax) * 1.08, X = R => ax + R / Rmax * aw;
+    g += line(ax, Y(0), ax, Y(Hm), { w: 0.9 }) + line(ax, Y(0), ax + aw, Y(0), { w: 0.9 });
+    const step = (() => { const p = Math.pow(10, Math.floor(Math.log10(Rmax / 4))), n = Rmax / 4 / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p; })();
+    for (let R = step; R < Rmax; R += step) g += line(X(R), Y(0), X(R), Y(Hm), { c: '#eceff2', w: 0.8 }) + text(X(R), Y(0) - 4, r0(R), { size: 9, anchor: 'middle', color: MUTE });
+    const path = key => D.curve.map((c, i) => `${i ? 'L' : 'M'}${X(c[key]).toFixed(1)} ${Y(c.z).toFixed(1)}`).join(' ');
+    g += `<path d="${path('Rcd1')}" fill="none" stroke="${BLUE}" stroke-width="1.2" stroke-dasharray="5 3"/><path d="${path('Rcd2')}" fill="none" stroke="${BLUE}" stroke-width="2"/>`;
+    g += line(X(D.C.C2.pmax), Y(0), X(D.C.C2.pmax), Y(Hm), { c: RED, w: 1.2 }) + text(X(D.C.C2.pmax) + 4, Y(0) + 14, `F_{c,d} ${r0(D.C.C2.pmax)} kN`, { size: 9.5, color: RED, weight: 600 });
+    g += line(ax, Y(D.Lp), ax + aw, Y(D.Lp), { c: INK, w: 0.8, dash: '2 3' }) + text(ax + aw, Y(D.Lp) - 4, `toe ${r2(D.Lp)} m: R_{c,d} ${r0(D.P2.Rcd)} kN`, { size: 9.5, anchor: 'end', weight: 600 });
+    if (D.Lmin) g += `<circle cx="${X(D.C.C2.pmax).toFixed(1)}" cy="${Y(D.Lmin).toFixed(1)}" r="3.5" fill="${RED}"/>` + text(X(D.C.C2.pmax) - 6, Y(D.Lmin) + 4, `least ${r2(D.Lmin)} m`, { size: 9.5, anchor: 'end', color: RED });
+    g += text(ax + aw, Y(Hm) - 20, 'R_{c,d}, kN: combination 2 (solid), 1 (dashed)', { size: 9, color: BLUE, anchor: 'end' });
+    return svg(g, W, Y(Hm) + 12, 'The ground profile with the pile, and the design resistance against the depth of the toe');
+  }
+  function plan(D) {
+    const W = 700, P = D.piles, xs = P.map(p => p.x), ys = P.map(p => p.y), pad = D.D / 2 + 0.3;
+    const x0m = Math.min(...xs) - pad, x1m = Math.max(...xs) + pad, y0m = Math.min(...ys) - pad, y1m = Math.max(...ys) + pad;
+    const k = Math.min(420 / (x1m - x0m), 220 / (y1m - y0m)), ox = 140, oy = 30, X = x => ox + (x - x0m) * k, Y = y => oy + (y1m - y) * k;
+    let g = text(0, 14, `The group on plan: each pile's design load, combination 2 (kN; compression positive)`, { size: 9.5, color: MUTE });
+    g += rect(X(x0m), Y(y1m), (x1m - x0m) * k, (y1m - y0m) * k, { fill: '#eef1f4', stroke: '#9aa3ad', w: 1, dash: '4 3' });
+    P.forEach((p, i) => {
+      const v = D.C.C2.P[i], r = Math.max(5, D.D / 2 * k);
+      g += `<circle cx="${X(p.x).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="${r.toFixed(1)}" fill="${v < 0 ? 'rgba(196,36,42,0.2)' : '#c9d3df'}" stroke="${v < 0 ? RED : INK}" stroke-width="1.2"/>`;
+      g += text(X(p.x), Y(p.y) + 3.5, r0(v), { size: 9.5, anchor: 'middle', color: v < 0 ? RED : INK, weight: 600 }) + text(X(p.x) + r + 3, Y(p.y) - r, `P${i + 1}`, { size: 9, color: MUTE });
+    });
+    g += `<circle cx="${X(D.cx).toFixed(1)}" cy="${Y(D.cy).toFixed(1)}" r="3" fill="${BLUE}"/>`;
+    return svg(g, W, Y(y0m) + 16, 'The pile group on plan with each pile’s design load');
+  }
+  const blocks = D => [['Ground and resistance', profile(D)], ...(D.n > 1 ? [['Group', plan(D)]] : [])];
+  return { html: D => page(blocks(D)), report: D => sheet(blocks(D)), profile, plan };
+})();
+
+</script>
+<script id="ui">
+'use strict';
+const $ = id => document.getElementById(id);
+const STORE = 'et-piles-v1';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ufmt = u => !Number.isFinite(u) ? '&gt;99' : u.toFixed(3);
+const f0 = v => Number.isFinite(v) ? Math.round(v).toString() : '–', f1 = v => Number.isFinite(v) ? v.toFixed(1) : '–', f2 = v => Number.isFinite(v) ? v.toFixed(2) : '–';
+const sub = s => esc(s).replace(/_\{([^}]*)\}|_([A-Za-zα-ω0-9,′]+)/g, (m, a, b) => `<sub>${a || b}</sub>`).replace(/\^([0-9.]+)/g, '<sup>$1</sup>');
+// ---------- layers ----------
+const LF = ['type', 't', 'g', 'p1', 'p2', 'p3', 'qmax'];
+const LAB = { clay: ['c<sub>u</sub> top', 'c<sub>u</sub> bottom', 'α'], sand: ['φ′ (°)', 'K<sub>s</sub>', 'N<sub>q</sub>'], fill: ['–', '–', '–'] };
+const DEFL = [{ type: 'fill', t: 2, g: 18 }, { type: 'clay', t: 30, g: 20, p1: 60, p2: 300, p3: 0.5, qmax: 110 }];
+function layRow(o = {}) {
+  const r = document.createElement('div'); r.className = 'row lay';
+  r.innerHTML = `<div><label>Layer</label><select class="type"><option value="clay">Clay</option><option value="sand">Sand</option><option value="fill">Fill</option></select></div><div><label>Thick (m)</label><input type="number" class="t" step="0.5"></div><div><label>γ (kN/m³)</label><input type="number" class="g" step="0.5"></div>`
+    + `<div><label class="l1"></label><input type="number" class="p1" step="any"></div><div><label class="l2"></label><input type="number" class="p2" step="any"></div><div><label class="l3"></label><input type="number" class="p3" step="any"></div><div><label>Limit (kPa)</label><input type="number" class="qmax" step="5" placeholder="none"></div><div><label>&nbsp;</label><button class="xbtn" type="button" title="Remove">×</button></div>`;
+  LF.forEach(k => { if (o[k] !== undefined) r.querySelector('.' + k).value = o[k]; });
+  const lab = () => { const t = r.querySelector('.type').value; ['l1', 'l2', 'l3'].forEach((c, i) => { r.querySelector('.' + c).innerHTML = LAB[t][i]; }); ['p1', 'p2', 'p3', 'qmax'].forEach(c => { r.querySelector('.' + c).disabled = t === 'fill'; }); };
+  r.querySelector('.type').addEventListener('change', () => { const t = r.querySelector('.type').value; if (t === 'sand') { r.querySelector('.p1').value = 32; r.querySelector('.p2').value = 0.7; r.querySelector('.p3').value = 40; } if (t === 'clay') { r.querySelector('.p1').value = 60; r.querySelector('.p2').value = 120; r.querySelector('.p3').value = 0.5; } lab(); });
+  r.querySelector('.xbtn').onclick = () => { if (document.querySelectorAll('#layRows .row').length > 1) r.remove(); queueDraw(); };
+  $('layRows').appendChild(r); lab(); return r;
+}
+$('addLay').onclick = () => layRow({ type: 'clay', t: 5, g: 20, p1: 100, p2: 150, p3: 0.5 });
+// ---------- piles ----------
+const PF = ['x', 'y'], DEFP = [{ x: 0, y: 0 }, { x: 1.8, y: 0 }, { x: 0, y: 1.8 }, { x: 1.8, y: 1.8 }];
+function pileRow(o = {}) {
+  const r = document.createElement('div'); r.className = 'row pile';
+  r.innerHTML = `<div><label>x (m)</label><input type="number" class="x" step="0.1"></div><div><label>y (m)</label><input type="number" class="y" step="0.1"></div><div><label>&nbsp;</label><button class="xbtn" type="button" title="Remove">×</button></div>`;
+  PF.forEach(k => { if (o[k] !== undefined) r.querySelector('.' + k).value = o[k]; });
+  r.querySelector('.xbtn').onclick = () => { if (document.querySelectorAll('#pileRows .row').length > 1) r.remove(); queueDraw(); };
+  $('pileRows').appendChild(r); return r;
+}
+$('addPile').onclick = () => { const rs = [...document.querySelectorAll('#pileRows .row')], mx = Math.max(...rs.map(r => +r.querySelector('.x').value || 0)); pileRow({ x: Math.round((mx + 3 * (+$('D').value || 600) / 1000) * 100) / 100, y: 0 }); };
+const rows = (box, F) => [...document.querySelectorAll(`#${box} .row`)].map(r => Object.fromEntries(F.map(k => [k, r.querySelector('.' + k).value])));
+// ---------- state ----------
+const FIELDS = ['pName', 'pJob', 'pBy', 'pRef', 'type', 'shape', 'D', 'L', 'skip', 'fck', 'zw', 'G', 'Q', 'MxG', 'MxQ', 'MyG', 'MyQ'], CHK = ['selfW', 'sls', 'test'];
+function collect() { const s = { v: 1, layers: rows('layRows', LF), piles: rows('pileRows', PF) }; FIELDS.forEach(id => { s[id] = $(id).value; }); CHK.forEach(id => { s[id] = $(id).checked; }); return s; }
+function restore(s) { $('layRows').innerHTML = ''; $('pileRows').innerHTML = ''; (s.layers && s.layers.length ? s.layers : DEFL).forEach(layRow); (s.piles && s.piles.length ? s.piles : DEFP).forEach(pileRow); FIELDS.forEach(id => { if (s[id] !== undefined && $(id)) $(id).value = s[id]; }); CHK.forEach(id => { if (s[id] !== undefined) $(id).checked = !!s[id]; }); }
+const num = v => (v === '' || v === undefined || v === null ? undefined : +v), req = v => (v === '' || v === undefined || v === null ? NaN : +v);
+function input(s) {
+  const layers = s.layers.map(l => { const o = { type: l.type, t: req(l.t), g: req(l.g), qmax: num(l.qmax) }; if (l.type === 'clay') Object.assign(o, { cu0: req(l.p1), cu1: num(l.p2), alpha: num(l.p3) }); if (l.type === 'sand') Object.assign(o, { phi: req(l.p1), Ks: num(l.p2), Nq: num(l.p3) }); return o; });
+  return { type: s.type, shape: s.shape, D: req(s.D), L: req(s.L), skip: num(s.skip), fck: num(s.fck), zw: num(s.zw), selfW: s.selfW, sls: s.sls, test: s.test, layers,
+    piles: s.piles.map(p => ({ x: req(p.x), y: req(p.y) })), G: num(s.G), Q: num(s.Q), MxG: num(s.MxG), MxQ: num(s.MxQ), MyG: num(s.MyG), MyQ: num(s.MyQ) };
+}
+const compute = s => PileDesign.design(input(s));
+// ---------- results ----------
+const bar = c => `<div class="ck"><div class="nm">${sub(c.name)}<small>${sub(c.ref)} &nbsp;${sub(c.note || '')}</small></div><div class="bar"><i class="${c.util > 1 ? 'over' : c.util > 0.9 ? 'hi' : ''}" style="width:${Math.min(100, c.util * 100 / 1.2)}%"></i></div><div class="u ${c.util > 1 ? 'over' : ''}">${ufmt(c.util)}</div></div>`;
+const stepsHTML = S => `<div class="steps">${S.map(s => `<div class="st"><span>${esc(s.ref)}</span><span>${sub(s.text)}</span></div>`).join('')}</div>`;
+function pileTable(D, cls) {
+  if (D.n < 2) return '';
+  return `<div class="tscroll"><table class="${cls}"><thead><tr><th>Pile</th><th>x, y (m)</th><th>Combination 1 (kN)</th><th>Combination 2 (kN)</th><th>Characteristic (kN)</th></tr></thead><tbody>${D.piles.map((p, i) => `<tr><td>P${i + 1}</td><td>${f2(p.x)}, ${f2(p.y)}</td><td>${f1(D.C.C1.P[i])}</td><td${D.C.C2.P[i] < 0 ? ' class="over"' : ''}>${f1(D.C.C2.P[i])}</td><td>${f1(D.C.K.P[i])}</td></tr>`).join('')}</tbody></table></div>`;
+}
+const key = D => `${D.TYPES[D.type]} ${D.shape === 'circle' ? `Ø${f0(D.D * 1000)}` : `${f0(D.D * 1000)} square`} mm × ${f2(D.Lp)} m${D.n > 1 ? `, ${D.n} piles` : ''}: R<sub>c,d</sub> ${f0(D.P2.Rcd)} kN (combination 2) for ${f0(D.C.C2.pmax)} kN${D.Lmin ? `; ${f2(D.Lmin)} m would do` : ''}`;
+function verdict(D) {
+  const W = [...D.checks].sort((a, b) => b.util - a.util)[0];
+  return `<div class="verdict ${D.utilMax > 1 ? 'fail' : ''}"><div><div class="big">${D.utilMax > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(D.utilMax)}</div><div class="sub">Governs: ${sub(W.name.charAt(0).toLowerCase() + W.name.slice(1))} (${sub(W.ref)})<br>${key(D)}</div></div></div>`;
+}
+const notes = D => ['Resistance from ground parameters (BS EN 1997-1 7.6.2.3(8), the UK “alternative procedure”) with the UK NA model factor; DA1 combination 2 (A2 + M1 + R4) usually governs. The rigid-cap share assumes equal piles and a cap stiff enough to stay plane.',
+  'Not covered: settlement of the pile and the group, negative skin friction (downdrag), lateral loads and bending in the pile, piles in rock, enlarged bases, pile testing and static load test interpretation (correlation factors ξ), heave and tension from swelling clay, the pile’s reinforcement, and the cap.'];
+let last = null;
+function render(D, s) {
+  let h = verdict(D) + `<div id="drawings"></div>`;
+  h += `<div class="dlabel">Checks</div><div class="checks">${[...D.checks].sort((a, b) => b.util - a.util).map(bar).join('')}</div>`;
+  D.warnings.forEach(t => { h += `<div class="note">${sub(t)}</div>`; });
+  if (D.n > 1) h += `<div class="dlabel">The load on each pile</div>${pileTable(D, 'ctab')}`;
+  h += `<div class="dlabel">Calculation</div>${stepsHTML(D.steps)}`;
+  h += `<div class="note">${notes(D).join(' ')}</div><button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  $('results').innerHTML = h; redraw(D);
+  $('printBtn').onclick = () => { $('report').innerHTML = report(D, s); window.print(); };
+}
+function run() {
+  const s = collect(); try { localStorage.setItem(STORE, JSON.stringify(s)); } catch (e) { /* storage unavailable */ }
+  clearTimeout(drawT);
+  try { const D = compute(s); last = { D, s }; render(D, s); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div><div id="drawings"></div>`; redraw(); }
+}
+$('calc').onclick = run;
+// ---------- A4 sheet ----------
+const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
+const okng = u => u <= 1 ? `<span class="ok">${ufmt(u)} OK</span>` : `<span class="ng">${ufmt(u)} FAIL</span>`;
+function report(D, s) {
+  const today = new Date().toLocaleDateString('en-GB');
+  const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.pRef) || '&nbsp;'}</div><div class="ttl">Piles, BS EN 1997-1 DA1 with the UK NA</div></div>`;
+  let b = `<div class="rs"><h2>1 Pile, ground and loads</h2>${rl(key(D), '', '')}${D.steps.map(x => rl(sub(x.text), esc(x.ref), '')).join('')}</div>`;
+  b += `<div class="rs"><h2>2 Drawings</h2>${DrawPiles.report(D)}</div>`;
+  b += `<div class="rs"><h2>3 Checks</h2>${D.checks.map(c => rl(`${sub(c.name)}: ${sub(c.note)}`, sub(c.ref), okng(c.util))).join('')}${pileTable(D, 'rt')}</div>`;
+  if (D.warnings.length) b += `<div class="rs">${D.warnings.map(t => `<p class="rp">${sub(t)}</p>`).join('')}</div>`;
+  b += `<div class="rs"><p class="rp">${notes(D).join(' ')}</p><p class="rp" style="color:#555">BS EN 1997-1:2004+A1:2013 and BS EN 1992-1-1 with the UK National Annexes. Generated by EngineeringTools — Piles and Pile Groups.</p></div>`;
+  return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
+}
+// the drawings follow the inputs
+let drawT = 0;
+function redraw(D) {
+  const el = $('drawings'); if (!el) return;
+  try { el.innerHTML = DrawPiles.html(D || compute(collect())); }
+  catch (e) { el.innerHTML = `<div class="note">The drawings will appear when the inputs are complete: ${esc(e.message)}</div>`; }
+}
+const queueDraw = () => { clearTimeout(drawT); drawT = setTimeout(() => redraw(), 200); };
+$('inputs').addEventListener('input', queueDraw); $('inputs').addEventListener('change', queueDraw);
+$('inputs').addEventListener('click', e => { const t = e.target.closest('button'); if (t && !t.classList.contains('btn') && !t.classList.contains('btn2')) queueDraw(); });
+(function init() {
+  let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
+  restore(s && s.v === 1 ? s : {});
+  redraw();
+})();
+</script>
+<footer class="disclaimer" role="note"><b>Disclaimer.</b> These tools are provided as an aid to design, without warranty of any kind. The author accepts no responsibility for errors in the tools or in their results, or for any use made of them. It is the responsibility of a competent structural engineer with relevant experience to check and approve all calculations before they are used.</footer>
+<!-- @@FILEIO: save / open, shared by every tool (scratchpad/common/fileio.*) -->
+<style id="ef-style">
+/* Save / open buttons on the page header, and the status message (source: scratchpad/common/fileio.css) */
+.ef-bar{position:absolute;top:14px;right:16px;z-index:3;display:flex;gap:8px;}
+.ef-bar.ef-float{position:fixed;top:12px;right:12px;}
+.ef-btn{height:32px;padding:0 12px;display:inline-flex;align-items:center;gap:6px;border:0;border-radius:6px;background:rgba(255,255,255,.94);color:#111;font-family:inherit;font-size:13px;font-weight:500;line-height:1;cursor:pointer;}
+.ef-btn:hover{background:#fff;}
+.ef-btn:focus-visible{outline:2px solid #fff;outline-offset:2px;}
+.ef-btn svg{width:15px;height:15px;flex:none;}
+.ef-msg{position:fixed;left:50%;bottom:20px;z-index:1000;width:max-content;max-width:min(560px,calc(100vw - 32px));transform:translate(-50%,8px);opacity:0;pointer-events:none;
+  background:#1d1f20;color:#fff;font-family:inherit;font-size:13px;line-height:1.45;padding:10px 14px;border-radius:6px;transition:opacity .15s,transform .15s;}
+.ef-msg.on{opacity:1;transform:translate(-50%,0);}
+.ef-msg.bad{background:#b3261e;}
+@media(max-width:560px){.ef-bar{position:static;margin-top:12px;align-self:flex-start;}}
+@media print{.ef-bar,.ef-msg{display:none!important;}}
+</style>
+<script id="ef-script">
+/* Save / open: a tool's inputs as a .json file. Shared by every Engineering Tools page (source: scratchpad/common/fileio.js),
+   configured per page with EngFile.init({...}).
+   File: { app: 'EngineeringTools', tool, key, format, saved, state }.
+   Two ways to open:
+   - store: the tool already restores itself from browser storage on load. Open writes the file's state there and reloads,
+     so the tool rebuilds everything (load tables, spans, models) exactly as on a return visit, then recalculates.
+   - set: the page applies the state itself (pages without saved state); EngFile.fields() covers plain forms. */
+const EngFile = (() => {
+  'use strict';
+  const APP = 'EngineeringTools', FMT = 1, FLAG = 'ef-opened';
+  let C = null, input = null, timer = 0;
+  const ICON = {
+    open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+    save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v5h8V3"/><path d="M7 21v-7h10v7"/></svg>',
+  };
+  const sess = {
+    get: k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
+    set: (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } },
+    del: k => { try { sessionStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
+  };
+
+  function msg(t, bad) {
+    let m = document.getElementById('ef-msg');
+    if (!m) { m = document.createElement('div'); m.id = 'ef-msg'; m.className = 'ef-msg no-print'; m.setAttribute('role', 'status'); m.setAttribute('aria-live', 'polite'); document.body.appendChild(m); }
+    m.textContent = t || ''; m.classList.toggle('bad', !!bad); m.classList.toggle('on', !!t);
+    clearTimeout(timer); if (t) timer = setTimeout(() => m.classList.remove('on'), bad ? 9000 : 5000);
+  }
+  function data() { return { app: APP, tool: C.tool, key: C.key, format: FMT, saved: new Date().toISOString(), state: C.get() }; }
+  function fileName() {
+    let ref = '', nm = ''; try { ref = C.ref ? String(C.ref() || '').trim() : ''; nm = C.name ? String(C.name() || '').trim() : ''; } catch (e) { ref = ''; }
+    return `${ref ? ref + ' ' : ''}${nm || C.tool}.json`.replace(/[\\/:*?"<>|]+/g, '-');
+  }
+  async function save() {
+    let d; try { d = data(); } catch (e) { msg(`Could not save: ${e.message}`, true); return; }
+    const name = fileName(), text = JSON.stringify(d, null, 1);
+    if (window.showSaveFilePicker) {   // Chrome / Edge: a Save As dialog, so the file can go straight into the job folder
+      try {
+        const h = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: `${C.tool} file`, accept: { 'application/json': ['.json'] } }] });
+        const w = await h.createWritable(); await w.write(text); await w.close(); msg(`Saved ${h.name}`); return;
+      } catch (e) { if (e && e.name === 'AbortError') return; }   // cancelled; any other failure falls back to a download
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    msg(`Saved ${name} to your downloads folder`);
+  }
+  function open() { input.value = ''; input.click(); }
+  // the saved state, or an error saying what the file is
+  function stateOf(d) {
+    const old = C.legacy ? C.legacy(d) : null; if (old) return old;
+    if (!d || d.app !== APP || !d.state || typeof d.state !== 'object') throw new Error('this is not an Engineering Tools file');
+    if (d.key !== C.key) throw new Error(d.tool ? `it was saved in ${d.tool}, so open it there` : 'it was saved in another tool');
+    if (!(d.format >= 1) || d.format > FMT) throw new Error('this file was saved by a newer version of the tools');
+    return d.state;
+  }
+  async function apply(d, name) {
+    const s = stateOf(d);
+    if (C.store) {
+      try { localStorage.setItem(C.store, JSON.stringify(s)); } catch (e) { throw new Error('this browser is blocking site storage for this page, which Open needs'); }
+      sess.set(FLAG, JSON.stringify({ name, key: C.key }));
+      history.replaceState(null, '', location.href.split('#')[0]);   // a #in= hand-over in the address would otherwise win over the file
+      location.reload(); return { reload: true };
+    }
+    const r = (await C.set(s)) || {};
+    if (C.calc) try { C.calc(); } catch (e) { /* the tool reports its own input errors */ }
+    return r;
+  }
+  function done(name, r) {
+    const k = r && r.skipped ? r.skipped.length : 0;
+    msg(`Opened ${name}` + (k ? `. ${k} saved value${k > 1 ? 's are' : ' is'} not used by this version and ${k > 1 ? 'were' : 'was'} left at the default` : ''));
+  }
+  async function openFile(file) {
+    if (!file) return;
+    let d; try { d = JSON.parse(await file.text()); } catch (e) { msg(`${file.name} could not be read as a saved file`, true); return; }
+    try { const r = await apply(d, file.name); if (!r.reload) done(file.name, r); } catch (e) { msg(`${file.name} was not opened: ${e.message}`, true); }
+  }
+  // plain forms: every input, select and textarea with an id under root; dropdowns are restored first, since choosing a
+  // section often auto-fills its dimensions, which the saved values then override
+  function fields(root) {
+    const els = () => [...(typeof root === 'string' ? document.querySelector(root) : root || document).querySelectorAll('input[id],select[id],textarea[id]')]
+      .filter(el => el.id !== 'ef-file' && !['file', 'button', 'submit', 'reset'].includes(el.type));
+    return {
+      get: () => { const o = {}; els().forEach(el => { o[el.id] = el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value; }); return o; },
+      set: o => {
+        const have = new Map(els().map(el => [el.id, el])), skipped = [], ent = Object.entries(o || {}), fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+        for (const [id, v] of ent) {
+          const el = have.get(id); if (!el) { skipped.push(id); continue; }
+          if (el.tagName === 'SELECT') { if ([...el.options].some(x => x.value === String(v))) { el.value = String(v); fire(el, 'change'); } else skipped.push(id); }
+        }
+        for (const [id, v] of ent) {
+          const el = have.get(id); if (!el || el.tagName === 'SELECT') continue;
+          if (el.type === 'checkbox' || el.type === 'radio') { el.checked = !!v; fire(el, 'change'); } else { el.value = String(v); fire(el, 'input'); fire(el, 'change'); }
+        }
+        return { skipped };
+      },
+    };
+  }
+  // file names lead with the job and member references from the page, e.g. '24-123 Slab S3 RC Slab Design.json'
+  const refOf = ids => () => ids.map(id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; }).filter(Boolean).join(' ');
+  function mount() {
+    const bar = document.createElement('div'); bar.className = 'ef-bar no-print';
+    bar.innerHTML = `<button type="button" class="ef-btn" id="ef-open" title="Open a saved file (Ctrl+O), or drop it onto the page">${ICON.open}Open</button>`
+      + `<button type="button" class="ef-btn" id="ef-save" title="Save the inputs to a file (Ctrl+S)">${ICON.save}Save</button>`;
+    const h = document.querySelector('.page-hdr'); if (h) h.appendChild(bar); else { bar.classList.add('ef-float'); document.body.appendChild(bar); }
+    bar.querySelector('#ef-open').addEventListener('click', open); bar.querySelector('#ef-save').addEventListener('click', save);
+  }
+  function init(c) {
+    C = Object.assign({ tool: (document.querySelector('h1') || {}).textContent || document.title, ref: refOf(['pJob', 'pRef']), calc: () => { const b = document.getElementById('calc'); if (b) b.click(); }, delay: 200 }, c);
+    C.tool = C.tool.trim(); if (!C.key) C.key = C.store;
+    if (C.store && !C.get) C.get = () => collect();   // eslint-disable-line no-undef -- the tool's own serialiser
+    input = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json', id: 'ef-file' }); input.hidden = true;
+    document.body.appendChild(input); input.addEventListener('change', () => openFile(input.files[0]));
+    mount();
+    document.addEventListener('keydown', e => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return; const k = (e.key || '').toLowerCase();
+      if (k === 's') { e.preventDefault(); save(); } else if (k === 'o') { e.preventDefault(); open(); }
+    });
+    document.addEventListener('dragover', e => { if ([...((e.dataTransfer && e.dataTransfer.types) || [])].includes('Files')) e.preventDefault(); });
+    document.addEventListener('drop', e => { const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f && /\.json$/i.test(f.name)) { e.preventDefault(); openFile(f); } });
+    // after an Open that reloaded the page: the tool has restored itself; recalculate and say what was opened
+    const f = sess.get(FLAG);
+    if (f) {
+      sess.del(FLAG); let o = null; try { o = JSON.parse(f); } catch (e) { o = null; }
+      if (o && o.key === C.key) setTimeout(() => { if (C.calc) try { C.calc(); } catch (e) { /* the tool reports its own input errors */ } done(o.name); }, C.delay);
+    }
+  }
+  return { init, save, open, openFile, apply, data, fileName, msg, fields, stateOf, refOf };
+})();
+window.EngFile = EngFile;   // reachable from the page's other scripts and the tests
+EngFile.init({ store: STORE });
+</script>
+<!-- /@@FILEIO -->
+</body>
+</html>
