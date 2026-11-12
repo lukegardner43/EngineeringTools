@@ -1,6 +1,6 @@
 // Drawings on Composite Beam, Floor Vibration, Steel Member, Concrete Tie Force and RC Crack Width (group 1) and on Steel Beam
 // Torsion, Beam Web Openings, Steel Frame Design, Sheet Pile Wall, the RC Section Toolkit tabs, RC Column, Hollowcore Support
-// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages to Piles and Pile Groups (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
+// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages to Tower Crane Base (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
 //   NODE_PATH=<jsdom>/node_modules node tests/drawings/test_drawings.js
 const fs = require('fs'), path = require('path'), { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '../..');
@@ -412,6 +412,10 @@ async function sweep(f, cases, expect) {
   await sweep('Piles and Pile Groups.html', [
     ['longer pile', w => set(w, 'L', '28')], ['bigger pile', w => set(w, 'D', '750')], ['water higher', w => set(w, 'zw', '1')],
     ['a pile added', w => w.document.getElementById('addPile').click()], ['a sand layer', w => { w.document.getElementById('addLay').click(); }], ['heavier load', w => set(w, 'G', '4000')],
+  ], 2);
+  await sweep('Tower Crane Base.html', [
+    ['a bigger base', w => set(w, 'L', '6.5')], ['a thicker base', w => set(w, 'h', '1.6')], ['clay', w => { set(w, 'ground', 'undrained', 'change'); set(w, 'cu', '120'); }],
+    ['a heavier load case added', w => { w.document.getElementById('addCase').click(); const r = [...w.document.querySelectorAll('#caseRows .row')].pop(), M = r.querySelector('.M'); M.value = '4200'; M.dispatchEvent(new w.Event('input', { bubbles: true })); }], ['wider legs', w => set(w, 's', '2.5')],
   ], 2);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
