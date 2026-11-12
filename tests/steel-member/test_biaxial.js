@@ -49,5 +49,13 @@ near('horizontal deflection (characteristic) 5wL^4/384EIz', Math.abs(r.memDefl[0
 { const rm = Design.designMember({ sec, grade: 'S355', L: 4000, N: 0, MyT: 100e6, MyB: 0, MzT: 20e6, MzB: 0, ky: 1, kz: 1, nLT: 1 });
   truthy('member mode: biaxial bending with N = 0 is checked by 6.61/6.62', !!rm.gov.interaction);
   near('member mode: (6.62) Mz term with kzz = Cmz = 0.6', rm.gov.interaction.ir.kzz, 0.6, 1e-12); }
+// hollow sections, Table B.1 (not susceptible to torsional deformation): k_zz by the RHS row, k_zy = 0.6 k_yy
+{ const s = EC3.rhs({ h: 200, b: 100, t: 6.3 }), r = Design.designMember({ sec: s, grade: 'S355', L: 5000, N: 300e3, MyT: 30e6, MyB: 30e6, MzT: 15e6, MzB: 15e6, Lcr: { y: 5000, z: 5000, LT: 5000 } });
+  const ir = r.gov.interaction.ir, ab = r.ab, nz = 300e3 / (ab.z.chi * ab.NRk);
+  near('RHS: k_zz = Cmz(1 + (lambda_z - 0.2) n_z), capped at Cmz(1 + 0.8 n_z)', ir.kzz, ir.Cmz * Math.min(1 + (ab.lamZ - 0.2) * nz, 1 + 0.8 * nz), 1e-12);
+  near('RHS: k_zy = 0.6 k_yy', ir.kzy, 0.6 * ir.kyy, 1e-12);
+  truthy('RHS: reported against Table B.1', ir.table === 'B.1');
+  const c = EC3.chs({ d: 168.3, t: 6.3 }), rc = Design.designMember({ sec: c, grade: 'S355', L: 4000, N: 200e3, MyT: 10e6, MyB: 10e6, MzT: 10e6, MzB: 10e6, Lcr: { y: 4000, z: 4000, LT: 4000 } });
+  near('CHS: same about both axes, k_zz = k_yy', rc.gov.interaction.ir.kzz, rc.gov.interaction.ir.kyy, 1e-12); }
 console.log(`${n - fails}/${n} biaxial checks passed`);
 process.exit(fails ? 1 : 0);

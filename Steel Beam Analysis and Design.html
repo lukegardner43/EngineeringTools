@@ -2032,11 +2032,12 @@ const EC3 = (() => {
   }
 
   // ---------- Interaction factors, Annex B (Method 2) ----------
-  function annexB({ cls, lamY, lamZ, nY, nZ, Cmy, Cmz, CmLT, torsional }) {
+  // hollow: Table B.1's RHS row for k_zz (class 1-2); a CHS, the same about both axes, is taken with that row as well
+  function annexB({ cls, lamY, lamZ, nY, nZ, Cmy, Cmz, CmLT, torsional, hollow = false }) {
     let kyy, kzz, kyz, kzy;
     if (cls <= 2) {
       kyy = Cmy * Math.min(1 + (lamY - 0.2) * nY, 1 + 0.8 * nY);
-      kzz = Cmz * Math.min(1 + (2 * lamZ - 0.6) * nZ, 1 + 1.4 * nZ);
+      kzz = hollow ? Cmz * Math.min(1 + (lamZ - 0.2) * nZ, 1 + 0.8 * nZ) : Cmz * Math.min(1 + (2 * lamZ - 0.6) * nZ, 1 + 1.4 * nZ);
       kyz = 0.6 * kzz;
       if (!torsional) kzy = 0.6 * kyy;
       else if (lamZ < 0.4) kzy = Math.min(0.6 + lamZ, 1 - 0.1 * lamZ * nZ / (CmLT - 0.25));
@@ -2216,10 +2217,10 @@ const Design = (() => {
       const u62 = nZ + k.kzy * MyEd / (chiLTmod * MyRk / EC3.GM1) + k.kzz * MzEd / (MzRk / EC3.GM1);
       return { method: 'A', nY, nZ, ...k, Cmy0: A.Cmy0, Cmz0: A.Cmz0, MyRk, MzRk, u61, u62, util: Math.max(u61, u62) };
     }
-    const k = EC3.annexB({ cls, lamY: ab.lamY, lamZ: ab.lamZ, nY, nZ, Cmy, Cmz, CmLT, torsional: !EC3.isHollow(sec) });   // closed sections: not susceptible to torsional deformations
+    const k = EC3.annexB({ cls, lamY: ab.lamY, lamZ: ab.lamZ, nY, nZ, Cmy, Cmz, CmLT, torsional: !EC3.isHollow(sec), hollow: EC3.isHollow(sec) });   // closed sections: not susceptible to torsional deformations
     const u61 = nY + k.kyy * MyEd / (chiLTmod * MyRk / EC3.GM1) + k.kyz * MzEd / (MzRk / EC3.GM1);
     const u62 = nZ + k.kzy * MyEd / (chiLTmod * MyRk / EC3.GM1) + k.kzz * MzEd / (MzRk / EC3.GM1);
-    return { method: 'B', nY, nZ, ...k, Cmy, CmLT, Cmz, MyRk, MzRk, u61, u62, util: Math.max(u61, u62) };
+    return { method: 'B', table: EC3.isHollow(sec) ? 'B.1' : 'B.2', nY, nZ, ...k, Cmy, CmLT, Cmz, MyRk, MzRk, u61, u62, util: Math.max(u61, u62) };
   }
 
   // keep the worst utilisation; on a tie prefer the location with the larger moment (clearer reporting)
@@ -3488,9 +3489,10 @@ function reportHTML(R, inp, s) {
         (C ? rl(`w<sub>y</sub> = ${C.wy.toFixed(3)}, w<sub>z</sub> = ${C.wz.toFixed(3)}, n<sub>pl</sub> = ${C.npl.toFixed(3)}; C<sub>yy</sub> = ${C.Cyy.toFixed(3)}, C<sub>yz</sub> = ${C.Cyz.toFixed(3)}, C<sub>zy</sub> = ${C.Czy.toFixed(3)}, C<sub>zz</sub> = ${C.Czz.toFixed(3)} (C<sub>zz</sub> per AC:2009)`, 'Table A.1', '') : rl('Class 3/4: C<sub>ij</sub> = 1, w = 1', 'Table A.1', '')) +
         rl(`n<sub>y</sub> = ${ir.nY.toFixed(3)}, n<sub>z</sub> = ${ir.nZ.toFixed(3)}; k<sub>yy</sub> = ${ir.kyy.toFixed(3)}, k<sub>yz</sub> = ${ir.kyz.toFixed(3)}, k<sub>zy</sub> = ${ir.kzy.toFixed(3)}, k<sub>zz</sub> = ${ir.kzz.toFixed(3)}`, 'Table A.1', '');
     } else {
-      b += `<h3>Bending and axial compression (6.3.3, Method 2, Annex B Table B.2)</h3>` +
+      const tb = ir.table || 'B.2';
+      b += `<h3>Bending and axial compression (6.3.3, Method 2, Annex B Table ${tb})</h3>` +
         rl(`C<sub>my</sub> = ${ir.Cmy.toFixed(3)}${g.swayY ? ' (sway mode, Table B.3 note)' : ''}, C<sub>mLT</sub> = ${ir.CmLT.toFixed(3)}${g.freeLT ? ' (free tip: outside Table B.3, upper limit taken)' : ''}${ir.MzRk && (inp.MzT || inp.MzB || R.hasH) ? ', C<sub>mz</sub> = ' + ir.Cmz.toFixed(3) + (g.swayZ ? ' (sway mode)' : '') : ''} (Table B.3)`, 'Annex B', '') +
-        rl(`n<sub>y</sub> = ${ir.nY.toFixed(3)}, n<sub>z</sub> = ${ir.nZ.toFixed(3)}; k<sub>yy</sub> = ${ir.kyy.toFixed(3)}, k<sub>yz</sub> = ${ir.kyz.toFixed(3)}, k<sub>zy</sub> = ${ir.kzy.toFixed(3)}, k<sub>zz</sub> = ${ir.kzz.toFixed(3)}`, 'Table B.2', '');
+        rl(`n<sub>y</sub> = ${ir.nY.toFixed(3)}, n<sub>z</sub> = ${ir.nZ.toFixed(3)}; k<sub>yy</sub> = ${ir.kyy.toFixed(3)}, k<sub>yz</sub> = ${ir.kyz.toFixed(3)}, k<sub>zy</sub> = ${ir.kzy.toFixed(3)}, k<sub>zz</sub> = ${ir.kzz.toFixed(3)}${tb === 'B.1' ? ' (closed section: not susceptible to torsional deformation; k<sub>zz</sub> by the RHS row)' : ''}`, 'Table ' + tb, '');
     }
     b +=       rl(`N<sub>Ed</sub>/(&chi;<sub>y</sub>N<sub>Rk</sub>/&gamma;<sub>M1</sub>) + k<sub>yy</sub>M<sub>y,Ed</sub>/(&chi;<sub>LT</sub>M<sub>y,Rk</sub>/&gamma;<sub>M1</sub>) + k<sub>yz</sub>M<sub>z,Ed</sub>/(M<sub>z,Rk</sub>/&gamma;<sub>M1</sub>)`, '(6.61)', ir.u61.toFixed(3)) +
       rl(`N<sub>Ed</sub>/(&chi;<sub>z</sub>N<sub>Rk</sub>/&gamma;<sub>M1</sub>) + k<sub>zy</sub>M<sub>y,Ed</sub>/(&chi;<sub>LT</sub>M<sub>y,Rk</sub>/&gamma;<sub>M1</sub>) + k<sub>zz</sub>M<sub>z,Ed</sub>/(M<sub>z,Rk</sub>/&gamma;<sub>M1</sub>)`, '(6.62)', ir.u62.toFixed(3)) +

@@ -1395,11 +1395,12 @@ const EC3 = (() => {
   }
 
   // ---------- Interaction factors, Annex B (Method 2) ----------
-  function annexB({ cls, lamY, lamZ, nY, nZ, Cmy, Cmz, CmLT, torsional }) {
+  // hollow: Table B.1's RHS row for k_zz (class 1-2); a CHS, the same about both axes, is taken with that row as well
+  function annexB({ cls, lamY, lamZ, nY, nZ, Cmy, Cmz, CmLT, torsional, hollow = false }) {
     let kyy, kzz, kyz, kzy;
     if (cls <= 2) {
       kyy = Cmy * Math.min(1 + (lamY - 0.2) * nY, 1 + 0.8 * nY);
-      kzz = Cmz * Math.min(1 + (2 * lamZ - 0.6) * nZ, 1 + 1.4 * nZ);
+      kzz = hollow ? Cmz * Math.min(1 + (lamZ - 0.2) * nZ, 1 + 0.8 * nZ) : Cmz * Math.min(1 + (2 * lamZ - 0.6) * nZ, 1 + 1.4 * nZ);
       kyz = 0.6 * kzz;
       if (!torsional) kzy = 0.6 * kyy;
       else if (lamZ < 0.4) kzy = Math.min(0.6 + lamZ, 1 - 0.1 * lamZ * nZ / (CmLT - 0.25));
@@ -1579,10 +1580,10 @@ const Design = (() => {
       const u62 = nZ + k.kzy * MyEd / (chiLTmod * MyRk / EC3.GM1) + k.kzz * MzEd / (MzRk / EC3.GM1);
       return { method: 'A', nY, nZ, ...k, Cmy0: A.Cmy0, Cmz0: A.Cmz0, MyRk, MzRk, u61, u62, util: Math.max(u61, u62) };
     }
-    const k = EC3.annexB({ cls, lamY: ab.lamY, lamZ: ab.lamZ, nY, nZ, Cmy, Cmz, CmLT, torsional: !EC3.isHollow(sec) });   // closed sections: not susceptible to torsional deformations
+    const k = EC3.annexB({ cls, lamY: ab.lamY, lamZ: ab.lamZ, nY, nZ, Cmy, Cmz, CmLT, torsional: !EC3.isHollow(sec), hollow: EC3.isHollow(sec) });   // closed sections: not susceptible to torsional deformations
     const u61 = nY + k.kyy * MyEd / (chiLTmod * MyRk / EC3.GM1) + k.kyz * MzEd / (MzRk / EC3.GM1);
     const u62 = nZ + k.kzy * MyEd / (chiLTmod * MyRk / EC3.GM1) + k.kzz * MzEd / (MzRk / EC3.GM1);
-    return { method: 'B', nY, nZ, ...k, Cmy, CmLT, Cmz, MyRk, MzRk, u61, u62, util: Math.max(u61, u62) };
+    return { method: 'B', table: EC3.isHollow(sec) ? 'B.1' : 'B.2', nY, nZ, ...k, Cmy, CmLT, Cmz, MyRk, MzRk, u61, u62, util: Math.max(u61, u62) };
   }
 
   // keep the worst utilisation; on a tie prefer the location with the larger moment (clearer reporting)
