@@ -1,6 +1,6 @@
 // Drawings on Composite Beam, Floor Vibration, Steel Member, Concrete Tie Force and RC Crack Width (group 1) and on Steel Beam
 // Torsion, Beam Web Openings, Steel Frame Design, Sheet Pile Wall, the RC Section Toolkit tabs, RC Column, Hollowcore Support
-// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages to Foundations Near Trees (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
+// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages to Working Platforms (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
 //   NODE_PATH=<jsdom>/node_modules node tests/drawings/test_drawings.js
 const fs = require('fs'), path = require('path'), { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '../..');
@@ -421,6 +421,10 @@ async function sweep(f, cases, expect) {
     ['high soil', w => set(w, 'vcp', 'high', 'change')], ['a climate reduction', w => set(w, 'clim', '0.2', 'change')],
     ['the poplar nearer', w => { const D = w.document.querySelector('#treeRows .row .D'); D.value = '6'; D.dispatchEvent(new w.Event('input', { bubbles: true })); }],
     ['a tree added', w => w.document.getElementById('addTree').click()], ['a shrub added', w => w.document.getElementById('addShrub').click()],
+  ], 2);
+  await sweep('Working Platforms.html', [
+    ['a stiffer subgrade', w => set(w, 'cu', '40')], ['a heavier case 2', w => set(w, 'q2k', '260')], ['a geosynthetic', w => { const c = w.document.getElementById('rOn'); c.checked = true; c.dispatchEvent(new w.Event('change', { bubbles: true })); }],
+    ['a granular subgrade', w => { set(w, 'sub', 'granular', 'change'); set(w, 'phiS', '33'); }], ['a proposed thickness', w => set(w, 'Dprop', '0.9')],
   ], 2);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
