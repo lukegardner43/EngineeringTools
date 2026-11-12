@@ -462,5 +462,12 @@ async function sweep(f, cases, expect) {
     ['a portal frame', w => set(w, 'kind', 'portal', 'change')], ['fixed bases', w => set(w, 'base', 'fixed', 'change')], ['taller eaves', w => set(w, 'he', '5.5')],
     ['a flat roof', w => set(w, 'pitch', '0')], ['stronger wind on the wall', w => set(w, 'wWall1', '0.9')], ['deeper rafters', w => sz(w, 'raf', 1, '675')],
   ], 1);
+  const lw = (w, i, v) => { const e = w.document.querySelectorAll('#loadRows .row .w')[i]; e.value = v; e.dispatchEvent(new w.Event('input', { bubbles: true })); };
+  await sweep('CLT Panels.html', [
+    ['a deeper layup', w => set(w, 'layup', '10', 'change')], ['a longer span', w => set(w, 'L', '5500')], ['more imposed load', w => lw(w, 1, '2.5')],
+    ['a heavier screed', w => lw(w, 0, '2.2')], ['spanning across the outer layers', w => { set(w, 'L', '2500'); set(w, 'dir', 'cross', 'change'); }],
+    ['a wall', w => { set(w, 'dir', 'main', 'change'); set(w, 'use', 'wall', 'change'); }], ['a taller wall', w => set(w, 'H', '3200')], ['more eccentricity', w => set(w, 'e', '30')],
+    ['stronger wind', w => set(w, 'wind', '1.2')], ['a thicker wall', w => set(w, 'layup', '6', 'change')], ['the section alone', w => set(w, 'use', 'section', 'change')],
+  ], 1);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
