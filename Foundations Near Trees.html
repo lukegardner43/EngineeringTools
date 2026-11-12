@@ -719,7 +719,9 @@ const DK = (() => {
    The depth needed against the distance from each tree (NHBC's chart line for the soil and the tree, less the climate
    reduction, to scale), with each tree's own distance marked and the governing one in blue; the minimum depth and the
    2.5 m limit of the chapter. And a plan to scale: the foundation as a line, each tree at its distance with its zone of
-   influence (Table 3b) and the length of foundation inside it, the shrubs on the other side.
+   influence (Table 3b) and the length of foundation inside it, the shrubs on the other side. And a section through the
+   governing tree (or shrub) and the foundation: the tree, its distance D, its zone of influence, the depth needed with
+   distance under the ground (exaggerated vertically), and the foundation to its depth with any heave precautions.
    Source: scratchpad/drawings/trees.js. Needs JD, DK; takes TreeFoundations.design results. */
 const DrawTrees = (() => {
   'use strict';
@@ -779,8 +781,74 @@ const DrawTrees = (() => {
     });
     return svg(g, Wd, yF + below * k + 12, 'Plan of the foundation with the trees, their zones of influence and the shrubs');
   }
-  const blocks = D => [['Depth and distance', depthChart(D)], ['Plan', plan(D)]];
-  return { html: D => page(blocks(D)), report: D => sheet(blocks(D)), depthChart, plan };
+  function section(D) {
+    const t = D.govT, s = !t ? D.govS : null, Wd = 700;
+    const dist = t ? t.D : s.D, Hp = t ? t.H : s.H, zone = t ? t.zone : 0, wF = D.type === 'pier' ? 0.9 : D.type === 'pile' ? 0.45 : 0.6;
+    const dAt = x => t ? Math.max(D.soil.B, D.red(D.chart(D.soil.v, t.sp.wd, t.sp.con, x / t.H))) : s.need;
+    const xmax = Math.max(zone * 1.05, dist + wF + 4, 6), x0 = 170, k = 480 / xmax, X = x => x0 + x * k, xl = -130 / k;   // room left of the trunk for the crown and its height
+    const yG = 150, dmax = Math.max(2.5, Math.ceil((Math.max(D.dFound, D.dReq, dAt(0)) + 0.4) * 2) / 2), kv = Math.min(Math.max(150 / dmax, k), 220 / dmax), Y = d => yG + d * kv;
+    const yS = Y(dmax), scaled = Hp * k <= 118, Ht = scaled ? Hp * k : 118;
+    const pName = t ? `${t.ref} ${t.sp.n}${t.status === 'remove' ? ' (removed)' : t.status === 'proposed' ? ' (proposed)' : ''}` : `shrub ${s.ref}`;
+    let g = text(0, 14, `Section through ${pName} and the foundation: ${Math.abs(kv / k - 1) < 0.05 ? 'to scale' : `depths ×${(kv / k).toFixed(1)} the horizontal scale`}${scaled ? '' : ', the ' + (t ? 'tree' : 'shrub') + ' not to scale'}`, { size: 9.5, color: MUTE });
+    // the ground, and the soil the plant dries (above the depth line) lightly shaded
+    g += rect(X(xl), yG, (xmax - xl) * k, yS - yG, { fill: '#e9e1d2' });
+    const pts = []; for (let i = 0; i <= 140; i++) { const x = xl + (xmax - xl) * i / 140; pts.push([X(x), Y(Math.min(dmax, dAt(Math.abs(x))))]); }   // the same either side of the trunk
+    g += `<path d="M${X(xl).toFixed(1)} ${yG} ${pts.map(p => `L${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ')} L${X(xmax).toFixed(1)} ${yG} Z" fill="rgba(29,95,191,0.07)" stroke="none"/>`;
+    g += `<path d="${pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ')}" fill="none" stroke="${BLUE}" stroke-width="1.6" stroke-dasharray="6 4"/>`;
+    g += line(X(xl), yG, X(xmax), yG, { c: INK, w: 1.4 });
+    for (let d = 1; d <= dmax + 1e-9; d += 1) g += line(X(xl), Y(d), X(xl) + 5, Y(d), { w: 0.8 }) + text(X(xl) + 8, Y(d) + 3, `${d} m`, { size: 9, color: MUTE });
+    // the plant
+    const xc = X(0), green = t ? (t.sp.con ? '#4f7a55' : '#7aa36f') : '#a7c29a', gone = t && t.status === 'remove', fut = t && t.status === 'proposed';
+    const fill = gone ? 'none' : fut ? 'rgba(122,163,111,0.35)' : green, edge = gone || fut ? ' stroke-dasharray="3 3"' : '';
+    const rs = Math.min(0.9 * k, t ? 18 : 10) + 4;
+    for (let i = -2; i <= 2; i++) g += line(xc, yG, xc + i * rs, yG + 10 + Math.abs(i) * 4, { c: '#8a6a4a', w: 1, dash: gone ? '2 2' : '' });
+    const cwPx = t ? Math.max(16, Ht * (t.sp.con ? 0.24 : 0.42)) : Math.min(Math.max(10, Ht * 0.45), 50);
+    if (t) {
+      const tr = Ht * 0.38, cw = cwPx;
+      g += rect(xc - 3, yG - tr, 6, tr, { fill: gone ? 'none' : '#8a6a4a', stroke: '#5c4630', w: 1, dash: gone ? '3 3' : '' });
+      g += t.sp.con ? `<path d="M${(xc - cw).toFixed(1)} ${(yG - tr + 6).toFixed(1)} L${xc.toFixed(1)} ${(yG - Ht).toFixed(1)} L${(xc + cw).toFixed(1)} ${(yG - tr + 6).toFixed(1)} Z" fill="${fill}" stroke="#3b5a3f" stroke-width="1.2"${edge}/>`
+        : `<ellipse cx="${xc.toFixed(1)}" cy="${(yG - tr - (Ht - tr) / 2 + 4).toFixed(1)}" rx="${cw.toFixed(1)}" ry="${((Ht - tr) / 2 + 4).toFixed(1)}" fill="${fill}" stroke="#3b5a3f" stroke-width="1.2"${edge}/>`;
+    } else g += `<ellipse cx="${xc.toFixed(1)}" cy="${(yG - Ht / 2).toFixed(1)}" rx="${cwPx.toFixed(1)}" ry="${(Ht / 2).toFixed(1)}" fill="${fill}" stroke="#3b5a3f" stroke-width="1.2"/>`;
+    // its height
+    const xh = xc - cwPx - 12;
+    g += line(xh, yG, xh, yG - Ht, { w: 0.8 }) + line(xh - 4, yG - Ht, xh + 4, yG - Ht, { w: 0.8 }) + text(xh - 4, yG - Ht / 2 + 3, `H ${r1(Hp)} m`, { size: 9.5, anchor: 'end' });
+    // the foundation
+    const xa = X(dist), xb = X(dist + wF), dF = D.dFound, short = D.dProp > 0 && D.dProp < D.dReq - 1e-9, fc = short ? RED : INK, conc = '#c9ced4';
+    let fName;
+    if (D.type === 'trench' || D.type === 'pier') {
+      g += rect(xa, yG, xb - xa, dF * kv, { fill: conc, stroke: fc, w: 1.2 }); fName = D.type === 'trench' ? 'trench fill' : 'pier';
+      if (D.type === 'pier') g += rect(xa, yG - 2, X(xmax) - xa, 0.45 * kv, { fill: conc, stroke: INK, w: 1 });
+    } else if (D.type === 'pile') {
+      g += rect(xa - 0.3 * k, yG - 2, X(xmax) - xa + 0.3 * k, 0.5 * kv, { fill: conc, stroke: INK, w: 1 });
+      g += rect(xa, yG + 0.5 * kv, xb - xa, yS - yG - 0.5 * kv - 2, { fill: conc, stroke: INK, w: 1 }) + line(xa - 4, yS - 6, xb + 4, yS - 10, { w: 1 }); fName = 'pile below the depth';
+    } else {
+      const inf = D.raft ? Math.min(D.raft.infillMin, 1.25) : 0.5;
+      g += rect(xa, yG + 0.3 * kv, X(xmax) - xa, inf * kv, { fill: '#d8d2c3', stroke: MUTE, w: 0.8, dash: '3 2' }) + rect(xa, yG - 4, X(xmax) - xa, 0.3 * kv + 4, { fill: conc, stroke: INK, w: 1 });
+      g += text(X(xmax) - 4, yG + (0.3 + inf / 2) * kv + 3, `granular infill ${r2(inf)} m`, { size: 9, anchor: 'end', color: MUTE }); fName = 'raft';
+    }
+    // the wall above, the heave precaution on the inside face
+    if (D.type !== 'raft') g += rect(xa + 0.1 * k, yG - 34, Math.max(6, (wF - 0.2) * k), 34, { fill: '#b9a28e', stroke: '#6d5a48', w: 1 }) + text(xb + 4, yG - 24, 'building', { size: 9, color: MUTE });
+    const hv = D.heave.needed && ((D.type === 'trench' || D.type === 'pier') && D.heave.dHeave > 1.5 + 1e-9);
+    if (hv) { g += rect(xb, yG + 2, 4, dF * kv - 2, { fill: '#f2b33d', stroke: '#a15c07', w: 0.8 }); if (D.type === 'pier') g += rect(xa - 4, yG + 0.45 * kv, 4, dF * kv - 0.45 * kv, { fill: '#f2b33d', stroke: '#a15c07', w: 0.8 }); }
+    // the depth needed at the foundation, and the foundation's depth
+    const dN = dAt(dist);
+    if (dN <= dmax) g += `<circle cx="${xa.toFixed(1)}" cy="${Y(dN).toFixed(1)}" r="3.5" fill="${BLUE}"/>`;
+    if (D.type === 'trench' || D.type === 'pier') {
+      const xd = xb + 12, right = X(xmax) - xd > 130;
+      g += line(xd, yG, xd, Y(dF), { w: 0.8 }) + line(xd - 4, Y(dF), xd + 4, Y(dF), { w: 0.8 });
+      g += text(right ? xd + 5 : xa - 6, Y(dF / 2) + 3, `${fName} ${r2(dF)} m${short ? `, needs ${r2(D.dReq)}` : ''}`, { size: 9.5, weight: 600, color: fc, anchor: right ? 'start' : 'end' });
+      if (short) g += line(xa - 6, Y(D.dReq), xb + 6, Y(D.dReq), { c: RED, w: 1.2, dash: '4 3' });
+    } else g += text(xb + 6, yG + 0.5 * kv + 14, fName === 'raft' ? 'raft' : `ground beam on piles anchored below the ${r2(D.dReq)} m depth`, { size: 9.5, weight: 600 });
+    // D above the ground, the zone below the section
+    g += line(xc, yG - 8, xa, yG - 8, { w: 0.8 }) + line(xa, yG - 12, xa, yG - 4, { w: 0.8 }) + text((xc + xa) / 2 + 6, yG - 12, `D ${r2(dist)} m`, { size: 9.5, anchor: 'middle' });
+    let yk = yS + 16;
+    if (t) { yk += 6; g += line(xc, yk, X(zone), yk, { c: BLUE, w: 1 }) + line(xc, yk - 4, xc, yk + 4, { c: BLUE, w: 0.8 }) + line(X(zone), yk - 4, X(zone), yk + 4, { c: BLUE, w: 0.8 }) + text((xc + X(zone)) / 2, yk - 4, `zone of influence ${D.ZONE[t.sp.wd]}H = ${r2(zone)} m${t.inZone ? ': the foundation is inside it' : ''}`, { size: 9.5, color: BLUE, anchor: 'middle' }); yk += 20; }
+    g += line(40, yk - 3, 60, yk - 3, { c: BLUE, w: 1.6, dash: '6 4' }) + text(66, yk, t ? `the depth needed against the distance (${D.soil.name.toLowerCase()} volume change potential${D.clim > 0 ? `, less ${r2(D.clim)} m for the climate` : ''}); ${r2(dN)} m at the foundation` : `${r2(s.need)} m for the shrub (Table 6)`, { size: 9.5 });
+    if (hv) { yk += 16; g += rect(40, yk - 8, 20, 6, { fill: '#f2b33d', stroke: '#a15c07', w: 0.8 }) + text(66, yk, `compressible material ${D.type === 'pier' ? 'on the pier’s faces' : 'on the inside face'} against heave (Table 8)`, { size: 9.5 }); }
+    return svg(g, Wd, yk + 8, `Section through ${pName} and the foundation`);
+  }
+  const blocks = D => [['Section', section(D)], ['Depth and distance', depthChart(D)], ['Plan', plan(D)]];
+  return { html: D => page(blocks(D)), report: D => sheet(blocks(D)), depthChart, plan, section };
 })();
 
 </script>

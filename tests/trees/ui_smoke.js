@@ -11,7 +11,9 @@ function page(store) {
 const w = page(), d = w.document, $ = id => d.getElementById(id), res = () => $('results').textContent, err = () => (($('results').querySelector('.err') || {}).textContent || '');
 const set = (id, v) => { const el = $(id); el.value = v; el.dispatchEvent(new w.Event('change', { bubbles: true })); };
 truth('page loads without script errors', w.errs.length === 0);
-truth('defaults: NHBC\'s example, two trees and a shrub, two drawings', d.querySelectorAll('#treeRows .row').length === 2 && d.querySelectorAll('#shrubRows .row').length === 1 && $('drawings').querySelectorAll('svg.dk').length === 2);
+truth('defaults: NHBC\'s example, two trees and a shrub, three drawings', d.querySelectorAll('#treeRows .row').length === 2 && d.querySelectorAll('#shrubRows .row').length === 1 && $('drawings').querySelectorAll('svg.dk').length === 3);
+const sec = $('drawings').querySelector('svg.dk').textContent;
+truth('the section: the poplar at D 10.00 m, its zone 1.25H = 31.25 m, trench fill to 2.28 m with compressible material', /T1 Lombardy poplar/.test(sec) && /D 10\.00 m/.test(sec) && /1\.25H = 31\.25 m: the foundation is inside it/.test(sec) && /trench fill 2\.28 m/.test(sec) && /compressible material on the inside face/.test(sec));
 truth('the species list: 68 from Table 3 and 4 not listed, in groups', d.querySelectorAll('#treeRows .row')[0].querySelectorAll('.sp option').length === 72 && d.querySelectorAll('#treeRows .row')[0].querySelectorAll('.sp optgroup').length === 6);
 $('calc').click();
 truth('checked: 2.28 m deep, the poplar governs', /PASS/.test(res()) && /2\.28 m deep/.test(res()) && /Lombardy poplar governs/.test(res()) && !err());
@@ -29,7 +31,7 @@ $('calc').click(); truth('raft: an engineer\'s design, the plan ratio checked', 
 set('type', 'trench'); $('nsOn').checked = true; $('nsOn').dispatchEvent(new w.Event('change', { bubbles: true }));
 $('calc').click(); truth('non-shrinkable soil over the clay checked', !d.querySelector('.g-ns').hidden && /non-shrinkable soil above/.test(res()));
 $('printBtn').click();
-truth('print: two drawings, the checks and tables', w.printed && $('report').querySelectorAll('svg').length === 2 && $('report').querySelectorAll('table.rt').length >= 2);
+truth('print: three drawings, the checks and tables', w.printed && $('report').querySelectorAll('svg').length === 3 && $('report').querySelectorAll('table.rt').length >= 2);
 const w2 = page(w.localStorage.getItem('et-trees-v1'));
 truth('inputs restored', w2.document.querySelectorAll('#treeRows .row').length === 3 && w2.document.getElementById('nsOn').checked);
 const w3 = page(), ev = (el, tp) => el.dispatchEvent(new w3.Event(tp, { bubbles: true }));

@@ -421,7 +421,8 @@ async function sweep(f, cases, expect) {
     ['high soil', w => set(w, 'vcp', 'high', 'change')], ['a climate reduction', w => set(w, 'clim', '0.2', 'change')],
     ['the poplar nearer', w => { const D = w.document.querySelector('#treeRows .row .D'); D.value = '6'; D.dispatchEvent(new w.Event('input', { bubbles: true })); }],
     ['a tree added', w => w.document.getElementById('addTree').click()], ['a shrub added', w => w.document.getElementById('addShrub').click()],
-  ], 2);
+    ['piers', w => set(w, 'type', 'pier', 'change')], ['piles', w => set(w, 'type', 'pile', 'change')], ['a raft', w => set(w, 'type', 'raft', 'change')],
+  ], 3);
   await sweep('Working Platforms.html', [
     ['a stiffer subgrade', w => set(w, 'cu', '40')], ['a heavier case 2', w => set(w, 'q2k', '260')], ['a geosynthetic', w => { const c = w.document.getElementById('rOn'); c.checked = true; c.dispatchEvent(new w.Event('change', { bubbles: true })); }],
     ['a granular subgrade', w => { set(w, 'sub', 'granular', 'change'); set(w, 'phiS', '33'); }], ['a proposed thickness', w => set(w, 'Dprop', '0.9')],
