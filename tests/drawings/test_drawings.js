@@ -1,6 +1,6 @@
 // Drawings on Composite Beam, Floor Vibration, Steel Member, Concrete Tie Force and RC Crack Width (group 1) and on Steel Beam
 // Torsion, Beam Web Openings, Steel Frame Design, Sheet Pile Wall, the RC Section Toolkit tabs, RC Column, Hollowcore Support
-// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages to Ground-Bearing Slab (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
+// Beam, Steel Masonry Support, Steel Member Fire Design and the later pages to Glulam Beams (group 2): present on load, redrawn as the inputs change, and free of NaN / undefined / Infinity across the input variations each tool offers.
 //   NODE_PATH=<jsdom>/node_modules node tests/drawings/test_drawings.js
 const fs = require('fs'), path = require('path'), { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '../..');
@@ -434,5 +434,14 @@ async function sweep(f, cases, expect) {
     ['four loads at a free corner', w => { const r = w.document.querySelector('#ptRows .row'); r.querySelector('.loc').value = 'corner'; r.querySelector('.n').value = '4'; r.querySelector('.sy').value = '1100'; r.querySelector('.n').dispatchEvent(new w.Event('change', { bubbles: true })); }],
     ['plain concrete', w => set(w, 'reo', 'plain', 'change')],
   ], 2);
+  const shp = (w, s) => w.document.querySelector(`#shapes button[data-s="${s}"]`).click();
+  await sweep('Glulam Beams.html', [
+    ['a deeper apex', w => set(w, 'hap', '1500')], ['single tapered', w => shp(w, 'single')], ['a shallower deep end', w => set(w, 'h1', '900')],
+    ['curved', w => shp(w, 'curved')], ['a tighter curve, thinner laminations', w => { set(w, 'rin', '8'); set(w, 't', '20'); }], ['steeper legs', w => set(w, 'beta', '12')],
+    ['pitched cambered', w => { set(w, 'beta', '5'); shp(w, 'pitched'); }], ['a steeper roof', w => set(w, 'alpha', '15')], ['a declared glulam product', w => { set(w, 'fam', 'other', 'change'); set(w, 'pkind', 'glulam', 'change'); }],
+    ['double tapered, GL32h', w => { set(w, 'fam', 'glulam', 'change'); set(w, 'cls', 'GL32h', 'change'); shp(w, 'double'); }],
+    ['a point load at the apex', w => row(w, 'Q', 'point', 20, 8)], ['wind uplift that governs', w => row(w, 'W', 'area', 3, null, null, true)], ['held only at the ends', w => set(w, 'rmode', 'ends', 'change')],
+    ['no self-weight', w => tick(w, 'sw', false)], ['a long span', w => set(w, 'L', '24')],
+  ], 3);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
