@@ -60,6 +60,9 @@ const M1 = 1.22 * (4280 + 90 * 1.5), M2 = 1.06 * (4280 + 90 * 1.5);
   // factors R_d is 12499 kN, R_d/F_Ed 5.62 against the book's 5.4: not critical either way
   const book = R.Ap * (30 * R.Nq * 1.08 * 0.9 + 0.5 * 20 * R.B * R.Ng * 0.96 * 0.85);
   truth('C761 Ex 2A comb 1 case 2: the book\'s 12018 kN reproduced with case 1\'s factors; our own 4% higher (5.6 against 5.4)', rel(book, 12018, 0.005) && rel(R.R, 12499, 0.002) && R.R / V > 5.4, [book, R.R]);
+  // Example 2A puts 1.1 on the base here; Examples 1, 2B and 3 put 1.35 on the base's own weight (EN 1990), as the engine does
+  const sup = FR.comb[0].worst.tag === 'inferior' && near(1.1 * 726 + 1.35 * 1296, 2548.2, 0.05);
+  truth('the engine\'s superior case: 1.1 × 726 + 1.35 × 1296 = 2548 kN (as Ex 2B, 1 and 3); the inferior case still governs', sup);
 }
 // ---- Example 2A: combination 2 (γ_φ 1.25, F_Ed 2022 kN, M_Ed 4537 + 95 × 1.5 = 4680 kNm), the jib at 11° ----
 {
@@ -133,6 +136,8 @@ const D2B = C.design(EX2B), FB = D2B.out.find(R => R.r.k === 'oosFront'), G2B = 
   truth('C761 Ex 2B comb 2 at 18°: 4.57 × 1.61 m (1.60), R/A′ 483 kPa, F_Ed/A′ 275 (277), 1.76 (1.74)', near(A2.Lp, 4.57, 0.005) && near(A2.Bp, 1.61, 0.015) && near(R2.q, 483, 0.5) && near(2022 / R2.Ap, 275, 2.5) && near(R2.R / 2022, 1.76, 0.02), [A2.Bp, R2.q, R2.R / 2022]);
   const W2 = FB.comb[1].worst;
   truth('C761 Ex 2B comb 2: swept, the worst at 17°–18° (flat), 1.74', W2.beta >= 17 && W2.beta <= 18 && near(1 / W2.util, 1.742, 0.002), [W2.beta, 1 / W2.util]);
+  const V2 = 1.1 * 726 + 1.35 * 1296, A3 = C.effArea(6, M1 / V2, 21), R3 = C.annexD(G2B, { gphi: 1, gcu: 1 }, A3.Bp, A3.Lp, V2, 109.8, A3.theta);
+  truth('C761 Ex 2B comb 1 case 2 at 21°: F_Ed 2548 kN (1.35 on the base), 4.48 × 2.05 m, R/A′ 686, F_Ed/A′ 277, 2.48', near(A3.Lp, 4.48, 0.006) && near(A3.Bp, 2.05, 0.005) && near(R3.q, 686, 0.5) && near(V2 / R3.Ap, 277, 0.5) && near(R3.R / V2, 2.48, 0.005), [A3.Bp, A3.Lp, R3.q, R3.R / V2]);
   truth('C761 Ex 2B sliding comb 1: c_u A′ = 120 × 5.35 × 0.71 = 456 kN against 110 kN', near(120 * 5.35 * 0.71, 456, 0.5) && near(FB.comb[0].slide.Rs, 457, 2) && near(FB.comb[0].slide.util, 109.8 / FB.comb[0].slide.Rs, 1e-9), FB.comb[0].slide.Rs);
   truth('C761 Ex 2B sliding comb 2: (120/1.4) × 4.57 × 1.61 = 631 kN against 95 kN (the worst angle: 625)', near(120 / 1.4 * 4.57 * 1.61, 631, 0.5) && near(FB.comb[1].slide.Rs, 625, 3), FB.comb[1].slide.Rs);
   const T1 = C.torsion(1.77, 4.87, 383, 60), T2 = C.torsion(2.28, 5.21, 332, 52);
@@ -147,6 +152,47 @@ const D2B = C.design(EX2B), FB = D2B.out.find(R => R.r.k === 'oosFront'), G2B = 
   truth('C761 Ex 2B settlement at 45°: 2.91 m square ≈ a 3.3 m circle, 238 × 3.3 × π/4 × 0.75/60 000 = 8 mm', near(s45.d, 3.3, 0.02) && near(s45.s, 7.7, 0.05), [s45.d, s45.s]);
   truth('C761 Ex 2B settlement along an axis: 6 × 1.63 m ≈ a 3.5 m circle, 7 mm; 1 in 740, and 1 in 420 with the legs ±1 mm', near(s0.d, 3.53, 0.01) && near(s0.s, 7.16, 0.03) && near(5183.5 / s0.s, 724, 5) && near(1 / (s0.s / 5183.5 + 2 / 1980), 418, 3), [s0.d, s0.s]);
   truth('C761 Ex 2B: the engine finds the axis worse than the diagonal and over 1 in 500: refer to the crane maker (as the book)', FB.tilt.beta === 0 && FB.tilt.util > 1 && near(1 / FB.tilt.tilt, 418, 2), [FB.tilt.beta, 1 / FB.tilt.tilt]);
+}
+// ---- C761 Example 3: a 4.5 × 4.5 × 1.2 m cap on four 600 mm piles at 3.6 m ----
+// C25/30, bottom cover 75 and top 50 with H25 for the depths (1087.5 and 1112.5 mm, as the book) at the book's 1570 mm²/m,
+// legs at 1.98 m on 250 × 350 anchors (u_0 1200 mm: a 300 mm square), the first cross piece 215 mm down, the anchors 1135 mm
+// into the concrete; working pile capacities +1200 / −400 kN (Table E3.5)
+const EX3 = { type: 'piled', L: 4.5, h: 1.2, gc: 24, Gc: 724, ce: true, fck: 25, cB: 75, cT: 50, phiB: 25, sB: 1000 * Math.PI * 12.5 ** 2 / 1570, phiT: 25, sT: 1000 * Math.PI * 12.5 ** 2 / 1570, s: 1.98, a: 300, tc: 215, tp: 1135, tol: 1, tiltN: 500, phiP: 600, sp: 3.6, tolP: 75, Pcw: 1200, Ptw: 400, cases: CASES };
+const D3 = C.design(EX3), P3 = D3.piles, K3 = D3.cap, F3 = D3.out.find(R => R.r.k === 'oosFront');
+{
+  truth('C761 Ex 3: cap weight 4.5 × 4.5 × 1.2 × 24 = 583 kN; no EQU for a piled base', near(D3.Gb, 583.2, 1e-9) && D3.mode === 'piled' && !D3.checks.some(c => c.id === 'equ'));
+  truth('C761 Ex 3 spacing: ≥ 3φ = 1.8 m and the mast + leg + cage 1.98 + 0.30 + 0.45 = 2.73 m (book 2.78 with a 350 mm leg)', near(D3.checks.find(c => c.id === 'space').util, 2.73 / 3.6, 1e-9));
+  truth('C761 Ex 3 SLS: (726 + 583)/4 ± 4388/(3.6√2) = 327 ± 862: 1189 and −535 kN', near(F3.Mk, 4388, 1e-9) && near(F3.sls.Q, 862, 0.5) && near(P3.sls.max, 1189, 0.5) && near(P3.sls.min, -535, 0.5), [P3.sls.max, P3.sls.min]);
+  truth('C761 Ex 3 SLS shear: in service 255/(4 × 2.55) + 40/4 = 35 kN (more than the storm from the rear\'s 129/4 = 32)', near(P3.sls.sh, 35.0, 0.1) && /In service/.test(P3.sls.shR.r.name) && near(D3.out[1].sls.sh, 32.25, 1e-9));
+  truth('C761 Ex 3 movement: 1 in 500 less ±1 mm across 1.98√2 leaves 1 in 778; (3600√2)/778 = 6.5 mm, ± 3.25 mm for 862 kN', near(1 / D3.slope, 778, 1) && near(D3.mv, 6.55, 0.02) && near(D3.Qk, 862, 0.5), [1 / D3.slope, D3.mv]);
+  truth('C761 Ex 3 combination 1: (799 + 787)/4 + 5354/(3.6√2) = 1448 kN; (726 + 583)/4 − 5354/(3.6√2) = −724 kN', near(F3.uls[0].Md, 5354, 1) && near(P3.u1.max, 1448, 0.5) && near(P3.u1.min, -724, 0.5), [P3.u1.max, P3.u1.min]);
+  truth('C761 Ex 3 combination 2: (726 + 583)/4 ± 4651/(3.6√2) = 1241 and −586 kN', near(F3.uls[1].Md, 4651, 0.5) && near(P3.u2.max, 1241, 0.5) && near(P3.u2.min, -586, 0.5), [P3.u2.max, P3.u2.min]);
+  truth('C761 Ex 3 ULS shear: in service 383/(4 × 2.55) + 60/4 = 52.5 kN', near(P3.u1.sh, 52.6, 0.1));
+  truth('C761 Ex 3 legs: 799/4 + 5222/(1.98√2) = 2065, 726/4 − 5222/(1.98√2) = −1683; along an axis 1518 and −1137 kN', near(F3.legs.Pleg, 2064.4, 0.2) && near(F3.legs.Pt1, 1683.3, 0.2) && near(F3.legs.PlegO, 1518.2, 0.2) && near(F3.legs.Pt2, 1137.1, 0.2));
+  truth('C761 Ex 3 orthogonal piles: (799 + 787)/4 + 5354/7.2 = 1140, and −416 kN (Table E3.8)', near(K3.Po, 1140, 0.5) && near(K3.Pot, -416, 0.5));
+  truth('C761 Ex 3 sagging: 1140 × (0.81 + 0.075) − 87.5 × 1.26²/2 = 939 kNm on a 1.35 m beam', near(K3.bo, 1.35, 1e-9) && near(K3.lo, 0.885, 1e-9) && near(K3.g1 * 2.25, 87.5, 0.05) && near(K3.MsO, 939, 0.5), K3.MsO);
+  truth('C761 Ex 3 hogging: 416 × 0.885 + 52.5 × 1.26²/2 = 410 kNm', near(K3.g1 * 1.35, 52.5, 0.05) && near(K3.MhO, 410, 0.5), K3.MhO);
+  truth('C761 Ex 3 bottom steel: 939 × 10⁶/(435 × 1033) = 2091 mm² on 1.35 m = 1549 mm²/m', near(K3.RsO.As, 2091, 3) && near(K3.AbO, 1549, 2), [K3.RsO.As, K3.AbO]);
+  truth('C761 Ex 3 top: 410 × 10⁶/(435 × 1057) = 892 mm², 661 mm²/m; the minimum (1480) governs', near(K3.RhO.As, 892, 2) && near(K3.AtO, 661, 1) && near(D3.AsMinT, 1484, 4), [K3.RhO.As, D3.AsMinT]);
+  truth('C761 Ex 3 minimum bottom: 0.26 × 2.56/500 × 1000 × 1087 = 1447 mm²/m', near(D3.AsMinB, 1450, 4), D3.AsMinB);
+  truth('C761 Ex 3 diagonal: X = (4.5 − 1.98)/2 × √2 = 1.78 m, the corner 1.35 × 24 × 1.2 × 1.78² = 123 kN', near(K3.Xd, 1.782, 0.001) && near(K3.Wtri, 123, 0.5));
+  truth('C761 Ex 3 diagonal sagging: (0.81√2 + 0.075) × 1448 − 123 × 1.78/3 = 1694 kNm; 3772 mm² on 1.8 m, 1482 mm²/m each way', near(K3.ld, 1.2205, 0.0005) && near(K3.MsD, 1694, 0.5) && near(K3.RsD.As, 3772, 4) && near(K3.AbD, 1482, 2), [K3.MsD, K3.RsD.As, K3.AbD]);
+  truth('C761 Ex 3 diagonal hogging: 884 + 73 = 957 kNm, not critical', near(K3.MhD, 957, 0.5) && K3.AtD < 1570);
+  truth('C761 Ex 3 diagonal shear: 3563 mm wide, V_Ed = 1448 − 123 = 1325 kN', near(K3.bv, 3.563, 0.001) && near(K3.VsD, 1325, 0.5));
+  truth('C761 Ex 3: a_v = 5091/2 − 1400 − 300 + 120 + 75 = 1040 mm, 2d/a_v = 2 × 872/1040 = 1.68', near(K3.avD, 1040.5, 0.5) && near(K3.dl, 872.5, 1e-9) && near(K3.enhD, 1.68, 0.005));
+  truth('C761 Ex 3: ρ = 1570√2/(1000 × 1087) = 0.0020, v_Rd,c = v_min 0.30 N/mm²', near(K3.vRdcD, 0.299, 0.001));
+  // the book's V_Rd = 3 × 600 × 1.68 × 0.30 + (3563 − 1800) × 0.30 = 1435 leaves out d: × d (1087 mm) gives 1555 kN
+  truth('C761 Ex 3: V_Rd = (1800 × 1.68 + 1763) × 0.30 × d = 1555 kN (the book prints 1435, without d); > 1325', near(K3.VRdD, (1800 * K3.enhD + (3563.6 - 1800)) * K3.vRdcD * 1087.5 / 1000, 1) && near(K3.VRdD, 1555, 2) && near((3 * 600 * 1.68 * 0.30 + (3563 - 1800) * 0.30), 1436, 1), K3.VRdD);
+  truth('C761 Ex 3 beside the pile: [√2 × 450 + 300 − 120 − 75] × 2 = 1483 mm, 4 v_Rd,c b d = 1935 kN (v 0.299: 1928) > 1448', near(K3.bP, 1.483, 0.001) && near(K3.VRdP, 4 * K3.vRdcD * 1483 * 1.0875, 2) && near(1.2 * 1483 * 1087 / 1000, 1934, 1));
+  truth('C761 Ex 3 pile face: u_0 = min(π600, π600/4 + 2(450 − 53)) = 1265 mm, v_Ed 1.05 N/mm²', near(K3.u0P, 1265, 1) && near(K3.vE0P, 1.05, 0.005), [K3.u0P, K3.vE0P]);
+  truth('C761 Ex 3: v_Rd,max 0.5νf_cd (UK NA α_cc 1.0 for shear: 4.50; the book 3.82 with 0.85)', near(K3.vRdmax, 4.5, 0.001) && near(0.5 * 0.6 * 0.9 * 0.85 * 25 / 1.5, 3.825, 0.001));
+  truth('C761 Ex 3 at 2d: u_1 = π/2 (2 × 1087 + 300) + 2(450 − 53) = 4680 mm, 0.28 ≤ 0.30 N/mm²', near(K3.u1P, 4680, 3) && near(K3.vE1P, 0.284, 0.002) && K3.vE1P < K3.vRdcP, [K3.u1P, K3.vE1P]);
+  truth('C761 Ex 3 leg face: 2065 × 10³/(872 × 1200) = 1.97 N/mm²', near(K3.u0L, 1200, 1e-9) && near(K3.vE0L, 1.97, 0.005), K3.vE0L);
+  truth('C761 Ex 3 leg perimeters: the book at 845 mm from the leg, 2π × 845 = 5309 mm, 0.45 ≤ 0.6 N/mm² (its v_Rd,c without v_min); the engine with the foot and v_min passes', near(2 * Math.PI * 845, 5309, 1) && near(2064.4e3 / (5309 * 872), 0.446, 0.002) && near(0.12 * (1 + Math.sqrt(200 / 872)) * Math.cbrt(100 * 1570 / 872000 * 25) * 2 * 872 / 845, 0.605, 0.005) && K3.punch.util < 1);
+  truth('C761 Ex 3: the working tension 535 kN is over the permanent piles\' 400 kN (the book: add reinforcement, ask the piling contractor); compression 1189 ≤ 1200', near(D3.checks.find(c => c.id === 'pt').util, 535 / 400, 0.002) && near(D3.checks.find(c => c.id === 'pc').util, 1189 / 1200, 0.002));
+  truth('C761 Ex 3 final cap (H20@200 both faces): every cap check passes', ['bot', 'top', 'min', 'shearD', 'shearP', 'shearO', 'punchP0', 'punchP1', 'punchL0', 'punch', 'lift'].every(id => D3.checks.find(c => c.id === id).util <= 1), D3.checks.filter(c => c.util > 1).map(c => c.id));
+  truth('refuses: piles inside the legs', throws(() => C.design({ ...EX3, sp: 2.0 }), /outside the mast legs/));
+  truth('refuses: piles that do not fit on the cap', throws(() => C.design({ ...EX3, sp: 4.3 }), /do not fit on the cap/));
 }
 // ---- C761 Example 1: a single pad of the cruciform, undrained ----
 const EX1 = { L: 1.75, h: 0.9, gc: 24, Gc: 0, ground: 'undrained', gs: 20, cu: 100, Df: 0.45, fck: 30, cB: 50, cT: 50, phiB: 16, sB: 200, phiT: 12, sT: 200, s: 0.8, a: 200, tp: 600, cases: [{ k: 'ins', M: 0, H: 29.0, F: 500, T: 0 }] };
@@ -184,7 +230,7 @@ truth('refuses: legs that do not fit', throws(() => C.design({ ...EX2A, s: 6 }),
 truth('refuses: undrained without c_u', throws(() => C.design({ ...EX1, cu: 0 }), /c_u,k/));
 truth('refuses: no F', throws(() => C.design({ ...EX2A, cases: [{ k: 'ins', M: 100, H: 1 }] }), /F/));
 truth('refuses: the compression going in below the bottom steel', throws(() => C.design({ ...EX2A, tc: 1450 }), /below the bottom steel/));
-truth('refuses: the foot plate below the bottom steel', throws(() => C.design({ ...EX2A, tp: 1480 }), /foot plate is below/));
+truth('refuses: the foot plate below the base', throws(() => C.design({ ...EX2A, tp: 1500 }), /foot plate is below the base/));
 truth('refuses: ν over 0.5', throws(() => C.design({ ...EX2A, nu: 0.6 }), /Poisson/));
 truth('no E: no settlement check', !C.design({ ...EX2A, E: 0 }).checks.some(c => c.id === 'tilt'));
 

@@ -19,6 +19,11 @@ set('E', ''); $('calc').click(); truth('no E: no settlement check, overturning g
 set('E', '100'); set('qpBasis', 'gross'); $('calc').click(); truth('presumed bearing gross', /characteristic, gross/.test(res()) && !/overburden =/.test(res()));
 set('qpBasis', 'net'); set('tc', '1400'); $('calc').click(); truth('the compression going in below the bottom steel is refused', /below the bottom steel/.test(err()));
 set('tc', '235');
+set('type', 'piled'); truth('four piles: the pile card shown, the ground hidden', !d.querySelector('.g-pile').hidden && d.querySelector('.g-grav').hidden);
+set('Ptw', '400'); $('calc').click();
+truth('piled: the pile designer\'s table, pile and leg loads, no EQU, the cap checks', !err() && $('results').querySelectorAll('table.ptab tbody tr').length === 4 && /For the pile designer/.test(res()) && !/Overturning/.test(res()) && /Punching 2d from the corner pile/.test(res()) && /Pile tension, working load/.test(res()) && $('drawings').querySelectorAll('svg.dk').length === 2 && /jib on the diagonal/.test($('drawings').textContent));
+set('sp', '2'); $('calc').click(); truth('piled: piles inside the legs refused', /outside the mast legs/.test(err()));
+set('sp', '3.6'); set('Ptw', ''); set('type', 'gravity');
 set('L', '5'); $('calc').click(); truth('a 5 m base overturns', /FAIL/.test(res()) && /Overturning/.test(res()));
 set('L', '6');
 $('dyn').checked = true; $('dyn').dispatchEvent(new w.Event('change', { bubbles: true })); $('calc').click(); truth('loads with dynamic effects: Table A3.3', /Table A3\.3/.test(res()));

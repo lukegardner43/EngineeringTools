@@ -415,7 +415,7 @@ async function sweep(f, cases, expect) {
   ], 2);
   await sweep('Tower Crane Base.html', [
     ['a bigger base', w => set(w, 'L', '6.5')], ['a thicker base', w => set(w, 'h', '1.6')], ['clay', w => { set(w, 'ground', 'undrained', 'change'); set(w, 'cu', '120'); }],
-    ['a heavier load case added', w => { w.document.getElementById('addCase').click(); const r = [...w.document.querySelectorAll('#caseRows .row')].pop(), M = r.querySelector('.M'); M.value = '4200'; M.dispatchEvent(new w.Event('input', { bubbles: true })); }], ['wider legs', w => set(w, 's', '2.5')],
+    ['a heavier load case added', w => { w.document.getElementById('addCase').click(); const r = [...w.document.querySelectorAll('#caseRows .row')].pop(), M = r.querySelector('.M'); M.value = '4200'; M.dispatchEvent(new w.Event('input', { bubbles: true })); }], ['wider legs', w => set(w, 's', '2.5')], ['four piles', w => set(w, 'type', 'piled', 'change')],
   ], 2);
   console.log(`\n${pass}/${pass + fail} drawing checks passed`); process.exit(fail ? 1 : 0);
 })();
