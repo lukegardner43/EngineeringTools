@@ -1,4 +1,4 @@
-// Glulam Beams: P&K example 6.7.3 (a single tapered GL28h beam, 150 × 320–750 mm over 9 m, braced at 3 m) and 6.7.4 (a
+// Glulam Beams: P&K example 6.7.1 (a straight GL24h beam, 115 × 560 mm over 10.5 m), 6.7.3 (a single tapered GL28h beam, 150 × 320–750 mm over 9 m, braced at 3 m) and 6.7.4 (a
 // curved GL32h beam, 175 × 960 mm over 18 m, β 9°, r_in 18 m, 30 mm laminations); a double tapered and a pitched cambered
 // beam against hand calculation (EC5 6.4.2, 6.4.3 and P&K Table 6.6); the profiles; the self-weight; input errors.
 // The book (2007) predates EN 1995-1-1 A1 (k_cr 0.67 in shear, l_ef and k_c,90 1.75 in bearing for glulam) and quotes the
@@ -20,6 +20,38 @@ const comb = (D, nm) => D.combos.find(x => x.c.name === nm);
   truth('a declared glulam product: glulam, softwood', P.kind === 'glulam' && P.softwood); near('… γ_M 1.25 by default', P.gM, 1.25); near('… k_cr 0.67 by default', P.kcr, 0.67); }
 { const P = EC5.material({ family: 'other', props: { name: 'LVL', fmk: 44, fvk: 4.1, fc90k: 6, E0mean: 13800, E005: 11600, Gmean: 600, G005: 400, rhomean: 510 } });
   truth('a declared product otherwise: LVL', P.kind === 'lvl' && !P.softwood); near('… γ_M 1.2', P.gM, 1.2); near('… k_cr 1', P.kcr, 1); }
+
+// ---------- P&K 6.7.1: straight beam ----------
+{ // the book's GL24h (EN 1194: f_v,k 2.7, f_c,90,k 2.7, E 11 600, G 720, ρ_m 1.2 × 380 = 456), the top held by the decking,
+  // G 1.4 kN/m + the self-weight, Q 2.75 kN/m roof (short term), bearings 155 mm
+  const GL24 = { family: 'other', props: { name: 'GL24h (EN 1194)', kind: 'glulam', fmk: 24, ft90k: 0.35, fc0k: 24, fc90k: 2.7, fvk: 2.7, E0mean: 11600, E005: 9400, Gmean: 720, G005: 600, rhomean: 456, gM: 1.25 } };
+  const base = { mat: GL24, sc: 1, shape: 'straight', b: 115, L: 10.5, h: 560, lb: 155, sw: true, cat: 'H', loads: [{ case: 'G', form: 'line', w: 1.4 }, { case: 'Q', form: 'line', w: 2.75 }] };
+  const D = G.design({ ...base, restraint: { mode: 'top' } }), B = D.govern.B.bend, C = comb(D, '1.35G + 1.5Q');
+  near('6.7.1 self-weight 0.29 kN/m (b h g ρ_m)', D.defs.G.E.RA * 2 / 10500 - 1.4, 0.288, 0.01);
+  near('6.7.1 W_y 6.01 × 10⁶ mm³', B.W / 1e6, 6.01, BOOK); near('6.7.1 M_d 88.25 kNm', Math.abs(B.m) / 1e6, 88.25, BOOK);
+  near('6.7.1 σ_m,d 14.68 N/mm²', B.sig, 14.68, BOOK); near('6.7.1 at mid-span', B.x, 5250, 1e-9);
+  near('6.7.1 k_h (600/560)^0.1 (the book prints 1.1 and f_m,d 19.01)', D.kh, (600 / 560) ** 0.1, 1e-9);
+  near('6.7.1 f_m,d = 0.9 k_h 24/1.25', C.fmd, 0.9 * (600 / 560) ** 0.1 * 24 / 1.25, 1e-9);
+  near('6.7.1 V_d 33.62 kN', D.govern.S.shear.V / 1000, 33.62, BOOK); near('6.7.1 f_v,d 1.94 N/mm²', C.fvd, 1.944, BOOK);
+  near('6.7.1 τ_d: the book’s 0.78 N/mm² over k_cr 0.67 (A1)', D.govern.S.shear.tau, 0.78 / 0.67, 0.01);
+  near('6.7.1 bearing (A1: l_ef 155 + 30, k_c,90 1.75; the book 1.89 on 155 mm)', ck(D, 'bearing').util, 33.62e3 / (115 * 185) / (1.75 * 1.944), BOOK);
+  near('6.7.1 u_inst,G 14.29 mm (bending and shear)', D.D.uG, 14.29, BOOK); near('6.7.1 u_inst,Q 23.27 mm', D.D.uQ.Q, 23.27, BOOK);
+  near('6.7.1 u_inst 37.56 mm', D.D.inst, 37.56, BOOK); near('6.7.1 u_net,fin 46.13 mm', D.D.fin, 46.13, BOOK);
+  truth('6.7.1 both deflections over L/300 and L/250, as the book finds', ck(D, 'winst').util > 1 && ck(D, 'wfin').util > 1 && !D.AP);
+  const Dc = G.design({ ...base, restraint: { mode: 'top' }, defl: { inst: 300, fin: 250, camber: 10 } });
+  near('6.7.1 a 10 mm pre-camber (the book’s choice) brings w_net,fin to 36.13 mm ≤ 42', Dc.D.net, 36.13, BOOK);
+  truth('6.7.1 … w_inst still over L/300: EC5 measures it from the cambered line (Fig. 7.1); the book also nets the camber off it', ck(Dc, 'winst').util > 1 && ck(Dc, 'wfin').util < 1);
+  // held only at the supports: l_ef = 0.9L + 2h with the loads on the top edge (Table 6.1), σ_m,crit by (6.31) for glulam:
+  // π √(E_0,05 I_z G_0,05 I_tor)/(l_ef W_y), I_tor = h b³/3 (1 − 0.63 b/h)
+  const De = G.design({ ...base, restraint: { mode: 'ends' } }), lef = 0.9 * 10500 + 2 * 560;
+  const scr = Math.PI * Math.sqrt(9400 * 560 * 115 ** 3 / 12 * 600 * 560 * 115 ** 3 / 3 * (1 - 0.63 * 115 / 560)) / (lef * 115 * 560 * 560 / 6);
+  near('held at the supports: σ_m,crit (6.31) with l_ef = 0.9L + 2h', De.ltb.top.scrit, scr, 1e-9); near('… 15.55 N/mm²', scr, 15.554, 1e-4);
+  const lam = Math.sqrt(24 / scr), kc = lam <= 0.75 ? 1 : lam <= 1.4 ? 1.56 - 0.75 * lam : 1 / lam ** 2;
+  near('held at the supports: k_crit (6.34)', De.ltb.top.k, kc, 1e-9); near('… on the bending capacity', De.govern.B.bend.cap, kc * C.fmd, 1e-9);
+  truth('held at the supports: the step names 0.9L + 2h', De.steps.some(s => /0\.9L \+ 2h = 10\.57 m/.test(s.text)));
+  truth('a straight LVL beam is allowed', G.design({ ...base, mat: { family: 'other', props: { name: 'LVL', fmk: 44, fvk: 4.1, fc90k: 6, E0mean: 13800, E005: 11600, Gmean: 600, G005: 400, rhomean: 510 } }, restraint: { mode: 'top' } }).utilMax > 0);
+  throws('straight: the depth needed', () => G.design({ ...base, h: 0, restraint: { mode: 'top' } }), /depth h/);
+}
 
 // ---------- P&K 6.7.3: single tapered beam ----------
 const GL28 = { family: 'other', props: { name: 'GL28h (EN 1194)', kind: 'glulam', fmk: 28, ft90k: 0.45, fc0k: 26.5, fc90k: 3.0, fvk: 3.2, E0mean: 12600, E005: 10200, Gmean: 780, G005: 637.5, rhomean: 492, gM: 1.25 } };

@@ -32,6 +32,11 @@ shape('curved'); truth('curved: h, β, r_in and t shown, h_s hidden', shown('h')
 $('calc').click(); truth('curved: k_r and the horizontal movement warning', /Curved beam/.test(res()) && /k_?r/.test(res().replace(/\s/g, '')) && /horizontal movement/.test(res()));
 shape('pitched'); truth('pitched cambered: α_ap and the soffit slope', shown('alpha') && shown('beta') && /Soffit slope/.test(d.querySelector('.betaL').textContent));
 $('calc').click(); truth('pitched cambered: k_dis 1.7, h_ap from the geometry', /Pitched cambered/.test(res()) && /k_?dis = 1\.7/.test(res().replace(/\s/g, ' ')) && /hap1368/.test(res().replace(/\s/g, '')));
+shape('straight'); truth('straight: only h shown', shown('h') && !shown('hs') && !shown('hap') && !shown('beta') && !shown('rin') && /Constant depth h/.test($('shapeHelp').textContent));
+$('calc').click(); truth('straight: bending, shear, bearing and deflection; no apex', /Straight beam/.test(res()) && !/Bending in the apex zone/.test(res()) && /Bearing at the supports/.test(res()) && !$('results').querySelector('.err'));
+truth('straight: the elevation with h', $('drawings').querySelectorAll('svg').length === 3 && /h 1100/.test($('drawings').textContent.replace(/[_{}]/g, '')));
+set('rmode', 'ends'); $('calc').click(); truth('straight, held at the supports: l_ef = 0.9L + 2h', /0\.9L \+ 2h/.test(res())); set('rmode', 'lef');
+shape('pitched');
 // materials
 set('fam', 'other'); truth('product: its values shown, class hidden', shown('pfm') && !shown('cls'));
 $('calc').click(); truth('an LVL product refused for a pitched cambered beam', /glued laminated timber/.test($('results').querySelector('.err').textContent));

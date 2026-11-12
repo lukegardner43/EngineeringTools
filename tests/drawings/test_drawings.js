@@ -438,6 +438,7 @@ async function sweep(f, cases, expect) {
   ], 2);
   const shp = (w, s) => w.document.querySelector(`#shapes button[data-s="${s}"]`).click();
   await sweep('Glulam Beams.html', [
+    ['straight', w => shp(w, 'straight')], ['a shallower straight beam', w => set(w, 'h', '720')], ['double tapered again', w => shp(w, 'double')],
     ['a deeper apex', w => set(w, 'hap', '1500')], ['single tapered', w => shp(w, 'single')], ['a shallower deep end', w => set(w, 'h1', '900')],
     ['curved', w => shp(w, 'curved')], ['a tighter curve, thinner laminations', w => { set(w, 'rin', '8'); set(w, 't', '20'); }], ['steeper legs', w => set(w, 'beta', '12')],
     ['pitched cambered', w => { set(w, 'beta', '5'); shp(w, 'pitched'); }], ['a steeper roof', w => set(w, 'alpha', '15')], ['a declared glulam product', w => { set(w, 'fam', 'other', 'change'); set(w, 'pkind', 'glulam', 'change'); }],
