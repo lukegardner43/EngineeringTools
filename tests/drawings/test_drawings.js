@@ -382,7 +382,7 @@ async function sweep(f, cases, expect) {
     ['masonry', w => wset(w, 0, 'type', 'masonry')], ['given k', w => wset(w, 1, 'type', 'k')], ['a wall moved', w => wset(w, 5, 'at', '12')], ['a wall removed', w => wrow(w, 4).querySelector('.xbtn').click()],
     ['walls along Y only (Y load)', w => { set(w, 'Fx', '0'); [0, 1, 2, 3, 4].forEach(i => { if (wrow(w, i)) wset(w, i, 'dir', 'y'); }); }], ['racking strength', w => { [0, 1, 2, 3, 4].forEach(i => { if (wrow(w, i)) wset(w, i, 'FRd', '20'); }); set(w, 'basis', 'strength', 'change'); }],
   ], 2);
-  const tset = (w, i, cls, v) => { const e = w.document.querySelectorAll('#tdRows tr')[i].querySelector('.' + cls); e.value = v; e.dispatchEvent(new w.Event('input', { bubbles: true })); };
+  const tset = (w, i, cls, v) => { const e = w.document.querySelectorAll('#tdRows tr:not(.trow)')[i].querySelector('.' + cls); e.value = v; e.dispatchEvent(new w.Event('input', { bubbles: true })); };
   await sweep('Load Take-down.html', [
     ['a bigger roof area', w => tset(w, 0, 'A', '6')], ['a point load on a floor', w => tset(w, 1, 'pD', '12')], ['a sum in a cell', w => tset(w, 3, 'aD', '0.215*20')], ['a footing size', w => set(w, 'qa', '100')],
     ['column', w => { set(w, 'type', 'column', 'change'); tset(w, 0, 'A', '20'); tset(w, 1, 'A', '20'); tset(w, 2, 'A', '20'); set(w, 'qa', '150'); }],
@@ -391,9 +391,11 @@ async function sweep(f, cases, expect) {
     ['hip, half to the plates', w => set(w, 'hF', '0.5')], ['a row added', w => { w.document.getElementById('addRow').click(); tset(w, 4, 'pD', '20'); }], ['a row removed', w => w.document.querySelectorAll('#tdRows .xbtn')[3].click()],
     ['a beam bearing, drawn as a point load', w => { w.document.getElementById('addRow').click(); tset(w, 4, 'name', 'Beam B2'); tset(w, 4, 'pD', '12'); }],
     ['a row typed as another load', w => { const k = w.document.querySelectorAll('#tdRows .kind')[4]; k.value = 'other'; k.dispatchEvent(new w.Event('change', { bubbles: true })); }],
-    ['a transfer beam above', w => { const c = w.document.getElementById('tAOn'); c.checked = true; c.dispatchEvent(new w.Event('change', { bubbles: true })); }], ['… at the top, at its right end', w => { set(w, 'tAAt', '-1', 'change'); set(w, 'tAEnd', 'right', 'change'); }],
-    ['a transfer beam below the wall', w => { const c = w.document.getElementById('tBOn'); c.checked = true; c.dispatchEvent(new w.Event('change', { bubbles: true })); set(w, 'tBa', '1'); set(w, 'tBb', '5'); }],
-    ['… a column on it, with a load beside', w => { set(w, 'type', 'column', 'change'); set(w, 'tBa', '3'); w.document.getElementById('tBAdd').click(); const r = w.document.querySelector('#tBLoads tr'); r.querySelector('.a').value = '6'; const e = r.querySelector('.DL'); e.value = '30'; e.dispatchEvent(new w.Event('input', { bubbles: true })); }],
+    ['a transfer beam under a floor', w => w.document.getElementById('trAdd').click()],
+    ['… the column above stepping back onto it, down the right support', w => { set(w, 'type', 'column', 'change'); const t = w.document.querySelector('#trList .trb'), sv = (c, v) => { const e = t.querySelector('.' + c); e.value = v; e.dispatchEvent(new w.Event('change', { bubbles: true })); }; sv('follow', 'right'); sv('a', '1.5'); }],
+    ['… carrying straight on, the beam framing in', w => { const e = w.document.querySelector('#trList .on'); e.value = 'support'; e.dispatchEvent(new w.Event('change', { bubbles: true })); }],
+    ['… a second beam, a cantilever', w => { w.document.getElementById('trAdd').click(); const t = w.document.querySelectorAll('#trList .trb')[1], sv = (c, v) => { const e = t.querySelector('.' + c); e.value = v; e.dispatchEvent(new w.Event('change', { bubbles: true })); }; sv('after', '4'); sv('a', '8'); }],
+    ['… stopping on the beam', w => { const e = w.document.querySelectorAll('#trList .follow')[1]; e.value = 'none'; e.dispatchEvent(new w.Event('change', { bubbles: true })); }],
   ], 1);
   await sweep('Rolling Load Analysis.html', [
     ['longer span', w => { const e = w.document.querySelector('#spanRows .L'); e.value = '12'; e.dispatchEvent(new w.Event('input', { bubbles: true })); }],

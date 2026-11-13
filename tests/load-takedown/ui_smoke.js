@@ -11,7 +11,7 @@ function page(store) {
 const w = page(), d = w.document, $ = id => d.getElementById(id), res = () => $('results').textContent;
 const fire = (el, tp) => el.dispatchEvent(new w.Event(tp, { bubbles: true }));
 const set = (id, v) => { const el = $(id); if (el.type === 'checkbox') el.checked = v; else el.value = v; fire(el, 'change'); };
-const rows = () => [...d.querySelectorAll('#tdRows tr')];
+const rows = () => [...d.querySelectorAll('#tdRows tr:not(.trow)')];
 const cell = (i, k, v) => { const el = rows()[i].querySelector('.' + k); el.value = v; fire(el, 'input'); return el; };
 const shown = el => !el.closest('.hidden');
 const err = () => ($('results').querySelector('.err') || {}).textContent || '';
@@ -59,22 +59,30 @@ $('addRow').click(); cell(5, 'name', 'Beam B4'); cell(5, 'pD', '15'); truth('a r
 const ks = rows()[5].querySelector('.kind'); ks.value = 'other'; fire(ks, 'change'); cell(5, 'name', 'Beam B4 bearing'); truth('a type chosen is kept when the name changes', ks.value === 'other');
 $('calc').click(); truth('drawn by type: the point load and the other load captioned', /other load/.test($('drawings').textContent) && /Other load/.test(d.querySelector('#results table.t').textContent));
 rows()[5].querySelector('.xbtn').click();
-// transfer beams
-set('tAOn', true); truth('above: its inputs, one load on it, a footer row for its reaction', shown($('tAL')) && d.querySelectorAll('#tALoads tr').length === 1 && shown(d.querySelector('.ta-row')) && $('tAAt').options.length === 6);
-truth('… its reaction (40 × 4/6 + 1 × 3 = 29.67 kN, over 1 m of wall) in the footer and the sums at once', $('taDL').textContent === '29.67' && $('sDL').textContent === (4.95 + 35 + 29.67).toFixed(2));
-set('tAAt', '-1'); set('tASpread', '0.5'); truth('… at the top, spread over 0.5 m: 59.33 kN/m', $('taDL').textContent === '59.33' && /at the top/.test($('taLab').textContent));
-$('calc').click(); truth('… calculated: its drawing with the column stepping on it, the table and the step', /Transfer beam above/.test(res()) && /its other support/.test($('drawings').textContent) && /Its reaction on this wall/.test(res()) && /Transfer above/.test(res()));
-set('tAOn', false); set('tBOn', true); set('tBa', '1'); set('tBb', '5');
-$('tBAdd').click(); const lb = d.querySelectorAll('#tBLoads tr')[0]; lb.querySelector('.a').value = '7'; lb.querySelector('.DL').value = '20'; fire(lb.querySelector('.DL'), 'input');
+// transfer beams, at any level
+$('trAdd').click();
+const tb = () => [...d.querySelectorAll('#trList .trb')], tq = (i, c) => tb()[i].querySelector('.' + c), tv = (i, c, v) => { const e = tq(i, c); e.value = v; fire(e, 'change'); };
+truth('a transfer beam added: under First floor, the wall above standing on it from 2 m (to b), a line in the table', tb().length === 1 && tq(0, 'after').options.length === 6 && tq(0, 'after').selectedOptions[0].textContent === 'Under First floor' && shown(tq(0, 'a')) && shown(tq(0, 'b')) && d.querySelectorAll('#tdRows tr.trow').length === 1);
+truth('… carried on down the left support: (6 − 4)/6 × 4 m of wall = × 1.333 of 25.95, + 3 own, + the wall 14 = 51.60 at once', /× 1\.333/.test(d.querySelector('#tdRows tr.trow').textContent) && $('sDL').textContent === '51.60' && /Carried down to the base/.test($('sumLab').textContent), $('sDL').textContent);
+tv(0, 'follow', 'right'); tv(0, 'below', 'column'); truth('… down the right support, a column: the totals in kN, the spread hidden', / kN$/.test($('tULS').textContent) && !shown(tq(0, 'spread')));
 $('calc').click();
-truth('below: the beam, its supports and reactions, M and V, no footing', /transfer beam below/.test($('drawings').textContent) && /left support: ULS/.test($('drawings').textContent) && /Bending moment, ULS/.test(res()) && /stands on a transfer beam/.test(res()) && /M\s*Ed/.test(d.querySelector('#results .verdict').textContent));
-truth('… the reactions and design actions tabled', /Left support/.test(res()) && /Bending moment, largest/.test(res()));
-$('printBtn').click(); truth('… on the sheet: the transfer beams section and the result', /Transfer beams/.test($('report').textContent) && /Transfer beam below, bending moment and shear/.test($('report').textContent) && $('report').querySelectorAll('svg').length === 5);   // the load path, the beam, M, V and the hip
-set('tBb', '9'); $('calc').click(); truth('… a wall past the beam\'s end is reported', /run along the span/.test(err()));
-set('tBb', '5');
+truth('… calculated: the element steps to the support, the beam drawn, its own drawing, M and V', /Transfer beam 1, span 6\.00 m/.test($('drawings').textContent) && /carries on down the right support, a column/.test($('drawings').textContent) && /left support: ULS/.test($('drawings').textContent) && /Bending moment, ULS/.test(res()) && /Design actions on the beam/.test(res()));
+truth('… the steps say how much goes on down', /down the right support, a column: 0\.667 of the wall’s load × 4\.00 m = × 2\.667/i.test(res()));
+tv(0, 'on', 'support'); truth('carrying straight on at a support: no position, no choice of element below', !shown(tq(0, 'a')) && !shown(tq(0, 'below')) && /carries straight on at its right support/.test(d.querySelector('#tdRows tr.trow').textContent));
+tv(0, 'on', 'beam'); tv(0, 'below', 'wall');
+tq(0, 'addld').click(); const lb = tq(0, 'lds').querySelector('tr'); lb.querySelector('.a').value = '7.5'; lb.querySelector('.DL').value = '20'; fire(lb.querySelector('.DL'), 'input');
+$('calc').click(); truth('a load beyond the support: carried as a cantilever, warned', /cantilever/.test(res()) && /hogging/.test(res()));
+tv(0, 'after', '4'); tv(0, 'follow', 'none'); $('calc').click();
+truth('stopping on a beam under the last row: the result on the beam, no footing', /on Transfer beam 1/.test(d.querySelector('#results .verdict').textContent) && /stops on Transfer beam 1/.test(res()) && !/strip .* m wide/.test($('drawings').textContent));
+$('printBtn').click(); truth('… on the sheet: the transfer beams section and the result', /Transfer beams/.test($('report').textContent) && /Transfer beam 1: bending moment/.test($('report').textContent) && $('report').querySelectorAll('svg').length === 5);   // the load path, the beam, M, V and the hip
+tv(0, 'after', '2'); $('calc').click(); truth('… with rows below it: an error naming them', /stops on Transfer beam 1 above it/.test(err()));
+tv(0, 'after', '4'); $('calc').click();
 const w2 = page(w.localStorage.getItem('et-load-takedown-v1'));
-truth('inputs restored: rows, cells and the hip', w2.document.querySelectorAll('#tdRows tr').length === 5 && w2.document.querySelectorAll('#tdRows tr')[4].querySelector('.aD').value === '0.1*20' && w2.document.getElementById('hipOn').checked);
-truth('… the types, the transfer beams and their loads', [...w2.document.querySelectorAll('#tdRows .kind')].map(e => e.value).join() === 'roof,roof,floor,floor,wall' && w2.document.getElementById('tBOn').checked && !w2.document.getElementById('tAOn').checked && w2.document.querySelectorAll('#tBLoads tr').length === 1 && w2.document.getElementById('tAAt').value === '-1' && w2.document.getElementById('tASpread').value === '0.5');
+truth('inputs restored: rows, cells and the hip', w2.document.querySelectorAll('#tdRows tr:not(.trow)').length === 5 && w2.document.querySelectorAll('#tdRows tr:not(.trow)')[4].querySelector('.aD').value === '0.1*20' && w2.document.getElementById('hipOn').checked);
+truth('… the types, the transfer beam and its load', [...w2.document.querySelectorAll('#tdRows tr:not(.trow) .kind')].map(e => e.value).join() === 'roof,roof,floor,floor,wall' && w2.document.querySelectorAll('#trList .trb').length === 1 && w2.document.querySelector('#trList .after').value === '4' && w2.document.querySelector('#trList .follow').value === 'none' && w2.document.querySelectorAll('#trList .lds tr').length === 1);
+// a page saved with the first version's beams above and below opens as two transfer beams
+const w5 = page(JSON.stringify({ v: 2, type: 'column', rows: [{ name: 'Roof', A: '10', aD: '1' }, { name: 'L1', A: '10', aD: '5' }], tAOn: true, tAL: '6', tAEnd: 'left', tASw: '1', tAAt: '0', tALoads: [{ type: 'point', a: '2', DL: '40' }], tBOn: true, tBL: '8', tBa: '3', tBSw: '2', tBLoads: [] }));
+truth('… the first version\'s beams above and below open as two', w5.document.querySelectorAll('#trList .trb').length === 2 && w5.document.querySelectorAll('#trList .on')[0].value === 'support' && w5.document.querySelectorAll('#trList .follow')[1].value === 'none' && w5.errs.length === 0);
 // a page saved by the earlier version opens as rows
 const v1 = { v: 1, type: 'wall', red: 'an', comb: '6.10', qa: '100', fw: '0', seq: 3, hipOn: false, buildups: [
   { id: 'b1', name: 'Pitched roof', cat: 'H', pitch: '35', part: '0', snow: '0.45', items: [{ d: 'Tiles', g: '0.55', on: 'slope' }, { d: 'Ceiling', g: '0.15', on: 'plan' }] },

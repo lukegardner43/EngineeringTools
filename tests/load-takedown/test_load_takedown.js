@@ -9,8 +9,9 @@
 //  - the cells' sums, line and point loads, the combinations, the footing, the hipped roof and the earlier version's saved
 //    files (build-ups and levels) converted to rows, by hand;
 //  - the rows' types (roof, floor, wall or facade, point load, other) guessed and kept, and the sums independent of them;
-//  - the transfer beams by the simply supported beam formulas: reactions P·b/L and w·L/2, a part UDL by its resultant,
-//    the moment P·a·b/L + w·x(L − x)/2 under a point and the peak of a part UDL at x = a + R_A/w.
+//  - the transfer beams by statics on two supports: reactions P·b/L and w·L/2, a part UDL by its resultant, the moment
+//    P·a·b/L + w·x(L − x)/2 under a point, the peak of a part UDL at x = a + R_A/w, a cantilever's P·c over the support;
+//    the share carried on down a support, the floors carried with it, and chains of beams.
 //   node tests/load-takedown/test_load_takedown.js
 const { LoadTakedown: LT } = require('./load.js');
 let pass = 0, fail = 0; const truth = (n, ok, got) => { ok ? pass++ : fail++; console.log((ok ? 'ok   ' : 'FAIL ') + n + (ok || got === undefined ? '' : `  (got ${JSON.stringify(got)})`)); };
@@ -117,41 +118,54 @@ truth('cells: a bad one names its row', throws(() => LT.design({ rows: [{ name: 
 }
 // ---- transfer beams ----
 {
-  // above: span 6, P (60, 10, 30) kN at 2 m, own weight 2 kN/m; this column at the left end: 60 × 4/6 + 2 × 6/2 = 46
-  const tAbove = { L: 6, end: 'left', sw: 2, loads: [{ type: 'point', a: 2, DL: 60, SIDL: 10, LL: 30 }], after: 0 };
-  const D = LT.design({ type: 'column', rows: SHEET, tAbove }), T = D.tA;
-  truth('above: reaction at the left end P·b/L + wL/2 = 46, 6.67, 20 kN', near(T.R.DL, 46, 1e-12) && near(T.R.SIDL, 10 * 4 / 6, 1e-12) && near(T.R.LL, 20, 1e-12), T.R);
-  truth('… at the right end P·a/L + wL/2 = 26', near(LT.design({ type: 'column', rows: SHEET, tAbove: { ...tAbove, end: 'right' } }).tA.R.DL, 60 * 2 / 6 + 6, 1e-12));
-  truth('… a row of its own after the roof, typed a transfer beam, in the sums', D.rows.length === 5 && D.rows[1].kind === 'transfer' && D.rows[1].transfer && near(D.sum.DL, 35 + 46, 1e-12) && near(D.base.uls, 1.35 * (35 + 14 + 46 + 20 / 3) + 1.5 * (21 + 20), 1e-9));
-  truth('… at the top, or after the last row', LT.design({ rows: SHEET, tAbove: { ...tAbove, after: -1 } }).rows[0].transfer && LT.design({ rows: SHEET, tAbove: { ...tAbove, after: 9 } }).rows[4].transfer);
-  const Dr = LT.design({ type: 'column', rows: SHEET.map((r, i) => (i === 1 || i === 2 ? { ...r, red: true } : r)), red: 'an', tAbove });
-  truth('… its imposed load is not reduced: 0.9 × (8.75 + 8.75) + 3.5 + 20', near(Dr.base.Q, 0.9 * 17.5 + 3.5 + 20, 1e-9) && Dr.base.cum.n === 2, Dr.base.Q);
-  const pu = LT.design({ rows: SHEET, tAbove: { L: 6, end: 'left', sw: 0, after: 0, loads: [{ type: 'udl', a: 1, b: 4, DL: 6 }] } }).tA;
-  truth('… a part UDL by its resultant: 6 × 3 at 2.5 m: 18 × 3.5/6 = 10.5 to the left end', near(pu.R.DL, 10.5, 1e-12), pu.R);
-  truth('… a UDL with b blank runs to the right end: 6 × 5 at 3.5 m from the left, 30 × 2.5/6', near(LT.design({ rows: SHEET, tAbove: { L: 6, end: 'left', after: 0, loads: [{ type: 'udl', a: 1, b: '', DL: 6 }] } }).tA.R.DL, 30 * 2.5 / 6, 1e-12));
-  const Dw = LT.design({ type: 'wall', rows: SHEET, tAbove: { ...tAbove, spread: 0.5 } });
-  truth('… on a wall, spread over 0.5 m: 46/0.5 = 92 kN/m', near(Dw.rows[1].DL, 92, 1e-12) && near(Dw.sum.DL, 35 + 92, 1e-12));
-  truth('… refused without a span, or with a load off the span', throws(() => LT.design({ rows: SHEET, tAbove: { ...tAbove, L: '' } }), /give its span/) && throws(() => LT.design({ rows: SHEET, tAbove: { ...tAbove, loads: [{ type: 'point', a: 7, DL: 1 }] } }), /must lie on the span/));
+  // a column of the template, a beam under the second row: the column above (G 12.25 + 7, Q 12.25 kN) on it at 2 m of 6 m,
+  // own weight 2 kN/m; the take-down carries on down the left support: × (6 − 2)/6, + the beam's own 2 × 6/2
+  const tr = { L: 6, on: 'beam', a: 2, follow: 'left', sw: 2, after: 1 };
+  const D = LT.design({ type: 'column', rows: SHEET, transfers: [tr] }), T = D.transfers[0], k = 4 / 6;
+  truth('under a row: a transfer row of its own after it, the element carried on × (L − a)/L = 0.667', D.rows.length === 5 && D.rows[2].kind === 'transfer' && near(T.k, k, 1e-12) && T.row === 2);
+  truth('… below it: DL 12.25 × 0.667 + 6 = 14.17, SIDL 7 × 0.667, LL 12.25 × 0.667', near(D.rows[2].cum.DL, 12.25 * k + 6, 1e-12) && near(D.rows[2].cum.SIDL, 7 * k, 1e-12) && near(D.rows[2].cum.LL, 12.25 * k, 1e-12), D.rows[2].cum);
+  truth('… and the rows below add on: at the base DL 14.17 + 8.75 + 14', near(D.sum.DL, 12.25 * k + 6 + 8.75 + 14, 1e-12) && near(D.base.uls, 1.35 * (12.25 * k + 6 + 8.75 + 14 + 7 * k + 7) + 1.5 * (12.25 * k + 8.75), 1e-9));
+  const gA = 19.25 * k + 6, gB = 19.25 * 2 / 6 + 6, qA = 12.25 * k, qB = 12.25 * 2 / 6;
+  truth('… the beam\'s reactions P·b/L + wL/2 and P·a/L + wL/2, SLS and ULS', near(T.RA.DL + T.RA.SIDL, gA, 1e-12) && near(T.RA.LL, qA, 1e-12) && near(T.RB.sls, gB + qB, 1e-12) && near(T.RB.uls, 1.35 * gB + 1.5 * qB, 1e-9));
+  const Mg = 19.25 * 2 * 4 / 6 + 2 * 2 * 4 / 2, Mq = 12.25 * 2 * 4 / 6;
+  truth('… M_Ed under the column Pab/L + wx(L − x)/2 at 2 m, V_Ed the larger reaction', near(T.Msag, 1.35 * Mg + 1.5 * Mq, 1e-9) && near(T.xS, 2, 1e-12) && T.Mhog === 0 && near(T.Vmax, 1.35 * gA + 1.5 * qA, 1e-9), [T.Msag, T.xS]);
+  const R = LT.design({ type: 'column', rows: SHEET, transfers: [{ ...tr, follow: 'right' }] });
+  truth('… down the right support instead: × a/L, + its own', near(R.rows[2].cum.DL, 12.25 * 2 / 6 + 6, 1e-12));
+  // the floors carried go on down with their share: the second floor's reducible LL × 0.667, n = 2 at the base
+  const rr = SHEET.map((r, i) => (i === 1 || i === 2 ? { ...r, red: true } : r)), Dr = LT.design({ type: 'column', rows: rr, red: 'an', transfers: [tr] });
+  truth('… the reduction: the floors carried and their reducible LL go on in proportion: 0.9 × (8.75 × 0.667 + 8.75) + 3.5 × 0.667', near(Dr.base.Q, 0.9 * (8.75 * k + 8.75) + 3.5 * k, 1e-9) && Dr.base.cum.n === 2, Dr.base.Q);
+  truth('… the beam takes the column\'s imposed load as reduced at its level (one floor: α_n 1.0)', near(Dr.transfers[0].RA.LL, 12.25 * k, 1e-9));
 }
 {
-  // below: a column of the template (G 49, Q 21 kN) at 3 m on 8 m, own weight 2 kN/m
-  const D = LT.design({ type: 'column', rows: SHEET, tBelow: { L: 8, a: 3, sw: 2, loads: [] } }), T = D.tB;
-  const gA = 49 * 5 / 8 + 8, qA = 21 * 5 / 8, gB = 49 * 3 / 8 + 8, qB = 21 * 3 / 8;
-  truth('below: reactions P·b/L + wL/2: left G 38.63, Q 13.13; right 26.38, 7.88', near(T.RA.DL + T.RA.SIDL, gA, 1e-12) && near(T.RA.LL, qA, 1e-12) && near(T.RB.DL + T.RB.SIDL, gB, 1e-12) && near(T.RB.LL, qB, 1e-12));
-  truth('… ULS (6.10) and SLS of the reactions', near(T.RA.uls, 1.35 * gA + 1.5 * qA, 1e-9) && near(T.RB.sls, gB + qB, 1e-9));
+  // the massing steps back: a wall above stands on the beam from 1 to 4 m of 6 m; a column below at the right support:
+  // (2.5/6) × 3 m = 1.25 of its kN/m; the beam's other loads too
+  const D = LT.design({ type: 'wall', rows: SHEET, transfers: [{ L: 6, on: 'beam', a: 1, b: 4, follow: 'right', below: 'column', sw: 0, after: 1, loads: [{ type: 'point', a: 5, DL: 30, LL: 10 }] }] }), T = D.transfers[0];
+  truth('steps back: a wall above on the beam from 1 to 4 m, a column below at the right: × 2.5/6 × 3 = 1.25, + 30 × 5/6', near(T.k, 1.25, 1e-12) && T.elB === 'column' && near(D.rows[2].cum.DL, 12.25 * 1.25 + 25, 1e-12) && near(D.rows[2].cum.LL, 12.25 * 1.25 + 10 * 5 / 6, 1e-12) && D.rows[2].U === 'kN' && D.type === 'column' && D.U === 'kN');
+  // the peak of the part UDL (w over 1 to 4) with the point load: R_A = w·3·3.5/6 + P/6, M at x = 1 + R_A/w
+  const w = 1.35 * 19.25 + 1.5 * 12.25, P = 1.35 * 30 + 1.5 * 10, RA = w * 3 * 3.5 / 6 + P / 6, x = 1 + RA / w;
+  truth('… the beam: M_Ed at the zero shear in the wall\'s length, exactly R_A·x − w(x − 1)²/2', near(T.Msag, RA * x - w * (x - 1) ** 2 / 2, 1e-9) && near(T.xS, x, 1e-9), [T.Msag, T.xS]);
+  const W2 = LT.design({ type: 'column', rows: SHEET, transfers: [{ L: 6, on: 'beam', a: 2, follow: 'left', below: 'wall', spread: 2, after: 1 }] });
+  truth('a column above onto a wall below, spread over 2 m: × 0.667/2 in kN/m', near(W2.transfers[0].k, 4 / 6 / 2, 1e-12) && W2.rows[2].U === 'kN/m' && W2.type === 'wall');
+  // carried straight on at a support, the beam framing in: the element's load passes straight on; the beam's reaction joins
+  const F = LT.design({ type: 'wall', rows: SHEET, transfers: [{ L: 6, on: 'support', follow: 'left', sw: 1, spread: 0.5, after: 0, loads: [{ type: 'point', a: 2, DL: 60, SIDL: 10, LL: 30 }] }] });
+  truth('framing in at the left support: the wall straight on (× 1), + (60 × 4/6 + 3)/0.5 = 86 kN/m', near(F.transfers[0].k, 1, 1e-12) && near(F.rows[1].cum.DL, 3.5 + 43 / 0.5, 1e-12) && near(F.rows[1].cum.LL, 3.5 + 20 / 0.5, 1e-12) && near(F.sum.DL, 35 + 86, 1e-12));
+  truth('… at the top, before the first row', LT.design({ rows: SHEET, transfers: [{ L: 6, on: 'support', follow: 'right', after: -1, loads: [{ type: 'point', a: 2, DL: 6 }] }] }).rows[0].kind === 'transfer');
+  // two in turn: the shares multiply
+  const two = LT.design({ type: 'column', rows: SHEET, transfers: [{ L: 6, a: 2, follow: 'left', after: 0 }, { L: 8, a: 2, follow: 'right', after: 2 }] });
+  truth('two beams in turn: the roof × 4/6 × 2/8 at the base', near(two.sum.DL, ((3.5 * 4 / 6) + 8.75 + 8.75) * 2 / 8 + 14, 1e-12));
+}
+{
+  // stops on a beam: the column of the template on 8 m at 3 m, own weight 2 (as on the first version's beam below)
+  const D = LT.design({ type: 'column', rows: SHEET, qa: 150, transfers: [{ L: 8, a: 3, sw: 2, follow: 'none', after: 3 }] }), T = D.transfers[0];
   const Mg = 49 * 3 * 5 / 8 + 2 * 3 * 5 / 2, Mq = 21 * 3 * 5 / 8;
-  truth('… M_max under the column: Pab/L + wx(L − x)/2: 1.35 × 106.88 + 1.5 × 39.38 = 203.34 kNm at 3 m', near(T.Mmax, 1.35 * Mg + 1.5 * Mq, 1e-9) && near(T.xM, 3, 1e-12) && near(T.MmaxSLS, Mg + Mq, 1e-9), [T.Mmax, T.xM]);
-  truth('… V_max the larger reaction, ULS', near(T.Vmax, 1.35 * gA + 1.5 * qA, 1e-9));
-  const D2 = LT.design({ type: 'column', comb: '6.10ab', rows: SHEET, tBelow: { L: 8, a: 3, sw: 2 } }).tB;
-  truth('… (6.10a) and (6.10b): the worse', near(D2.Mmax, Math.max(1.35 * Mg + 1.05 * Mq, 0.925 * 1.35 * Mg + 1.5 * Mq), 1e-9));
-  truth('… no footing under it, a limit says so', (() => { const X = LT.design({ type: 'column', rows: SHEET, qa: 150, tBelow: { L: 8, a: 3 } }); return X.foot === null && X.limits.some(l => /stands on a transfer beam/.test(l)); })());
-  // a wall from 1 to 5 m on 8 m: w = 97.65 kN/m at ULS over 4 m; R_A = w × 4 × 5/8; the peak at x = 1 + R_A/w = 3.5 m
-  const W = LT.design({ type: 'wall', rows: SHEET, tBelow: { L: 8, a: 1, b: 5 } }).tB, w = 97.65, RA = w * 4 * 5 / 8, x = 1 + RA / w;
-  truth('below a wall from 1 to 5 m: R_A = 244.13 kN ULS, M_max = R_A·x − w(x − 1)²/2 = 549.28 kNm at 3.5 m', near(W.RA.uls, RA, 1e-9) && near(W.Mmax, RA * x - w * (x - 1) ** 2 / 2, 1e-9) && near(W.xM, 3.5, 1e-9), [W.RA.uls, W.Mmax, W.xM]);
-  const P = LT.design({ type: 'column', rows: SHEET, tBelow: { L: 8, a: 3, loads: [{ type: 'point', a: 6, DL: 20, LL: 10 }, { type: 'udl', a: 0, b: 2, SIDL: 5 }] } }).tB;
-  const RAg = 49 * 5 / 8 + 20 * 2 / 8 + 10 * 7 / 8, RAq = 21 * 5 / 8 + 10 * 2 / 8;
-  truth('… other loads too: a point (20, 0, 10) at 6 m and a UDL of 5 SIDL to 2 m', near(P.RA.DL + P.RA.SIDL, RAg, 1e-9) && near(P.RA.LL, RAq, 1e-9) && near(P.RA.DL + P.RB.DL + P.RA.SIDL + P.RB.SIDL, 49 + 20 + 10, 1e-9));
-  truth('… refused: the column off the span, a wall past its end', throws(() => LT.design({ type: 'column', rows: SHEET, tBelow: { L: 8, a: 9 } }), /stand on the span/) && throws(() => LT.design({ type: 'wall', rows: SHEET, tBelow: { L: 8, a: 2, b: 9 } }), /run along the span/));
+  truth('stops on a beam: M_Ed 1.35 × 106.88 + 1.5 × 39.38 = 203.34 kNm at 3 m; reactions 49 × 5/8 + 8 …', near(T.Msag, 1.35 * Mg + 1.5 * Mq, 1e-9) && near(T.RA.DL + T.RA.SIDL, 49 * 5 / 8 + 8, 1e-12) && D.stopped === T);
+  truth('… the result is the load on the beam, no footing, a limit says so', near(D.base.uls, 97.65 - 1.35 * 0, 1e-9) && near(D.sum.DL, 35, 1e-12) && D.foot === null && D.limits.some(l => /stops on/.test(l)));
+  truth('… rows below it are refused', throws(() => LT.design({ rows: SHEET, transfers: [{ L: 8, a: 3, follow: 'none', after: 1 }] }), /stops on Transfer beam 1/));
+  // a cantilever: the column above at 8 m on a 6 m span (2 m beyond the right support); the take-down down the right support
+  const C = LT.design({ type: 'column', rows: SHEET, transfers: [{ L: 6, a: 8, follow: 'right', sw: 0, after: 3 }] }).transfers[0];
+  truth('a cantilever: down the right support × 8/6, uplift −2/6 at the left, M_Ed hogging P × 2 m over the support', near(C.k, 8 / 6, 1e-12) && near(C.RA.DL + C.RA.SIDL, -49 * 2 / 6, 1e-12) && near(C.Mhog, -(1.35 * 49 + 1.5 * 21) * 2, 1e-9) && near(C.xH, 6, 1e-12) && C.Msag === 0, [C.Mhog, C.xH, C.Msag]);
+  truth('… warned: a load beyond the supports, uplift', (() => { const X = LT.design({ type: 'column', rows: SHEET, transfers: [{ L: 6, a: 8, follow: 'right', after: 3 }] }); return X.warnings.some(w => /cantilever/.test(w)) && X.warnings.some(w => /uplift at its left/.test(w)); })());
+  truth('… refused: no span, no position, a wall above with b before a, carrying straight on without a support', throws(() => LT.design({ rows: SHEET, transfers: [{ a: 1, after: 1 }] }), /give its span/) && throws(() => LT.design({ type: 'column', rows: SHEET, transfers: [{ L: 6, after: 1 }] }), /stands on it/) && throws(() => LT.design({ type: 'wall', rows: SHEET, transfers: [{ L: 6, a: 3, b: 2, after: 1 }] }), /b beyond a/) && throws(() => LT.design({ rows: SHEET, transfers: [{ L: 6, on: 'support', follow: 'none', after: 1 }] }), /say which/));
 }
 // ---- refusals ----
 truth('no rows refused', throws(() => LT.design({ rows: [] }), /Add the rows/));
