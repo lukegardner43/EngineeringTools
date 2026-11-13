@@ -384,17 +384,20 @@ async function sweep(f, cases, expect) {
   ], 2);
   const tset = (w, i, cls, v) => { const e = w.document.querySelectorAll('#tdRows tr:not(.trow)')[i].querySelector('.' + cls); e.value = v; e.dispatchEvent(new w.Event('input', { bubbles: true })); };
   await sweep('Load Take-down.html', [
-    ['a bigger roof area', w => tset(w, 0, 'A', '6')], ['a point load on a floor', w => tset(w, 1, 'pD', '12')], ['a sum in a cell', w => tset(w, 3, 'aD', '0.215*20')], ['a footing size', w => set(w, 'qa', '100')],
-    ['column', w => { set(w, 'type', 'column', 'change'); tset(w, 0, 'A', '20'); tset(w, 1, 'A', '20'); tset(w, 2, 'A', '20'); set(w, 'qa', '150'); }],
+    ['a bigger roof area', w => tset(w, 0, 'A', '6')], ['a point load on a floor', w => tset(w, 1, 'pD', '12')], ['a sum in a cell', w => tset(w, 2, 'aD', '2.5+0.3')], ['a footing size', w => set(w, 'qa', '100')],
+    ['column', w => { set(w, 'type', 'column', 'change'); const f = w.document.querySelector('#facRows .w'); f.value = '4'; f.dispatchEvent(new w.Event('input', { bubbles: true })); tset(w, 0, 'A', '20'); tset(w, 1, 'A', '20'); tset(w, 2, 'A', '20'); set(w, 'qa', '150'); }],
     ['best of α_n and α_A', w => set(w, 'red', 'best', 'change')], ['(6.10a), (6.10b)', w => set(w, 'comb', '6.10ab', 'change')],
     ['hipped roof', w => { set(w, 'type', 'wall', 'change'); const c = w.document.getElementById('hipOn'); c.checked = true; c.dispatchEvent(new w.Event('change', { bubbles: true })); }],
-    ['hip, half to the plates', w => set(w, 'hF', '0.5')], ['a row added', w => { w.document.getElementById('addRow').click(); tset(w, 4, 'pD', '20'); }], ['a row removed', w => w.document.querySelectorAll('#tdRows .xbtn')[3].click()],
-    ['a beam bearing, drawn as a point load', w => { w.document.getElementById('addRow').click(); tset(w, 4, 'name', 'Beam B2'); tset(w, 4, 'pD', '12'); }],
-    ['a row typed as another load', w => { const k = w.document.querySelectorAll('#tdRows .kind')[4]; k.value = 'other'; k.dispatchEvent(new w.Event('change', { bubbles: true })); }],
+    ['hip, half to the plates', w => set(w, 'hF', '0.5')], ['a row added', w => { w.document.getElementById('addRow').click(); tset(w, 3, 'pD', '20'); }], ['a row removed', w => w.document.querySelectorAll('#tdRows .xbtn')[3].click()],
+    ['a taller storey', w => tset(w, 0, 'h', '4.2')],
+    ['a facade on one storey, bearing on the floor below', w => { w.document.getElementById('facAdd').click(); const r = [...w.document.querySelectorAll('#facRows tr')].pop(), sv = (c, v, ev = 'change') => { const e = r.querySelector('.' + c); e.value = v; e.dispatchEvent(new w.Event(ev, { bubbles: true })); }; sv('DL', '0.6', 'input'); sv('on', '1'); sv('at', 'below'); }],
+    ['a parapet', w => { const r = [...w.document.querySelectorAll('#facRows tr')].pop(), sv = (c, v, ev = 'change') => { const e = r.querySelector('.' + c); e.value = v; e.dispatchEvent(new w.Event(ev, { bubbles: true })); }; sv('h', '1.1', 'input'); sv('on', 'top'); }],
+    ['a beam bearing, drawn as a point load', w => { w.document.getElementById('addRow').click(); tset(w, 3, 'name', 'Beam B2'); tset(w, 3, 'pD', '12'); }],
+    ['a row typed as another load', w => { const k = w.document.querySelectorAll('#tdRows .kind')[3]; k.value = 'other'; k.dispatchEvent(new w.Event('change', { bubbles: true })); }],
     ['a transfer beam under a floor', w => w.document.getElementById('trAdd').click()],
-    ['… the column above stepping back onto it, down the right support', w => { set(w, 'type', 'column', 'change'); const t = w.document.querySelector('#trList .trb'), sv = (c, v) => { const e = t.querySelector('.' + c); e.value = v; e.dispatchEvent(new w.Event('change', { bubbles: true })); }; sv('follow', 'right'); sv('a', '1.5'); }],
+    ['… the column above stepping back onto it, down the right support', w => { w.document.querySelectorAll('#facRows .w').forEach(e => { e.value = '4'; }); set(w, 'type', 'column', 'change'); const t = w.document.querySelector('#trList .trb'), sv = (c, v) => { const e = t.querySelector('.' + c); e.value = v; e.dispatchEvent(new w.Event('change', { bubbles: true })); }; sv('follow', 'right'); sv('a', '1.5'); }],
     ['… carrying straight on, the beam framing in', w => { const e = w.document.querySelector('#trList .on'); e.value = 'support'; e.dispatchEvent(new w.Event('change', { bubbles: true })); }],
-    ['… a second beam, a cantilever', w => { w.document.getElementById('trAdd').click(); const t = w.document.querySelectorAll('#trList .trb')[1], sv = (c, v) => { const e = t.querySelector('.' + c); e.value = v; e.dispatchEvent(new w.Event('change', { bubbles: true })); }; sv('after', '4'); sv('a', '8'); }],
+    ['… a second beam, a cantilever', w => { w.document.getElementById('trAdd').click(); const t = w.document.querySelectorAll('#trList .trb')[1], sv = (c, v) => { const e = t.querySelector('.' + c); e.value = v; e.dispatchEvent(new w.Event('change', { bubbles: true })); }; sv('after', '3'); sv('a', '8'); }],
     ['… stopping on the beam', w => { const e = w.document.querySelectorAll('#trList .follow')[1]; e.value = 'none'; e.dispatchEvent(new w.Event('change', { bubbles: true })); }],
   ], 1);
   await sweep('Rolling Load Analysis.html', [

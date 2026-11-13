@@ -16,29 +16,30 @@ const cell = (i, k, v) => { const el = rows()[i].querySelector('.' + k); el.valu
 const shown = el => !el.closest('.hidden');
 const err = () => ($('results').querySelector('.err') || {}).textContent || '';
 truth('page loads without script errors', w.errs.length === 0);
-truth('defaults: the take-down table with four rows, area, line and point loads and the totals', rows().length === 4 && d.querySelectorAll('#ltd thead tr.g th').length === 8 && rows()[0].querySelectorAll('input.c').length === 11);
-truth('live totals as a spreadsheet: rows 3.50 / 8.75 / 8.75 / 14.00, Sum 35 / 14 / 21, SLS 70.00, ULS 97.65', rows().map(r => r.querySelector('.tDL').textContent).join() === '3.50,8.75,8.75,14.00' && $('sDL').textContent === '35.00' && $('sSIDL').textContent === '14.00' && $('sLL').textContent === '21.00' && /70\.00 kN\/m/.test($('tSLS').textContent) && /97\.65 kN\/m/.test($('tULS').textContent));
-truth('a sum in a cell: the wall’s 0.1*20', rows()[3].querySelector('.aD').value === '0.1*20' && rows()[3].querySelector('.tDL').textContent === '14.00');
+truth('defaults: three levels with their storey heights, area, line and point loads, the totals; the wall in Facades and walls', rows().length === 3 && d.querySelectorAll('#ltd thead tr.g th').length === 9 && rows()[0].querySelectorAll('input.c').length === 11 && rows()[0].querySelector('.h').value === '3.5' && d.querySelectorAll('#facRows tr').length === 1 && d.querySelector('#facRows .on').value === 'all');
+truth('live totals as a spreadsheet: the wall 2.00 × 3.50 m in each storey: rows 10.50 / 15.75 / 8.75, Sum 35 / 14 / 21, SLS 70.00, ULS 97.65', rows().map(r => r.querySelector('.tDL').textContent).join() === '10.50,15.75,8.75' && rows().map(r => r.querySelector('.tF').textContent).join() === '7.00,7.00,' && $('sDL').textContent === '35.00' && $('sSIDL').textContent === '14.00' && $('sLL').textContent === '21.00' && /70\.00 kN\/m/.test($('tSLS').textContent) && /97\.65 kN\/m/.test($('tULS').textContent));
+truth('a sum in a cell: the wall’s 0.1*20', d.querySelector('#facRows .DL').value === '0.1*20');
 truth('load path drawn before Calculate', /ULS 97\.7 kN\/m/.test($('drawings').textContent));
 $('calc').click();
 truth('calculated: ULS 97.7 kN/m, SLS 70.0', /ULS 97\.7 kN\/m/.test(res()) && /SLS 70\.0 kN\/m/.test(res()));
-truth('results: the totals down the building and the calculation', d.querySelectorAll('#results table.t tbody tr').length === 4 && /ULS \(6\.10\)/.test(res()) && /1\.35 × \(35\.00 \+ 14\.00\) \+ 1\.5 × 21\.00 = 97\.65/.test(res()));
+truth('results: the totals down the building and the calculation', d.querySelectorAll('#results table.t tbody tr').length === 3 && /ULS \(6\.10\)/.test(res()) && /1\.35 × \(35\.00 \+ 14\.00\) \+ 1\.5 × 21\.00 = 97\.65/.test(res()));
 // typing updates the totals at once
 cell(0, 'pL', '5'); truth('a point load typed into the roof row: LL 8.50, ULS 105.15 at once', rows()[0].querySelector('.tLL').textContent === '8.50' && /105\.15/.test($('tULS').textContent));
 const bad = cell(0, 'pL', '5+'); truth('a bad cell is marked and the totals wait', bad.classList.contains('bad') && rows()[0].querySelector('.tLL').textContent === '–' && $('tULS').textContent === '–');
 cell(0, 'pL', '');
 // rows: add, copy, remove
-$('addRow').click(); truth('a row added', rows().length === 5);
-cell(4, 'name', 'Ground beam'); cell(4, 'L', '1'); cell(4, 'lD', '0.45*0.3*25'); truth('a line load row: 3.38 kN/m', rows()[4].querySelector('.tDL').textContent === '3.38');
-rows()[1].querySelector('.cpbtn').click(); truth('a row copied below itself', rows().length === 6 && rows()[2].querySelector('.name').value === 'Second floor (copy)' && rows()[2].querySelector('.tDL').textContent === '8.75');
-rows()[2].querySelector('.xbtn').click(); rows()[4].querySelector('.xbtn').click(); truth('removed again', rows().length === 4 && /97\.65/.test($('tULS').textContent));
+$('addRow').click(); truth('a row added', rows().length === 4);
+cell(3, 'name', 'Ground beam'); cell(3, 'L', '1'); cell(3, 'lD', '0.45*0.3*25'); truth('a line load row: 3.38 kN/m', rows()[3].querySelector('.tDL').textContent === '3.38');
+rows()[1].querySelector('.cpbtn').click(); truth('a row copied below itself, with its storey and so its wall', rows().length === 5 && rows()[2].querySelector('.name').value === 'Second floor (copy)' && rows()[2].querySelector('.tDL').textContent === '15.75');
+rows()[2].querySelector('.xbtn').click(); rows()[3].querySelector('.xbtn').click(); truth('removed again', rows().length === 3 && /97\.65/.test($('tULS').textContent));
 // the reduction shows the floor ticks
 truth('no reduction: the floor column hidden', !$('ltd').classList.contains('red-on'));
 set('red', 'an'); truth('α_n: the floor column shown, the floors already ticked: ULS 95.03', $('ltd').classList.contains('red-on') && rows()[1].querySelector('.red').checked && /95\.03/.test($('tULS').textContent));
 $('calc').click(); truth('α_n 0.90 in the results', /0\.90/.test(d.querySelector('#results tr.base').textContent) && /6\.3\.1\.2\(11\)/.test(res()));
 set('red', 'none');
 // column, 6.10a/b, footing
-set('type', 'column'); truth('column: totals in kN', [...d.querySelectorAll('.tu')].every(e => e.textContent === 'kN') && / kN$/.test($('tULS').textContent) && shown(d.querySelector('.u-col')));
+set('type', 'column'); $('calc').click(); truth('column: the facade needs the width the column carries', /width of facade the column carries/.test(err()));
+const fw = d.querySelector('#facRows .w'); fw.value = '1'; fire(fw, 'input'); truth('column: totals in kN', [...d.querySelectorAll('.tu')].every(e => e.textContent === 'kN') && / kN$/.test($('tULS').textContent) && shown(d.querySelector('.u-col')));
 set('qa', '150'); $('calc').click(); truth('column: a pad size', /square/.test(res()));
 set('type', 'wall'); set('qa', '100');
 set('comb', '6.10ab'); truth('(6.10a) and (6.10b): 92.69 in the table', /92\.69/.test($('tULS').textContent) && /6\.10a/.test($('ulsLab').textContent));
@@ -46,24 +47,32 @@ $('calc').click(); truth('(6.10a) and (6.10b) in the calculation, the strip 0.70
 set('comb', '6.10');
 // hipped roof
 set('hipOn', true); truth('hip inputs and its loads shown', shown($('hB')) && /Side walls, between the hips/.test($('hipOut').textContent));
-$('hipSide').click(); truth('the side wall load added as the top row', rows().length === 5 && rows()[0].querySelector('.name').value === 'Hipped roof, side wall' && rows()[0].querySelector('.L').value === '1' && rows()[0].querySelector('.tDL').textContent === '4.95');
+$('hipSide').click(); truth('the side wall load added as the top row', rows().length === 4 && rows()[0].querySelector('.name').value === 'Hipped roof, side wall' && rows()[0].querySelector('.L').value === '1' && rows()[0].querySelector('.tDL').textContent === '4.95');
 $('calc').click(); truth('hip: the table and the plan', /End walls, peak/.test(res()) && $('results').querySelectorAll('svg.dk').length === 2);
 // print and restore
-$('printBtn').click(); truth('print: the take-down sheet, the drawings and the tables', w.printed && $('report').querySelectorAll('svg').length === 2 && $('report').querySelectorAll('table.ltdp tbody tr').length === 8 && /Strip footing width/.test($('report').textContent));
-truth('the sheet lists each row\'s type', /Wall \/ facade/.test($('report').querySelector('table.ltdp').textContent));
+$('printBtn').click(); truth('print: the take-down sheet, the drawings and the tables', w.printed && $('report').querySelectorAll('svg').length === 2 && $('report').querySelectorAll('table.ltdp tbody tr').length === 7 && /Strip footing width/.test($('report').textContent));
+truth('the sheet lists each row\'s type and storey height', /Floor/.test($('report').querySelector('table.ltdp').textContent) && /3\.50/.test($('report').querySelector('table.ltdp').textContent));
 // the rows' types: guessed, kept once chosen, drawn by type
 const kinds = () => rows().map(r => r.querySelector('.kind').value).join();
-truth('types guessed: the hip row a roof, roof, floor, floor, wall', kinds() === 'roof,roof,floor,floor,wall', kinds());
-truth('the wall drawn as a facade over its storey, not a level', /wall \/ facade, over the storey/.test($('drawings').textContent));
-$('addRow').click(); cell(5, 'name', 'Beam B4'); cell(5, 'pD', '15'); truth('a row with a beam\'s name and point loads: a point load, drawn as one', rows()[5].querySelector('.kind').value === 'point');
-const ks = rows()[5].querySelector('.kind'); ks.value = 'other'; fire(ks, 'change'); cell(5, 'name', 'Beam B4 bearing'); truth('a type chosen is kept when the name changes', ks.value === 'other');
+truth('types guessed: the hip row a roof, roof, floor, floor', kinds() === 'roof,roof,floor,floor', kinds());
+truth('the wall drawn over each storey to its height, not as a level', /Blockwork wall, 100 mm/.test($('drawings').textContent) && /2\.00 kN\/m² × 3\.50 m: DL 7\.00 kN\/m/.test($('drawings').textContent) && /3\.50 m/.test($('drawings').textContent));
+$('addRow').click(); cell(4, 'name', 'Beam B4'); cell(4, 'pD', '15'); truth('a row with a beam\'s name and point loads: a point load, drawn as one', rows()[4].querySelector('.kind').value === 'point');
+const ks = rows()[4].querySelector('.kind'); ks.value = 'other'; fire(ks, 'change'); cell(4, 'name', 'Beam B4 bearing'); truth('a type chosen is kept when the name changes', ks.value === 'other');
 $('calc').click(); truth('drawn by type: the point load and the other load captioned', /other load/.test($('drawings').textContent) && /Other load/.test(d.querySelector('#results table.t').textContent));
-rows()[5].querySelector('.xbtn').click();
+rows()[4].querySelector('.xbtn').click();
+// facades: on one storey, bearing on the level below, a parapet
+const fr = () => [...d.querySelectorAll('#facRows tr')], fq = (i, c) => fr()[i].querySelector('.' + c), fv = (i, c, v) => { const e = fq(i, c); e.value = v; fire(e, 'change'); };
+$('facAdd').click(); fq(1, 'name').value = 'Render'; fv(1, 'DL', '0.5'); fv(1, 'on', '2');
+truth('a facade on one storey (below Second floor): 0.5 × 3.5 = 1.75 there only', fq(1, 'on').options.length === 6 && rows()[2].querySelector('.tF').textContent === '8.75' && rows()[1].querySelector('.tF').textContent === '7.00');
+fv(1, 'at', 'below'); truth('… bearing on the level below: taken at First floor', rows()[3].querySelector('.tF').textContent === '1.75' && rows()[2].querySelector('.tF').textContent === '7.00');
+fv(1, 'on', 'top'); $('calc').click(); truth('above the top row without a height: an error', /height of the parapet/.test(err()));
+fv(1, 'h', '1.1'); fq(1, 'name').value = 'Parapet'; fv(1, 'DL', '3'); $('calc').click(); truth('a parapet: 3 × 1.1 m on the top row, drawn above it', /Parapet/.test($('drawings').textContent) && rows()[0].querySelector('.tF').textContent === '3.30' && /a parapet above it/.test(res()));
+fr()[1].querySelector('.xbtn').click();
 // transfer beams, at any level
 $('trAdd').click();
 const tb = () => [...d.querySelectorAll('#trList .trb')], tq = (i, c) => tb()[i].querySelector('.' + c), tv = (i, c, v) => { const e = tq(i, c); e.value = v; fire(e, 'change'); };
-truth('a transfer beam added: under First floor, the wall above standing on it from 2 m (to b), a line in the table', tb().length === 1 && tq(0, 'after').options.length === 6 && tq(0, 'after').selectedOptions[0].textContent === 'Under First floor' && shown(tq(0, 'a')) && shown(tq(0, 'b')) && d.querySelectorAll('#tdRows tr.trow').length === 1);
-truth('… carried on down the left support: (6 − 4)/6 × 4 m of wall = × 1.333 of 25.95, + 3 own, + the wall 14 = 51.60 at once', /× 1\.333/.test(d.querySelector('#tdRows tr.trow').textContent) && $('sDL').textContent === '51.60' && /Carried down to the base/.test($('sumLab').textContent), $('sDL').textContent);
+truth('a transfer beam added: under Second floor, the wall above standing on it from 2 m (to b), a line in the table', tb().length === 1 && tq(0, 'after').options.length === 5 && tq(0, 'after').selectedOptions[0].textContent === 'Under Second floor' && shown(tq(0, 'a')) && shown(tq(0, 'b')) && d.querySelectorAll('#tdRows tr.trow').length === 1);
+truth('… carried on down the left support: (6 − 4)/6 × 4 m of wall = × 1.333 of 24.20, + 3 own, + the storey below it under the beam 7, + First floor 8.75 = 51.02 at once', /× 1\.333/.test(d.querySelector('#tdRows tr.trow').textContent) && $('sDL').textContent === '51.02' && /Carried down to the base/.test($('sumLab').textContent), $('sDL').textContent);
 tv(0, 'follow', 'right'); tv(0, 'below', 'column'); truth('… down the right support, a column: the totals in kN, the spread hidden', / kN$/.test($('tULS').textContent) && !shown(tq(0, 'spread')));
 $('calc').click();
 truth('… calculated: the element steps to the support, the beam drawn, its own drawing, M and V', /Transfer beam 1, span 6\.00 m/.test($('drawings').textContent) && /carries on down the right support, a column/.test($('drawings').textContent) && /left support: ULS/.test($('drawings').textContent) && /Bending moment, ULS/.test(res()) && /Design actions on the beam/.test(res()));
@@ -72,14 +81,14 @@ tv(0, 'on', 'support'); truth('carrying straight on at a support: no position, n
 tv(0, 'on', 'beam'); tv(0, 'below', 'wall');
 tq(0, 'addld').click(); const lb = tq(0, 'lds').querySelector('tr'); lb.querySelector('.a').value = '7.5'; lb.querySelector('.DL').value = '20'; fire(lb.querySelector('.DL'), 'input');
 $('calc').click(); truth('a load beyond the support: carried as a cantilever, warned', /cantilever/.test(res()) && /hogging/.test(res()));
-tv(0, 'after', '4'); tv(0, 'follow', 'none'); $('calc').click();
+tv(0, 'after', '3'); tv(0, 'follow', 'none'); $('calc').click();
 truth('stopping on a beam under the last row: the result on the beam, no footing', /on Transfer beam 1/.test(d.querySelector('#results .verdict').textContent) && /stops on Transfer beam 1/.test(res()) && !/strip .* m wide/.test($('drawings').textContent));
 $('printBtn').click(); truth('… on the sheet: the transfer beams section and the result', /Transfer beams/.test($('report').textContent) && /Transfer beam 1: bending moment/.test($('report').textContent) && $('report').querySelectorAll('svg').length === 5);   // the load path, the beam, M, V and the hip
 tv(0, 'after', '2'); $('calc').click(); truth('… with rows below it: an error naming them', /stops on Transfer beam 1 above it/.test(err()));
-tv(0, 'after', '4'); $('calc').click();
+tv(0, 'after', '3'); $('calc').click();
 const w2 = page(w.localStorage.getItem('et-load-takedown-v1'));
-truth('inputs restored: rows, cells and the hip', w2.document.querySelectorAll('#tdRows tr:not(.trow)').length === 5 && w2.document.querySelectorAll('#tdRows tr:not(.trow)')[4].querySelector('.aD').value === '0.1*20' && w2.document.getElementById('hipOn').checked);
-truth('… the types, the transfer beam and its load', [...w2.document.querySelectorAll('#tdRows tr:not(.trow) .kind')].map(e => e.value).join() === 'roof,roof,floor,floor,wall' && w2.document.querySelectorAll('#trList .trb').length === 1 && w2.document.querySelector('#trList .after').value === '4' && w2.document.querySelector('#trList .follow').value === 'none' && w2.document.querySelectorAll('#trList .lds tr').length === 1);
+truth('inputs restored: rows, cells, storey heights, the facade and the hip', w2.document.querySelectorAll('#tdRows tr:not(.trow)').length === 4 && w2.document.querySelectorAll('#tdRows tr:not(.trow)')[2].querySelector('.h').value === '3.5' && w2.document.querySelector('#facRows .DL').value === '0.1*20' && w2.document.getElementById('hipOn').checked);
+truth('… the types, the transfer beam and its load', [...w2.document.querySelectorAll('#tdRows tr:not(.trow) .kind')].map(e => e.value).join() === 'roof,roof,floor,floor' && w2.document.querySelectorAll('#trList .trb').length === 1 && w2.document.querySelector('#trList .after').value === '3' && w2.document.querySelector('#trList .follow').value === 'none' && w2.document.querySelectorAll('#trList .lds tr').length === 1);
 // a page saved with the first version's beams above and below opens as two transfer beams
 const w5 = page(JSON.stringify({ v: 2, type: 'column', rows: [{ name: 'Roof', A: '10', aD: '1' }, { name: 'L1', A: '10', aD: '5' }], tAOn: true, tAL: '6', tAEnd: 'left', tASw: '1', tAAt: '0', tALoads: [{ type: 'point', a: '2', DL: '40' }], tBOn: true, tBL: '8', tBa: '3', tBSw: '2', tBLoads: [] }));
 truth('… the first version\'s beams above and below open as two', w5.document.querySelectorAll('#trList .trb').length === 2 && w5.document.querySelectorAll('#trList .on')[0].value === 'support' && w5.document.querySelectorAll('#trList .follow')[1].value === 'none' && w5.errs.length === 0);

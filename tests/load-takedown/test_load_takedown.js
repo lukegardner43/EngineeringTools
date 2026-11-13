@@ -116,6 +116,31 @@ truth('cells: a bad one names its row', throws(() => LT.design({ rows: [{ name: 
   truth('the template\'s rows: roof, floor, floor, wall', D.rows.map(r => r.kind).join() === 'roof,floor,floor,wall', D.rows.map(r => r.kind));
   truth('the type does not change the sums', near(D2.base.uls, D.base.uls, 1e-12) && near(D2.sum.DL, D.sum.DL, 1e-12) && D2.rows.every(r => r.kind === 'other'));
 }
+// ---- storey heights and facades ----
+{
+  // the template with the wall as a facade instead of a row: 2 kN/m² over the two 3.5 m storeys gives its 14 kN/m
+  const LV = [{ name: 'Roof', A: 3.5, aD: 1, aL: 1, h: 3.5 }, { name: '2nd', A: 3.5, aD: 2.5, aS: 2, aL: 2.5, h: 3.5 }, { name: '1st', A: 3.5, aD: 2.5, aS: 2, aL: 2.5 }];
+  const D = LT.design({ type: 'wall', rows: LV, facades: [{ name: 'Blockwork', DL: '0.1*20', on: 'all' }] });
+  truth('facade on all storeys: 2 × 3.5 × 1 m in each storey with a height; the template\'s sums and ULS 97.65', D.rows.map(r => r.fac.DL).join() === '7,7,0' && near(D.sum.DL, 35, 1e-12) && near(D.base.uls, 97.65, 1e-9) && D.rows.length === 3);
+  truth('… a row\'s own loads kept apart from its facade', near(D.rows[0].lev.DL, 3.5, 1e-12) && near(D.rows[0].DL, 10.5, 1e-12) && D.rows[0].storey.length === 1);
+  const C = LT.design({ type: 'column', rows: LV, facades: [{ name: 'Brick', DL: 2.2, SIDL: 0.3, w: 4.5, on: 'all', at: 'below' }] });
+  truth('a column, brick bearing on the level below: (2.2, 0.3) × 3.5 × 4.5 at 2nd and 1st, none at the roof', near(C.rows[0].fac.DL, 0, 1e-12) && near(C.rows[1].fac.DL, 2.2 * 3.5 * 4.5, 1e-12) && near(C.rows[2].fac.SIDL, 0.3 * 3.5 * 4.5, 1e-12) && near(C.sum.DL, 35 - 14 + 2 * 2.2 * 3.5 * 4.5, 1e-9));
+  const one = LT.design({ type: 'column', rows: LV, facades: [{ name: 'Curtain wall', DL: 0.6, w: 6, on: 1 }] });
+  truth('one storey only, under 2nd: 0.6 × 3.5 × 6 = 12.6 there', near(one.rows[1].fac.DL, 12.6, 1e-12) && one.rows[0].fac.DL === 0 && one.rows[2].fac.DL === 0);
+  const own = LT.design({ type: 'wall', rows: LV, facades: [{ name: 'Spandrel', DL: 1.5, h: 1.2, on: 'all' }] });
+  truth('its own height (a spandrel 1.2 m) instead of the storey\'s', near(own.rows[0].fac.DL, 1.8, 1e-12) && near(own.rows[1].fac.DL, 1.8, 1e-12));
+  const par = LT.design({ type: 'wall', rows: LV, facades: [{ name: 'Parapet', DL: 3, h: 1.1, on: 'top' }] });
+  truth('a parapet above the top row: 3 × 1.1 on it', near(par.rows[0].fac.DL, 3.3, 1e-12) && par.parapet.length === 1 && par.rows[0].fac.parts[0].from === -1);
+  const last = LT.design({ type: 'wall', rows: LV.map(r => ({ ...r, h: 3 })), facades: [{ DL: 1, on: 'all', at: 'below' }] });
+  truth('… the lowest storey bearing on the base: taken at the last row', near(last.rows[2].fac.DL, 6, 1e-12) && last.rows[2].fac.parts.some(p => p.base));
+  truth('refused: a column\'s facade without its width; one storey without a height; a parapet without one', throws(() => LT.design({ type: 'column', rows: LV, facades: [{ DL: 1, on: 'all' }] }), /width of facade/) && throws(() => LT.design({ rows: LV, facades: [{ DL: 1, on: 2 }] }), /height of the storey below 1st/) && throws(() => LT.design({ rows: LV, facades: [{ DL: 1, on: 'top' }] }), /height of the parapet/));
+  truth('no storey heights: warned, nothing added', (() => { const X = LT.design({ rows: SHEET, facades: [{ name: 'F', DL: 1 }] }); return near(X.sum.DL, 35, 1e-12) && X.warnings.some(w => /no storey heights/.test(w)); })());
+  const T = LT.design({ type: 'column', rows: LV, facades: [{ DL: 1, w: 2, on: 'all' }], transfers: [{ L: 6, a: 2, follow: 'left', below: 'wall', spread: 1, after: 0 }] });
+  truth('a beam under the roof: the storey below the roof is under the beam, its facade per metre of the wall below', near(T.rows[0].fac.DL, 0, 1e-12) && T.rows[1].kind === 'transfer' && near(T.rows[1].fac.DL, 3.5, 1e-12) && T.rows[1].storeyOf === 0 && near(T.rows[2].fac.DL, 3.5, 1e-12) && T.rows[3].fac.DL === 0);
+  truth('… in the totals below the beam: (3.5 + 0) × 0.667 + 3.5', near(T.rows[1].cum.DL, 3.5 * 4 / 6 + 3.5, 1e-12));
+  const Tc = LT.design({ type: 'column', rows: LV, facades: [{ DL: 1, w: 2, on: 'all', at: 'below' }], transfers: [{ L: 6, a: 2, follow: 'left', after: 0 }] });
+  truth('… bearing on the level below: the roof storey\'s facade on 2nd, under the beam, × 2 m', near(Tc.rows[2].fac.DL, 7, 1e-12) && near(Tc.rows[1].fac.DL, 0, 1e-12) && near(Tc.rows[3].fac.DL, 7, 1e-12));
+}
 // ---- transfer beams ----
 {
   // a column of the template, a beam under the second row: the column above (G 12.25 + 7, Q 12.25 kN) on it at 2 m of 6 m,
