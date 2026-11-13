@@ -389,6 +389,11 @@ async function sweep(f, cases, expect) {
     ['best of α_n and α_A', w => set(w, 'red', 'best', 'change')], ['(6.10a), (6.10b)', w => set(w, 'comb', '6.10ab', 'change')],
     ['hipped roof', w => { set(w, 'type', 'wall', 'change'); const c = w.document.getElementById('hipOn'); c.checked = true; c.dispatchEvent(new w.Event('change', { bubbles: true })); }],
     ['hip, half to the plates', w => set(w, 'hF', '0.5')], ['a row added', w => { w.document.getElementById('addRow').click(); tset(w, 4, 'pD', '20'); }], ['a row removed', w => w.document.querySelectorAll('#tdRows .xbtn')[3].click()],
+    ['a beam bearing, drawn as a point load', w => { w.document.getElementById('addRow').click(); tset(w, 4, 'name', 'Beam B2'); tset(w, 4, 'pD', '12'); }],
+    ['a row typed as another load', w => { const k = w.document.querySelectorAll('#tdRows .kind')[4]; k.value = 'other'; k.dispatchEvent(new w.Event('change', { bubbles: true })); }],
+    ['a transfer beam above', w => { const c = w.document.getElementById('tAOn'); c.checked = true; c.dispatchEvent(new w.Event('change', { bubbles: true })); }], ['… at the top, at its right end', w => { set(w, 'tAAt', '-1', 'change'); set(w, 'tAEnd', 'right', 'change'); }],
+    ['a transfer beam below the wall', w => { const c = w.document.getElementById('tBOn'); c.checked = true; c.dispatchEvent(new w.Event('change', { bubbles: true })); set(w, 'tBa', '1'); set(w, 'tBb', '5'); }],
+    ['… a column on it, with a load beside', w => { set(w, 'type', 'column', 'change'); set(w, 'tBa', '3'); w.document.getElementById('tBAdd').click(); const r = w.document.querySelector('#tBLoads tr'); r.querySelector('.a').value = '6'; const e = r.querySelector('.DL'); e.value = '30'; e.dispatchEvent(new w.Event('input', { bubbles: true })); }],
   ], 1);
   await sweep('Rolling Load Analysis.html', [
     ['longer span', w => { const e = w.document.querySelector('#spanRows .L'); e.value = '12'; e.dispatchEvent(new w.Event('input', { bubbles: true })); }],

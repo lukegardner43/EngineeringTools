@@ -14,8 +14,9 @@ const set = (id, v) => { const el = $(id); if (el.type === 'checkbox') el.checke
 const rows = () => [...d.querySelectorAll('#tdRows tr')];
 const cell = (i, k, v) => { const el = rows()[i].querySelector('.' + k); el.value = v; fire(el, 'input'); return el; };
 const shown = el => !el.closest('.hidden');
+const err = () => ($('results').querySelector('.err') || {}).textContent || '';
 truth('page loads without script errors', w.errs.length === 0);
-truth('defaults: the take-down table with four rows, area, line and point loads and the totals', rows().length === 4 && d.querySelectorAll('#ltd thead tr.g th').length === 7 && rows()[0].querySelectorAll('input.c').length === 11);
+truth('defaults: the take-down table with four rows, area, line and point loads and the totals', rows().length === 4 && d.querySelectorAll('#ltd thead tr.g th').length === 8 && rows()[0].querySelectorAll('input.c').length === 11);
 truth('live totals as a spreadsheet: rows 3.50 / 8.75 / 8.75 / 14.00, Sum 35 / 14 / 21, SLS 70.00, ULS 97.65', rows().map(r => r.querySelector('.tDL').textContent).join() === '3.50,8.75,8.75,14.00' && $('sDL').textContent === '35.00' && $('sSIDL').textContent === '14.00' && $('sLL').textContent === '21.00' && /70\.00 kN\/m/.test($('tSLS').textContent) && /97\.65 kN\/m/.test($('tULS').textContent));
 truth('a sum in a cell: the wall’s 0.1*20', rows()[3].querySelector('.aD').value === '0.1*20' && rows()[3].querySelector('.tDL').textContent === '14.00');
 truth('load path drawn before Calculate', /ULS 97\.7 kN\/m/.test($('drawings').textContent));
@@ -49,8 +50,31 @@ $('hipSide').click(); truth('the side wall load added as the top row', rows().le
 $('calc').click(); truth('hip: the table and the plan', /End walls, peak/.test(res()) && $('results').querySelectorAll('svg.dk').length === 2);
 // print and restore
 $('printBtn').click(); truth('print: the take-down sheet, the drawings and the tables', w.printed && $('report').querySelectorAll('svg').length === 2 && $('report').querySelectorAll('table.ltdp tbody tr').length === 8 && /Strip footing width/.test($('report').textContent));
+truth('the sheet lists each row\'s type', /Wall \/ facade/.test($('report').querySelector('table.ltdp').textContent));
+// the rows' types: guessed, kept once chosen, drawn by type
+const kinds = () => rows().map(r => r.querySelector('.kind').value).join();
+truth('types guessed: the hip row a roof, roof, floor, floor, wall', kinds() === 'roof,roof,floor,floor,wall', kinds());
+truth('the wall drawn as a facade over its storey, not a level', /wall \/ facade, over the storey/.test($('drawings').textContent));
+$('addRow').click(); cell(5, 'name', 'Beam B4'); cell(5, 'pD', '15'); truth('a row with a beam\'s name and point loads: a point load, drawn as one', rows()[5].querySelector('.kind').value === 'point');
+const ks = rows()[5].querySelector('.kind'); ks.value = 'other'; fire(ks, 'change'); cell(5, 'name', 'Beam B4 bearing'); truth('a type chosen is kept when the name changes', ks.value === 'other');
+$('calc').click(); truth('drawn by type: the point load and the other load captioned', /other load/.test($('drawings').textContent) && /Other load/.test(d.querySelector('#results table.t').textContent));
+rows()[5].querySelector('.xbtn').click();
+// transfer beams
+set('tAOn', true); truth('above: its inputs, one load on it, a footer row for its reaction', shown($('tAL')) && d.querySelectorAll('#tALoads tr').length === 1 && shown(d.querySelector('.ta-row')) && $('tAAt').options.length === 6);
+truth('… its reaction (40 × 4/6 + 1 × 3 = 29.67 kN, over 1 m of wall) in the footer and the sums at once', $('taDL').textContent === '29.67' && $('sDL').textContent === (4.95 + 35 + 29.67).toFixed(2));
+set('tAAt', '-1'); set('tASpread', '0.5'); truth('… at the top, spread over 0.5 m: 59.33 kN/m', $('taDL').textContent === '59.33' && /at the top/.test($('taLab').textContent));
+$('calc').click(); truth('… calculated: its drawing with the column stepping on it, the table and the step', /Transfer beam above/.test(res()) && /its other support/.test($('drawings').textContent) && /Its reaction on this wall/.test(res()) && /Transfer above/.test(res()));
+set('tAOn', false); set('tBOn', true); set('tBa', '1'); set('tBb', '5');
+$('tBAdd').click(); const lb = d.querySelectorAll('#tBLoads tr')[0]; lb.querySelector('.a').value = '7'; lb.querySelector('.DL').value = '20'; fire(lb.querySelector('.DL'), 'input');
+$('calc').click();
+truth('below: the beam, its supports and reactions, M and V, no footing', /transfer beam below/.test($('drawings').textContent) && /left support: ULS/.test($('drawings').textContent) && /Bending moment, ULS/.test(res()) && /stands on a transfer beam/.test(res()) && /M\s*Ed/.test(d.querySelector('#results .verdict').textContent));
+truth('… the reactions and design actions tabled', /Left support/.test(res()) && /Bending moment, largest/.test(res()));
+$('printBtn').click(); truth('… on the sheet: the transfer beams section and the result', /Transfer beams/.test($('report').textContent) && /Transfer beam below, bending moment and shear/.test($('report').textContent) && $('report').querySelectorAll('svg').length === 5);   // the load path, the beam, M, V and the hip
+set('tBb', '9'); $('calc').click(); truth('… a wall past the beam\'s end is reported', /run along the span/.test(err()));
+set('tBb', '5');
 const w2 = page(w.localStorage.getItem('et-load-takedown-v1'));
 truth('inputs restored: rows, cells and the hip', w2.document.querySelectorAll('#tdRows tr').length === 5 && w2.document.querySelectorAll('#tdRows tr')[4].querySelector('.aD').value === '0.1*20' && w2.document.getElementById('hipOn').checked);
+truth('… the types, the transfer beams and their loads', [...w2.document.querySelectorAll('#tdRows .kind')].map(e => e.value).join() === 'roof,roof,floor,floor,wall' && w2.document.getElementById('tBOn').checked && !w2.document.getElementById('tAOn').checked && w2.document.querySelectorAll('#tBLoads tr').length === 1 && w2.document.getElementById('tAAt').value === '-1' && w2.document.getElementById('tASpread').value === '0.5');
 // a page saved by the earlier version opens as rows
 const v1 = { v: 1, type: 'wall', red: 'an', comb: '6.10', qa: '100', fw: '0', seq: 3, hipOn: false, buildups: [
   { id: 'b1', name: 'Pitched roof', cat: 'H', pitch: '35', part: '0', snow: '0.45', items: [{ d: 'Tiles', g: '0.55', on: 'slope' }, { d: 'Ceiling', g: '0.15', on: 'plan' }] },
