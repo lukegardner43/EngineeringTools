@@ -21,8 +21,12 @@ function page(store) {
   truth('pile loads table: four piles', d.querySelectorAll('.ctab tbody tr').length === 4);
   set('swl', '700'); set('Rcd', '800'); $('calc').click();
   truth('pile resistance checks appear', /safe working load/.test(res()) && /R_c,d|Rc,d/.test(res()));
+  { const Z = [...$('results').querySelectorAll('details.zone')].map(z => z.querySelector('summary').textContent);   // every check written out, each with its CalcPad buttons
+    truth('the full calculation: the cap, the pile loads, bending, shear, punching, anchorage and the detailing, each with its CalcPad buttons', /^Cap, piles and loads/.test(Z[0]) && Z.some(z => /^Pile load, DA1/.test(z)) && Z.some(z => /^Bending, bars along y/.test(z)) && Z.some(z => /^Shear across the cap, piles along x/.test(z)) && Z.some(z => /^Punching at the column face/.test(z)) && Z.some(z => /^Anchorage past the piles/.test(z)) && /^Minimum steel/.test(Z[Z.length - 1])
+      && $('results').querySelectorAll('details.zone [data-cp="copy"]').length === Z.length && $('results').querySelectorAll('[data-cp="proj"]').length === 1); }
   set('method', 'truss'); $('calc').click();
   truth('truss: ties and nodes', /Tie along x/.test(res()) && /Node under the column \(CCC\)/.test(res()) && /Node over the pile/.test(res()) && /struts/.test(draw()));
+  truth('truss: the ties and nodes written out', [...$('results').querySelectorAll('details.zone summary')].some(s => /^Truss: ties and nodes/.test(s.textContent)));
   pick('3'); await wait(260);
   truth('3 piles: truss only, band bars shown, the x/y bars hidden', $('method').disabled && $('method').value === 'truss' && !$('nBand').closest('.grid3').hidden && $('phiX').closest('.grid3').hidden);
   $('calc').click(); truth('3 piles: three side ties', (res().match(/Tie piles/g) || []).length === 3);
@@ -34,6 +38,7 @@ function page(store) {
   set('ex', '0'); $('calc').click(); $('printBtn').click();
   const rep = $('report').textContent;
   truth('print: the A4 sheet with the pile loads, the method and the drawings', w.printed && /6-pile cap to BS EN 1992-1-1/.test(rep) && /Pile 6 at/.test(rep) && /Shear and punching/.test(rep) && $('report').querySelectorAll('svg.dk').length === 2);
+  truth('print: the full calculation, check by check', $('report').querySelectorAll('.cs-sheet').length >= 10 && /6 Full calculation/.test($('report').textContent));
   const saved = w.localStorage.getItem('et-pile-cap-v1');
   const w2 = page(saved); await wait(300);
   truth('layout and inputs restored', w2.document.querySelector('#ns .on').dataset.n === '6' && w2.document.getElementById('swl').value === '700');
