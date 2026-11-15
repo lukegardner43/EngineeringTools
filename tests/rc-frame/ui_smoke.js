@@ -16,6 +16,10 @@ $('calc').click();
 truth('calculate: verdict, frame and moment drawings', /PASS|FAIL/.test(res()) && d.querySelectorAll('#results svg.frame').length === 2);
 truth('floor selector, beam line views and tables', d.querySelectorAll('#floorSeg button').length === 4 && !!$('floorBox').querySelector('svg.elev') && $('floorBox').querySelectorAll('svg.env').length === 2 && /Curtailment/.test(res()));
 truth('columns table and base reactions', /Line 1, storey 1/.test(res()) && /Base reactions/.test(res()) && /λ/.test(res()));
+{ const Z = w.eval('last.Z'), nCol = w.eval('last.D.C.length');
+  truth('full calculation: one project button, the frame check, each floor\'s zones and each column in and out of the plane, each with its CalcPad buttons', d.querySelectorAll('#results [data-cp="proj"]').length === 1 && /Frame: loads, combinations and analysis/.test(res())
+    && $('floorBox').querySelectorAll('details.zone [data-cp="copy"]').length === Z.floors[0].length && Z.cols.flat().length === 2 * nCol && d.querySelectorAll('#results details.zone').length === 1 + Z.floors[0].length + 2 * nCol
+    && /Column line 1, storey 1: in the plane of the frame/.test(res()) && /from the analysis/.test(res()) && /cot θ/.test(res())); }
 d.querySelectorAll('#floorSeg button')[2].click();
 truth('another floor shown', /Floor 3: elevation/.test($('floorBox').textContent) && d.querySelectorAll('#floorSeg button')[2].classList.contains('on'));
 $('suggest').click();
@@ -37,7 +41,7 @@ $('saH').value = '0'; $('saH').dispatchEvent(new w.Event('change')); $('calc').c
 truth('sub-frame without columns above (a roof)', /PASS|FAIL/.test(res()) && !/Line 1, above/.test(res()));
 $('bays').value = '6, x'; $('calc').click(); truth('bad bays reported', !!$('results').querySelector('.err')); $('bays').value = '6, 7.5, 6'; $('calc').click();
 $('printBtn').click();
-truth('print: A4 sheet with the basis, frame, beams and columns', w.printed && /RC sub-frame/.test($('report').textContent) && /Floor 1 beams/.test($('report').textContent) && /Column line 1/.test($('report').textContent) && $('report').querySelectorAll('svg').length >= 4);
+truth('print: A4 sheet with the basis, frame, beams, columns and the full calculation of every check', w.printed && /RC sub-frame/.test($('report').textContent) && /Floor 1 beams/.test($('report').textContent) && /Column line 1/.test($('report').textContent) && $('report').querySelectorAll('.cs-sheet').length === w.eval('last.Z.all.length') && /Materials: as above/.test($('report').textContent) && $('report').querySelectorAll('svg').length >= 4);
 const w2 = page(w.localStorage.getItem('et-rc-frame-v1')), $2 = id => w2.document.getElementById(id);
 truth('inputs restored, sub-frame mode included', $2('saH').value === '0' && $2('cantR').value === '1.5' && !w2.document.querySelector('.card.sb').classList.contains('hidden'));
 truth('no script errors', w.errs.length === 0 && w2.errs.length === 0);
