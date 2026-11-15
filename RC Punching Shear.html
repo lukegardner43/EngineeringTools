@@ -249,6 +249,355 @@ sub,sup{font-size:max(11px,.75em);line-height:0;}
 </div>
 <div id="report"></div>
 <script id="engine">
+/* ===== CALCULATION SCRIPT (EngineeringTools) =====
+   One record of a tool's calculation, written step by step, from which the tool shows its full calculation (on the page
+   and the A4 sheet) and writes it for CalcPad (text to paste, or a .perega file to open), so that the two cannot differ.
+   Every number the calculation reports is one of:
+   - an input, with its unit;
+   - a formula in CalcPad's syntax (names, + − * / ^, SQRT MIN MAX ABS IF LOG EXP ROUND PI(), x[#unit] for a value as a
+     plain number in a given unit, as the empirical Eurocode formulas need), shown as the symbols, then the numbers put
+     in, then the result, with its clause; CalcPad recalculates these itself;
+   - a value the formula language cannot reach (an iteration, a table read, an analysis), stated as such with how it
+     was found and, where it can be, an equation that confirms it;
+   - a utilisation, with its limit.
+   API: const C = CalcScript.create({ title, tool, standard });
+        C.head(text), C.note(text),
+        C.input(name, value, unit, desc, ref, { sym }), C.calc(name, expr, value, unit, desc, ref, { sym }),
+        C.given(name, value, unit, desc, how, ref, { sym }), C.check(name, expr, value, desc, ref, { limit, sym }),
+        C.img(svg, caption);
+        C.html() — the full calculation; C.calcpad() — CalcPad text; C.perega(meta) — a .perega document (object).
+        CalcScript.project([{ C, title }], meta, name) — a .peregaproj (one CalcPad check per script, for a tool with several
+        zones or members whose names repeat); copy(C, meta), download(C, meta, file), downloadProject(list, meta, file) for the buttons.
+   Units are CalcPad's: mm cm m km, N kN MN, Pa kPa MPa GPa (N/mm2 for stresses), kg g t, s, deg rad, combined with * / ^
+   or run together (kNm, kNm/m, mm2/m). Values are given in the unit stated.
+   Source: scratchpad/common/calcscript.js. */
+const CalcScript = (() => {
+  'use strict';
+  // CalcPad's unit table: the SI factor and the SI symbol of each unit
+  const CONV = { mm: 1e-3, cm: 1e-2, m: 1, km: 1e3, N: 1, kN: 1e3, MN: 1e6, g: 1e-3, kg: 1, t: 1e3, Pa: 1, kPa: 1e3, MPa: 1e6, GPa: 1e9, s: 1, ms: 1e-3, min: 60, hr: 3600, deg: Math.PI / 180, rad: 1 };
+  const SIB = { mm: 'm', cm: 'm', m: 'm', km: 'm', N: 'N', kN: 'N', MN: 'N', g: 'kg', kg: 'kg', t: 'kg', Pa: 'Pa', kPa: 'Pa', MPa: 'Pa', GPa: 'Pa', s: 's', ms: 's', min: 's', hr: 's', deg: 'rad', rad: 'rad' };
+  const ORDER = { N: 0, kN: 0, MN: 0, Pa: 1, kPa: 1, MPa: 1, GPa: 1, J: 2, W: 2, Hz: 2, kg: 4, g: 4, t: 4, m: 5, mm: 5, cm: 5, km: 5, s: 6, ms: 6, min: 6, hr: 6, rad: 7, deg: 7 };
+  // "kNm" → kN, m (longest known symbol first, as CalcPad reads run-together units)
+  function split(tok) {
+    if (CONV[tok] !== undefined) return [tok];
+    const go = s => { if (!s) return []; for (let n = Math.min(3, s.length); n >= 1; n--) { if (CONV[s.slice(0, n)] === undefined) continue; const r = go(s.slice(n)); if (r) return [s.slice(0, n), ...r]; } return null; };
+    return go(tok);
+  }
+  function terms(u) {
+    const s = String(u || '').replace(/²/g, '^2').replace(/³/g, '^3').replace(/⁴/g, '^4').replace(/·/g, '*'), out = [];
+    const add = (str, sign) => str.split('*').forEach(p => { const t = p.trim(); if (!t) return; const m = t.match(/^([a-zA-Z]+)(?:\^?(-?\d+))?$/); if (!m) throw new Error(`CalcScript: unit "${u}"`); const e = m[2] ? +m[2] : 1, sy = split(m[1]); if (!sy) throw new Error(`CalcScript: unknown unit "${m[1]}"`); sy.forEach((x, i) => out.push([x, sign * (i === sy.length - 1 ? e : 1)])); });
+    const parts = s.split('/'); add(parts[0], 1); for (let i = 1; i < parts.length; i++) add(parts[i], -1);
+    return out;
+  }
+  const factor = u => terms(u).reduce((f, [s, e]) => f * CONV[s] ** e, 1);
+  const toSI = (v, u) => (u ? v * factor(u) : v);
+  function siUnit(u) {   // the SI unit string CalcPad stores with a literal (as unitObjToStr(toSIUnitObj(...)))
+    const o = {}; for (const [s, e] of terms(u)) { const b = SIB[s]; o[b] = (o[b] || 0) + e; if (!o[b]) delete o[b]; }
+    const rank = s => (ORDER[s] !== undefined ? ORDER[s] : 3), cmp = ([a], [b]) => rank(a) - rank(b) || a.localeCompare(b);
+    const f = ([s, e]) => (Math.abs(e) === 1 ? s : s + '^' + Math.abs(e));
+    const pos = Object.entries(o).filter(([, e]) => e > 0).sort(cmp), neg = Object.entries(o).filter(([, e]) => e < 0).sort(cmp);
+    return pos.map(f).join('·') + (neg.length ? '/' + neg.map(f).join('·') : '');
+  }
+  // ---------- display ----------
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const GREEK = { alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', zeta: 'ζ', eta: 'η', theta: 'θ', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', rho: 'ρ', sigma: 'σ', tau: 'τ', phi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω', Delta: 'Δ', Sigma: 'Σ', Phi: 'Φ' };
+  // a name as a symbol: the part before the first _ as the base (Greek where it is a Greek letter's name), the rest subscript;
+  // sym overrides the text ("A_s,req")
+  function symHTML(name, sym) {
+    const s = sym || name, i = s.indexOf('_'), base = i < 0 ? s : s.slice(0, i), sub = i < 0 ? '' : s.slice(i + 1);
+    const g = x => GREEK[x] || x;
+    return `<i>${esc(g(base))}</i>${sub ? `<sub>${esc(sub.split(',').map(g).join(','))}</sub>` : ''}`;
+  }
+  const UNIT_SHOW = { 'N/mm2': 'N/mm²', MPa: 'N/mm²', mm2: 'mm²', mm3: 'mm³', mm4: 'mm⁴', 'mm2/m': 'mm²/m', kNm: 'kNm', 'kN*m': 'kNm', 'kNm/m': 'kNm/m', 'kN*m/m': 'kNm/m', 'kN/m2': 'kN/m²', 'kN/m3': 'kN/m³', m2: 'm²', m3: 'm³', m4: 'm⁴' };
+  const unitHTML = u => (u ? esc(UNIT_SHOW[u] || String(u).replace(/\^?2(?![0-9])/g, '²').replace(/\^?3(?![0-9])/g, '³').replace(/\*/g, '·')) : '');
+  // a number to about four significant figures, no exponent for the sizes met in design
+  function num(v) {
+    if (v === Infinity) return '∞'; if (v === -Infinity) return '−∞'; if (!Number.isFinite(v)) return '–';
+    if (v === 0) return '0';
+    const a = Math.abs(v);
+    let s = a >= 1e4 ? Math.round(v).toLocaleString('en-GB') : a >= 1000 ? Math.round(v).toString() : a >= 100 ? (Math.round(v * 10) / 10).toString() : a >= 1e-4 ? (+v.toPrecision(4)).toString() : v.toExponential(3);
+    return s.replace(/^-/, '−');
+  }
+  // CalcPad expression → tokens
+  function tokens(expr) {
+    const out = []; let i = 0; const s = String(expr);
+    while (i < s.length) {
+      const ch = s[i];
+      if (/\s/.test(ch)) { i++; continue; }
+      if (/\d/.test(ch) || (ch === '.' && /\d/.test(s[i + 1] || ''))) { let n = ''; while (i < s.length && /[\d.]/.test(s[i])) n += s[i++]; if (/[eE]/.test(s[i] || '') && /[-+\d]/.test(s[i + 1] || '')) { n += s[i++]; if (/[-+]/.test(s[i])) n += s[i++]; while (/\d/.test(s[i] || '')) n += s[i++]; } out.push({ t: 'n', v: n }); continue; }
+      if (/[A-Za-z]/.test(ch)) {
+        let n = ''; while (i < s.length && /[A-Za-z0-9_]/.test(s[i])) n += s[i++];
+        let unit = ''; if (s[i] === '[') { const j = s.indexOf(']', i); unit = s.slice(i + 1, j); i = j + 1; }
+        let k = i; while (/\s/.test(s[k] || '')) k++;
+        out.push(s[k] === '(' && /^[A-Z][A-Z0-9]*$/.test(n) ? { t: 'f', v: n } : { t: 'id', v: n, unit }); continue;
+      }
+      const two = s.slice(i, i + 2);
+      if (['<=', '>=', '==', '!=', '<>'].includes(two)) { out.push({ t: 'op', v: two }); i += 2; continue; }
+      out.push({ t: 'op', v: ch }); i++;
+    }
+    return out;
+  }
+  const FN = { SQRT: '√', ABS: 'abs', MIN: 'min', MAX: 'max', IF: 'if', LOG: 'log', EXP: 'exp', ROUND: 'round', SIN: 'sin', COS: 'cos', TAN: 'tan', ATAN: 'atan', ASIN: 'asin', ACOS: 'acos', PI: 'π' };
+  const OPS = { '*': '·', '<=': '≤', '>=': '≥', '!=': '≠', '<>': '≠', '==': '=', '-': '−' };
+  // the expression as HTML: symbols (sub = null) or with each name's value put in (sub = name → { v, unit })
+  function exprHTML(expr, syms, sub) {
+    const tk = tokens(expr); let h = '';
+    for (let i = 0; i < tk.length; i++) {
+      const t = tk[i], nx = tk[i + 1];
+      if (t.t === 'n') h += esc(t.v.replace(/^(\d+)\.?0*$/, '$1'));
+      else if (t.t === 'f') { if (t.v === 'PI') { h += 'π'; i += 2; continue; } h += FN[t.v] || t.v.toLowerCase(); }
+      else if (t.t === 'id') {
+        // a value put in: bracketed where it is negative, or carries a unit and is raised to a power
+        if (sub && sub[t.v]) { const q = sub[t.v], u = t.unit ? '' : unitHTML(q.unit), br = q.v < 0 || (u && nx && nx.v === '^'); h += `${br ? '(' : ''}${num(q.v)}${u ? '&#8239;' + u : ''}${br ? ')' : ''}`; }
+        else h += symHTML(t.v, syms[t.v]);
+      } else if (t.v === '^') {
+        // a power: the next token (or bracket group) raised
+        let j = i + 1, depth = 0, grp = '';
+        do { const q = tk[j]; grp += q.t === 'op' ? q.v : (q.unit ? `${q.v}[${q.unit}]` : q.v); if (q.v === '(') depth++; if (q.v === ')') depth--; j++; } while (depth > 0 && j < tk.length);
+        const inner = grp.replace(/^\((.*)\)$/, '$1');
+        h += `<sup>${exprHTML(inner, syms, null)}</sup>`; i = j - 1;
+      } else if (t.v === '*') h += sub ? ' × ' : '·';
+      else if (t.v === '/') h += ' / ';
+      else if (t.v === '-' && (i === 0 || (tk[i - 1].t === 'op' && ['(', ',', '+', '-', '*', '/', '^', '<', '>', '<=', '>='].includes(tk[i - 1].v)))) h += '−';   // unary minus
+      else if (['+', '-', '<=', '>=', '<', '>', '==', '!=', '<>'].includes(t.v)) h += ` ${OPS[t.v] || esc(t.v)} `;
+      else if (t.v === ',') h += ', ';
+      else h += esc(t.v);
+      void nx;
+    }
+    return h.replace(/\s+/g, ' ').trim();
+  }
+  // ---------- the script ----------
+  function create(meta = {}) {
+    const items = [], vals = {}, syms = {}, units = {}, names = new Set();
+    const name0 = (n, kind) => {
+      if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(n)) throw new Error(`CalcScript: "${n}" is not a CalcPad name`);
+      if (names.has(n)) throw new Error(`CalcScript: "${n}" is defined twice`);
+      names.add(n); void kind;
+    };
+    const keep = (name, v, unit, o) => { vals[name] = v; units[name] = unit || ''; if (o && o.sym) syms[name] = o.sym; };
+    // a formula and the unit CalcPad shows it in: [unit], [#unit] (an empirical formula's result) or [#] (a plain number)
+    const split = (expr, unit) => { const m = String(expr).match(/^(.*?)\s*\[([^\]]+)\]\s*$/); return m ? { core: m[1].trim(), spec: m[2].trim() } : { core: String(expr).trim(), spec: unit || '#' }; };
+    const C = {
+      meta, items,
+      head(text) { items.push({ t: 'h', text }); return C; },
+      note(text) { items.push({ t: 'p', text }); return C; },
+      input(name, v, unit, desc, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'in', name, v, unit: unit || '', desc, ref }); return v; },
+      calc(name, expr, v, unit, desc, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'calc', name, expr, ...split(expr, unit), v, unit: unit || '', desc, ref }); return v; },
+      given(name, v, unit, desc, how, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'val', name, v, unit: unit || '', desc, how, ref }); return v; },
+      check(name, expr, v, desc, ref, o = {}) { name0(name); keep(name, v, '', o); items.push({ t: 'chk', name, expr, ...split(expr, ''), v, desc, ref, limit: o.limit ?? 1 }); return v; },
+      img(svg, caption) { items.push({ t: 'img', svg, caption }); return C; },
+      // a CalcPad plot line (PLOT(...) or SECTION(...)): drawn live by CalcPad from the values; not on the page, which has its own drawings
+      plot(src) { items.push({ t: 'plot', src }); return C; },
+      value: n => vals[n], has: n => names.has(n),
+      // ----- the full calculation, for the page and the A4 sheet -----
+      html(opts = {}) {
+        const sub = Object.fromEntries(Object.keys(vals).map(n => [n, { v: vals[n], unit: units[n] }]));
+        // opts.skip: headings whose sections are left out (the same materials in every zone of a sheet), said in a line
+        let h = `<div class="cs${opts.sheet ? ' cs-sheet' : ''}">`, skipping = false;
+        for (const it of items) {
+          if (it.t === 'h') { skipping = !!(opts.skip && opts.skip.includes(it.text)); h += skipping ? `<div class="cs-p">${esc(it.text)}: as above.</div>` : `<div class="cs-h">${esc(it.text)}</div>`; continue; }
+          if (skipping) continue;
+          if (it.t === 'p') { h += `<div class="cs-p">${esc(it.text)}</div>`; continue; }
+          if (it.t === 'plot') continue;
+          if (it.t === 'img') { if (!opts.noImg) h += `<div class="cs-img">${it.svg}${it.caption ? `<div class="cs-cap">${esc(it.caption)}</div>` : ''}</div>`; continue; }
+          const S = symHTML(it.name, syms[it.name]), res = `${num(it.v)}${it.unit ? '&#8239;' + unitHTML(it.unit) : ''}`;
+          let eq;
+          if (it.t === 'in') eq = `${S} = ${res}`;
+          else if (it.t === 'val') eq = `${S} = ${res}`;
+          else {
+            const sy = exprHTML(it.core, syms, null), nu = exprHTML(it.core, syms, sub);
+            eq = `${S} = ${sy}${nu !== sy ? ` = ${nu}` : ''} = <b>${res}</b>`;
+            if (it.t === 'chk') eq += ` ${it.v <= it.limit + 1e-9 ? `≤ ${num(it.limit)} <span class="cs-ok">OK</span>` : `> ${num(it.limit)} <span class="cs-ng">NOT OK</span>`}`;
+          }
+          const d = [it.desc, it.how].filter(Boolean).map(esc).join('; ');
+          h += `<div class="cs-r cs-${it.t}"><div class="cs-eq">${eq}${d ? `<div class="cs-d">${d}</div>` : ''}</div><div class="cs-ref">${esc(it.ref || '')}</div></div>`;
+        }
+        return h + '</div>';
+      },
+      // ----- CalcPad text: paste into a sheet and every line becomes a live chip -----
+      lines() {
+        const out = [];
+        // an "=" in the words would start a definition in CalcPad: "a = b" is written "a is b"
+        const clean = s => String(s || '').replace(/\s*=\s*/g, ' is ').replace(/\s+/g, ' ').trim();
+        const pre = it => { const d = clean([it.desc, it.t === 'val' && it.how ? `(${it.how})` : ''].filter(Boolean).join(' ')), r = clean(it.ref); return `${d}${r ? `${d ? ', ' : ''}${r}` : ''}${d || r ? ': ' : ''}`; };
+        for (const it of items) {
+          if (it.t === 'h') { out.push({ it, text: '' }, { it, text: clean(it.text) }); continue; }
+          if (it.t === 'p') { out.push({ it, text: clean(it.text) }); continue; }
+          if (it.t === 'img') continue;
+          if (it.t === 'plot') { out.push({ it, text: it.src }); continue; }
+          if (it.t === 'in' || it.t === 'val') out.push({ it, text: `${pre(it)}${it.name} = ${lit(it.v)}${it.unit ? ' ' + it.unit : ''}` });
+          else out.push({ it, text: `${pre(it)}${it.name} = ${it.core} [${it.spec}]` });
+        }
+        return out;
+      },
+      calcpad() { const L = C.lines().map(l => l.text); while (L.length && !L[0]) L.shift(); return L.join('\n'); },
+      // ----- a .perega document: the same lines as CalcPad's own chips, with the drawings as images -----
+      perega(m = {}, images = {}) {
+        let html = '';
+        const chip = it => {
+          if (it.t === 'in' || it.t === 'val') {
+            const si = toSI(it.v, it.unit), su = it.unit ? siUnit(it.unit) : '';
+            const a = { 'data-var-name': it.name, 'data-var-val': String(si), 'data-bare': '1' };   // data-bare: CalcPad draws it on opening
+            if (it.unit) { a['data-var-unit'] = it.unit; if (su && su !== it.unit) a['data-var-si-unit'] = su; if (lit(it.v) !== String(si)) a['data-var-orig-num'] = lit(it.v); }
+            return `<span contenteditable="false" class="var-def-chip" ${Object.entries(a).map(([k, v]) => `${k}="${esc(v)}"`).join(' ')}><span class="vdc-name">${esc(it.name)} = </span><span class="vdc-val">${esc(lit(it.v))}${it.unit ? ' ' + esc(it.unit) : ''}</span></span>`;
+          }
+          const a = { 'data-var-name': it.name, 'data-var-val': String(toSI(it.v, it.unit)), 'data-var-expr': it.core, 'data-var-display-unit': it.spec, 'data-bare': '1' };
+          return `<span contenteditable="false" class="var-def-chip" ${Object.entries(a).map(([k, v]) => `${k}="${esc(v)}"`).join(' ')}><span class="vdc-name">${esc(it.name)} = ${esc(it.core)}</span></span>`;
+        };
+        let first = true;
+        for (const it of items) {
+          const br = first ? '' : '<br>'; first = false;
+          if (it.t === 'h') { html += `${br}<br><b>${esc(it.text)}</b>`; continue; }
+          if (it.t === 'p') { html += `${br}${esc(it.text)}`; continue; }
+          if (it.t === 'plot') { html += `${br}<span contenteditable="false" class="plot-chip" data-plot="${esc(it.src)}"></span> `; continue; }
+          if (it.t === 'img') { const src = images[items.indexOf(it)]; if (src) html += `${br}<span contenteditable="false" class="calc-img-wrap"><img src="${src}" draggable="false" style="width:${Math.round(Math.min(images.width || 500, (images.nat && images.nat[items.indexOf(it)]) || Infinity))}px;height:auto"><span class="img-resize-handle"></span><span class="img-size-label"></span></span>${it.caption ? `<br><i>${esc(it.caption)}</i>` : ''}`; else first = !html; continue; }
+          const L = C.lines().find(l => l.it === it), text = L.text, k = text.lastIndexOf(`${it.name} = `);
+          html += `${br}${esc(text.slice(0, k))}${chip(it)} `;
+        }
+        const today = new Date().toISOString().slice(0, 10);
+        return { version: 2, meta: { 'm-project': m.project || '', 'm-projno': m.job || '', 'm-date': m.date || today, 'm-desc': m.title || meta.title || '', 'm-sheet': m.sheet || '', 'm-orig': m.by || '', 'm-deliv': '', 'm-checked': '', 'm-suit': '', 'm-rev': '' },
+          pages: [html], preferredUnits: {}, et: { tool: meta.tool || '', standard: meta.standard || '' } };
+      },
+    };
+    return C;
+  }
+  // a number as CalcPad reads it: full precision, no grouping
+  const lit = v => (Number.isFinite(v) ? String(+v.toPrecision(12)) : '0');
+  // the drawings as PNG data URLs (CalcPad's Word export takes PNG): resolves to { index: dataURL, width }
+  async function rasterise(C, width = 520) {
+    const out = { width, nat: {} };   // nat: each drawing's own width, so a small one is not blown up
+    const jobs = C.items.map((it, i) => it.t !== 'img' ? null : new Promise(res => {
+      try {
+        const doc = new DOMParser().parseFromString(it.svg, 'image/svg+xml'), sv = doc.documentElement;
+        if (!sv || sv.nodeName !== 'svg') return res();
+        if (!sv.getAttribute('xmlns')) sv.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        const vb = (sv.getAttribute('viewBox') || '').split(/[ ,]+/).map(Number), w = vb[2] || +sv.getAttribute('width') || 600, h = vb[3] || +sv.getAttribute('height') || 400;
+        sv.setAttribute('width', w); sv.setAttribute('height', h); out.nat[i] = w;
+        // the page's colours and fonts as the drawing uses them
+        const st = doc.createElementNS('http://www.w3.org/2000/svg', 'style'); st.textContent = 'text{font-family:Arial,Helvetica,sans-serif}'; sv.insertBefore(st, sv.firstChild);
+        const img = new Image(), url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(sv));
+        img.onload = () => { const k = 2, cv = document.createElement('canvas'); cv.width = w * k; cv.height = h * k; const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, cv.width, cv.height); out[i] = cv.toDataURL('image/png'); res(); };
+        img.onerror = () => res(); img.src = url;
+      } catch (e) { res(); }
+    }));
+    await Promise.all(jobs.filter(Boolean));
+    return out;
+  }
+  // the buttons' work: copy the CalcPad text (with the chips as HTML for a paste straight into CalcPad), download a .perega
+  async function copy(C, m) {
+    const text = C.calcpad();
+    try {
+      if (navigator.clipboard && window.ClipboardItem) {
+        const doc = C.perega(m), html = doc.pages[0];
+        await navigator.clipboard.write([new ClipboardItem({ 'text/plain': new Blob([text], { type: 'text/plain' }), 'text/html': new Blob([html], { type: 'text/html' }) })]);
+        return true;
+      }
+      await navigator.clipboard.writeText(text); return true;
+    } catch (e) {
+      const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+      let ok = false; try { ok = document.execCommand('copy'); } catch (e2) { ok = false; } ta.remove(); return ok;
+    }
+  }
+  const fileSafe = s => String(s || 'Calculation').replace(/×/g, 'x').replace(/\//g, '-').replace(/[^A-Za-z0-9 ._()-]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Calculation';
+  function save(text, fileName, ext) {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = fileSafe(fileName) + ext;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+  async function download(C, m, fileName) {
+    let images = {}; try { images = await rasterise(C); } catch (e) { images = {}; }
+    save(JSON.stringify({ ...C.perega(m, images), savedAt: new Date().toISOString() }, null, 2), fileName, '.perega');
+  }
+  // a CalcPad project (.peregaproj): one check per script, in order, each a whole document of its own (CalcPad keeps each
+  // check's names apart, so the zones of a beam can all use M_Ed, d, ...). list: [{ C, title }]
+  // Values several checks define alike (the same name, definition, unit, description and source: the materials, a section
+  // several zones share, ...) go once into a first check of shared values, which CalcPad (a pack's shared check, from CalcPad dd29f6a) gives
+  // to every other check of the pack; each check says, where they were, which of its values come from there. A value stays
+  // in a check unless everything it uses there is shared too, so a check with a different f_ck keeps its own f_cd.
+  // Returns the list with the shared check first ({ C, title, shared: true }), or the list as it was if nothing repeats.
+  const IDENT = /[A-Za-z][A-Za-z0-9_]*/g;
+  function shareOut(list) {
+    const defs = it => it.t === 'in' || it.t === 'val' || it.t === 'calc';
+    const key = it => JSON.stringify([it.t, it.name, it.t === 'calc' ? `${it.core} [${it.spec}]` : `${lit(it.v)} ${it.unit}`, it.desc || '', it.ref || '', it.how || '']);
+    const count = new Map();
+    list.forEach(({ C }) => { const seen = new Set(); C.items.forEach(it => { if (!defs(it)) return; const k = key(it); if (!seen.has(k)) { seen.add(k); count.set(k, (count.get(k) || 0) + 1); } }); });
+    const best = new Map();   // name → the definition most checks share (one per name)
+    for (const [k, c] of count) { if (c < 2) continue; const nm = JSON.parse(k)[1], b = best.get(nm); if (!b || c > count.get(b)) best.set(nm, k); }
+    if (!best.size) return list;
+    const shared = [], sharedKeys = new Set();
+    const out = list.map(({ C, title, ...rest }) => {
+      const local = new Set(C.items.filter(defs).map(it => it.name)), gone = new Set();
+      C.items.forEach(it => {
+        if (!defs(it) || best.get(it.name) !== key(it)) return;
+        const uses = it.t === 'calc' ? (it.core.match(IDENT) || []).filter(n => n !== it.name && local.has(n)) : [];
+        if (uses.every(n => gone.has(n))) gone.add(it.name);
+      });
+      if (!gone.size) return { C, title, ...rest };
+      const C2 = create({ ...C.meta }); let head = null, run = [];
+      const flush = () => { if (run.length) { C2.items.push({ t: 'p', text: `From the shared values: ${run.join(', ')}.` }); run = []; } };
+      for (const it of C.items) {
+        if (it.t === 'h') { flush(); head = it.text; C2.items.push(it); continue; }
+        if (defs(it) && gone.has(it.name)) { run.push(it.name); const k = key(it); if (!sharedKeys.has(k)) { sharedKeys.add(k); shared.push({ head, it }); } continue; }
+        flush(); C2.items.push(it);
+      }
+      flush();
+      return { C: C2, title, ...rest };
+    });
+    if (!shared.length) return list;
+    const S = create({ title: 'Shared values', tool: list[0].C.meta.tool, standard: list[0].C.meta.standard });
+    S.items.push({ t: 'p', text: 'The values several checks of this project use, defined once: CalcPad gives them to every other check. A check that needs a different value defines its own.' });
+    let h = null;
+    for (const { head, it } of shared) { if (head !== h) { h = head; if (head) S.items.push({ t: 'h', text: head }); } S.items.push(it); }
+    return [{ C: S, title: 'Shared values', shared: true }, ...out];
+  }
+  async function project(list, m = {}, name = 'Calculation', o = {}) {
+    const checks = [];
+    if (o.share !== false && list.length > 1) list = shareOut(list);
+    for (let k = 0; k < list.length; k++) {
+      const { C, title, shared } = list[k]; let images = {};
+      try { images = typeof document !== 'undefined' ? await rasterise(C) : {}; } catch (e) { images = {}; }
+      checks.push({ id: 'c' + (k + 1), name: title, doc: C.perega({ ...m, title }, images), ...(shared ? { shared: true } : {}) });
+    }
+    return { kind: 'calcpad-project', version: 1, name: fileSafe(name), activeId: checks.length ? checks[0].id : null, checks, savedAt: new Date().toISOString() };
+  }
+  async function downloadProject(list, m, fileName) { save(JSON.stringify(await project(list, m, fileName), null, 2), fileName, '.peregaproj'); }
+  // a tool with several zones (Z: [{ key, title, sum, util, C }]): the project button, then each zone as a <details> with its
+  // own buttons and its full calculation; wire() answers the buttons (once per page, on a container that stays)
+  const uf = u => (Number.isFinite(u) ? u.toFixed(3) : '>99');
+  // o.noProj: no project button (a page that shows its zones in several places, with one project button of its own)
+  function zonesHTML(Z, o = {}) {
+    return (o.noProj ? '' : `<div class="cs-tools"><button class="btn2" type="button" data-cp="proj">Download CalcPad project (.peregaproj)</button><span class="aux" data-cpmsg="proj"></span></div>`)
+      + Z.map(zn => `<details class="zone"><summary><span>${esc(zn.title)}${zn.sum ? `<small> · ${esc(zn.sum)}</small>` : ''}</span>${zn.util != null ? `<span class="u ${zn.util > 1 ? 'over' : ''}">${uf(zn.util)}</span>` : ''}</summary>`
+        + `<div class="zfull"><div class="cs-tools"><button class="btn2" type="button" data-cp="copy" data-zone="${esc(zn.key)}">Copy for CalcPad</button><button class="btn2" type="button" data-cp="save" data-zone="${esc(zn.key)}">Download .perega</button><span class="aux" data-cpmsg="${esc(zn.key)}"></span></div>${zn.C.html({ noImg: true })}</div></details>`).join('');
+  }
+  // getZ() → the zones shown; meta(title) → the project details; name(title) → a file name; proj: the project's title
+  function wire(root, getZ, meta, name, proj) {
+    root.addEventListener('click', async e => {
+      const b = e.target.closest('[data-cp]'), Z = getZ(); if (!b || !Z) return;
+      const msg = k => root.querySelector(`[data-cpmsg="${k}"]`) || { textContent: '' };
+      if (b.dataset.cp === 'proj') { await downloadProject(Z.map(zn => ({ C: zn.C, title: zn.title })), meta(proj), name(proj)); msg('proj').textContent = 'Downloaded: open it in CalcPad (File ▸ Open project). Each zone is a check of its own.'; return; }
+      const zn = Z.find(z => z.key === b.dataset.zone); if (!zn) return;
+      if (b.dataset.cp === 'copy') { const ok = await copy(zn.C, meta(zn.title)); msg(zn.key).textContent = ok ? 'Copied: paste it into a CalcPad sheet.' : 'Could not copy: use Download .perega.'; }
+      else { await download(zn.C, meta(zn.title), name(zn.title)); msg(zn.key).textContent = 'Downloaded: open it in CalcPad (File ▸ Open).'; }
+    });
+  }
+  // the zones on the A4 sheet: every zone in full, the materials set out once and "as above" after
+  function sheetHTML(Z, h2 = t => `<h2>${t}</h2>`) {
+    let mat = false;
+    return Z.map(zn => { const s = `<div class="rs">${h2(`${esc(zn.title)}${zn.sum ? ` <span style="font-weight:400;color:#555">· ${esc(zn.sum)}</span>` : ''}`)}${zn.C.html({ sheet: true, noImg: true, skip: mat ? ['Materials'] : [] })}</div>`; if (zn.C.items.some(it => it.t === 'h' && it.text === 'Materials')) mat = true; return s; }).join('');
+  }
+  // the style of the full calculation (each tool's page and sheet include it)
+  const CSS = `.cs{font-size:13px;line-height:1.45}.cs-h{font-weight:600;font-size:14px;margin:14px 0 4px;padding-bottom:3px;border-bottom:1px solid var(--bdr,#e6e6e6)}
+.cs-p{color:var(--mut,#5f6368);margin:4px 0}.cs-r{display:grid;grid-template-columns:1fr 110px;gap:10px;padding:4px 0;border-bottom:1px solid #f0f0f0}
+.cs-eq{overflow-wrap:anywhere}.cs-eq i{font-style:italic}.cs-eq sub,.cs-eq sup{font-size:75%}.cs-d{color:var(--mut,#5f6368);font-size:12px}
+.cs-ref{color:var(--faint,#6b6b6b);font-size:12px;text-align:right}.cs-ok{color:var(--pass,#247b50);font-weight:600}.cs-ng{color:var(--fail,#c4242a);font-weight:600}
+.cs-val .cs-eq{color:#333}.cs-img{margin:8px 0}.cs-cap{font-size:12px;color:var(--mut,#5f6368)}
+.cs-sheet{font-size:9pt}.cs-sheet .cs-r{grid-template-columns:1fr 70pt;padding:1pt 0;break-inside:avoid}.cs-sheet .cs-h{font-size:10pt;margin:6pt 0 2pt}.cs-sheet .cs-d,.cs-sheet .cs-ref{font-size:8pt}.cs-sheet .cs-d{display:inline;margin-left:8pt}.cs-sheet .cs-p{margin:2pt 0}
+.zone .zfull{padding:0 10px 8px}.zone summary small{color:var(--faint,#6b6b6b);font-size:12px}.cs-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.cs-tools .btn2{width:auto;flex:0 0 auto;margin:0;padding:0 16px}
+@media print{.cs-tools{display:none}}`;
+  return { create, toSI, siUnit, factor, num, exprHTML, symHTML, unitHTML, tokens, rasterise, copy, download, project, downloadProject, zonesHTML, wire, sheetHTML, CSS };
+})();
+if (typeof module !== 'undefined') module.exports = { CalcScript };
+
 /* ===== PUNCHING SHEAR (EngineeringTools) =====
    Punching of slabs at columns to BS EN 1992-1-1:2004+A1:2014, 6.4 and 9.4.3, with the UK National Annex:
    - loaded areas: internal, edge and corner columns, rectangular or circular, with the column set back from the free
@@ -474,6 +823,247 @@ const Punching = (() => {
   return { design, path, uGross, perimeter, shadows, areaIn, u0of, betaOf, kTable, FACTORS, rFor };
 })();
 if (typeof module !== 'undefined') module.exports = { Punching };
+
+/* ===== PUNCHING SHEAR: FULL CALCULATION (EngineeringTools) =====
+   Punching.design written out step by step for the page, the A4 sheet and CalcPad: the materials, the effective depths
+   and ρ_l, v_Rd,c and v_Rd,max, the control perimeters u_0 and u_1 by their closed forms (6.4.2, Figures 6.13 and 6.15;
+   the length openings take out is stated, found by stepping round the perimeter), β (UK NA value or 6.4.3), the load
+   inside each perimeter taken off if given, the stresses and checks at the column face and at u_1, u_out,ef (6.54) and,
+   where links are needed, A_sw/s_r (6.52), the layout of the perimeters with each one's legs, spacing and minimum
+   (9.4.3, 9.11) and v_Rd,cs.
+   The values are the engine's own, so the calculation cannot differ from the results.
+   Source: scratchpad/rcflat/punchscript.js. Needs CalcScript.
+   PunchScript.punch(P, inp, o): P = Punching.design(inp); o.title, o.tool; o.V = { how, ref } when V_Ed comes from an
+   analysis; o.As = { how } when the top steel is the design's own (A_s given, its bar size setting d); o.M = { how } when
+   the moments for β come from an analysis; o.matHead: the heading of the materials (default Materials).
+   Without openings the calculation starts with a PUNCH line: CalcPad draws the column and its perimeters in plan from
+   the values (the page has its own drawings; with openings the tool adds its plan as a picture). */
+const PunchScript = (() => {
+  'use strict';
+  const CLS = { 20: 25, 25: 30, 28: 35, 30: 37, 32: 40, 35: 45, 40: 50, 45: 55, 50: 60, 55: 67, 60: 75 };
+  const TYPE = { internal: 'internal', edge: 'edge', corner: 'corner' };
+  // Table 6.1: k from the ratio named R
+  const kTab = R => `IF(${R} <= 0.5, 0.45, IF(${R} <= 1, 0.45 + 0.3*(${R} - 0.5), IF(${R} <= 2, 0.6 + 0.1*(${R} - 1), IF(${R} <= 3, 0.7 + 0.1*(${R} - 2), 0.8)))) [#]`;
+
+  // the perimeter at distance r (a name) from the face, as the engine's uGross: Figure 6.13, and near an edge Figure 6.15
+  // where it is shorter (6.4.2(4))
+  function uExpr(G, r) {
+    const full = G.circ ? `PI()*(D + 2*${r})` : `2*(c_1 + c_2) + 2*PI()*${r}`;
+    if (G.type === 'internal') return full;
+    const near = G.type === 'edge' ? (G.circ ? `PI()*(D/2 + ${r}) + D + 2*a_y` : `c_2 + 2*(c_1 + a_y) + PI()*${r}`)
+      : (G.circ ? `PI()*(D/2 + ${r})/2 + D + a_x + a_y` : `c_2 + a_x + c_1 + a_y + PI()*${r}/2`);
+    return `MIN(${full}, ${near})`;
+  }
+  // the slab area inside the perimeter at r (the engine's areaIn); r null: at the face
+  function areaExpr(G, r) {
+    const { type, circ } = G;
+    if (r == null) {
+      if (type === 'internal') return circ ? 'PI()*D^2/4' : 'c_1*c_2';
+      if (type === 'edge') return circ ? 'PI()*D^2/8 + D*(D/2 + a_y)' : 'c_2*(c_1 + a_y)';
+      return circ ? 'PI()*D^2/16 + D/2*(D/2 + a_x) + D/2*(D/2 + a_y) + (D/2 + a_x)*(D/2 + a_y)' : '(c_2 + a_x)*(c_1 + a_y)';
+    }
+    if (type === 'internal') return circ ? `PI()*(D/2 + ${r})^2` : `c_1*c_2 + 2*${r}*(c_1 + c_2) + PI()*${r}^2`;
+    if (type === 'edge') return circ ? `PI()*(D/2 + ${r})^2/2 + (D + 2*${r})*(D/2 + a_y)` : `(c_2 + 2*${r})*(c_1 + a_y) + c_2*${r} + PI()*${r}^2/2`;
+    return circ ? `PI()*(D/2 + ${r})^2/4 + (D/2 + ${r})*(D + a_x + a_y) + (D/2 + a_x)*(D/2 + a_y)` : `(c_2 + a_x + ${r})*(c_1 + a_y + ${r}) - ${r}^2 + PI()*${r}^2/4`;
+  }
+
+  function punch(P, inp, o = {}) {
+    const G = P.G, circ = G.circ, type = G.type, d = P.d, L = P.links, holes = P.S.filter(s => s.active);
+    const C = CalcScript.create({ title: o.title || 'Punching shear', tool: o.tool || 'RC Punching Shear', standard: 'BS EN 1992-1-1:2004+A1:2014 6.4 and 9.4.3, UK NA' });
+    const fv = Math.min(inp.fck, 50), fyk = inp.fyk || 500, fywk = inp.fywk || fyk;
+    if (!holes.length) C.plot(`PUNCH(${circ ? 'D, D, d, circ: 1' : 'c_1, c_2, d'}${type !== 'internal' ? ', edge: a_y' : ''}${type === 'corner' ? ', corner: a_x' : ''}, out: r_out${L ? ', links: n_per, s0: s_0, sr: s_r' : ''})`);
+    // ---------- materials ----------
+    C.head(o.matHead || 'Materials');
+    C.input('f_ck', inp.fck, 'N/mm2', `characteristic cylinder strength, C${inp.fck}/${CLS[inp.fck] || '–'}`, 'Table 3.1');
+    C.input('gamma_c', 1.5, '', 'partial factor, concrete', '2.4.2.4, UK NA', { sym: 'γ_c' });
+    C.input('f_ckmax', 50, 'N/mm2', 'UK NA: f_ck for shear not taken above C50/60', '6.2, UK NA', { sym: 'f_ck,max' });
+    C.calc('f_ckv', 'MIN(f_ck, f_ckmax)', fv, 'N/mm2', 'f_ck for shear', '6.2, UK NA', { sym: 'f_ck,v' });
+    // ---------- the column and the slab ----------
+    C.head('Column and slab');
+    C.note(type === 'internal' ? 'Internal column.' : type === 'edge' ? 'Edge column: the slab edge runs along x; c_1 is the column dimension perpendicular to the edge, c_2 along it.'
+      : 'Corner column: slab edges along x and along y; c_1 is the column dimension in y, c_2 in x.');
+    if (circ) C.input('D', 2 * G.ax, 'mm', 'column diameter', '');
+    else { C.input('c_1', 2 * G.ay, 'mm', 'column dimension in y', ''); C.input('c_2', 2 * G.ax, 'mm', 'column dimension in x', ''); }
+    if (type !== 'internal') C.input('a_y', G.ey, 'mm', 'column face to the slab edge along x', 'Figure 6.15');
+    if (type === 'corner') C.input('a_x', G.ex, 'mm', 'column face to the slab edge along y', 'Figure 6.15');
+    C.input('h', inp.h, 'mm', 'slab depth', '');
+    const given = inp.dX > 0 && inp.dY > 0, AsGiven = !!(o.As || inp.AsX > 0 || inp.AsY > 0);
+    if (!given || !AsGiven) {
+      if (!given) C.input('c_nom', inp.cover, 'mm', 'cover to the outer layer of top bars', '4.4.1');
+      C.input('phi_x', inp.phiX, 'mm', 'top bars along x', '', { sym: 'φ_x' });
+      C.input('phi_y', inp.phiY, 'mm', 'top bars along y', '', { sym: 'φ_y' });
+    }
+    if (given) {
+      C.input('d_x', P.dX, 'mm', 'effective depth of the top bars along x (given)', '');
+      C.input('d_y', P.dY, 'mm', 'effective depth of the top bars along y (given)', '');
+    } else {
+      if (inp.outer !== 'y') {
+        C.calc('d_x', 'h - c_nom - phi_x/2', P.dX, 'mm', 'effective depth, bars along x (the outer layer)', '');
+        C.calc('d_y', 'h - c_nom - phi_x - phi_y/2', P.dY, 'mm', 'effective depth, bars along y (the inner layer)', '');
+      } else {
+        C.calc('d_y', 'h - c_nom - phi_y/2', P.dY, 'mm', 'effective depth, bars along y (the outer layer)', '');
+        C.calc('d_x', 'h - c_nom - phi_y - phi_x/2', P.dX, 'mm', 'effective depth, bars along x (the inner layer)', '');
+      }
+    }
+    if (inp.d > 0) C.input('d', d, 'mm', 'mean effective depth (given)', '6.4.2(1) (6.32)');
+    else C.calc('d', '(d_x + d_y)/2', d, 'mm', 'mean effective depth', '6.4.2(1) (6.32)');
+    if (AsGiven) {
+      const how = (o.As && o.As.how) || 'given';
+      C.given('A_sx', P.AsX, 'mm2/m', 'top steel along x', how, '');
+      C.given('A_sy', P.AsY, 'mm2/m', 'top steel along y', how, '');
+    } else {
+      C.input('s_x', inp.sX, 'mm', 'spacing of the bars along x', '');
+      C.input('s_y', inp.sY, 'mm', 'spacing of the bars along y', '');
+      C.calc('A_sx', 'PI()*phi_x^2/4/s_x', P.AsX, 'mm2/m', 'top steel along x', '');
+      C.calc('A_sy', 'PI()*phi_y^2/4/s_y', P.AsY, 'mm2/m', 'top steel along y', '');
+    }
+    C.note('The tension steel is taken as that within the column width plus 3d each side (6.4.4(1)), here the bars as set out.');
+    C.calc('rho_x', 'A_sx/d_x [#]', P.rhoX, '', 'reinforcement ratio, bars along x', '6.4.4(1)', { sym: 'ρ_lx' });
+    C.calc('rho_y', 'A_sy/d_y [#]', P.rhoY, '', 'reinforcement ratio, bars along y', '6.4.4(1)', { sym: 'ρ_ly' });
+    C.calc('rho_l', 'MIN(SQRT(rho_x*rho_y), 0.02) [#]', P.rhoL, '', 'ρ_l: √(ρ_lx ρ_ly), not more than 0.02', '6.4.4(1)', { sym: 'ρ_l' });
+    // ---------- resistances ----------
+    C.head('Punching resistance of the concrete');
+    C.calc('k_v', 'MIN(1 + SQRT(200/d[#mm]), 2) [#]', P.k, '', 'size factor', '6.4.4(1)', { sym: 'k' });
+    C.calc('v_min', '0.035*k_v^1.5*SQRT(f_ckv[#N/mm2]) [#N/mm2]', 0.035 * P.k ** 1.5 * Math.sqrt(fv), 'N/mm2', 'minimum punching resistance', '6.4.4(1), (6.3N)');
+    C.calc('v_Rdc0', '0.18/gamma_c*k_v*(100*rho_l*f_ckv[#N/mm2])^(1/3) [#N/mm2]', 0.18 / 1.5 * P.k * (100 * P.rhoL * fv) ** (1 / 3), 'N/mm2', 'C_Rd,c k (100 ρ_l f_ck)^(1/3) with C_Rd,c of 0.18/γ_c', '6.4.4(1) (6.47)', { sym: 'v_Rd,c(6.47)' });
+    C.calc('v_Rdc', 'MAX(v_Rdc0, v_min)', P.vRdc, 'N/mm2', 'punching resistance without shear reinforcement', '6.4.4(1) (6.47)', { sym: 'v_Rd,c' });
+    C.calc('nu', '0.6*(1 - f_ckv[#N/mm2]/250) [#]', P.nu, '', 'strength reduction for concrete cracked in shear', '6.2.2(6) (6.6N)', { sym: 'ν' });
+    C.calc('f_cdv', 'f_ckv/gamma_c', P.fcd, 'N/mm2', 'f_cd for shear (α_cc of 1.0)', '3.1.6(1)', { sym: 'f_cd' });
+    C.calc('v_Rdmax', '0.5*nu*f_cdv', P.vRdmax, 'N/mm2', 'maximum punching stress at the column face', '6.4.5(3), UK NA', { sym: 'v_Rd,max' });
+    // ---------- control perimeters ----------
+    C.head('Control perimeters');
+    const u0x = type === 'internal' ? (circ ? 'PI()*D' : '2*(c_1 + c_2)')
+      : type === 'edge' ? (circ ? 'MIN(PI()*D/2, D + 3*d)' : 'MIN(c_2 + 3*d, c_2 + 2*c_1)')
+        : (circ ? 'MIN(PI()*D/4, 3*d)' : 'MIN(1.5*d, c_1) + MIN(1.5*d, c_2)');
+    const u0d = type === 'internal' ? 'the column perimeter' : type === 'edge' ? 'c_2 + 3d, not more than c_2 + 2c_1' : '3d, not more than c_1 + c_2 (each face at most 1.5d)';
+    C.calc('r_1', '2*d', 2 * d, 'mm', 'basic control perimeter: at 2d from the face', '6.4.2(1)');
+    if (holes.length) {
+      C.note(`${holes.length} opening${holes.length > 1 ? 's' : ''} within 6d of the face: the part of each perimeter between the tangents drawn from the centre of the column to the opening is ineffective (where its radial depth exceeds its width, the width is taken as √(l_1 l_2)).`);
+      C.calc('u_0g', u0x, P.u0g, 'mm', `perimeter at the column face: ${u0d}`, '6.4.5(3)', { sym: 'u_0,gross' });
+      C.given('Du_0', P.lost0, 'mm', 'length of u_0 within the openings’ tangents', 'found by stepping round the perimeter', '6.4.2(3), Figure 6.14', { sym: 'Δu_0' });
+      if (P.u0g - P.lost0 > 1e-9) C.calc('u_0', 'u_0g - Du_0', P.u0, 'mm', 'effective perimeter at the column face', '6.4.5(3)');
+      else C.given('u_0', P.u0, 'mm', 'effective perimeter at the column face', 'the openings take out the whole face perimeter', '6.4.5(3)');
+      C.calc('u_1g', uExpr(G, 'r_1'), P.u1g, 'mm', `basic control perimeter${type === 'internal' ? '' : ', the shorter of Figures 6.13 and 6.15'}`, '6.4.2, Figure 6.13', { sym: 'u_1,gross' });
+      C.given('Du_1', P.lost1, 'mm', 'length of u_1 within the openings’ tangents', 'found by stepping round the perimeter', '6.4.2(3), Figure 6.14', { sym: 'Δu_1' });
+      C.calc('u_1', 'u_1g - Du_1', P.u1, 'mm', 'effective basic control perimeter', '6.4.2(3)');
+    } else {
+      C.calc('u_0', u0x, P.u0, 'mm', `perimeter at the column face: ${u0d}`, '6.4.5(3)');
+      C.calc('u_1', uExpr(G, 'r_1'), P.u1, 'mm', `basic control perimeter${type === 'internal' ? '' : ', the shorter of Figures 6.13 and 6.15'}`, `6.4.2, Figure ${type === 'internal' ? '6.13' : '6.15'}`);
+    }
+    // ---------- beta ----------
+    C.head('Eccentricity of the load, β');
+    const B = P.B, Bm = inp.beta || {}, VEdk = P.VEd / 1e3;
+    if (o.V) C.given('V_Ed', VEdk, 'kN', 'design punching load at the column', o.V.how, o.V.ref || '');
+    else C.input('V_Ed', VEdk, 'kN', 'design punching load at the column (ULS)', '');
+    if (Bm.method !== 'calc') C.input('beta', B.beta, '', `UK NA approximate value for an ${type === 'internal' ? 'internal' : type === 'edge' ? 'edge' : 'corner'} column (braced, spans within 25 %)`, '6.4.3(6), UK NA Figure 6.21N', { sym: 'β' });
+    else if (!(P.VEd > 0)) C.input('beta', 1, '', 'no load', '6.4.3', { sym: 'β' });
+    else {
+      const Mx = Math.abs(Bm.Mx || 0), My = Math.abs(Bm.My || 0), c1n = circ ? 'D' : 'c_1', c2n = circ ? 'D' : 'c_2';
+      const mom = (n, v, desc) => o.M ? C.given(n, v, 'kNm', desc, o.M.how, '') : C.input(n, v, 'kNm', desc, '');
+      if (type === 'internal') {
+        mom('M_Edx', Mx, 'moment about x (eccentricity along y), taken positive');
+        mom('M_Edy', My, 'moment about y (eccentricity along x), taken positive');
+        if (circ) {
+          C.calc('e_c', 'SQRT(M_Edx^2 + M_Edy^2)/V_Ed', B.e, 'mm', 'resultant eccentricity M_Ed/V_Ed', '6.4.3(3)', { sym: 'e' });
+          C.calc('beta', '1 + 0.6*PI()*e_c/(D + 4*d) [#]', B.beta, '', 'internal circular column', '6.4.3(3) (6.42)', { sym: 'β' });
+        } else if (B.bx) {
+          C.calc('e_x', 'M_Edy/V_Ed', B.ex, 'mm', 'eccentricity along x', '6.4.3(3)'); C.calc('e_y', 'M_Edx/V_Ed', B.ey, 'mm', 'eccentricity along y', '6.4.3(3)');
+          C.calc('b_x', 'c_2 + 4*d', B.bx, 'mm', 'dimension of the control perimeter in x', '6.4.3(3), Figure 6.13');
+          C.calc('b_y', 'c_1 + 4*d', B.by, 'mm', 'dimension of the control perimeter in y', '6.4.3(3), Figure 6.13');
+          C.calc('beta', '1 + 1.8*SQRT((e_x/b_x)^2 + (e_y/b_y)^2) [#]', B.beta, '', 'internal rectangular column, moments about both axes', '6.4.3(3) (6.43)', { sym: 'β' });
+        } else {
+          const X = My > 0 && P.VEd > 0 && My * 1e6 / P.VEd > 0, en = X ? 'e_x' : 'e_y';
+          if (X) C.calc('e_x', 'M_Edy/V_Ed', B.e, 'mm', 'eccentricity along x', '6.4.3(3)'); else C.calc('e_y', 'M_Edx/V_Ed', B.e, 'mm', 'eccentricity along y', '6.4.3(3)');
+          C.calc('c_1e', X ? 'c_2' : 'c_1', X ? 2 * G.ax : 2 * G.ay, 'mm', 'column dimension parallel to the eccentricity', '6.4.3(3)', { sym: 'c_1,e' });
+          C.calc('c_2e', X ? 'c_1' : 'c_2', X ? 2 * G.ay : 2 * G.ax, 'mm', 'column dimension perpendicular to it', '6.4.3(3)', { sym: 'c_2,e' });
+          C.calc('r_c', 'c_1e/c_2e [#]', (X ? G.ax / G.ay : G.ay / G.ax), '', 'c_1/c_2', 'Table 6.1');
+          C.calc('k_b', kTab('r_c'), B.k, '', 'proportion of the moment carried by shear', 'Table 6.1', { sym: 'k' });
+          C.calc('W_1', 'c_1e^2/2 + c_1e*c_2e + 4*c_2e*d + 16*d^2 + 2*PI()*d*c_1e', B.W1, 'mm2', 'shear distribution modulus of u_1', '6.4.3(3) (6.41)');
+          C.calc('beta', `1 + k_b*${en}*u_1/W_1 [#]`, B.beta, '', 'internal rectangular column', '6.4.3(3) (6.39)', { sym: 'β' });
+        }
+      } else if (type === 'edge') {
+        C.note('Edge column: the moment about x (across the edge) is taken with the eccentricity towards the inside of the slab, so u_1* carries the load uniformly (6.4.3(4)); the moment about y, parallel to the edge, adds k u_1/W_1 e_par.');
+        mom('M_Edy', My, 'moment about y (eccentricity along the edge), taken positive');
+        C.calc('e_par', 'M_Edy/V_Ed', B.e, 'mm', 'eccentricity parallel to the slab edge', '6.4.3(4)', { sym: 'e_par' });
+        C.calc('u_1s', circ ? 'PI()*(D/2 + 2*d) + 2*MIN(D/2, 1.5*d)' : 'c_2 + 2*MIN(0.5*c_1, 1.5*d) + 2*PI()*d', B.u1s, 'mm', 'reduced basic control perimeter', '6.4.3(4), Figure 6.20(a)', { sym: 'u_1*' });
+        C.calc('r_c', `${c1n}/(2*${c2n}) [#]`, circ ? 0.5 : G.ay / (2 * G.ax), '', 'c_1/(2 c_2)', 'Table 6.1, 6.4.3(4)');
+        C.calc('k_b', kTab('r_c'), B.k, '', 'proportion of the moment carried by shear', 'Table 6.1', { sym: 'k' });
+        C.calc('W_1', `${c2n}^2/4 + ${c1n}*${c2n} + 4*${c1n}*d + 8*d^2 + PI()*d*${c2n}`, B.W1, 'mm2', 'shear distribution modulus of u_1', '6.4.3(4) (6.45)');
+        C.calc('beta', 'u_1/u_1s + k_b*u_1/W_1*e_par [#]', B.beta, '', 'edge column', '6.4.3(4) (6.44)', { sym: 'β' });
+      } else {
+        C.note('Corner column: the eccentricity is taken towards the inside of the slab, so u_1* carries the load uniformly (6.4.3(4)).');
+        C.calc('u_1s', circ ? 'PI()*(D/2 + 2*d)/2 + 2*MIN(D/2, 1.5*d)' : 'MIN(0.5*c_1, 1.5*d) + MIN(0.5*c_2, 1.5*d) + PI()*d', B.u1s, 'mm', 'reduced basic control perimeter', '6.4.3(4), Figure 6.20(b)', { sym: 'u_1*' });
+        C.calc('beta', 'u_1/u_1s [#]', B.beta, '', 'corner column', '6.4.3(4) (6.46)', { sym: 'β' });
+      }
+    }
+    // ---------- load inside each perimeter ----------
+    let V0 = 'V_Ed', V1 = 'V_Ed';
+    if (P.q > 0) {
+      C.head('Load inside the perimeters');
+      C.input('q', inp.q, 'kN/m2', 'load inside the control perimeters that may be taken off V_Ed', '6.4.3(4), 6.4.4(2)');
+      C.calc('A_0', areaExpr(G, null), Punching.areaIn(G, 0), 'mm2', 'slab area within u_0 (the column)', '');
+      C.calc('A_1', areaExpr(G, 'r_1'), Punching.areaIn(G, 2 * d), 'mm2', 'slab area within u_1', '');
+      C.calc('V_Ed0', 'MAX(V_Ed - q*A_0, 0*V_Ed)', P.Vred0 / 1e3, 'kN', 'net load at the column face', '6.4.3(4)', { sym: 'V_Ed,red,0' });
+      C.calc('V_Ed1', 'MAX(V_Ed - q*A_1, 0*V_Ed)', P.Vred1 / 1e3, 'kN', 'net load at u_1', '6.4.3(4)', { sym: 'V_Ed,red,1' });
+      V0 = 'V_Ed0'; V1 = 'V_Ed1';
+    }
+    // ---------- checks ----------
+    C.head('Column face');
+    C.calc('v_Ed0', `beta*${V0}/(u_0*d)`, P.vEd0, 'N/mm2', 'punching stress at the column face', '6.4.3(2), 6.4.5(3)', { sym: 'v_Ed,0' });
+    C.check('U_max', 'v_Ed0/v_Rdmax', P.vEd0 / P.vRdmax, 'column face: v_Ed,0 ≤ v_Rd,max', '6.4.5(3), UK NA');
+    C.head('Basic control perimeter');
+    C.calc('v_Ed', `beta*${V1}/(u_1*d)`, P.vEd1, 'N/mm2', 'punching stress at u_1', '6.4.3(2) (6.38)');
+    if (!P.needLinks) C.check('U_c', 'v_Ed/v_Rdc', P.vEd1 / P.vRdc, 'v_Ed ≤ v_Rd,c: no shear reinforcement needed', '6.4.4(1)');
+    else {
+      C.note('v_Ed > v_Rd,c: shear reinforcement is needed (6.4.5).');
+      C.input('k_max', 2, '', 'the most the shear reinforcement can raise the resistance at u_1', '6.4.5(1), UK NA (A1:2014)', { sym: 'k_max' });
+      C.check('U_c', 'v_Ed/(k_max*v_Rdc)', P.vEd1 / (2 * P.vRdc), 'v_Ed ≤ k_max v_Rd,c', '6.4.5(1), UK NA');
+    }
+    C.calc('u_out', `beta*V_Ed/(v_Rdc*d)`, P.uout, 'mm', 'perimeter at which shear reinforcement is no longer needed (V_Ed not reduced)', '6.4.5(4) (6.54)', { sym: 'u_out,ef' });
+    C.given('r_out', P.rout, 'mm', 'distance from the face at which the perimeter reaches u_out,ef', P.rout < 1e-3 ? 'u_out,ef is shorter than the perimeter at the face' : 'found by bisection on the perimeter’s length', '6.4.5(4)');
+    if (!L) return C;
+    // ---------- shear reinforcement ----------
+    C.head('Shear reinforcement');
+    C.input('f_ywk', fywk, 'N/mm2', 'characteristic yield strength of the links', '3.2.2');
+    C.input('gamma_s', 1.15, '', 'partial factor, reinforcement', '2.4.2.4, UK NA', { sym: 'γ_s' });
+    C.calc('f_ywd', 'f_ywk/gamma_s', fywk / 1.15, 'N/mm2', 'design yield strength of the links', '3.2.7');
+    C.calc('f_ywdef', 'MIN(250 + 0.25*d[#mm], f_ywd[#N/mm2]) [#N/mm2]', P.fywdef, 'N/mm2', 'effective design strength of the links, 250 + 0.25d ≤ f_ywd', '6.4.5(1)', { sym: 'f_ywd,ef' });
+    C.calc('A_swsr', '(v_Ed - 0.75*v_Rdc)*u_1/(1.5*f_ywdef)', L.AswSr, 'mm2/mm', 'links needed on each perimeter per unit radial spacing (vertical links, sin α of 1)', '6.4.5(1) (6.52)', { sym: 'A_sw/s_r' });
+    C.calc('s_rmax', '0.75*d', L.srMax, 'mm', 'largest radial spacing of the perimeters', '9.4.3(1)', { sym: 's_r,max' });
+    const Lin = inp.link || {};
+    if (Lin.sr > 0) { C.input('s_rg', Lin.sr, 'mm', 'radial spacing chosen', '', { sym: 's_r,chosen' }); C.calc('s_r', 'MIN(s_rg, s_rmax)', L.sr, 'mm', 'radial spacing of the perimeters', '9.4.3(1)'); }
+    else C.given('s_r', L.sr, 'mm', 'radial spacing of the perimeters', '0.75d rounded down to 5 mm', '9.4.3(1)');
+    if (Lin.s0 > 0) C.input('s_0', L.s0, 'mm', 'first perimeter from the column face (chosen)', '9.4.3(4)');
+    else C.given('s_0', L.s0, 'mm', 'first perimeter from the column face', '0.5d rounded down to 5 mm, not less than 0.3d', '9.4.3(4)');
+    C.calc('r_last', 'MAX(s_0 + s_r, r_out - 1.5*d)', L.rLast, 'mm', 'outermost perimeter: not more than 1.5d inside u_out,ef, at least the second', '6.4.5(4), 9.4.3(4)', { sym: 'r_last' });
+    C.given('n_per', L.nPer, '', 'perimeters of links', '(r_last − s_0)/s_r + 1 rounded up, at least 2', '9.4.3(1)', { sym: 'n_per' });
+    if (Lin.phi > 0) C.input('phi_w', L.phi, 'mm', 'link diameter (chosen)', '', { sym: 'φ_w' });
+    else C.given('phi_w', L.phi, 'mm', 'link diameter', 'the smallest of H8, H10, H12, H16 whose legs are at least min(100 mm, 0.5d) apart on every perimeter', '', { sym: 'φ_w' });
+    C.calc('A_leg', 'PI()*phi_w^2/4', L.A, 'mm2', 'area of one leg', '');
+    C.calc('A_swreq', 'A_swsr*s_r', L.AswSr * L.sr, 'mm2', 'links needed on each perimeter', '6.4.5(1) (6.52)', { sym: 'A_sw,req' });
+    C.calc('rho_wmin', '0.08*SQRT(f_ckv[#N/mm2])/f_ywk[#N/mm2]/1.5 [#]', L.minPerLeg, '', 'least area of one leg per s_r s_t: A_sw,min (1.5 sin α + cos α)/(s_r s_t) ≥ 0.08 √f_ck / f_yk, vertical legs', '9.4.3(2) (9.11)', { sym: 'ρ_w,min' });
+    L.per.forEach(p => {
+      const i = p.i, r = `r_p${i}`, u = `u_p${i}`, n = `n_p${i}`, st = `s_t${i}`, A = `A_swp${i}`;
+      C.head(`Perimeter ${i}`);
+      C.calc(r, i === 1 ? 's_0' : `s_0 + ${i - 1}*s_r`, p.r, 'mm', 'distance from the column face', '9.4.3', { sym: `r_${i}` });
+      if (holes.length) C.given(u, p.len, 'mm', 'effective length of the perimeter (the openings’ tangents taken out)', 'found by stepping round the perimeter', '6.4.2(3)', { sym: `u_${i}` });
+      else C.calc(u, uExpr(G, r), p.len, 'mm', 'length of the perimeter', '6.4.2', { sym: `u_${i}` });
+      C.given(n, p.n, '', 'legs on this perimeter', 'the most of A_sw,req/A_leg, u/s_t,max and 2, rounded up, and raised if a leg is below A_sw,min', '9.4.3', { sym: `n_${i}` });
+      C.calc(st, `${u}/${n}`, p.st, 'mm', 'tangential spacing of the legs', '9.4.3(1)', { sym: `s_t,${i}` });
+      C.calc(A, `${n}*A_leg`, p.Asw, 'mm2', 'links on this perimeter', '', { sym: `A_sw,${i}` });
+      C.check(`U_st${i}`, `${st}/IF(${r} <= 2*d, 1.5*d, 2*d)`, p.st / p.stMax, `tangential spacing ≤ ${p.stMax === 1.5 * d ? '1.5d (inside 2d)' : '2d (outside 2d)'}`, '9.4.3(1)');
+      C.check(`U_sw${i}`, `A_swreq/${A}`, (L.AswSr * L.sr) / p.Asw, 'A_sw ≥ A_sw,req', '6.4.5(1)');
+      C.check(`U_mn${i}`, `rho_wmin*s_r*${st}/A_leg`, L.minPerLeg * L.sr * p.st / L.A, 'each leg ≥ A_sw,min', '9.4.3(2) (9.11)');
+    });
+    C.head('Resistance with shear reinforcement');
+    C.calc('A_swprov', `MIN(${L.per.map(p => `A_swp${p.i}`).join(', ')})`, L.AswProv, 'mm2', 'links on the weakest perimeter', '', { sym: 'A_sw,prov' });
+    C.calc('v_Rdcs', '0.75*v_Rdc + 1.5*(d/s_r)*A_swprov*f_ywdef/(u_1*d)', L.vRdcs, 'N/mm2', 'punching resistance with shear reinforcement (vertical links)', '6.4.5(1) (6.52)', { sym: 'v_Rd,cs' });
+    C.check('U_cs', 'v_Ed/v_Rdcs', P.vEd1 / L.vRdcs, 'v_Ed ≤ v_Rd,cs', '6.4.5(1)');
+    return C;
+  }
+  return { punch, uExpr, areaExpr };
+})();
+if (typeof module !== 'undefined') module.exports = { PunchScript };
 
 </script>
 <script id="drawing-code">
@@ -928,26 +1518,45 @@ function punchInput() {
 // ---------- results ----------
 const bar = c => `<div class="ck"><div class="nm">${esc(c.name)}<small>${esc(c.ref)} &nbsp;${esc(c.note || '')}</small></div><div class="bar"><i class="${c.util > 1 ? 'over' : ''}" style="width:${Math.min(100, c.util * 100 / 1.2)}%"></i></div><div class="u ${c.util > 1 ? 'over' : ''}">${ufmt(c.util)}</div></div>`;
 function verdict(util, sub) { return `<div class="verdict ${util > 1 ? 'fail' : ''}"><div><div class="big">${util > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(util)}</div><div class="sub">${sub}</div></div></div>`; }
+const linkTable = L => `<table class="t rtab"><tr><th>Perimeter</th><th>From face (mm)</th><th>Length (mm)</th><th>Legs</th><th>Tangential spacing (mm)</th><th>A<sub>sw</sub> (mm²)</th></tr>` + L.per.map(p => `<tr><td>${p.i}</td><td>${f0(p.r)}</td><td>${f0(p.len)}</td><td>${p.n}</td><td>${f0(p.st)} ≤ ${f0(p.stMax)}</td><td>${f0(p.Asw)}</td></tr>`).join('') + `</table>`;
 function punchDetails(P) {
   const kv = (k, v) => `<div><b>${k}</b><span>${v}</span></div>`;
   let s = `<div class="kv">${kv('d (mm)', f1(P.d))}${kv('ρ<sub>l</sub> (%)', f3(P.rhoL * 100))}${kv('k', f3(P.k))}${kv('β', f3(P.beta))}${kv('v<sub>Rd,c</sub> (N/mm²)', f3(P.vRdc))}${kv('v<sub>Rd,max</sub> (N/mm²)', f2(P.vRdmax))}${kv('u₀ (mm)', f0(P.u0))}${kv('u₁ (mm)', f0(P.u1))}${kv('v<sub>Ed</sub> at u₁ (N/mm²)', f3(P.vEd1))}${kv('u<sub>out,ef</sub> (mm)', f0(P.uout))}</div>`;
   s += `<div class="help">β: ${esc(P.B.how)}. ${P.lost1 > 0 ? `Openings take ${f0(P.lost1)} mm off u₁ (gross ${f0(P.u1g)} mm). ` : ''}${P.q > 0 ? `V<sub>Ed</sub> reduced by the load inside each perimeter (${f0(P.Vred1 / 1e3)} kN at u₁). ` : ''}u<sub>out,ef</sub> is reached ${f0(P.rout)} mm from the face (${f2(P.rout / P.d)}d).</div>`;
   if (P.links) {
     const L = P.links;
-    s += `<table class="t rtab"><tr><th>Perimeter</th><th>From face (mm)</th><th>Length (mm)</th><th>Legs</th><th>Tangential spacing (mm)</th><th>A<sub>sw</sub> (mm²)</th></tr>` + L.per.map(p => `<tr><td>${p.i}</td><td>${f0(p.r)}</td><td>${f0(p.len)}</td><td>${p.n}</td><td>${f0(p.st)} ≤ ${f0(p.stMax)}</td><td>${f0(p.Asw)}</td></tr>`).join('') + `</table>`;
+    s += linkTable(L);
     s += `<div class="help">A<sub>sw</sub>/s<sub>r</sub> = ${f2(L.AswSr)} mm²/mm (6.52), so ${f0(L.AswSr * L.sr)} mm² per perimeter at s<sub>r</sub> = ${f0(L.sr)} mm (≤ 0.75d = ${f0(L.srMax)}); H${L.phi} legs; first perimeter ${f0(L.s0)} mm from the face (0.3d to 0.5d); the last within 1.5d of u<sub>out,ef</sub> (9.4.3(4)); f<sub>ywd,ef</sub> = 250 + 0.25d = ${f1(P.fywdef)} N/mm²; v<sub>Rd,cs</sub> = ${f3(L.vRdcs)} N/mm²; ${L.legs} legs in all, about ${f1(L.mass)} kg.</div>`;
   }
   return s;
 }
+// the full calculation: every step as symbols, the numbers put in and the result, with its clause; the same record goes to
+// CalcPad as text to paste or as a .perega file to open (CalcPad recalculates every formula), with the plan as a picture
+document.head.insertAdjacentHTML('beforeend', `<style>${CalcScript.CSS}</style>`);
+const cpMeta = title => { const s = collect(); return { project: s.pName, job: s.pJob, by: s.pBy, sheet: s.pRef, title }; };
+function script(P, inp) {
+  const what = inp.shape === 'circ' ? `circular column D ${inp.D}` : `column ${inp.c1} × ${inp.c2}`;
+  const C = PunchScript.punch(P, inp, { title: `Punching shear: ${inp.type} ${what} mm, h ${inp.h} mm` });
+  // the plan is drawn live by CalcPad (the PUNCH line) unless there are openings, which it does not draw
+  const live = C.items.some(it => it.t === 'plot'), svgs = DrawPunch.html(P, inp).match(/<svg[\s\S]*?<\/svg>/g) || [];
+  C.items.unshift(...(live ? svgs.slice(1) : svgs).map(svg => ({ t: 'img', svg, caption: '' })));
+  return C;
+}
+const fullCalc = C => `<div class="dlabel">Full calculation</div><div class="cs-tools"><button class="btn2" id="cpCopy" type="button">Copy for CalcPad</button><button class="btn2" id="cpSave" type="button">Download .perega</button><span class="aux" id="cpMsg"></span></div>${C.html({ noImg: true })}`;
+function wireCalc(C) {
+  const title = C.meta.title;
+  $('cpCopy').onclick = async () => { const ok = await CalcScript.copy(C, cpMeta(title)); $('cpMsg').textContent = ok ? 'Copied: paste it into a CalcPad sheet.' : 'Could not copy: use Download .perega.'; };
+  $('cpSave').onclick = () => { CalcScript.download(C, cpMeta(title), title); $('cpMsg').textContent = 'Downloaded: open it in CalcPad (File ▸ Open).'; };
+}
 function runPunch() {
-  const inp = punchInput(), P = Punching.design(inp), Wc = [...P.checks].sort((a, b) => b.util - a.util); last = { P, inp };
+  const inp = punchInput(), P = Punching.design(inp), Wc = [...P.checks].sort((a, b) => b.util - a.util), C = script(P, inp); last = { P, inp, C };
   const g = Wc[0], what = inp.shape === 'circ' ? `circular column D ${inp.D} mm` : `column ${inp.c1} × ${inp.c2} mm`;
   $('results').innerHTML = (from ? `<div class="from">${esc(from)}</div>` : '')
     + verdict(P.util, `Governs: ${esc(g.name.charAt(0).toLowerCase() + g.name.slice(1))} (${esc(g.ref)})<br>${inp.type} ${what}, h ${inp.h} mm, V<sub>Ed</sub> ${inp.VEd} kN, β ${f3(P.beta)}; ${P.needLinks ? (P.vEd1 > 2 * P.vRdc ? 'more than links can carry (k<sub>max</sub> = 2)' : 'shear links needed') : 'no shear links needed'}`)
     + `<div id="drawings"></div><div class="dlabel">Checks</div><div class="checks">${Wc.map(bar).join('')}</div><div class="dlabel">Values</div>${punchDetails(P)}`
     + (P.vEd1 > 2 * P.vRdc ? `<div class="note">v<sub>Ed</sub> at u₁ is more than 2 v<sub>Rd,c</sub> (UK NA k<sub>max</sub>): links cannot make it work. Thicken the slab, add a drop panel or column head, enlarge the column or add top steel.</div>` : '')
-    + `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
-  redraw();
+    + fullCalc(C) + `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+  redraw(); wireCalc(C);
   $('printBtn').onclick = () => { $('report').innerHTML = report(); window.print(); };
 }
 function run() {
@@ -958,12 +1567,13 @@ function run() {
 const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
 const okng = u => u <= 1 ? `<span class="ok">${ufmt(u)} OK</span>` : `<span class="ng">${ufmt(u)} FAIL</span>`;
 function report() {
-  const s = collect(), today = new Date().toLocaleDateString('en-GB'), { P, inp } = last;
+  const s = collect(), today = new Date().toLocaleDateString('en-GB'), { P, inp, C } = last;
   const head = `<div class="rh"><div><b>Project</b>${esc(s.pName) || '&nbsp;'}</div><div><b>Job no.</b>${esc(s.pJob) || '&nbsp;'}</div><div><b>By / date</b>${esc(s.pBy) || '&nbsp;'} ${today}</div><div><b>Member</b>${esc(s.pRef) || '&nbsp;'}</div><div class="ttl">RC slab: punching shear to BS EN 1992-1-1 + UK NA</div></div>`;
   let b = `<div class="rs"><h2>Basis</h2>${rl(`BS EN 1992-1-1:2004+A1:2014 6.4 and 9.4.3 with the UK NA (v<sub>Rd,max</sub> = 0.5νf<sub>cd</sub>, k<sub>max</sub> = 2)`, '6.4', '')}`
     + rl(`${inp.type} ${inp.shape === 'circ' ? `circular column D = ${inp.D}` : `column c₁ × c₂ = ${inp.c1} × ${inp.c2}`} mm${inp.type !== 'internal' ? `, face to the slab edge ${inp.ey} mm${inp.type === 'corner' ? ` and ${inp.ex} mm` : ''}` : ''}; h = ${inp.h} mm, cover ${inp.cover} mm; H${inp.phiX} @ ${inp.sX} along x, H${inp.phiY} @ ${inp.sY} along y (outer: ${inp.outer})`, '', '')
     + rl(`C${inp.fck}/${EC2c(inp.fck)}, f<sub>yk</sub> ${inp.fyk}, f<sub>ywk</sub> ${inp.fywk} N/mm²; V<sub>Ed</sub> = ${inp.VEd} kN${inp.beta.method === 'calc' ? `, M<sub>x</sub> = ${inp.beta.Mx}, M<sub>y</sub> = ${inp.beta.My} kNm` : ''}${inp.q > 0 ? `, q = ${inp.q} kN/m² deducted` : ''}${inp.holes.length ? `; ${inp.holes.length} opening${inp.holes.length > 1 ? 's' : ''}` : ''}`, '', '') + '</div>';
-  b += `<div class="rs"><h2>Plan and section</h2>${DrawPunch.report(P, inp)}</div><div class="rs"><h2>Values</h2>${punchDetails(P)}</div>`;
+  b += `<div class="rs"><h2>Plan and section</h2>${DrawPunch.report(P, inp)}</div><div class="rs"><h2>Calculation</h2>${C.html({ sheet: true, noImg: true })}</div>`;
+  if (P.links) b += `<div class="rs"><h2>Link perimeters</h2>${linkTable(P.links)}</div>`;
   b += `<div class="rs"><h2>Checks</h2>` + P.checks.map(c => rl(esc(c.name) + ` <span style="color:#666">${esc(c.note || '')}</span>`, esc(c.ref), okng(c.util))).join('') + '</div>';
   b += `<p class="rp" style="color:#555">Generated by EngineeringTools — RC Punching Shear.</p>`;
   return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;

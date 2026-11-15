@@ -19,6 +19,9 @@ function page(store) {
   truth('check: verdict, bearing both combinations, sliding, EQU, bending, shear, punching', /PASS/.test(res()) && ['Bearing, DA1-1', 'Bearing, DA1-2', 'Sliding', 'Overturning (EQU)', 'Bending, bars along L', 'Beam shear', 'Punching', 'Punching at the column face', 'Minimum steel'].every(t => res().includes(t)));
   truth('the bearing table lists every combination, wind both ways', d.querySelectorAll('.ctab tbody tr').length === 14 && /C2: 1G − 1.3W/.test(res()));
   truth('governs: punching at 0.915', /0\.915/.test(res()) && /Governs: punching/.test(res()));
+  { const Z = [...$('results').querySelectorAll('details.zone')].map(z => z.querySelector('summary').textContent);   // every check written out, each with its CalcPad buttons
+    truth('the full calculation: the base, bearing and sliding in each combination, EQU, bending, shear and punching each way, the detailing', Z.length === 13 && /^Base, loads and ground/.test(Z[0]) && Z.some(z => /^Bearing, DA1-2/.test(z)) && Z.some(z => /^Sliding, DA1-1/.test(z)) && Z.some(z => /^Punching at the column face/.test(z)) && /^Minimum steel/.test(Z[12])
+      && $('results').querySelectorAll('details.zone [data-cp="copy"]').length === 13 && $('results').querySelectorAll('[data-cp="proj"]').length === 1); }
   set('H', '350'); $('calc').click(); truth('a thin base fails', /FAIL/.test(res()));
   set('H', '600'); set('soil', 'undrained'); set('cu', '60'); $('calc').click();
   truth('undrained: c_u shown, φ′ hidden, D.3 resistance', !$('cu').closest('.form-group').hidden && $('phi').closest('.form-group').hidden && /Bearing, DA1-2/.test(res()));
@@ -29,6 +32,7 @@ function page(store) {
   set('ex', '0'); $('calc').click(); $('printBtn').click();
   const rep = $('report').textContent;
   truth('print: the A4 sheet with Annex D, EC2 and the drawings', w.printed && /Pad foundation to BS EN 1997-1/.test(rep) && /Combination 2 \(A2 \+ M2\)/.test(rep) && /D\.4/.test(rep) && /column face/.test(rep) && $('report').querySelectorAll('svg.dk').length === 2);
+  truth('print: the full calculation, check by check', $('report').querySelectorAll('.cs-sheet').length === 13 && /5 Full calculation/.test($('report').textContent) && /Materials: as above/.test($('report').textContent));
   d.querySelector('#types [data-t=strip]').click(); await wait(260);
   truth('strip: B, column b and the y rows hidden; one section drawing', $('B').closest('.form-group').hidden && d.querySelector('tr.t-pad').hidden && d.querySelectorAll('#drawings svg.dk').length === 1 && /per metre run/.test(draw()));
   set('L', '1500'); set('c1', '300'); set('G_N', '200'); set('Q_N', '80'); set('W_Mx', '0'); set('W_Hx', '0'); set('G_Mx', '0'); $('calc').click();

@@ -270,6 +270,355 @@ sub,sup{font-size:max(11px,.75em);line-height:0;}
 </div>
 <div id="report"></div>
 <script id="engine">
+/* ===== CALCULATION SCRIPT (EngineeringTools) =====
+   One record of a tool's calculation, written step by step, from which the tool shows its full calculation (on the page
+   and the A4 sheet) and writes it for CalcPad (text to paste, or a .perega file to open), so that the two cannot differ.
+   Every number the calculation reports is one of:
+   - an input, with its unit;
+   - a formula in CalcPad's syntax (names, + − * / ^, SQRT MIN MAX ABS IF LOG EXP ROUND PI(), x[#unit] for a value as a
+     plain number in a given unit, as the empirical Eurocode formulas need), shown as the symbols, then the numbers put
+     in, then the result, with its clause; CalcPad recalculates these itself;
+   - a value the formula language cannot reach (an iteration, a table read, an analysis), stated as such with how it
+     was found and, where it can be, an equation that confirms it;
+   - a utilisation, with its limit.
+   API: const C = CalcScript.create({ title, tool, standard });
+        C.head(text), C.note(text),
+        C.input(name, value, unit, desc, ref, { sym }), C.calc(name, expr, value, unit, desc, ref, { sym }),
+        C.given(name, value, unit, desc, how, ref, { sym }), C.check(name, expr, value, desc, ref, { limit, sym }),
+        C.img(svg, caption);
+        C.html() — the full calculation; C.calcpad() — CalcPad text; C.perega(meta) — a .perega document (object).
+        CalcScript.project([{ C, title }], meta, name) — a .peregaproj (one CalcPad check per script, for a tool with several
+        zones or members whose names repeat); copy(C, meta), download(C, meta, file), downloadProject(list, meta, file) for the buttons.
+   Units are CalcPad's: mm cm m km, N kN MN, Pa kPa MPa GPa (N/mm2 for stresses), kg g t, s, deg rad, combined with * / ^
+   or run together (kNm, kNm/m, mm2/m). Values are given in the unit stated.
+   Source: scratchpad/common/calcscript.js. */
+const CalcScript = (() => {
+  'use strict';
+  // CalcPad's unit table: the SI factor and the SI symbol of each unit
+  const CONV = { mm: 1e-3, cm: 1e-2, m: 1, km: 1e3, N: 1, kN: 1e3, MN: 1e6, g: 1e-3, kg: 1, t: 1e3, Pa: 1, kPa: 1e3, MPa: 1e6, GPa: 1e9, s: 1, ms: 1e-3, min: 60, hr: 3600, deg: Math.PI / 180, rad: 1 };
+  const SIB = { mm: 'm', cm: 'm', m: 'm', km: 'm', N: 'N', kN: 'N', MN: 'N', g: 'kg', kg: 'kg', t: 'kg', Pa: 'Pa', kPa: 'Pa', MPa: 'Pa', GPa: 'Pa', s: 's', ms: 's', min: 's', hr: 's', deg: 'rad', rad: 'rad' };
+  const ORDER = { N: 0, kN: 0, MN: 0, Pa: 1, kPa: 1, MPa: 1, GPa: 1, J: 2, W: 2, Hz: 2, kg: 4, g: 4, t: 4, m: 5, mm: 5, cm: 5, km: 5, s: 6, ms: 6, min: 6, hr: 6, rad: 7, deg: 7 };
+  // "kNm" → kN, m (longest known symbol first, as CalcPad reads run-together units)
+  function split(tok) {
+    if (CONV[tok] !== undefined) return [tok];
+    const go = s => { if (!s) return []; for (let n = Math.min(3, s.length); n >= 1; n--) { if (CONV[s.slice(0, n)] === undefined) continue; const r = go(s.slice(n)); if (r) return [s.slice(0, n), ...r]; } return null; };
+    return go(tok);
+  }
+  function terms(u) {
+    const s = String(u || '').replace(/²/g, '^2').replace(/³/g, '^3').replace(/⁴/g, '^4').replace(/·/g, '*'), out = [];
+    const add = (str, sign) => str.split('*').forEach(p => { const t = p.trim(); if (!t) return; const m = t.match(/^([a-zA-Z]+)(?:\^?(-?\d+))?$/); if (!m) throw new Error(`CalcScript: unit "${u}"`); const e = m[2] ? +m[2] : 1, sy = split(m[1]); if (!sy) throw new Error(`CalcScript: unknown unit "${m[1]}"`); sy.forEach((x, i) => out.push([x, sign * (i === sy.length - 1 ? e : 1)])); });
+    const parts = s.split('/'); add(parts[0], 1); for (let i = 1; i < parts.length; i++) add(parts[i], -1);
+    return out;
+  }
+  const factor = u => terms(u).reduce((f, [s, e]) => f * CONV[s] ** e, 1);
+  const toSI = (v, u) => (u ? v * factor(u) : v);
+  function siUnit(u) {   // the SI unit string CalcPad stores with a literal (as unitObjToStr(toSIUnitObj(...)))
+    const o = {}; for (const [s, e] of terms(u)) { const b = SIB[s]; o[b] = (o[b] || 0) + e; if (!o[b]) delete o[b]; }
+    const rank = s => (ORDER[s] !== undefined ? ORDER[s] : 3), cmp = ([a], [b]) => rank(a) - rank(b) || a.localeCompare(b);
+    const f = ([s, e]) => (Math.abs(e) === 1 ? s : s + '^' + Math.abs(e));
+    const pos = Object.entries(o).filter(([, e]) => e > 0).sort(cmp), neg = Object.entries(o).filter(([, e]) => e < 0).sort(cmp);
+    return pos.map(f).join('·') + (neg.length ? '/' + neg.map(f).join('·') : '');
+  }
+  // ---------- display ----------
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const GREEK = { alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', zeta: 'ζ', eta: 'η', theta: 'θ', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', rho: 'ρ', sigma: 'σ', tau: 'τ', phi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω', Delta: 'Δ', Sigma: 'Σ', Phi: 'Φ' };
+  // a name as a symbol: the part before the first _ as the base (Greek where it is a Greek letter's name), the rest subscript;
+  // sym overrides the text ("A_s,req")
+  function symHTML(name, sym) {
+    const s = sym || name, i = s.indexOf('_'), base = i < 0 ? s : s.slice(0, i), sub = i < 0 ? '' : s.slice(i + 1);
+    const g = x => GREEK[x] || x;
+    return `<i>${esc(g(base))}</i>${sub ? `<sub>${esc(sub.split(',').map(g).join(','))}</sub>` : ''}`;
+  }
+  const UNIT_SHOW = { 'N/mm2': 'N/mm²', MPa: 'N/mm²', mm2: 'mm²', mm3: 'mm³', mm4: 'mm⁴', 'mm2/m': 'mm²/m', kNm: 'kNm', 'kN*m': 'kNm', 'kNm/m': 'kNm/m', 'kN*m/m': 'kNm/m', 'kN/m2': 'kN/m²', 'kN/m3': 'kN/m³', m2: 'm²', m3: 'm³', m4: 'm⁴' };
+  const unitHTML = u => (u ? esc(UNIT_SHOW[u] || String(u).replace(/\^?2(?![0-9])/g, '²').replace(/\^?3(?![0-9])/g, '³').replace(/\*/g, '·')) : '');
+  // a number to about four significant figures, no exponent for the sizes met in design
+  function num(v) {
+    if (v === Infinity) return '∞'; if (v === -Infinity) return '−∞'; if (!Number.isFinite(v)) return '–';
+    if (v === 0) return '0';
+    const a = Math.abs(v);
+    let s = a >= 1e4 ? Math.round(v).toLocaleString('en-GB') : a >= 1000 ? Math.round(v).toString() : a >= 100 ? (Math.round(v * 10) / 10).toString() : a >= 1e-4 ? (+v.toPrecision(4)).toString() : v.toExponential(3);
+    return s.replace(/^-/, '−');
+  }
+  // CalcPad expression → tokens
+  function tokens(expr) {
+    const out = []; let i = 0; const s = String(expr);
+    while (i < s.length) {
+      const ch = s[i];
+      if (/\s/.test(ch)) { i++; continue; }
+      if (/\d/.test(ch) || (ch === '.' && /\d/.test(s[i + 1] || ''))) { let n = ''; while (i < s.length && /[\d.]/.test(s[i])) n += s[i++]; if (/[eE]/.test(s[i] || '') && /[-+\d]/.test(s[i + 1] || '')) { n += s[i++]; if (/[-+]/.test(s[i])) n += s[i++]; while (/\d/.test(s[i] || '')) n += s[i++]; } out.push({ t: 'n', v: n }); continue; }
+      if (/[A-Za-z]/.test(ch)) {
+        let n = ''; while (i < s.length && /[A-Za-z0-9_]/.test(s[i])) n += s[i++];
+        let unit = ''; if (s[i] === '[') { const j = s.indexOf(']', i); unit = s.slice(i + 1, j); i = j + 1; }
+        let k = i; while (/\s/.test(s[k] || '')) k++;
+        out.push(s[k] === '(' && /^[A-Z][A-Z0-9]*$/.test(n) ? { t: 'f', v: n } : { t: 'id', v: n, unit }); continue;
+      }
+      const two = s.slice(i, i + 2);
+      if (['<=', '>=', '==', '!=', '<>'].includes(two)) { out.push({ t: 'op', v: two }); i += 2; continue; }
+      out.push({ t: 'op', v: ch }); i++;
+    }
+    return out;
+  }
+  const FN = { SQRT: '√', ABS: 'abs', MIN: 'min', MAX: 'max', IF: 'if', LOG: 'log', EXP: 'exp', ROUND: 'round', SIN: 'sin', COS: 'cos', TAN: 'tan', ATAN: 'atan', ASIN: 'asin', ACOS: 'acos', PI: 'π' };
+  const OPS = { '*': '·', '<=': '≤', '>=': '≥', '!=': '≠', '<>': '≠', '==': '=', '-': '−' };
+  // the expression as HTML: symbols (sub = null) or with each name's value put in (sub = name → { v, unit })
+  function exprHTML(expr, syms, sub) {
+    const tk = tokens(expr); let h = '';
+    for (let i = 0; i < tk.length; i++) {
+      const t = tk[i], nx = tk[i + 1];
+      if (t.t === 'n') h += esc(t.v.replace(/^(\d+)\.?0*$/, '$1'));
+      else if (t.t === 'f') { if (t.v === 'PI') { h += 'π'; i += 2; continue; } h += FN[t.v] || t.v.toLowerCase(); }
+      else if (t.t === 'id') {
+        // a value put in: bracketed where it is negative, or carries a unit and is raised to a power
+        if (sub && sub[t.v]) { const q = sub[t.v], u = t.unit ? '' : unitHTML(q.unit), br = q.v < 0 || (u && nx && nx.v === '^'); h += `${br ? '(' : ''}${num(q.v)}${u ? '&#8239;' + u : ''}${br ? ')' : ''}`; }
+        else h += symHTML(t.v, syms[t.v]);
+      } else if (t.v === '^') {
+        // a power: the next token (or bracket group) raised
+        let j = i + 1, depth = 0, grp = '';
+        do { const q = tk[j]; grp += q.t === 'op' ? q.v : (q.unit ? `${q.v}[${q.unit}]` : q.v); if (q.v === '(') depth++; if (q.v === ')') depth--; j++; } while (depth > 0 && j < tk.length);
+        const inner = grp.replace(/^\((.*)\)$/, '$1');
+        h += `<sup>${exprHTML(inner, syms, null)}</sup>`; i = j - 1;
+      } else if (t.v === '*') h += sub ? ' × ' : '·';
+      else if (t.v === '/') h += ' / ';
+      else if (t.v === '-' && (i === 0 || (tk[i - 1].t === 'op' && ['(', ',', '+', '-', '*', '/', '^', '<', '>', '<=', '>='].includes(tk[i - 1].v)))) h += '−';   // unary minus
+      else if (['+', '-', '<=', '>=', '<', '>', '==', '!=', '<>'].includes(t.v)) h += ` ${OPS[t.v] || esc(t.v)} `;
+      else if (t.v === ',') h += ', ';
+      else h += esc(t.v);
+      void nx;
+    }
+    return h.replace(/\s+/g, ' ').trim();
+  }
+  // ---------- the script ----------
+  function create(meta = {}) {
+    const items = [], vals = {}, syms = {}, units = {}, names = new Set();
+    const name0 = (n, kind) => {
+      if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(n)) throw new Error(`CalcScript: "${n}" is not a CalcPad name`);
+      if (names.has(n)) throw new Error(`CalcScript: "${n}" is defined twice`);
+      names.add(n); void kind;
+    };
+    const keep = (name, v, unit, o) => { vals[name] = v; units[name] = unit || ''; if (o && o.sym) syms[name] = o.sym; };
+    // a formula and the unit CalcPad shows it in: [unit], [#unit] (an empirical formula's result) or [#] (a plain number)
+    const split = (expr, unit) => { const m = String(expr).match(/^(.*?)\s*\[([^\]]+)\]\s*$/); return m ? { core: m[1].trim(), spec: m[2].trim() } : { core: String(expr).trim(), spec: unit || '#' }; };
+    const C = {
+      meta, items,
+      head(text) { items.push({ t: 'h', text }); return C; },
+      note(text) { items.push({ t: 'p', text }); return C; },
+      input(name, v, unit, desc, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'in', name, v, unit: unit || '', desc, ref }); return v; },
+      calc(name, expr, v, unit, desc, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'calc', name, expr, ...split(expr, unit), v, unit: unit || '', desc, ref }); return v; },
+      given(name, v, unit, desc, how, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'val', name, v, unit: unit || '', desc, how, ref }); return v; },
+      check(name, expr, v, desc, ref, o = {}) { name0(name); keep(name, v, '', o); items.push({ t: 'chk', name, expr, ...split(expr, ''), v, desc, ref, limit: o.limit ?? 1 }); return v; },
+      img(svg, caption) { items.push({ t: 'img', svg, caption }); return C; },
+      // a CalcPad plot line (PLOT(...) or SECTION(...)): drawn live by CalcPad from the values; not on the page, which has its own drawings
+      plot(src) { items.push({ t: 'plot', src }); return C; },
+      value: n => vals[n], has: n => names.has(n),
+      // ----- the full calculation, for the page and the A4 sheet -----
+      html(opts = {}) {
+        const sub = Object.fromEntries(Object.keys(vals).map(n => [n, { v: vals[n], unit: units[n] }]));
+        // opts.skip: headings whose sections are left out (the same materials in every zone of a sheet), said in a line
+        let h = `<div class="cs${opts.sheet ? ' cs-sheet' : ''}">`, skipping = false;
+        for (const it of items) {
+          if (it.t === 'h') { skipping = !!(opts.skip && opts.skip.includes(it.text)); h += skipping ? `<div class="cs-p">${esc(it.text)}: as above.</div>` : `<div class="cs-h">${esc(it.text)}</div>`; continue; }
+          if (skipping) continue;
+          if (it.t === 'p') { h += `<div class="cs-p">${esc(it.text)}</div>`; continue; }
+          if (it.t === 'plot') continue;
+          if (it.t === 'img') { if (!opts.noImg) h += `<div class="cs-img">${it.svg}${it.caption ? `<div class="cs-cap">${esc(it.caption)}</div>` : ''}</div>`; continue; }
+          const S = symHTML(it.name, syms[it.name]), res = `${num(it.v)}${it.unit ? '&#8239;' + unitHTML(it.unit) : ''}`;
+          let eq;
+          if (it.t === 'in') eq = `${S} = ${res}`;
+          else if (it.t === 'val') eq = `${S} = ${res}`;
+          else {
+            const sy = exprHTML(it.core, syms, null), nu = exprHTML(it.core, syms, sub);
+            eq = `${S} = ${sy}${nu !== sy ? ` = ${nu}` : ''} = <b>${res}</b>`;
+            if (it.t === 'chk') eq += ` ${it.v <= it.limit + 1e-9 ? `≤ ${num(it.limit)} <span class="cs-ok">OK</span>` : `> ${num(it.limit)} <span class="cs-ng">NOT OK</span>`}`;
+          }
+          const d = [it.desc, it.how].filter(Boolean).map(esc).join('; ');
+          h += `<div class="cs-r cs-${it.t}"><div class="cs-eq">${eq}${d ? `<div class="cs-d">${d}</div>` : ''}</div><div class="cs-ref">${esc(it.ref || '')}</div></div>`;
+        }
+        return h + '</div>';
+      },
+      // ----- CalcPad text: paste into a sheet and every line becomes a live chip -----
+      lines() {
+        const out = [];
+        // an "=" in the words would start a definition in CalcPad: "a = b" is written "a is b"
+        const clean = s => String(s || '').replace(/\s*=\s*/g, ' is ').replace(/\s+/g, ' ').trim();
+        const pre = it => { const d = clean([it.desc, it.t === 'val' && it.how ? `(${it.how})` : ''].filter(Boolean).join(' ')), r = clean(it.ref); return `${d}${r ? `${d ? ', ' : ''}${r}` : ''}${d || r ? ': ' : ''}`; };
+        for (const it of items) {
+          if (it.t === 'h') { out.push({ it, text: '' }, { it, text: clean(it.text) }); continue; }
+          if (it.t === 'p') { out.push({ it, text: clean(it.text) }); continue; }
+          if (it.t === 'img') continue;
+          if (it.t === 'plot') { out.push({ it, text: it.src }); continue; }
+          if (it.t === 'in' || it.t === 'val') out.push({ it, text: `${pre(it)}${it.name} = ${lit(it.v)}${it.unit ? ' ' + it.unit : ''}` });
+          else out.push({ it, text: `${pre(it)}${it.name} = ${it.core} [${it.spec}]` });
+        }
+        return out;
+      },
+      calcpad() { const L = C.lines().map(l => l.text); while (L.length && !L[0]) L.shift(); return L.join('\n'); },
+      // ----- a .perega document: the same lines as CalcPad's own chips, with the drawings as images -----
+      perega(m = {}, images = {}) {
+        let html = '';
+        const chip = it => {
+          if (it.t === 'in' || it.t === 'val') {
+            const si = toSI(it.v, it.unit), su = it.unit ? siUnit(it.unit) : '';
+            const a = { 'data-var-name': it.name, 'data-var-val': String(si), 'data-bare': '1' };   // data-bare: CalcPad draws it on opening
+            if (it.unit) { a['data-var-unit'] = it.unit; if (su && su !== it.unit) a['data-var-si-unit'] = su; if (lit(it.v) !== String(si)) a['data-var-orig-num'] = lit(it.v); }
+            return `<span contenteditable="false" class="var-def-chip" ${Object.entries(a).map(([k, v]) => `${k}="${esc(v)}"`).join(' ')}><span class="vdc-name">${esc(it.name)} = </span><span class="vdc-val">${esc(lit(it.v))}${it.unit ? ' ' + esc(it.unit) : ''}</span></span>`;
+          }
+          const a = { 'data-var-name': it.name, 'data-var-val': String(toSI(it.v, it.unit)), 'data-var-expr': it.core, 'data-var-display-unit': it.spec, 'data-bare': '1' };
+          return `<span contenteditable="false" class="var-def-chip" ${Object.entries(a).map(([k, v]) => `${k}="${esc(v)}"`).join(' ')}><span class="vdc-name">${esc(it.name)} = ${esc(it.core)}</span></span>`;
+        };
+        let first = true;
+        for (const it of items) {
+          const br = first ? '' : '<br>'; first = false;
+          if (it.t === 'h') { html += `${br}<br><b>${esc(it.text)}</b>`; continue; }
+          if (it.t === 'p') { html += `${br}${esc(it.text)}`; continue; }
+          if (it.t === 'plot') { html += `${br}<span contenteditable="false" class="plot-chip" data-plot="${esc(it.src)}"></span> `; continue; }
+          if (it.t === 'img') { const src = images[items.indexOf(it)]; if (src) html += `${br}<span contenteditable="false" class="calc-img-wrap"><img src="${src}" draggable="false" style="width:${Math.round(Math.min(images.width || 500, (images.nat && images.nat[items.indexOf(it)]) || Infinity))}px;height:auto"><span class="img-resize-handle"></span><span class="img-size-label"></span></span>${it.caption ? `<br><i>${esc(it.caption)}</i>` : ''}`; else first = !html; continue; }
+          const L = C.lines().find(l => l.it === it), text = L.text, k = text.lastIndexOf(`${it.name} = `);
+          html += `${br}${esc(text.slice(0, k))}${chip(it)} `;
+        }
+        const today = new Date().toISOString().slice(0, 10);
+        return { version: 2, meta: { 'm-project': m.project || '', 'm-projno': m.job || '', 'm-date': m.date || today, 'm-desc': m.title || meta.title || '', 'm-sheet': m.sheet || '', 'm-orig': m.by || '', 'm-deliv': '', 'm-checked': '', 'm-suit': '', 'm-rev': '' },
+          pages: [html], preferredUnits: {}, et: { tool: meta.tool || '', standard: meta.standard || '' } };
+      },
+    };
+    return C;
+  }
+  // a number as CalcPad reads it: full precision, no grouping
+  const lit = v => (Number.isFinite(v) ? String(+v.toPrecision(12)) : '0');
+  // the drawings as PNG data URLs (CalcPad's Word export takes PNG): resolves to { index: dataURL, width }
+  async function rasterise(C, width = 520) {
+    const out = { width, nat: {} };   // nat: each drawing's own width, so a small one is not blown up
+    const jobs = C.items.map((it, i) => it.t !== 'img' ? null : new Promise(res => {
+      try {
+        const doc = new DOMParser().parseFromString(it.svg, 'image/svg+xml'), sv = doc.documentElement;
+        if (!sv || sv.nodeName !== 'svg') return res();
+        if (!sv.getAttribute('xmlns')) sv.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        const vb = (sv.getAttribute('viewBox') || '').split(/[ ,]+/).map(Number), w = vb[2] || +sv.getAttribute('width') || 600, h = vb[3] || +sv.getAttribute('height') || 400;
+        sv.setAttribute('width', w); sv.setAttribute('height', h); out.nat[i] = w;
+        // the page's colours and fonts as the drawing uses them
+        const st = doc.createElementNS('http://www.w3.org/2000/svg', 'style'); st.textContent = 'text{font-family:Arial,Helvetica,sans-serif}'; sv.insertBefore(st, sv.firstChild);
+        const img = new Image(), url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(sv));
+        img.onload = () => { const k = 2, cv = document.createElement('canvas'); cv.width = w * k; cv.height = h * k; const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, cv.width, cv.height); out[i] = cv.toDataURL('image/png'); res(); };
+        img.onerror = () => res(); img.src = url;
+      } catch (e) { res(); }
+    }));
+    await Promise.all(jobs.filter(Boolean));
+    return out;
+  }
+  // the buttons' work: copy the CalcPad text (with the chips as HTML for a paste straight into CalcPad), download a .perega
+  async function copy(C, m) {
+    const text = C.calcpad();
+    try {
+      if (navigator.clipboard && window.ClipboardItem) {
+        const doc = C.perega(m), html = doc.pages[0];
+        await navigator.clipboard.write([new ClipboardItem({ 'text/plain': new Blob([text], { type: 'text/plain' }), 'text/html': new Blob([html], { type: 'text/html' }) })]);
+        return true;
+      }
+      await navigator.clipboard.writeText(text); return true;
+    } catch (e) {
+      const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+      let ok = false; try { ok = document.execCommand('copy'); } catch (e2) { ok = false; } ta.remove(); return ok;
+    }
+  }
+  const fileSafe = s => String(s || 'Calculation').replace(/×/g, 'x').replace(/\//g, '-').replace(/[^A-Za-z0-9 ._()-]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Calculation';
+  function save(text, fileName, ext) {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = fileSafe(fileName) + ext;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+  async function download(C, m, fileName) {
+    let images = {}; try { images = await rasterise(C); } catch (e) { images = {}; }
+    save(JSON.stringify({ ...C.perega(m, images), savedAt: new Date().toISOString() }, null, 2), fileName, '.perega');
+  }
+  // a CalcPad project (.peregaproj): one check per script, in order, each a whole document of its own (CalcPad keeps each
+  // check's names apart, so the zones of a beam can all use M_Ed, d, ...). list: [{ C, title }]
+  // Values several checks define alike (the same name, definition, unit, description and source: the materials, a section
+  // several zones share, ...) go once into a first check of shared values, which CalcPad (a pack's shared check, from CalcPad dd29f6a) gives
+  // to every other check of the pack; each check says, where they were, which of its values come from there. A value stays
+  // in a check unless everything it uses there is shared too, so a check with a different f_ck keeps its own f_cd.
+  // Returns the list with the shared check first ({ C, title, shared: true }), or the list as it was if nothing repeats.
+  const IDENT = /[A-Za-z][A-Za-z0-9_]*/g;
+  function shareOut(list) {
+    const defs = it => it.t === 'in' || it.t === 'val' || it.t === 'calc';
+    const key = it => JSON.stringify([it.t, it.name, it.t === 'calc' ? `${it.core} [${it.spec}]` : `${lit(it.v)} ${it.unit}`, it.desc || '', it.ref || '', it.how || '']);
+    const count = new Map();
+    list.forEach(({ C }) => { const seen = new Set(); C.items.forEach(it => { if (!defs(it)) return; const k = key(it); if (!seen.has(k)) { seen.add(k); count.set(k, (count.get(k) || 0) + 1); } }); });
+    const best = new Map();   // name → the definition most checks share (one per name)
+    for (const [k, c] of count) { if (c < 2) continue; const nm = JSON.parse(k)[1], b = best.get(nm); if (!b || c > count.get(b)) best.set(nm, k); }
+    if (!best.size) return list;
+    const shared = [], sharedKeys = new Set();
+    const out = list.map(({ C, title, ...rest }) => {
+      const local = new Set(C.items.filter(defs).map(it => it.name)), gone = new Set();
+      C.items.forEach(it => {
+        if (!defs(it) || best.get(it.name) !== key(it)) return;
+        const uses = it.t === 'calc' ? (it.core.match(IDENT) || []).filter(n => n !== it.name && local.has(n)) : [];
+        if (uses.every(n => gone.has(n))) gone.add(it.name);
+      });
+      if (!gone.size) return { C, title, ...rest };
+      const C2 = create({ ...C.meta }); let head = null, run = [];
+      const flush = () => { if (run.length) { C2.items.push({ t: 'p', text: `From the shared values: ${run.join(', ')}.` }); run = []; } };
+      for (const it of C.items) {
+        if (it.t === 'h') { flush(); head = it.text; C2.items.push(it); continue; }
+        if (defs(it) && gone.has(it.name)) { run.push(it.name); const k = key(it); if (!sharedKeys.has(k)) { sharedKeys.add(k); shared.push({ head, it }); } continue; }
+        flush(); C2.items.push(it);
+      }
+      flush();
+      return { C: C2, title, ...rest };
+    });
+    if (!shared.length) return list;
+    const S = create({ title: 'Shared values', tool: list[0].C.meta.tool, standard: list[0].C.meta.standard });
+    S.items.push({ t: 'p', text: 'The values several checks of this project use, defined once: CalcPad gives them to every other check. A check that needs a different value defines its own.' });
+    let h = null;
+    for (const { head, it } of shared) { if (head !== h) { h = head; if (head) S.items.push({ t: 'h', text: head }); } S.items.push(it); }
+    return [{ C: S, title: 'Shared values', shared: true }, ...out];
+  }
+  async function project(list, m = {}, name = 'Calculation', o = {}) {
+    const checks = [];
+    if (o.share !== false && list.length > 1) list = shareOut(list);
+    for (let k = 0; k < list.length; k++) {
+      const { C, title, shared } = list[k]; let images = {};
+      try { images = typeof document !== 'undefined' ? await rasterise(C) : {}; } catch (e) { images = {}; }
+      checks.push({ id: 'c' + (k + 1), name: title, doc: C.perega({ ...m, title }, images), ...(shared ? { shared: true } : {}) });
+    }
+    return { kind: 'calcpad-project', version: 1, name: fileSafe(name), activeId: checks.length ? checks[0].id : null, checks, savedAt: new Date().toISOString() };
+  }
+  async function downloadProject(list, m, fileName) { save(JSON.stringify(await project(list, m, fileName), null, 2), fileName, '.peregaproj'); }
+  // a tool with several zones (Z: [{ key, title, sum, util, C }]): the project button, then each zone as a <details> with its
+  // own buttons and its full calculation; wire() answers the buttons (once per page, on a container that stays)
+  const uf = u => (Number.isFinite(u) ? u.toFixed(3) : '>99');
+  // o.noProj: no project button (a page that shows its zones in several places, with one project button of its own)
+  function zonesHTML(Z, o = {}) {
+    return (o.noProj ? '' : `<div class="cs-tools"><button class="btn2" type="button" data-cp="proj">Download CalcPad project (.peregaproj)</button><span class="aux" data-cpmsg="proj"></span></div>`)
+      + Z.map(zn => `<details class="zone"><summary><span>${esc(zn.title)}${zn.sum ? `<small> · ${esc(zn.sum)}</small>` : ''}</span>${zn.util != null ? `<span class="u ${zn.util > 1 ? 'over' : ''}">${uf(zn.util)}</span>` : ''}</summary>`
+        + `<div class="zfull"><div class="cs-tools"><button class="btn2" type="button" data-cp="copy" data-zone="${esc(zn.key)}">Copy for CalcPad</button><button class="btn2" type="button" data-cp="save" data-zone="${esc(zn.key)}">Download .perega</button><span class="aux" data-cpmsg="${esc(zn.key)}"></span></div>${zn.C.html({ noImg: true })}</div></details>`).join('');
+  }
+  // getZ() → the zones shown; meta(title) → the project details; name(title) → a file name; proj: the project's title
+  function wire(root, getZ, meta, name, proj) {
+    root.addEventListener('click', async e => {
+      const b = e.target.closest('[data-cp]'), Z = getZ(); if (!b || !Z) return;
+      const msg = k => root.querySelector(`[data-cpmsg="${k}"]`) || { textContent: '' };
+      if (b.dataset.cp === 'proj') { await downloadProject(Z.map(zn => ({ C: zn.C, title: zn.title })), meta(proj), name(proj)); msg('proj').textContent = 'Downloaded: open it in CalcPad (File ▸ Open project). Each zone is a check of its own.'; return; }
+      const zn = Z.find(z => z.key === b.dataset.zone); if (!zn) return;
+      if (b.dataset.cp === 'copy') { const ok = await copy(zn.C, meta(zn.title)); msg(zn.key).textContent = ok ? 'Copied: paste it into a CalcPad sheet.' : 'Could not copy: use Download .perega.'; }
+      else { await download(zn.C, meta(zn.title), name(zn.title)); msg(zn.key).textContent = 'Downloaded: open it in CalcPad (File ▸ Open).'; }
+    });
+  }
+  // the zones on the A4 sheet: every zone in full, the materials set out once and "as above" after
+  function sheetHTML(Z, h2 = t => `<h2>${t}</h2>`) {
+    let mat = false;
+    return Z.map(zn => { const s = `<div class="rs">${h2(`${esc(zn.title)}${zn.sum ? ` <span style="font-weight:400;color:#555">· ${esc(zn.sum)}</span>` : ''}`)}${zn.C.html({ sheet: true, noImg: true, skip: mat ? ['Materials'] : [] })}</div>`; if (zn.C.items.some(it => it.t === 'h' && it.text === 'Materials')) mat = true; return s; }).join('');
+  }
+  // the style of the full calculation (each tool's page and sheet include it)
+  const CSS = `.cs{font-size:13px;line-height:1.45}.cs-h{font-weight:600;font-size:14px;margin:14px 0 4px;padding-bottom:3px;border-bottom:1px solid var(--bdr,#e6e6e6)}
+.cs-p{color:var(--mut,#5f6368);margin:4px 0}.cs-r{display:grid;grid-template-columns:1fr 110px;gap:10px;padding:4px 0;border-bottom:1px solid #f0f0f0}
+.cs-eq{overflow-wrap:anywhere}.cs-eq i{font-style:italic}.cs-eq sub,.cs-eq sup{font-size:75%}.cs-d{color:var(--mut,#5f6368);font-size:12px}
+.cs-ref{color:var(--faint,#6b6b6b);font-size:12px;text-align:right}.cs-ok{color:var(--pass,#247b50);font-weight:600}.cs-ng{color:var(--fail,#c4242a);font-weight:600}
+.cs-val .cs-eq{color:#333}.cs-img{margin:8px 0}.cs-cap{font-size:12px;color:var(--mut,#5f6368)}
+.cs-sheet{font-size:9pt}.cs-sheet .cs-r{grid-template-columns:1fr 70pt;padding:1pt 0;break-inside:avoid}.cs-sheet .cs-h{font-size:10pt;margin:6pt 0 2pt}.cs-sheet .cs-d,.cs-sheet .cs-ref{font-size:8pt}.cs-sheet .cs-d{display:inline;margin-left:8pt}.cs-sheet .cs-p{margin:2pt 0}
+.zone .zfull{padding:0 10px 8px}.zone summary small{color:var(--faint,#6b6b6b);font-size:12px}.cs-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.cs-tools .btn2{width:auto;flex:0 0 auto;margin:0;padding:0 16px}
+@media print{.cs-tools{display:none}}`;
+  return { create, toSI, siUnit, factor, num, exprHTML, symHTML, unitHTML, tokens, rasterise, copy, download, project, downloadProject, zonesHTML, wire, sheetHTML, CSS };
+})();
+if (typeof module !== 'undefined') module.exports = { CalcScript };
+
 /* ===== EC2 DESIGN CORE (EngineeringTools) =====
    Clean-room implementation from BS EN 1992-1-1:2004 + A1:2014 and the UK National Annex (NA to BS EN 1992-1-1:2004+A1:2014),
    cross-read with The Concrete Centre "How to design concrete structures using Eurocode 2". Units: N, mm (stresses N/mm2).
@@ -746,6 +1095,965 @@ const Pad = (() => {
 })();
 if (typeof module !== 'undefined') module.exports = { Pad };
 
+/* ===== EC2 FULL CALCULATIONS (EngineeringTools) =====
+   The calculation of EC2Section.design and the EC2Toolkit checks written out step by step as a CalcScript: every number
+   from an input, a formula (CalcPad syntax, recalculated by CalcPad), or a value found by iteration or read from a table
+   (stated as such, with the equation that confirms it). Built from the engine's inputs and results, so the engine stays
+   the one source of the numbers; tests run every formula through CalcPad and compare it with the engine.
+   Conventions: stresses N/mm2, lengths mm, forces kN, moments kNm; a slab is a 1000 mm wide strip (its steel per metre is
+   the steel in the strip, its moment per metre the moment on the strip). Empirical formulas take values as plain numbers
+   in the units the code gives them in (name[#N/mm2]) and say the unit of the result ([#N/mm2]); dimensionless results
+   end in [#]. Source: scratchpad/ec2/script.js. Needs CalcScript, EC2, EC2Section. */
+const EC2Script = (() => {
+  'use strict';
+  const PI = Math.PI;
+  const SYSN = { ss: 'simply supported', end: 'end span of a continuous member', interior: 'interior span', flat: 'flat slab', cantilever: 'cantilever' };
+  // materials: f_ck, f_yk and what follows from them (Table 3.1, 3.1.6, 3.1.7(3), UK NA)
+  function materials(C, c, st, o = {}) {
+    C.head('Materials');
+    C.input('f_ck', c.fck, 'N/mm2', `characteristic cylinder strength, C${c.fck}/${c.fckCube ?? '–'}`, 'Table 3.1');
+    C.input('f_yk', st.fyk, 'N/mm2', 'characteristic yield strength of the reinforcement', '3.2.2');
+    C.input('gamma_c', 1.5, '', 'partial factor, concrete', '2.4.2.4, UK NA', { sym: 'γ_c' });
+    C.input('gamma_s', 1.15, '', 'partial factor, reinforcement', '2.4.2.4, UK NA', { sym: 'γ_s' });
+    if (!o.noFlex) {
+      C.input('alpha_cc', 0.85, '', 'long-term coefficient for compression in bending (UK NA)', '3.1.6(1)', { sym: 'α_cc' });
+      C.calc('f_cd', 'alpha_cc*f_ck/gamma_c', c.fcd, 'N/mm2', 'design compressive strength', '3.1.6(1)');
+    }
+    C.calc('f_yd', 'f_yk/gamma_s', st.fyd, 'N/mm2', 'design yield strength', '3.2.7');
+    C.input('E_s', st.Es, 'N/mm2', 'modulus of elasticity of reinforcement', '3.2.7(4)');
+    C.calc('f_cm', 'f_ck[#N/mm2] + 8 [#N/mm2]', c.fcm, 'N/mm2', 'mean compressive strength', 'Table 3.1');
+    if (c.fck <= 50) C.calc('f_ctm', '0.30*f_ck[#N/mm2]^(2/3) [#N/mm2]', c.fctm, 'N/mm2', 'mean tensile strength (f_ck ≤ 50)', 'Table 3.1');
+    else C.calc('f_ctm', '2.12*LOG(1 + f_cm[#N/mm2]/10) [#N/mm2]', c.fctm, 'N/mm2', 'mean tensile strength (f_ck > 50)', 'Table 3.1');
+    C.calc('E_cm', '22000*(f_cm[#N/mm2]/10)^0.3 [#N/mm2]', c.Ecm, 'N/mm2', 'secant modulus of elasticity', 'Table 3.1');
+    if (!o.noFlex) {
+      if (c.fck <= 50) {
+        C.input('epsilon_cu2', c.ecu2, '', 'ultimate compressive strain (f_ck ≤ 50)', 'Table 3.1', { sym: 'ε_cu2' });
+        C.input('lambda', c.lambda, '', 'depth factor of the rectangular stress block', '3.1.7(3)', { sym: 'λ' });
+        C.input('eta', c.eta, '', 'strength factor of the rectangular stress block', '3.1.7(3)', { sym: 'η' });
+      } else {
+        C.calc('epsilon_cu2', '(2.6 + 35*((90 - f_ck[#N/mm2])/100)^4)/1000 [#]', c.ecu2, '', 'ultimate compressive strain (f_ck > 50)', 'Table 3.1', { sym: 'ε_cu2' });
+        C.calc('lambda', '0.8 - (f_ck[#N/mm2] - 50)/400 [#]', c.lambda, '', 'depth factor of the stress block (f_ck > 50)', '3.1.7(3)', { sym: 'λ' });
+        C.calc('eta', '1 - (f_ck[#N/mm2] - 50)/200 [#]', c.eta, '', 'strength factor of the stress block (f_ck > 50)', '3.1.7(3)', { sym: 'η' });
+      }
+      C.calc('sigma_c', 'eta*f_cd', c.eta * c.fcd, 'N/mm2', 'stress in the rectangular block', '3.1.7(3)', { sym: 'η f_cd' });
+    }
+  }
+  // the size factor k of 7.3.2 for a dimension named nm
+  const kSizeExpr = nm => `IF(${nm}[#mm] <= 300, 1, IF(${nm}[#mm] >= 800, 0.65, 1 - 0.35*(${nm}[#mm] - 300)/500)) [#]`;
+  // a value read from a table by straight-line interpolation: the two rows either side as inputs, then the formula
+  function interp(C, name, T, wk, x, xName, desc, ref, unit, sym) {
+    const s = T.s, col = T[wk];
+    if (x <= s[0]) { C.given(name, col[0], unit, desc, `first row of the table (σ_s ≤ ${s[0]} N/mm²)`, ref, { sym }); return col[0]; }
+    for (let i = 1; i < s.length; i++) if (x <= s[i]) {
+      const a = col[i - 1], b = col[i]; if (a == null || b == null) break;
+      const p = name + '_a', q = name + '_b';
+      C.input(`sigma_${p}`, s[i - 1], 'N/mm2', `table row below`, ref, { sym: `σ_${(sym || name).replace(/^.*?_/, '')},a` });
+      C.input(`sigma_${q}`, s[i], 'N/mm2', `table row above`, ref, { sym: `σ_${(sym || name).replace(/^.*?_/, '')},b` });
+      C.input(p, a, unit, `table value at σ = ${s[i - 1]} N/mm²`, ref);
+      C.input(q, b, unit, `table value at σ = ${s[i]} N/mm²`, ref);
+      const v = a + (b - a) * (x - s[i - 1]) / (s[i] - s[i - 1]);
+      C.calc(name, `${p} + (${q} - ${p})*(${xName} - sigma_${p})/(sigma_${q} - sigma_${p})`, v, unit, desc + ' (interpolated)', ref, { sym });
+      return v;
+    }
+    C.note(`${desc}: σ_s = ${CalcScript.num(x)} N/mm² is beyond the table, so the table gives no value: the check is not satisfied.`);
+    return null;
+  }
+
+  // ---------- one section: EC2Section.design(inp) → R ----------
+  function section(inp, R, meta = {}) {
+    const C = meta.C || CalcScript.create({ title: meta.title || 'RC section design', tool: meta.tool || 'RC Section Design Toolkit', standard: 'BS EN 1992-1-1:2004+A1:2014, UK NA' });
+    const c = R.c, st = R.st, slab = inp.kind === 'slab', flanged = !slab && inp.shape === 'flanged', sag = !flanged || inp.moment !== 'hogging';
+    const arr = R.arr, bw = R.bw, h = inp.h, d = R.d, bd = R.bd, As2p = R.As2p, comp = !slab && inp.comp && inp.comp.n > 0;
+    materials(C, c, st);
+    // ----- section and bars -----
+    C.head(slab ? 'Section: a 1000 mm wide strip of slab' : flanged ? `Section: flanged beam, ${sag ? 'sagging (flange in compression)' : 'hogging (flange in tension)'}` : 'Section: rectangular beam');
+    C.input('h', h, 'mm', 'overall depth', '');
+    if (slab) C.input('b', 1000, 'mm', 'width of the strip', '');
+    else if (flanged) { C.input('b', inp.b, 'mm', 'effective flange width', '5.3.2.1', { sym: 'b_eff' }); C.input('b_w', bw, 'mm', 'web width', ''); C.input('h_f', inp.hf, 'mm', 'flange depth', ''); }
+    else C.input('b', inp.b, 'mm', 'width', '');
+    const W = slab || !flanged ? 'b' : 'b_w';   // the web width's name
+    C.input('c_nom', inp.cover, 'mm', 'nominal cover to the bars (to the links in a beam)', '4.4.1');
+    if (!slab) C.input('phi_w', inp.phiLink || 0, 'mm', 'link diameter', '', { sym: 'φ_w' });
+    C.input('phi', inp.bar.phi, 'mm', 'tension bar diameter', '', { sym: 'φ' });
+    if (slab) {
+      C.input('s', inp.bar.s, 'mm', 'bar spacing', '');
+      C.calc('A_s', 'PI()*phi^2/4*b/s', arr.As, 'mm2', 'tension steel in the strip (per metre)', '', { sym: 'A_s,prov' });
+      C.calc('d', 'h - c_nom - phi/2', d, 'mm', 'effective depth', '');
+    } else if (arr.n2) {
+      C.input('n_1', arr.n1, '', 'bars in the outer layer', ''); C.input('n_2', arr.n2, '', 'bars in the second layer', '');
+      C.input('d_g', inp.dg || 20, 'mm', 'maximum aggregate size', '8.2(2)');
+      C.calc('d_1', 'h - c_nom - phi_w - phi/2', arr.d1, 'mm', 'depth to the outer layer', '');
+      C.calc('s_v', 'MAX(phi, d_g + 5 mm, 20 mm)', arr.gap, 'mm', 'clear gap between the layers', '8.2(2)');
+      C.calc('d_l2', 'd_1 - phi - s_v', arr.layers[1].d, 'mm', 'depth to the second layer', '');
+      C.calc('A_s1', 'n_1*PI()*phi^2/4', arr.layers[0].As, 'mm2', 'outer layer', '');
+      C.calc('A_s2l', 'n_2*PI()*phi^2/4', arr.layers[1].As, 'mm2', 'second layer', '', { sym: 'A_s,l2' });
+      C.calc('A_s', 'A_s1 + A_s2l', arr.As, 'mm2', 'tension steel provided', '', { sym: 'A_s,prov' });
+      C.calc('d', '(A_s1*d_1 + A_s2l*d_l2)/A_s', d, 'mm', 'effective depth to the centroid of the tension steel', '');
+    } else {
+      C.input('n', arr.n, '', 'number of tension bars', '');
+      C.calc('A_s', 'n*PI()*phi^2/4', arr.As, 'mm2', 'tension steel provided', '', { sym: 'A_s,prov' });
+      C.calc('d', 'h - c_nom - phi_w - phi/2', d, 'mm', 'effective depth', '');
+    }
+    if (comp) {
+      C.input('c_c', inp.coverComp ?? inp.cover, 'mm', 'cover on the compression face', '');
+      C.input('phi_c', inp.comp.phi, 'mm', 'compression bar diameter', '', { sym: 'φ_c' }); C.input('n_c', inp.comp.n, '', 'number of compression bars', '');
+      C.calc('d_2', 'c_c + phi_w + phi_c/2', R.d2, 'mm', 'depth to the compression steel', '');
+      C.calc('A_s2', 'n_c*PI()*phi_c^2/4', As2p, 'mm2', 'compression steel provided', '', { sym: 'A_s2,prov' });
+    } else {
+      C.input('c_c', inp.coverComp ?? inp.cover, 'mm', 'cover on the compression face', '');
+      C.input('phi_c', 16, 'mm', 'compression bar diameter assumed, should any be needed', '', { sym: 'φ_c' });
+      C.calc('d_2', slab ? 'c_c + phi_c/2' : 'c_c + phi_w + phi_c/2', R.d2, 'mm', 'depth to compression steel if needed', '');
+      C.input('A_s2', 0, 'mm2', 'compression steel provided: none', '', { sym: 'A_s2,prov' });
+    }
+    // ----- bending: the steel required -----
+    const bc = R.secC.b, Bc = flanged && sag ? 'b' : W;   // compression width
+    // the design moment: an input, or worked out by the caller under its own heading (meta.moment(C) defines M_Ed, e.g. at the face of a support)
+    if (meta.moment) meta.moment(C);
+    C.head('Bending: the steel required (rectangular stress block)');
+    if (!meta.moment) C.input('M_Ed', inp.MEd / 1e6, 'kNm', slab ? 'design moment on the strip (per metre)' : 'design moment', '');
+    C.calc('K', `M_Ed/(${Bc}*d^2*f_ck) [#]`, bd.K, '', 'normalised moment', '3.1.7(3)');
+    const delta = inp.delta ?? 1;
+    C.input('delta', delta, '', 'ratio of the redistributed to the elastic moment', '5.5(4)', { sym: 'δ' });
+    C.calc('k_2', '0.6 + 0.0014/epsilon_cu2 [#]', 0.6 + 0.0014 / c.ecu2, '', 'UK NA: k₂ = 0.6 + 0.0014/ε_cu2 (k₁ = 0.4)', '5.5(4)');
+    const xdRed = (delta - 0.4) / (0.6 + 0.0014 / c.ecu2), xdMax = inp.xdMax ?? null;
+    if (xdMax != null && xdMax < xdRed) { C.input('xd_max', xdMax, '', 'practical limit on x/d for ductility', '', { sym: '(x/d)_max' }); C.calc('x_lim', 'MIN((delta - 0.4)/k_2, xd_max)*d', bd.xlim, 'mm', 'limiting depth to the neutral axis', '5.5(4)'); }
+    else C.calc('x_lim', '(delta - 0.4)/k_2*d', bd.xlim, 'mm', 'limiting depth to the neutral axis (5.5(4); δ = (k₁ + k₂ x/d))', '5.5(4)');
+    C.calc('s_lim', 'lambda*x_lim', c.lambda * bd.xlim, 'mm', 'depth of the stress block at the limit', '3.1.7(3)');
+    const sLim = c.lambda * bd.xlim, webLim = flanged && sag && sLim > inp.hf;
+    if (webLim) C.calc('M_lim', 'sigma_c*((b - b_w)*h_f*(d - h_f/2) + b_w*s_lim*(d - s_lim/2))', bd.Mlim / 1e6, 'kNm', 'moment the concrete can take at x_lim (block into the web)', '3.1.7(3)');
+    else C.calc('M_lim', `sigma_c*${Bc}*s_lim*(d - s_lim/2)`, bd.Mlim / 1e6, 'kNm', 'moment the concrete can take at x_lim', '3.1.7(3)');
+    C.calc('K_lim', `M_lim/(${Bc}*d^2*f_ck) [#]`, bd.Kp, '', 'K′: the largest K without compression steel', '3.1.7(3)', { sym: "K'" });
+    if (!bd.doubly) {
+      C.note(`K ≤ K′: no compression steel is needed. The block depth s = λx follows from M_Ed = η f_cd A_c (d − y_c).`);
+      const s = c.lambda * bd.x, web = flanged && sag && s > inp.hf + 1e-9;
+      if (web) {
+        C.calc('s_b', 'd - SQRT(d^2 - 2*(M_Ed/sigma_c - (b - b_w)*h_f*(d - h_f/2))/b_w)', s, 'mm', 'depth of the stress block (into the web)', '3.1.7(3)', { sym: 's' });
+        C.calc('y_c', '((b - b_w)*h_f^2/2 + b_w*s_b^2/2)/((b - b_w)*h_f + b_w*s_b)', ((inp.b - bw) * inp.hf ** 2 / 2 + bw * s * s / 2) / ((inp.b - bw) * inp.hf + bw * s), 'mm', 'depth to the centroid of the compression', '');
+      } else {
+        C.calc('s_b', `d - SQRT(d^2 - 2*M_Ed/(sigma_c*${Bc}))`, s, 'mm', `depth of the stress block${flanged && sag ? ' (within the flange)' : ''}`, '3.1.7(3)', { sym: 's' });
+        C.calc('y_c', 's_b/2', s / 2, 'mm', 'depth to the centroid of the compression', '');
+      }
+      C.calc('x', 's_b/lambda', bd.x, 'mm', 'depth to the neutral axis', '');
+      C.calc('z', 'MIN(d - y_c, 0.95*d)', bd.z, 'mm', 'lever arm (not more than 0.95d)', '');
+      C.calc('A_sreq', 'M_Ed/(f_yd*z)', bd.As, 'mm2', 'tension steel required', '6.1', { sym: 'A_s,req' });
+    } else {
+      C.note('K > K′: compression steel is needed, with the neutral axis at its limit.');
+      const yc = flanged && sag && sLim > inp.hf ? ((inp.b - bw) * inp.hf ** 2 / 2 + bw * sLim * sLim / 2) / ((inp.b - bw) * inp.hf + bw * sLim) : sLim / 2;
+      if (webLim) C.calc('y_c', '((b - b_w)*h_f^2/2 + b_w*s_lim^2/2)/((b - b_w)*h_f + b_w*s_lim)', yc, 'mm', 'depth to the centroid of the compression at the limit', '');
+      else C.calc('y_c', 's_lim/2', yc, 'mm', 'depth to the centroid of the compression at the limit', '');
+      C.calc('z', 'MIN(d - y_c, 0.95*d)', bd.z, 'mm', 'lever arm', '');
+      C.calc('epsilon_sc', 'epsilon_cu2*(x_lim - d_2)/x_lim [#]', c.ecu2 * (bd.xlim - R.d2) / bd.xlim, '', 'strain in the compression steel', '', { sym: 'ε_sc' });
+      const inBlock = R.d2 < sLim;
+      C.calc('f_sc', `MIN(f_yd, E_s*epsilon_sc)${inBlock ? ' - sigma_c' : ''}`, bd.fsc, 'N/mm2', `stress in the compression steel${inBlock ? ', less the concrete it displaces' : ''}`, '');
+      C.calc('A_s2req', '(M_Ed - M_lim)/(f_sc*(d - d_2))', bd.As2, 'mm2', 'compression steel required', '', { sym: 'A_s2,req' });
+      C.calc('A_sreq', 'M_lim/(f_yd*z) + A_s2req*f_sc/f_yd', bd.As, 'mm2', 'tension steel required', '6.1', { sym: 'A_s,req' });
+      if (As2p > 0) C.check('u_comp', 'A_s2req/A_s2', bd.As2 / As2p, 'compression steel', '3.1.7(3)');
+      else C.note('No compression steel is provided, so the section is not adequate as it stands: add compression bars or deepen it.');
+    }
+    // ----- bending resistance of the bars provided -----
+    C.head('Bending resistance of the bars provided (strain compatibility)');
+    const res = R.res, xu = res.x, sU = Math.min(c.lambda * xu, h), webU = flanged && sag && sU > inp.hf && inp.b !== bw;
+    C.given('x_u', xu, 'mm', 'depth to the neutral axis with the bars provided', 'found by iteration so that the forces balance (the check is N = 0 below)', '6.1(2)');
+    // the section in CalcPad, drawn live from these names (CalcPad's SECTION line: the bars, x, the strain and the stress block)
+    if (!slab) {
+      const N = arr.n2 ? 'n_1 + n_2' : 'n', fl = flanged ? ', bw: b_w, hf: h_f' : '';
+      C.plot(inp.moment === 'hogging'
+        ? `SECTION(b, h, c_nom, ${comp ? 'n_c, phi_c' : '0, phi'}, link: phi_w${fl}, top: ${N}, phitop: phi, x: x_u, hog: 1)`
+        : `SECTION(b, h, c_nom, ${N}, phi, link: phi_w${fl}${comp ? ', top: n_c, phitop: phi_c' : ''}, x: x_u)`);
+    }
+    C.calc('s_u', 'MIN(lambda*x_u, h)', sU, 'mm', 'depth of the stress block', '3.1.7(3)');
+    const Acc = webU ? (inp.b - bw) * inp.hf + bw * sU : bc * sU, ycc = webU ? ((inp.b - bw) * inp.hf ** 2 / 2 + bw * sU * sU / 2) / Acc : sU / 2;
+    if (webU) { C.calc('A_cc', '(b - b_w)*h_f + b_w*s_u', Acc, 'mm2', 'area of the compressed concrete', ''); C.calc('y_cc', '((b - b_w)*h_f^2/2 + b_w*s_u^2/2)/A_cc', ycc, 'mm', 'depth to its centroid', ''); }
+    else { C.calc('A_cc', `${Bc}*s_u`, Acc, 'mm2', 'area of the compressed concrete', ''); C.calc('y_cc', 's_u/2', ycc, 'mm', 'depth to its centroid', ''); }
+    const a = c.eta * c.fcd;
+    C.calc('F_c', 'sigma_c*A_cc', a * Acc / 1e3, 'kN', 'force in the concrete', '');
+    const L = arr.layers, sig = (x, di) => Math.max(-st.fyd, Math.min(st.fyd, st.Es * c.ecu2 * (di - x) / x));   // tension +
+    const lay = L.length === 2 ? [['1', 'd_1', 'A_s1'], ['2', 'd_l2', 'A_s2l']] : [['1', 'd', 'A_s']];
+    let Tsum = 0, Mt = 0;
+    lay.forEach(([k, dn, an], i) => {
+      const di = L[i].d, s = sig(xu, di), inB = sU > di, T = L[i].As * (s + (inB ? a : 0));
+      C.calc(`epsilon_s${k}`, `epsilon_cu2*(${dn} - x_u)/x_u [#]`, c.ecu2 * (di - xu) / xu, '', `strain in the tension steel${L.length === 2 ? `, layer ${k}` : ''}`, '', { sym: `ε_s${L.length === 2 ? k : ''}` });
+      C.calc(`sigma_s${k}`, `MAX(-f_yd, MIN(f_yd, E_s*epsilon_s${k}))`, s, 'N/mm2', 'its stress (bilinear, horizontal top branch)', '3.2.7(2)', { sym: `σ_s${L.length === 2 ? k : ''}` });
+      C.calc(`T_${k}`, `${an}*(sigma_s${k}${inB ? ' + sigma_c' : ''})`, T / 1e3, 'kN', 'force in the tension steel', '');
+      Tsum += T; Mt += T * (di - ycc);
+    });
+    let Fsc = 0;
+    if (As2p > 0) {
+      const ssc = Math.max(-st.fyd, Math.min(st.fyd, st.Es * c.ecu2 * (xu - R.d2) / xu)), inB = sU > R.d2;
+      C.calc('sigma_sc', 'MAX(-f_yd, MIN(f_yd, E_s*epsilon_cu2*(x_u - d_2)/x_u))', ssc, 'N/mm2', 'stress in the compression steel', '');
+      Fsc = As2p * (ssc - (inB ? a : 0));
+      C.calc('F_sc', `A_s2*(sigma_sc${inB ? ' - sigma_c' : ''})`, Fsc / 1e3, 'kN', `force in the compression steel${inB ? ' (net of the displaced concrete)' : ''}`, '');
+    }
+    const tn = lay.map(([k]) => `T_${k}`).join(' - ');
+    C.calc('N_res', `F_c${As2p > 0 ? ' + F_sc' : ''} - ${tn}`, (a * Acc + Fsc - Tsum) / 1e3, 'kN', 'equilibrium: the forces balance, so this is zero (rounding apart)', '');
+    const Mterm = lay.map(([k, dn], i) => `T_${k}*(${dn} - y_cc)`).join(' + ');
+    C.calc('M_Rd', `${Mterm}${As2p > 0 ? ' + F_sc*(y_cc - d_2)' : ''}`, res.MRd / 1e6, 'kNm', 'moment of resistance (about the concrete force)', '6.1');
+    C.check('u_M', 'M_Ed/M_Rd', inp.MEd / res.MRd, 'bending', '6.1');
+    // ----- detailing -----
+    C.head('Minimum and maximum steel, bar spacing');
+    const bt = flanged && !sag ? inp.b : bw, Bt = flanged && !sag ? 'b' : W;
+    C.calc('A_smin', `MAX(0.26*f_ctm/f_yk, 0.0013)*${Bt}*d`, R.AsMin, 'mm2', `minimum tension steel (b_t = ${bt} mm, the width in tension)`, '9.2.1.1(1)', { sym: 'A_s,min' });
+    C.check('u_min', 'A_smin/A_s', R.AsMin / arr.As, 'minimum steel', '9.2.1.1(1)');
+    C.calc('A_c', flanged ? 'b_w*h + (b - b_w)*h_f' : `${W}*h`, flanged ? bw * h + (inp.b - bw) * inp.hf : bw * h, 'mm2', 'area of the concrete section', '');
+    C.calc('A_smax', '0.04*A_c', R.AsMax, 'mm2', 'maximum steel', '9.2.1.1(3)', { sym: 'A_s,max' });
+    C.check('u_max', '(A_s + A_s2)/A_smax', (arr.As + As2p) / R.AsMax, 'maximum steel', '9.2.1.1(3)');
+    if (!arr.n2) C.input('d_g', inp.dg || 20, 'mm', 'maximum aggregate size', '8.2(2)');
+    C.calc('s_min', 'MAX(phi, d_g + 5 mm, 20 mm)', Math.max(inp.bar.phi, (inp.dg || 20) + 5, 20), 'mm', 'minimum clear spacing', '8.2(2)');
+    if (slab) C.calc('s_cl', 's - phi', arr.clear, 'mm', 'clear spacing of the bars', '');
+    else {
+      const wb = inp.barWidth ?? bw;
+      C.input('b_s', wb, 'mm', 'width the bars are spread across', '');
+      if (!arr.n2) C.input('n_1', arr.n, '', 'bars in the layer', '');
+      C.calc('s_cl', arr.n1 > 1 ? '(b_s - 2*(c_nom + phi_w) - n_1*phi)/(n_1 - 1)' : 'b_s - 2*(c_nom + phi_w) - phi', arr.clear, 'mm', 'clear spacing of the bars', '');
+    }
+    if (arr.clear > 0) C.check('u_s', 's_min/s_cl', Math.max(inp.bar.phi, (inp.dg || 20) + 5, 20) / arr.clear, 'clear bar spacing', '8.2(2)');
+    else C.note('The bars do not fit across the width with any clear space between them: the spacing check is not satisfied.');
+    if (slab) { C.calc('s_maxs', 'MIN(3*h, 400 mm)', Math.min(3 * h, 400), 'mm', 'maximum spacing of the main bars in a slab', '9.3.1.1(3)', { sym: 's_max,slab' }); C.check('u_ss', 's/s_maxs', inp.bar.s / Math.min(3 * h, 400), 'slab bar spacing', '9.3.1.1(3)'); }
+    // ----- SLS stresses -----
+    C.head('Serviceability: steel stress in the cracked section');
+    const slsGiven = inp.Mk != null && inp.Mqp != null;
+    if (slsGiven) { C.input('M_k', R.Mk / 1e6, 'kNm', 'characteristic SLS moment, from the analysis', '7.2'); C.input('M_qp', R.Mqp / 1e6, 'kNm', 'quasi-permanent SLS moment, from the analysis', '7.2'); }
+    else {
+      C.input('g_k', inp.gk, '', 'characteristic permanent load (any unit, used as a ratio)', '');
+      C.input('q_k', inp.qk, '', 'characteristic variable load (same unit)', '');
+      C.input('gamma_G', inp.gG ?? 1.35, '', 'ULS factor on permanent load', 'Table NA.A1.2(B)', { sym: 'γ_G' });
+      C.input('gamma_Q', inp.gQ ?? 1.5, '', 'ULS factor on variable load', 'Table NA.A1.2(B)', { sym: 'γ_Q' });
+      C.input('psi_2', inp.psi2, '', 'quasi-permanent factor', 'Table NA.A1.1', { sym: 'ψ_2' });
+      C.calc('n_u', 'gamma_G*g_k + gamma_Q*q_k [#]', R.n, '', 'ULS load in the same unit', '');
+      if (inp.Mel != null) C.input('M_el', inp.Mel / 1e6, 'kNm', 'elastic ULS moment (before redistribution)', '');
+      else C.calc('M_el', 'M_Ed/delta', inp.MEd / delta / 1e6, 'kNm', 'elastic ULS moment (before redistribution)', '');
+      C.calc('M_k', 'M_el*(g_k + q_k)/n_u', R.Mk / 1e6, 'kNm', 'characteristic SLS moment', '7.2');
+      C.calc('M_qp', 'M_el*(g_k + psi_2*q_k)/n_u', R.Mqp / 1e6, 'kNm', 'quasi-permanent SLS moment', '7.2');
+    }
+    C.input('alpha_e', inp.ae ?? 15, '', 'modular ratio for the cracked section (long term)', '7.2', { sym: 'α_e' });
+    const cr = R.crK, secSflange = flanged && sag, xcr = cr.x, Bs = secSflange ? 'b' : W;
+    C.calc('B_1', 'alpha_e*A_s + (alpha_e - 1)*A_s2', (inp.ae ?? 15) * arr.As + ((inp.ae ?? 15) - 1) * As2p, 'mm2', 'transformed steel areas (first-moment equation)', '');
+    C.calc('C_1', 'alpha_e*A_s*d + (alpha_e - 1)*A_s2*d_2', (inp.ae ?? 15) * arr.As * d + ((inp.ae ?? 15) - 1) * As2p * R.d2, 'mm3', 'and their first moment', '');
+    const ae = inp.ae ?? 15;
+    if (secSflange && xcr > inp.hf) {
+      C.note('The neutral axis is below the flange: the first moment of the flange and the web about the axis, with the steel, is zero.');
+      C.calc('x_cr', '(-(B_1 + (b - b_w)*h_f) + SQRT((B_1 + (b - b_w)*h_f)^2 + 2*b_w*(C_1 + (b - b_w)*h_f^2/2)))/b_w', xcr, 'mm', 'depth to the neutral axis, cracked', '');
+      C.calc('I_cr', 'b*(x_cr^3 - (x_cr - h_f)^3)/3 + b_w*(x_cr - h_f)^3/3 + (alpha_e - 1)*A_s2*(x_cr - d_2)^2 + alpha_e*A_s*(d - x_cr)^2', cr.Icr, 'mm4', 'second moment of area, cracked', '');
+    } else {
+      C.calc('x_cr', `(-B_1 + SQRT(B_1^2 + 2*${Bs}*C_1))/${Bs}`, xcr, 'mm', 'depth to the neutral axis, cracked (b x²/2 + B₁x − C₁ = 0)', '');
+      C.calc('I_cr', `${Bs}*x_cr^3/3 + (alpha_e - 1)*A_s2*(x_cr - d_2)^2 + alpha_e*A_s*(d - x_cr)^2`, cr.Icr, 'mm4', 'second moment of area, cracked', '');
+    }
+    void ae;
+    C.calc('sigma_sk', 'alpha_e*M_k*(d - x_cr)/I_cr', R.ssK, 'N/mm2', 'steel stress, characteristic', '7.2(5)', { sym: 'σ_s,k' });
+    C.calc('sigma_sqp', 'sigma_sk*M_qp/M_k', R.ssQP, 'N/mm2', 'steel stress, quasi-permanent', '7.3.3', { sym: 'σ_s,qp' });
+    // ----- crack control by the tables -----
+    C.head('Crack control without direct calculation');
+    const wk = inp.wk ?? 0.3, tab = R.tab;
+    C.input('w_k', wk, 'mm', 'limiting crack width', 'UK NA Table NA.4');
+    const phiStar = interp(C, 'phi_s', EC2.T72, wk, R.ssQP, 'sigma_sqp', `maximum bar size, Table 7.2N for w_k = ${wk} mm`, 'Table 7.2N', 'mm', 'φ*_s');
+    let uPhi = Infinity, uS = Infinity;
+    if (phiStar != null) {
+      C.input('k_c', 0.4, '', 'stress distribution coefficient (bending)', '7.3.2(2)');
+      C.calc('h_cr', 'h/2', h / 2, 'mm', 'depth of the tensile zone just before cracking', '7.3.3(2)');
+      C.calc('phi_max', 'phi_s*(f_ctm[#N/mm2]/2.9)*k_c*h_cr/(2*(h - d))', tab.phiMax, 'mm', 'modified maximum bar size (7.6N)', '7.3.3(2)', { sym: 'φ_s,max' });
+      uPhi = inp.bar.phi / tab.phiMax;
+    }
+    const sTab = interp(C, 's_tab', EC2.T73, wk, R.ssQP, 'sigma_sqp', `maximum bar spacing, Table 7.3N for w_k = ${wk} mm`, 'Table 7.3N', 'mm', 's_max');
+    if (sTab != null) {
+      const edge = EC2.T73[wk][0];
+      C.calc('s_max', `MIN(s_tab, ${edge} mm)`, Math.min(sTab, edge), 'mm', 'maximum bar spacing (not more than the table\'s first value)', 'Table 7.3N');
+      C.calc('s_c', slab ? 's' : 's_cl + phi', arr.spacing, 'mm', 'centre spacing of the bars', '');
+      uS = arr.spacing / Math.min(sTab, edge);
+    }
+    if (phiStar != null && sTab != null) C.check('u_crack', 'MIN(phi/phi_max, s_c/s_max)', Math.min(uPhi, uS), 'crack control: either the bar size or the spacing satisfies its table', '7.3.3');
+    else if (phiStar != null) C.check('u_crack', 'phi/phi_max', uPhi, 'crack control by bar size', '7.3.3');
+    else if (sTab != null) C.check('u_crack', 's_c/s_max', uS, 'crack control by bar spacing', '7.3.3');
+    // ----- minimum steel for crack control -----
+    C.head('Minimum steel for crack control');
+    C.calc('alpha_eS', 'E_s/E_cm [#]', EC2.ES / c.Ecm, '', 'short-term modular ratio for the uncracked section', '', { sym: 'α_e,0' });
+    const hfl = flanged ? inp.hf : 0, Aw = bw * h, Afl = flanged ? (inp.b - bw) * hfl : 0, dT = sag ? d : h - d, dC = sag ? R.d2 : h - R.d2;
+    C.calc('A_w', `${W}*h`, Aw, 'mm2', 'area of the web', '');
+    if (flanged) C.calc('A_fl', '(b - b_w)*h_f', Afl, 'mm2', 'area of the flange outstands', '');
+    if (sag) { C.calc('d_T', 'd', dT, 'mm', 'tension steel below the top face', ''); C.calc('d_C', 'd_2', dC, 'mm', 'compression steel below the top face', ''); }
+    else { C.calc('d_T', 'h - d', dT, 'mm', 'tension steel (top) below the top face', ''); C.calc('d_C', 'h - d_2', dC, 'mm', 'compression steel (bottom) below the top face', ''); }
+    const Atr = Aw + Afl + (EC2.ES / c.Ecm - 1) * (arr.As + As2p);
+    C.calc('A_tr', `A_w${flanged ? ' + A_fl' : ''} + (alpha_eS - 1)*(A_s + A_s2)`, Atr, 'mm2', 'transformed area, uncracked', '');
+    C.calc('y_top', `(A_w*h/2${flanged ? ' + A_fl*h_f/2' : ''} + (alpha_eS - 1)*(A_s*d_T + A_s2*d_C))/A_tr`, R.yTop, 'mm', 'its centroid below the top face', '');
+    const parts = R.crackParts, terms = [];
+    parts.forEach((p, i) => {
+      const k = `_${i + 1}`;
+      if (p.what === 'web' && sag) C.calc(`A_ct${k}`, `${W}*(h - y_top)`, p.Act, 'mm2', 'web in tension below the centroid', '7.3.2(2)');
+      else if (p.what === 'section') C.calc(`A_ct${k}`, `${W}*y_top`, p.Act, 'mm2', 'section in tension above the centroid', '7.3.2(2)');
+      else if (p.what === 'flange') { C.calc('t_f', 'MIN(h_f, y_top)', Math.min(inp.hf, R.yTop), 'mm', 'flange depth in tension', ''); C.calc(`A_ct${k}`, 'b*t_f', p.Act, 'mm2', 'flange in tension', '7.3.2(2)'); }
+      else C.calc(`A_ct${k}`, 'b_w*(y_top - h_f)', p.Act, 'mm2', 'web in tension above the centroid, below the flange', '7.3.2(2)');
+      if (p.what === 'flange') C.calc(`k_c${k}`, 'MAX(0.5, 0.9*(1 - t_f/(2*y_top))) [#]', p.kc, '', 'k_c for a flange in tension (7.3, with F_cr from the stress at mid-flange)', '7.3.2(2)');
+      else C.input(`k_c${k}`, p.kc, '', 'k_c for pure bending', '7.3.2(2)');
+      C.calc(`k_s${k}`, kSizeExpr(p.what === 'flange' ? 'b' : 'h'), p.k, '', `size coefficient k for the ${p.what} (1.0 at 300 mm, 0.65 at 800 mm)`, '7.3.2(2)', { sym: `k_${p.what}` });
+      terms.push(`k_c${k}*k_s${k}*A_ct${k}`);
+    });
+    C.calc('A_sct', `f_ctm*(${terms.join(' + ')})/f_yk`, R.AsCrack, 'mm2', 'minimum steel: Σ k_c k f_ct,eff A_ct/σ_s (σ_s = f_yk, f_ct,eff = f_ctm)', '7.3.2(2)', { sym: 'A_s,min,crack' });
+    C.check('u_ct', 'A_sct/A_s', R.AsCrack / arr.As, 'minimum steel for crack control', '7.3.2(2)');
+    // ----- deflection -----
+    const D = R.defl;
+    if (D) {
+      C.head('Deflection: span / effective depth');
+      C.input('L', inp.defl.span / 1000, 'm', 'effective span', '5.3.2.2');
+      C.input('K_s', D.K, '', `structural system factor (${SYSN[inp.defl.system] || inp.defl.system})`, 'Table 7.4N', { sym: 'K' });
+      const onComp = inp.rhoArea === 'compression' && flanged && sag;
+      C.calc('A_rho', onComp ? 'b_w*d + (b - b_w)*h_f' : `${W}*d`, onComp ? bw * d + (inp.b - bw) * inp.hf : bw * d, 'mm2', 'area ρ is taken on', '7.4.2');
+      C.calc('rho', 'A_sreq/A_rho [#]', D.rho, '', 'tension steel ratio (required)', '7.4.2(2)', { sym: 'ρ' });
+      if (bd.doubly) C.calc('rho_2', 'A_s2req/A_rho [#]', D.rho2, '', 'compression steel ratio (required)', '7.4.2(2)', { sym: "ρ'" });
+      else C.input('rho_2', 0, '', 'compression steel ratio (none required)', '7.4.2(2)', { sym: "ρ'" });
+      C.calc('rho_0', '0.001*SQRT(f_ck[#N/mm2]) [#]', 1e-3 * Math.sqrt(c.fck), '', 'reference ratio', '7.4.2(2)', { sym: 'ρ_0' });
+      if (D.rho < 1e-6) C.given('ld_b', D.base, '', 'basic span/depth ratio', 'ρ is effectively zero (no design moment), so Expression 7.16a has no bound: the limit of 40K below governs', '7.4.2 (7.16a)', { sym: '(l/d)_basic' });
+      else if (D.rho <= 1e-3 * Math.sqrt(c.fck)) C.calc('ld_b', 'K_s*(11 + 1.5*SQRT(f_ck[#N/mm2])*rho_0/rho + 3.2*SQRT(f_ck[#N/mm2])*(rho_0/rho - 1)^1.5) [#]', D.base, '', 'basic span/depth ratio, ρ ≤ ρ₀', '7.4.2 (7.16a)', { sym: '(l/d)_basic' });
+      else C.calc('ld_b', 'K_s*(11 + 1.5*SQRT(f_ck[#N/mm2])*rho_0/(rho - rho_2) + SQRT(f_ck[#N/mm2])/12*SQRT(rho_2/rho_0)) [#]', D.base, '', 'basic span/depth ratio, ρ > ρ₀', '7.4.2 (7.16b)', { sym: '(l/d)_basic' });
+      if (flanged && sag) C.calc('F_1', 'MAX(0.8, 1 - 0.1*(b/b_w - 1)) [#]', D.F1, '', 'flanged section', 'UK NA Table NA.5');
+      else C.input('F_1', 1, '', 'not a flanged section', 'UK NA Table NA.5');
+      const lim = inp.defl.system === 'flat' ? 8.5 : 7;
+      if (D.F2 < 1) C.calc('F_2', `${lim}/L[#m] [#]`, D.F2, '', `brittle partitions and a span over ${lim} m`, 'UK NA Table NA.5');
+      else C.input('F_2', 1, '', inp.defl.brittle ? `span not over ${lim} m${inp.defl.system === 'cantilever' ? ' (or a cantilever)' : ''}` : 'no brittle partitions', 'UK NA Table NA.5');
+      C.calc('F_3', 'MIN(1.5, 310/sigma_sk[#N/mm2]) [#]', D.F3, '', 'steel stress at SLS (310/σ_s ≤ 1.5)', 'UK NA Table NA.5');
+      C.calc('ld_allow', 'MIN(40*K_s, ld_b*F_1*F_2*F_3) [#]', D.allowed, '', 'allowed span/depth (not more than 40K)', 'UK NA Table NA.5', { sym: '(l/d)_allowed' });
+      C.calc('ld_act', 'L/d [#]', D.actual, '', 'actual span/depth', '', { sym: '(l/d)_actual' });
+      C.check('u_defl', 'ld_act/ld_allow', D.actual / D.allowed, 'deflection', '7.4.2');
+      if (D.AsDef != null) {
+        if (D.AsDef === Infinity) C.note('Extra steel cannot satisfy the span/depth check (F3 stops at 1.5): deepen the section.');
+        else C.given('A_sdefl', D.AsDef, 'mm2', 'steel that would satisfy the span/depth check', 'found by iteration: more steel lowers σ_s and raises F3 until (l/d)_allowed = (l/d)_actual', '7.4.2', { sym: 'A_s,defl' });
+      }
+    }
+    // ----- shear -----
+    if (R.shear) shear(C, inp, R, W);
+    return C;
+  }
+
+  function shear(C, inp, R, W) {
+    const c = R.c, st = R.st, V = inp.shear, d = R.d, bw = R.bw, slab = inp.kind === 'slab', S = R.shear;
+    C.head(`Shear${slab ? ' (no shear reinforcement)' : ''}`);
+    // V.from: the shears are from an analysis (a continuous beam's envelope), stated with where they were taken
+    if (V.defined) { /* the caller has defined V_Ed and V_Edd */ }
+    else if (V.from) { C.given('V_Ed', V.VEd / 1e3, 'kN', 'design shear at the face of the support', V.from.face, '6.2.1(8)'); C.given('V_Edd', S.VEd_d / 1e3, 'kN', 'design shear at d from the face', V.from.d, '6.2.1(8)', { sym: 'V_Ed,d' }); }
+    else C.input('V_Ed', V.VEd / 1e3, 'kN', 'design shear at the face of the support', '');
+    if (V.from || V.defined) { /* given above, or V_Ed and V_Edd defined by the caller */ }
+    else if (V.w) { C.input('w_Ed', V.w, 'kN/m', 'design load along the member (for the shear at d)', '6.2.1(8)'); C.calc('V_Edd', 'MAX(V_Ed - w_Ed*d, 0*V_Ed)', S.VEd_d / 1e3, 'kN', 'shear at d from the face', '6.2.1(8)', { sym: 'V_Ed,d' }); }
+    else C.calc('V_Edd', 'V_Ed', S.VEd_d / 1e3, 'kN', 'shear at d from the face (no distributed load given)', '6.2.1(8)', { sym: 'V_Ed,d' });
+    const vc = S.vc;
+    C.calc('k_v', 'MIN(1 + SQRT(200/d[#mm]), 2) [#]', vc.k, '', 'size factor', '6.2.2(1)', { sym: 'k' });
+    C.calc('rho_l', `MIN(A_s/(${W}*d), 0.02) [#]`, vc.rho, '', 'longitudinal tension steel ratio (not more than 0.02)', '6.2.2(1)', { sym: 'ρ_l' });
+    C.input('f_ckmax', 50, 'N/mm2', 'UK NA: f_ck for shear not taken above C50/60', '6.2, UK NA', { sym: 'f_ck,max' });
+    C.calc('f_ckv', 'MIN(f_ck, f_ckmax)', c.fv, 'N/mm2', 'f_ck for shear', '6.2, UK NA', { sym: 'f_ck,v' });
+    C.calc('v_min', '0.035*k_v^1.5*SQRT(f_ckv[#N/mm2]) [#N/mm2]', vc.vmin, 'N/mm2', 'minimum shear strength', '6.2.2(1) (6.3N)');
+    C.calc('v_Rdc', '0.18/gamma_c*k_v*(100*rho_l*f_ckv[#N/mm2])^(1/3) [#N/mm2]', vc.v, 'N/mm2', 'shear strength without links: C_Rd,c k (100 ρ_l f_ck)^(1/3)', '6.2.2(1) (6.2a)', { sym: 'v_Rd,c' });
+    C.calc('V_Rdc', `MAX(v_Rdc, v_min)*${W}*d`, vc.VRdc / 1e3, 'kN', 'shear resistance without links', '6.2.2(1)', { sym: 'V_Rd,c' });
+    if (!S.des) { C.check('u_V', 'V_Edd/V_Rdc', S.VEd_d / vc.VRdc, 'shear without links', '6.2.2'); return; }
+    // links
+    const des = S.des, rv = S.resV, L = V.link;
+    C.head('Shear links (variable strut inclination)');
+    C.calc('z_v', '0.9*d', des.z, 'mm', 'lever arm for shear', '6.2.3(1)', { sym: 'z' });
+    C.calc('nu_1', '0.6*(1 - f_ckv[#N/mm2]/250) [#]', c.nu, '', 'strength reduction for concrete cracked in shear', '6.2.3(3), UK NA', { sym: 'ν_1' });
+    C.calc('f_cdv', 'f_ckv/gamma_c', c.fcdV, 'N/mm2', 'f_cd for shear (α_cc = 1.0, UK NA)', '3.1.6(1)', { sym: 'f_cd,v' });
+    C.calc('V_Rdmax25', `${W}*z_v*nu_1*f_cdv/(2.5 + 1/2.5)`, des.Vmax25 / 1e3, 'kN', 'strut resistance at cot θ = 2.5', '6.2.3(3) (6.9)', { sym: 'V_Rd,max(2.5)' });
+    if (des.cot >= 2.5 - 1e-12) C.input('cot_th', 2.5, '', 'V_Ed at the face ≤ V_Rd,max(2.5), so the flattest strut is used', '6.2.3(2), UK NA', { sym: 'cot θ' });
+    else if (des.ok) {
+      C.calc('theta', `0.5*ASIN(2*V_Ed/(${W}*z_v*nu_1*f_cdv)) [#]`, Math.atan(1 / des.cot), '', 'strut angle (rad) where V_Rd,max = V_Ed at the face', '6.2.3(3)', { sym: 'θ' });
+      C.calc('cot_th', '1/TAN(theta) [#]', des.cot, '', 'cot θ', '6.2.3(2)', { sym: 'cot θ' });
+    } else C.input('cot_th', 1, '', 'V_Ed at the face exceeds V_Rd,max even at θ = 45°: the strut fails', '6.2.3(3)', { sym: 'cot θ' });
+    C.calc('V_Rdmax', `${W}*z_v*nu_1*f_cdv/(cot_th + 1/cot_th)`, des.VRdmax / 1e3, 'kN', 'strut resistance at this angle', '6.2.3(3) (6.9)', { sym: 'V_Rd,max' });
+    C.calc('A_swsreq', 'V_Edd/(z_v*f_yd*cot_th)', des.AswS, 'mm2/mm', 'links required', '6.2.3(3) (6.8)', { sym: 'A_sw/s_req' });
+    C.calc('A_swsmin', `0.08*SQRT(f_ck[#N/mm2])/f_yk[#N/mm2]*${W}[#mm] [#mm2/mm]`, des.AswSmin, 'mm2/mm', 'minimum links: ρ_w,min b_w', '9.2.2(5) (9.5N)', { sym: 'A_sw/s_min' });
+    const PV = L.phi === (inp.phiLink || 0) ? 'phi_w' : 'phi_v';
+    if (PV === 'phi_v') C.input('phi_v', L.phi, 'mm', 'shear link diameter', '', { sym: 'φ_v' });
+    C.input('n_l', L.legs, '', 'link legs', ''); C.input('s_w', L.s, 'mm', 'link spacing', '');
+    C.calc('A_sws', `n_l*PI()*${PV}^2/4/s_w`, S.AswS, 'mm2/mm', 'links provided', '', { sym: 'A_sw/s' });
+    C.calc('r_v', `${W}*nu_1*f_cdv/(A_sws*f_yd) [#]`, bw * c.nu * c.fcdV / (S.AswS * des.fywd), '', 'ratio setting the strut angle at which the links and the strut both reach their resistance', '');
+    C.calc('cot_r', 'MIN(2.5, MAX(1, SQRT(MAX(r_v - 1, 0)))) [#]', rv.cot, '', 'cot θ for the links provided: V_Rd,s = V_Rd,max where 1 ≤ cot θ ≤ 2.5', '6.2.3(2)', { sym: 'cot θ_r' });
+    C.calc('V_Rds', 'A_sws*z_v*f_yd*cot_r', rv.VRds / 1e3, 'kN', 'resistance of the links', '6.2.3(3) (6.8)', { sym: 'V_Rd,s' });
+    C.calc('V_Rdmaxr', `${W}*z_v*nu_1*f_cdv/(cot_r + 1/cot_r)`, rv.VRdmax / 1e3, 'kN', 'strut resistance at that angle', '6.2.3(3) (6.9)', { sym: 'V_Rd,max' });
+    C.calc('V_Rd', 'MIN(V_Rds, V_Rdmaxr)', rv.VRd / 1e3, 'kN', 'shear resistance with links', '6.2.3');
+    C.calc('V_Rdmax45', `${W}*z_v*nu_1*f_cdv/2`, des.Vmax45 / 1e3, 'kN', 'strut resistance at θ = 45° (its greatest)', '6.2.3(3)', { sym: 'V_Rd,max(45°)' });
+    C.check('u_Vmax', 'V_Ed/V_Rdmax45', V.VEd / des.Vmax45, 'concrete strut at the face', '6.2.3(3)');
+    C.check('u_V', 'V_Edd/V_Rd', S.VEd_d / rv.VRd, 'shear links', '6.2.3');
+    C.check('u_Vmin', 'A_swsmin/A_sws', des.AswSmin / S.AswS, 'minimum links', '9.2.2(5)');
+    C.calc('s_lmax', '0.75*d', des.slMax, 'mm', 'maximum link spacing along the member', '9.2.2(6)', { sym: 's_l,max' });
+    C.check('u_sl', 's_w/s_lmax', L.s / des.slMax, 'link spacing', '9.2.2(6)');
+    const stLeg = L.legs > 1 ? (bw - 2 * inp.cover - L.phi) / (L.legs - 1) : bw;
+    C.calc('s_leg', L.legs > 1 ? `(${W} - 2*c_nom - ${PV})/(n_l - 1)` : W, stLeg, 'mm', 'spacing of the legs across the section', '', { sym: 's_t' });
+    C.calc('s_tmax', 'MIN(0.75*d, 600 mm)', des.stMax, 'mm', 'maximum spacing of the legs', '9.2.2(8)', { sym: 's_t,max' });
+    C.check('u_st', 's_leg/s_tmax', stLeg / des.stMax, 'link legs across the width', '9.2.2(8)');
+    void st;
+  }
+
+  // ---------- torsion with shear: EC2Toolkit.torsion(o) → R ----------
+  function torsion(o, R, meta = {}) {
+    const C = CalcScript.create({ title: meta.title || 'Torsion', tool: 'RC Section Design Toolkit', standard: 'BS EN 1992-1-1:2004+A1:2014, UK NA' });
+    const c = EC2.concrete(o.fck), st = EC2.steel(o.fyk), t = R.t, vc = R.vc, d = R.d, cot = R.cot;
+    materials(C, c, st, { noFlex: true });
+    C.calc('f_ctd', '0.7*f_ctm/gamma_c', c.fctd, 'N/mm2', 'design tensile strength (α_ct = 1.0, f_ctk,0.05 = 0.7 f_ctm)', '3.1.6(2)');
+    C.input('f_ckmax', 50, 'N/mm2', 'UK NA: f_ck for shear and torsion not taken above C50/60', '6.2, UK NA', { sym: 'f_ck,max' });
+    C.calc('f_ckv', 'MIN(f_ck, f_ckmax)', c.fv, 'N/mm2', 'f_ck for shear and torsion', '6.2, UK NA', { sym: 'f_ck,v' });
+    C.calc('nu_1', '0.6*(1 - f_ckv[#N/mm2]/250) [#]', c.nu, '', 'strength reduction for concrete cracked in shear', '6.2.3(3)', { sym: 'ν' });
+    C.calc('f_cdv', 'f_ckv/gamma_c', c.fcdV, 'N/mm2', 'f_cd for shear and torsion (α_cc = 1.0)', '3.1.6(1)', { sym: 'f_cd' });
+    C.head('Section');
+    C.input('b', o.b, 'mm', 'width', ''); C.input('h', o.h, 'mm', 'depth', ''); C.input('c_nom', o.cover, 'mm', 'cover to the links', '4.4.1');
+    C.input('phi_w', o.phiLink, 'mm', 'link diameter', '', { sym: 'φ_w' }); C.input('phi_l', o.phiBar, 'mm', 'longitudinal bar diameter', '', { sym: 'φ_l' });
+    C.calc('d', 'h - c_nom - phi_w - phi_l/2', d, 'mm', 'effective depth', '');
+    C.calc('c_e', 'c_nom + phi_w + phi_l/2', o.cover + o.phiLink + o.phiBar / 2, 'mm', 'edge to the centre of the longitudinal bars', '6.3.2(1)');
+    C.input('T_Ed', o.TEd / 1e6, 'kNm', 'design torsional moment', ''); C.input('V_Ed', o.VEd / 1e3, 'kN', 'design shear', '');
+    C.head('Thin-walled closed section');
+    C.calc('A', 'b*h', t.A, 'mm2', 'area within the outer perimeter', '6.3.2(1)'); C.calc('u', '2*(b + h)', t.u, 'mm', 'outer perimeter', '6.3.2(1)');
+    C.calc('t_ef', 'MAX(A/u, 2*c_e)', t.tef, 'mm', 'effective wall thickness', '6.3.2(1)', { sym: 't_ef' });
+    C.calc('A_k', '(b - t_ef)*(h - t_ef)', t.Ak, 'mm2', 'area within the centre line of the walls', '6.3.2(1)');
+    C.calc('u_k', '2*((b - t_ef) + (h - t_ef))', t.uk, 'mm', 'perimeter of A_k', '6.3.2(1)');
+    C.head('Shear without links, and the torsional cracking moment');
+    C.input('A_sl', o.Asl, 'mm2', 'longitudinal tension steel (for V_Rd,c)', '6.2.2');
+    C.calc('k_v', 'MIN(1 + SQRT(200/d[#mm]), 2) [#]', vc.k, '', 'size factor', '6.2.2(1)', { sym: 'k' });
+    C.calc('rho_l', 'MIN(A_sl/(b*d), 0.02) [#]', vc.rho, '', 'tension steel ratio', '6.2.2(1)', { sym: 'ρ_l' });
+    C.calc('v_min', '0.035*k_v^1.5*SQRT(f_ckv[#N/mm2]) [#N/mm2]', vc.vmin, 'N/mm2', 'minimum shear strength', '6.2.2(1)');
+    C.calc('v_Rdc', '0.18/gamma_c*k_v*(100*rho_l*f_ckv[#N/mm2])^(1/3) [#N/mm2]', vc.v, 'N/mm2', 'shear strength without links', '6.2.2(1)', { sym: 'v_Rd,c' });
+    C.calc('V_Rdc', 'MAX(v_Rdc, v_min)*b*d', vc.VRdc / 1e3, 'kN', 'shear resistance without links', '6.2.2(1)', { sym: 'V_Rd,c' });
+    C.calc('T_Rdc', '2*A_k*t_ef*f_ctd', t.TRdc / 1e6, 'kNm', 'torsional cracking moment (τ_t,i t_ef = f_ctd)', '6.3.2(5)', { sym: 'T_Rd,c' });
+    C.calc('i_c', 'T_Ed/T_Rdc + V_Ed/V_Rdc [#]', o.TEd / t.TRdc + o.VEd / vc.VRdc, '', t.crackFree ? 'not more than 1: only minimum reinforcement is needed (6.31)' : 'more than 1: torsion and shear reinforcement is designed', '6.3.2(5) (6.31)');
+    C.head('Concrete struts: torsion and shear together');
+    C.calc('z_v', '0.9*d', 0.9 * d, 'mm', 'lever arm for shear', '6.2.3(1)', { sym: 'z' });
+    if (cot >= 2.5 - 1e-12) C.input('cot_th', 2.5, '', 'the flattest strut satisfies the interaction', '6.2.3(2)', { sym: 'cot θ' });
+    else C.given('cot_th', cot, '', 'strut angle', cot <= 1 + 1e-12 ? 'the steepest allowed (θ = 45°)' : 'found by iteration: the flattest strut with T/T_Rd,max + V/V_Rd,max = 1', '6.3.2(4)', { sym: 'cot θ' });
+    C.calc('sin_th', '1/SQRT(1 + cot_th^2) [#]', 1 / Math.sqrt(1 + cot * cot), '', 'sin θ', '', { sym: 'sin θ' });
+    C.calc('cos_th', 'cot_th*sin_th [#]', cot / Math.sqrt(1 + cot * cot), '', 'cos θ', '', { sym: 'cos θ' });
+    C.calc('T_Rdmax', '2*nu_1*f_cdv*A_k*t_ef*sin_th*cos_th', t.TRdmax / 1e6, 'kNm', 'torsional resistance of the struts (α_cw = 1)', '6.3.2(4) (6.30)', { sym: 'T_Rd,max' });
+    C.calc('V_Rdmax', 'b*z_v*nu_1*f_cdv/(cot_th + 1/cot_th)', EC2.vrdMax(o.b, 0.9 * d, c, cot) / 1e3, 'kN', 'shear resistance of the struts', '6.2.3(3) (6.9)', { sym: 'V_Rd,max' });
+    C.check('u_tmax', 'T_Ed/T_Rdmax + V_Ed/V_Rdmax', t.inter, 'torsion and shear: concrete struts', '6.3.2(4) (6.29)');
+    C.head('Links (per leg)');
+    C.input('n_l', o.legs, '', 'link legs', ''); C.input('s_w', o.s, 'mm', 'link spacing', '');
+    C.calc('a_v', 'V_Ed/(z_v*f_yd*cot_th)/n_l', R.AswSv, 'mm2/mm', 'for shear, per leg', '6.2.3(3) (6.8)', { sym: 'A_sw/s,V' });
+    C.calc('a_t', 'T_Ed/(2*A_k*f_yd*cot_th)', R.AswS1, 'mm2/mm', 'for torsion, one leg (outer)', '6.3.2(3) (6.28)', { sym: 'A_sw/s,T' });
+    C.calc('a_min', '0.08*SQRT(f_ck[#N/mm2])/f_yk[#N/mm2]*b[#mm]/n_l [#mm2/mm]', 0.08 * Math.sqrt(o.fck) / o.fyk * o.b / o.legs, 'mm2/mm', 'minimum, per leg', '9.2.2(5)', { sym: 'A_sw/s,min' });
+    const need = t.crackFree ? 0 : R.AswSv + R.AswS1, minS = 0.08 * Math.sqrt(o.fck) / o.fyk * o.b / o.legs;
+    if (t.crackFree) C.calc('a_req', 'a_min', Math.max(need, minS), 'mm2/mm', 'required per leg (minimum only: not cracked)', '6.3.2(5)', { sym: 'A_sw/s,req' });
+    else C.calc('a_req', 'MAX(a_v + a_t, a_min)', Math.max(need, minS), 'mm2/mm', 'required per leg', '6.3.2(3)', { sym: 'A_sw/s,req' });
+    C.calc('a_prov', 'PI()*phi_w^2/4/s_w', Math.PI * o.phiLink ** 2 / 4 / o.s, 'mm2/mm', 'provided per leg', '', { sym: 'A_sw/s,prov' });
+    C.check('u_tl', 'a_req/a_prov', Math.max(need, minS) / (Math.PI * o.phiLink ** 2 / 4 / o.s), 'links, shear and torsion', '6.3.2(3)');
+    C.calc('s_tmax', 'MIN(u_k/8, b, h, 0.75*d)', Math.min(t.sMax, 0.75 * d), 'mm', 'maximum spacing of torsion links', '9.2.3(3)', { sym: 's_max' });
+    C.check('u_ts', 's_w/s_tmax', o.s / Math.min(t.sMax, 0.75 * d), 'torsion link spacing', '9.2.3(3)');
+    C.head('Longitudinal steel for torsion');
+    C.input('n_b', o.nBars, '', 'bars round the perimeter', '');
+    C.calc('A_slp', 'n_b*PI()*phi_l^2/4', o.nBars * Math.PI * o.phiBar ** 2 / 4, 'mm2', 'provided', '', { sym: 'A_sl,prov' });
+    if (!t.crackFree) {
+      C.calc('A_slT', 'T_Ed*u_k*cot_th/(2*A_k*f_yd)', R.AslT, 'mm2', 'required, in addition to the bending steel', '6.3.2(3) (6.28)', { sym: 'ΣA_sl' });
+      C.check('u_tlong', 'A_slT/A_slp', R.AslT / (o.nBars * Math.PI * o.phiBar ** 2 / 4), 'longitudinal torsion steel', '6.3.2(3)');
+    } else C.note('Not cracked in torsion (6.31): no longitudinal torsion steel is required beyond the minimum detailing.');
+    return C;
+  }
+  // ---------- calculated crack width: EC2Toolkit.crackWidth(o) → R ----------
+  function crackWidth(o, R, meta = {}) {
+    const C = CalcScript.create({ title: meta.title || 'Crack width', tool: 'RC Section Design Toolkit', standard: 'BS EN 1992-1-1:2004+A1:2014, UK NA' });
+    const c = EC2.concrete(o.fck), st = EC2.steel(500), slab = !!o.s, ten = o.kind === 'tension';
+    C.head('Materials');
+    C.input('f_ck', o.fck, 'N/mm2', `characteristic cylinder strength, C${o.fck}`, 'Table 3.1');
+    C.calc('f_cm', 'f_ck[#N/mm2] + 8 [#N/mm2]', c.fcm, 'N/mm2', 'mean compressive strength', 'Table 3.1');
+    if (c.fck <= 50) C.calc('f_ctm', '0.30*f_ck[#N/mm2]^(2/3) [#N/mm2]', c.fctm, 'N/mm2', 'mean tensile strength', 'Table 3.1');
+    else C.calc('f_ctm', '2.12*LOG(1 + f_cm[#N/mm2]/10) [#N/mm2]', c.fctm, 'N/mm2', 'mean tensile strength', 'Table 3.1');
+    C.calc('E_cm', '22000*(f_cm[#N/mm2]/10)^0.3 [#N/mm2]', c.Ecm, 'N/mm2', 'secant modulus', 'Table 3.1');
+    C.input('E_s', st.Es, 'N/mm2', 'modulus of the reinforcement', '3.2.7(4)');
+    C.head(slab ? 'Section: a 1000 mm strip' : 'Section');
+    C.input('h', o.h, 'mm', 'depth', ''); C.input('b', slab ? 1000 : o.b, 'mm', slab ? 'width of the strip' : 'width', '');
+    C.input('c', o.cover, 'mm', 'cover to the bars', '7.3.4(3)'); C.input('phi', o.phi, 'mm', 'bar diameter', '', { sym: 'φ' });
+    if (slab) { C.input('s', o.s, 'mm', 'bar spacing', ''); C.calc('A_s', 'PI()*phi^2/4*b/s', R.As, 'mm2', 'steel in the strip', ''); C.calc('s_b', 's', R.spacing, 'mm', 'bar spacing', ''); }
+    else { C.input('n', o.n, '', 'number of bars', ''); C.calc('A_s', 'n*PI()*phi^2/4', R.As, 'mm2', 'steel', ''); C.calc('s_b', '(b - 2*c - phi)/MAX(1, n - 1)', R.spacing, 'mm', 'bar spacing', ''); }
+    C.calc('d', 'h - c - phi/2', R.d, 'mm', 'effective depth', '');
+    if (ten) {
+      C.head('Axial tension');
+      C.input('N_qp', o.Nqp / 1e3, 'kN', 'quasi-permanent tension', '');
+      C.calc('sigma_s', 'N_qp/(2*A_s)', R.ss, 'N/mm2', 'steel stress, A_s on each face', '7.3.4', { sym: 'σ_s' });
+      C.input('x', 0, 'mm', 'no compression zone', ''); C.input('k_2', 1, '', 'pure tension', '7.3.4(3)');
+      C.calc('h_cef', 'MIN(2.5*(h - d), h/2)', R.hcef, 'mm', 'effective tension depth, each face', '7.3.2(3)', { sym: 'h_c,ef' });
+    } else {
+      C.head('Bending: the cracked section');
+      C.input('M_qp', o.Mqp / 1e6, 'kNm', 'quasi-permanent moment', '');
+      C.input('alpha_e', o.ae ?? EC2.ES / c.Ecm, '', 'modular ratio for the cracked section', '7.3.4', { sym: 'α_e' });
+      C.calc('x', '(-alpha_e*A_s + SQRT((alpha_e*A_s)^2 + 2*b*alpha_e*A_s*d))/b', R.x, 'mm', 'neutral axis depth, cracked', '');
+      C.calc('I_cr', 'b*x^3/3 + alpha_e*A_s*(d - x)^2', EC2.cracked({ sec: { b: slab ? 1000 : o.b }, As: R.As, d: R.d, ae: o.ae ?? EC2.ES / c.Ecm, M: o.Mqp }).Icr, 'mm4', 'second moment of area, cracked', '');
+      C.calc('sigma_s', 'alpha_e*M_qp*(d - x)/I_cr', R.ss, 'N/mm2', 'steel stress', '7.3.4', { sym: 'σ_s' });
+      C.input('k_2', 0.5, '', 'bending', '7.3.4(3)');
+      C.calc('h_cef', 'MIN(2.5*(h - d), (h - x)/3, h/2)', R.hcef, 'mm', 'effective tension depth', '7.3.2(3)', { sym: 'h_c,ef' });
+    }
+    C.head('Crack width');
+    C.calc('A_ceff', 'b*h_cef', (slab ? 1000 : o.b) * R.hcef, 'mm2', 'effective tension area', '7.3.2(3)', { sym: 'A_c,eff' });
+    C.calc('rho_eff', 'A_s/A_ceff [#]', R.rho, '', 'effective steel ratio', '7.3.4(2)', { sym: 'ρ_p,eff' });
+    C.calc('alpha_eS', 'E_s/E_cm [#]', EC2.ES / c.Ecm, '', 'E_s/E_cm', '7.3.4(2)', { sym: 'α_e' });
+    C.input('k_t', o.kt ?? 0.4, '', 'load duration factor', '7.3.4(2)');
+    C.calc('de', 'MAX((sigma_s - k_t*f_ctm/rho_eff*(1 + alpha_eS*rho_eff))/E_s, 0.6*sigma_s/E_s) [#]', R.de, '', 'mean strain difference ε_sm − ε_cm (not less than 0.6 σ_s/E_s)', '7.3.4(2) (7.9)', { sym: 'ε_sm − ε_cm' });
+    if (R.close) C.calc('s_rmax', '3.4*c + 0.8*k_2*0.425*phi/rho_eff', R.sr, 'mm', 'maximum crack spacing (bars within 5(c + φ/2))', '7.3.4(3) (7.11), UK NA', { sym: 's_r,max' });
+    else C.calc('s_rmax', '1.3*(h - x)', R.sr, 'mm', 'maximum crack spacing (bars further apart than 5(c + φ/2))', '7.3.4(3) (7.14)', { sym: 's_r,max' });
+    C.calc('w_k', 's_rmax*de', R.wk, 'mm', 'crack width', '7.3.4(1) (7.8)');
+    C.input('w_max', o.wmax, 'mm', 'limit', 'UK NA Table NA.4');
+    C.check('u_wk', 'w_k/w_max', R.wk / o.wmax, 'crack width', '7.3.4');
+    return C;
+  }
+  // ---------- anchorage and laps: EC2Toolkit.anchorage(o) → R ----------
+  function anchorage(o, R, meta = {}) {
+    const C = CalcScript.create({ title: meta.title || 'Anchorage and laps', tool: 'RC Section Design Toolkit', standard: 'BS EN 1992-1-1:2004+A1:2014, UK NA' });
+    const c = EC2.concrete(o.fck), a = R.a;
+    C.head('Materials');
+    C.input('f_ck', o.fck, 'N/mm2', `characteristic cylinder strength, C${o.fck}`, 'Table 3.1');
+    C.input('f_yk', o.fyk, 'N/mm2', 'yield strength', '3.2.2'); C.input('gamma_c', 1.5, '', 'partial factor', '2.4.2.4', { sym: 'γ_c' }); C.input('gamma_s', 1.15, '', 'partial factor', '2.4.2.4', { sym: 'γ_s' });
+    if (c.fck <= 50) C.calc('f_ctm', '0.30*f_ck[#N/mm2]^(2/3) [#N/mm2]', c.fctm, 'N/mm2', 'mean tensile strength', 'Table 3.1');
+    else { C.calc('f_cm', 'f_ck[#N/mm2] + 8 [#N/mm2]', c.fcm, 'N/mm2', 'mean compressive strength', 'Table 3.1'); C.calc('f_ctm', '2.12*LOG(1 + f_cm[#N/mm2]/10) [#N/mm2]', c.fctm, 'N/mm2', 'mean tensile strength', 'Table 3.1'); }
+    C.calc('f_ctd', '0.7*f_ctm/gamma_c', c.fctd, 'N/mm2', 'design tensile strength', '3.1.6(2)');
+    C.head('Bond and the basic length');
+    C.input('phi', o.phi, 'mm', 'bar diameter', '', { sym: 'φ' });
+    C.input('eta_1', o.good ? 1 : 0.7, '', o.good ? 'good bond conditions' : 'poor bond conditions', '8.4.2(2)', { sym: 'η_1' });
+    if (o.phi <= 32) C.input('eta_2', 1, '', 'φ ≤ 32 mm', '8.4.2(2)', { sym: 'η_2' });
+    else C.calc('eta_2', '(132 - phi[#mm])/100 [#]', (132 - o.phi) / 100, '', 'φ > 32 mm', '8.4.2(2)', { sym: 'η_2' });
+    C.calc('f_bd', '2.25*eta_1*eta_2*f_ctd', a.fbd, 'N/mm2', 'ultimate bond stress', '8.4.2(2)');
+    if (o.ss != null) C.input('sigma_sd', o.ss, 'N/mm2', 'design stress in the bar', '8.4.3(2)', { sym: 'σ_sd' });
+    else C.calc('sigma_sd', 'f_yk/gamma_s', a.sd, 'N/mm2', 'design stress in the bar (fully stressed)', '8.4.3(2)', { sym: 'σ_sd' });
+    C.calc('l_brqd', 'phi/4*sigma_sd/f_bd', a.lbrqd, 'mm', 'basic required anchorage length', '8.4.3(2)', { sym: 'l_b,rqd' });
+    C.head('Design anchorage length');
+    C.input('alpha_1', a.a1, '', o.bent ? (a.a1 < 1 ? 'bent bar with c_d > 3φ' : 'bent bar, c_d ≤ 3φ') : 'straight bar', 'Table 8.2', { sym: 'α_1' });
+    if (o.tension) {
+      C.input('c_d', o.cd ?? 3 * o.phi, 'mm', 'concrete cover or half the clear spacing', 'Figure 8.3');
+      C.calc('alpha_2', o.bent ? 'MIN(1, MAX(0.7, 1 - 0.15*(c_d - 3*phi)/phi)) [#]' : 'MIN(1, MAX(0.7, 1 - 0.15*(c_d - phi)/phi)) [#]', a.a2, '', 'cover', 'Table 8.2', { sym: 'α_2' });
+    } else C.input('alpha_2', 1, '', 'compression', 'Table 8.2', { sym: 'α_2' });
+    C.input('alpha_35', 1, '', 'α₃ = α₄ = α₅ = 1 (no confinement or welded bars taken)', 'Table 8.2', { sym: 'α_3,4,5' });
+    C.calc('a_235', 'MAX(0.7, alpha_2*alpha_35) [#]', Math.max(0.7, a.a2), '', 'α₂ α₃ α₅ ≥ 0.7', '8.4.4(1)', { sym: 'α_2 α_3 α_5' });
+    C.calc('l_bmin', o.tension ? 'MAX(0.3*l_brqd[#mm], 10*phi[#mm], 100) [#mm]' : 'MAX(0.6*l_brqd[#mm], 10*phi[#mm], 100) [#mm]', a.lbmin, 'mm', 'minimum anchorage length', '8.4.4(1)', { sym: 'l_b,min' });
+    C.calc('l_bd', 'MAX(alpha_1*a_235*l_brqd, l_bmin)', a.lbd, 'mm', 'design anchorage length', '8.4.4(1)', { sym: 'l_bd' });
+    C.head('Laps');
+    C.input('p_l', o.lappedPct, '', 'per cent of the bars lapped at a section', 'Table 8.3', { sym: 'ρ_1' });
+    if (o.tension) C.calc('alpha_6', 'MIN(1.5, MAX(1, SQRT(p_l/25))) [#]', a.a6, '', 'proportion lapped', '8.7.3(1)', { sym: 'α_6' });
+    else C.input('alpha_6', 1, '', 'compression', '8.7.3(1)', { sym: 'α_6' });
+    C.calc('l_0min', 'MAX(0.3*alpha_6*l_brqd[#mm], 15*phi[#mm], 200) [#mm]', a.l0min, 'mm', 'minimum lap length', '8.7.3(1)', { sym: 'l_0,min' });
+    C.calc('l_0', 'MAX(alpha_1*a_235*alpha_6*l_brqd, l_0min)', a.l0, 'mm', 'design lap length', '8.7.3(1)', { sym: 'l_0' });
+    return C;
+  }
+  return { section, shear, torsion, crackWidth, anchorage, materials, kSizeExpr, interp };
+})();
+if (typeof module !== 'undefined') module.exports = { EC2Script };
+
+/* ===== PAD FOUNDATION: FULL CALCULATION (EngineeringTools) =====
+   Pad.design written out step by step, one CalcScript per check (one CalcPad check each in a project): the base, its
+   loads and the ground; bearing in each DA1 combination (the governing load combination's forces at the underside, the
+   effective area, and the Annex D resistance written out, drained or undrained); sliding; the characteristic pressure
+   against an allowable one; overturning (EQU); and for the structure, each in its governing ULS combination: bending
+   each way at the column face (the ground pressure on the effective area less the base's own weight, then the steel),
+   beam shear each way at d or 2d, punching at the governing perimeter and at the column face, and the minimum steel
+   and spacing. Which combination governs (and, for punching, which perimeter) is found by the tool over all of them and
+   stated; everything that follows from it is a formula.
+   Source: scratchpad/foundation/padscript.js. Needs CalcScript, EC2, EC2Script, Pad. */
+const PadScript = (() => {
+  'use strict';
+  const TOOL = 'Pad Foundation', STD = 'BS EN 1997-1:2004+A1:2013, BS EN 1992-1-1:2004+A1:2014, UK NA; BS EN 1990, UK NA';
+  const f1 = v => (Math.round(v * 10) / 10).toFixed(1);
+  const KEYS = ['N', 'Mx', 'My', 'Hx', 'Hy'], CASES = ['G', 'Q', 'W'];
+  const nm = (k, c) => ({ N: `N_${c}`, Mx: `M_x${c}`, My: `M_y${c}`, Hx: `H_x${c}`, Hy: `H_y${c}` }[k]);
+  const UNIT = { N: 'kN', Mx: 'kNm', My: 'kNm', Hx: 'kN', Hy: 'kN' };
+  const DESC = { N: 'vertical load', Mx: 'moment turning along L (about y)', My: 'moment turning along B (about x)', Hx: 'horizontal load along L', Hy: 'horizontal load along B' };
+  const CASEN = { G: 'permanent', Q: 'imposed', W: 'wind' };
+  const kTab = R => `IF(${R} <= 0.5, 0.45, IF(${R} <= 1, 0.45 + 0.3*(${R} - 0.5), IF(${R} <= 2, 0.6 + 0.1*(${R} - 1), IF(${R} <= 3, 0.7 + 0.1*(${R} - 2), 0.8)))) [#]`;
+
+  // ---------- the pieces each check repeats ----------
+  function base(C, R) {
+    C.head(R.strip ? 'The strip (per metre run)' : 'The base');
+    C.input('L', R.L * 1000, 'mm', R.strip ? 'width of the strip' : 'length of the base (x)', '');
+    if (R.strip) C.input('B', 1000, 'mm', 'a metre run of the strip', '');
+    else C.input('B', R.B * 1000, 'mm', 'breadth of the base (y)', '');
+    C.input('h', R.h, 'mm', 'depth of the base', '');
+    C.input('c_1', R.c1 * 1000, 'mm', R.strip ? 'wall thickness' : 'column dimension along L', '');
+    if (!R.strip) C.input('c_2', R.c2 * 1000, 'mm', 'column dimension along B', '');
+    if (R.ex) C.input('e_x', R.ex * 1000, 'mm', 'column offset from the centre of the base, along L', '');
+    if (!R.strip && R.ey) C.input('e_y', R.ey * 1000, 'mm', 'column offset from the centre of the base, along B', '');
+    C.input('D_u', R.D * 1000, 'mm', 'ground level to the underside of the base', '');
+    C.input('gamma_conc', R.inp.gc ?? 25, 'kN/m3', 'weight density of the concrete', 'BS EN 1991-1-1 Table A.1', { sym: 'γ_conc' });
+    C.input('gamma_soil', R.inp.gs ?? 18, 'kN/m3', 'weight density of the soil', '', { sym: 'γ_soil' });
+    C.calc('w', R.D > R.Hb ? 'gamma_conc*h + gamma_soil*(D_u - h)' : 'gamma_conc*h', R.w, 'kPa', `own weight of the base${R.D > R.Hb ? ' and the soil over it' : ''}`, '');
+    C.calc('W_b', 'w*L*B', R.Wb, 'kN', 'in all: permanent, at the centre of the base', '');
+  }
+  const used = (R, k) => CASES.filter(c => R.F[c][k] !== 0);
+  function loads(C, R, keys = KEYS) {
+    const any = keys.some(k => used(R, k).length);
+    C.head(`Characteristic loads at the top of the base${R.strip ? ', per metre run' : ''}`);
+    if (!any) { C.note('No loads of these kinds.'); return; }
+    for (const c of CASES) for (const k of keys) if (R.F[c][k] !== 0) C.input(nm(k, c), R.F[c][k], UNIT[k], `${CASEN[c]}: ${DESC[k]}`, '');
+  }
+  // the combination's factors; sign of the wind in γ_W
+  function combo(C, cb, what) {
+    C.head(`Governing combination: ${cb.name}`);
+    if (what) C.note(what);
+    C.input('gamma_G', cb.g, '', 'factor on the permanent load (and the base)', '', { sym: 'γ_G' });
+    C.input('gamma_Q', cb.q, '', 'factor on the imposed load', '', { sym: 'γ_Q' });
+    C.input('gamma_W', cb.w, '', 'factor on the wind (its sign the direction)', '', { sym: 'γ_W' });
+  }
+  const fac = { G: 'gamma_G', Q: 'gamma_Q', W: 'gamma_W' };
+  const sumOf = (R, k) => used(R, k).map(c => `${fac[c]}*${nm(k, c)}`).join(' + ');
+  // the forces at the underside for the combination U (the engine's underside()); which: the names needed
+  function underside(C, R, U, which) {
+    C.head('Forces at the underside of the base');
+    const need = new Set(which);
+    const def = (name, expr, v, unit, desc, sym) => { if (expr) C.calc(name, expr, v, unit, desc, '', sym ? { sym } : undefined); else C.input(name, 0, unit, `${desc}: none`, '', sym ? { sym } : undefined); };
+    def('N_col', sumOf(R, 'N'), U.Ncol, 'kN', 'factored column load');
+    def('N_d', `N_col + gamma_G*W_b`, U.N, 'kN', 'vertical load at the underside, with the base', 'V_d');
+    if (need.has('Hx') || need.has('Mx')) def('H_x', sumOf(R, 'Hx'), U.Hx, 'kN', 'horizontal load along L');
+    if (!R.strip && (need.has('Hy') || need.has('My'))) def('H_y', sumOf(R, 'Hy'), U.Hy, 'kN', 'horizontal load along B');
+    if (need.has('Mx')) {
+      const t = [sumOf(R, 'Mx'), R.ex ? 'e_x*N_col' : '', used(R, 'Hx').length ? 'H_x*h' : ''].filter(Boolean).join(' + ');
+      def('M_x', t, U.Mx, 'kNm', 'moment along L at the underside: the moments, the column offset and H × depth');
+    }
+    if (!R.strip && need.has('My')) {
+      const t = [sumOf(R, 'My'), R.ey ? 'e_y*N_col' : '', used(R, 'Hy').length ? 'H_y*h' : ''].filter(Boolean).join(' + ');
+      def('M_y', t, U.My, 'kNm', 'moment along B at the underside');
+    }
+    if (need.has('Mc')) {
+      def('M_xc', sumOf(R, 'Mx'), U.MxCol, 'kNm', 'moment from the column along L (for β)');
+      def('M_yc', sumOf(R, 'My'), U.MyCol, 'kNm', 'moment from the column along B (for β)');
+    }
+  }
+  // the effective area (EC7 Annex D): which 'x', 'y' or 'xy'
+  function effective(C, R, E, which = 'xy') {
+    C.head('Effective area (load at its centre)');
+    if (which.includes('x')) { C.calc('e_L', 'M_x/N_d', E.exr * 1000, 'mm', 'eccentricity along L', 'Annex D'); C.calc('L_e', 'L - 2*ABS(e_L)', E.Lp * 1000, 'mm', 'effective length', 'Annex D', { sym: "L'" }); }
+    if (which.includes('y')) {
+      if (R.strip) C.calc('B_e', 'B', E.Bp * 1000, 'mm', 'a metre run', '', { sym: "B'" });
+      else { C.calc('e_B', 'M_y/N_d', E.eyr * 1000, 'mm', 'eccentricity along B', 'Annex D'); C.calc('B_e', 'B - 2*ABS(e_B)', E.Bp * 1000, 'mm', 'effective breadth', 'Annex D', { sym: "B'" }); }
+    }
+    if (which === 'xy') { C.calc('A_e', 'L_e*B_e', E.A, 'm2', 'effective area', 'Annex D', { sym: "A'" }); C.calc('q_Ed', 'N_d/A_e', E.q, 'kPa', 'design pressure, uniform on the effective area', '6.5.2'); }
+  }
+  const rowOf = (R, name) => R.strRows.find(r => r.cb && r.cb.name === name && r.E);
+
+  // ---------- the base, the loads and the ground ----------
+  function baseZone(R) {
+    const C = CalcScript.create({ title: 'Base, loads and ground', tool: TOOL, standard: STD });
+    base(C, R); loads(C, R);
+    C.input('psi_Q', R.psiQ, '', 'ψ₀ for the imposed load', 'Table NA.A1.1', { sym: 'ψ_0,Q' });
+    C.input('psi_W', R.psiW, '', 'ψ₀ for the wind', 'Table NA.A1.1', { sym: 'ψ_0,W' });
+    C.head('Ground');
+    const s = R.soil;
+    if (s.mode === 'undrained') C.input('c_uk', s.cu, 'kPa', 'undrained shear strength', '', { sym: 'c_u,k' });
+    else if (s.mode === 'allowable') { C.input('q_a', s.qa, 'kPa', 'allowable bearing pressure', ''); C.input('phi_k', s.phi, 'deg', 'angle of shearing resistance (for sliding)', '', { sym: "φ'_k" }); }
+    else { C.input('phi_k', s.phi, 'deg', 'angle of shearing resistance', '', { sym: "φ'_k" }); C.input('c_k', s.c, 'kPa', 'effective cohesion', '', { sym: "c'_k" }); }
+    C.calc('q_0', 'gamma_soil*D_u', R.q0, 'kPa', 'overburden at the underside', 'Annex D');
+    C.note(`Combinations: EC7 Design Approach 1 for the ground (combination 1, A1 + M1; combination 2, A2 + M2; UK NA), EN 1990 ${R.inp.comb === '6.10' ? '6.10' : '6.10a and 6.10b'} for the structure and Table A1.2(A) for overturning; with wind, each way. Each check that follows takes the combination that governs it, found by working every one.`);
+    R.warnings.forEach(t => C.note(t));
+    return { key: 'base', title: C.meta.title, util: null, C };
+  }
+  // ---------- bearing in a DA1 combination ----------
+  function bearingZone(R, key) {
+    const set = Pad.SETS[key], rows = R.geoRows.filter(r => r.key === key), g = rows.reduce((a, r) => (r.util > a.util ? r : a), rows[0]);
+    const C = CalcScript.create({ title: `Bearing, ${set.name}`, tool: TOOL, standard: STD }), s = R.soil;
+    base(C, R); loads(C, R);
+    combo(C, g.U, `The combination of the ${rows.length} in ${set.name} with the highest ratio of the design pressure to the resistance.`);
+    underside(C, R, g.U, ['Mx', 'My']);
+    if (g.uplift) { C.note('The vertical load is not downward: the base lifts. Not satisfied.'); return { key: `bear${key}`, title: C.meta.title, util: g.util, C }; }
+    effective(C, R, g.E);
+    if (g.outside) { C.note('The resultant falls outside the base. Not satisfied.'); return { key: `bear${key}`, title: C.meta.title, util: g.util, C }; }
+    const B = g.R, Hh = g.H;
+    C.head(`Bearing resistance, ${s.mode === 'undrained' ? 'undrained (Annex D.3)' : 'drained (Annex D.4)'}`);
+    C.calc('q_0', 'gamma_soil*D_u', R.q0, 'kPa', 'overburden at the underside', 'Annex D');
+    C.calc('B_s', 'MIN(L_e, B_e)', B.Bs * 1000, 'mm', "the shorter side of the effective area, B'", 'Annex D');
+    C.calc('L_s', 'MAX(L_e, B_e)', B.Ls * 1000, 'mm', "the longer, L'", 'Annex D');
+    if (R.strip) C.input('r_BL', 0, '', "B'/L' for a strip", 'Annex D', { sym: "B'/L'" });
+    else C.calc('r_BL', 'B_s/L_s [#]', B.r, '', "B'/L'", 'Annex D', { sym: "B'/L'" });
+    if (Hh > 0) C.calc('H_d', R.strip ? 'ABS(H_x)' : 'SQRT(H_x^2 + H_y^2)', Hh, 'kN', 'resultant horizontal load', '');
+    if (s.mode === 'undrained') {
+      C.input('c_uk', s.cu, 'kPa', 'undrained shear strength', '', { sym: 'c_u,k' });
+      C.input('gamma_cu', set.gcu, '', `partial factor on c_u, ${set.name}`, 'Table NA.A.4', { sym: 'γ_cu' });
+      C.calc('c_ud', 'c_uk/gamma_cu', B.cu, 'kPa', 'design undrained shear strength', '2.4.6.2');
+      C.calc('s_c', '1 + 0.2*r_BL [#]', B.sc, '', 'shape factor', 'D.3');
+      if (Hh > 0) C.calc('i_c', 'IF(H_d > A_e*c_ud, 0, 0.5*(1 + SQRT(MAX(0, 1 - H_d/(A_e*c_ud))))) [#]', B.ic, '', 'load inclination factor', 'D.3');
+      else C.input('i_c', 1, '', 'no horizontal load', 'D.3');
+      C.calc('q_Rd', '(PI() + 2)*c_ud*s_c*i_c + q_0', B.q, 'kPa', 'bearing resistance (γ_R,v = 1.0)', 'D.3, UK NA');
+    } else {
+      C.input('phi_k', s.phi, 'deg', 'angle of shearing resistance', '', { sym: "φ'_k" }); C.input('c_k', s.c, 'kPa', 'effective cohesion', '', { sym: "c'_k" });
+      C.input('gamma_phi', set.gphi, '', `partial factor on tan φ′, ${set.name}`, 'Table NA.A.4', { sym: "γ_φ'" });
+      C.input('gamma_cp', set.gc, '', `partial factor on c′, ${set.name}`, 'Table NA.A.4', { sym: "γ_c'" });
+      const t = Math.tan(B.phi * Math.PI / 180);
+      C.calc('tanphi_d', 'TAN(phi_k)/gamma_phi [#]', t, '', 'tan φ′_d', '2.4.6.2', { sym: "tan φ'_d" });
+      C.calc('c_d', 'c_k/gamma_cp', B.c, 'kPa', 'design cohesion', '2.4.6.2', { sym: "c'_d" });
+      C.calc('N_q', 'EXP(PI()*tanphi_d)*TAN(PI()/4 + ATAN(tanphi_d)/2)^2 [#]', B.Nq, '', 'bearing capacity factor', 'D.4');
+      C.calc('N_c', '(N_q - 1)/tanphi_d [#]', B.Nc, '', 'bearing capacity factor', 'D.4');
+      C.calc('N_g', '2*(N_q - 1)*tanphi_d [#]', B.Ng, '', 'bearing capacity factor (rough base)', 'D.4', { sym: 'N_γ' });
+      C.calc('s_q', '1 + r_BL*SIN(ATAN(tanphi_d)) [#]', B.sq, '', 'shape factor', 'D.4');
+      C.calc('s_g', '1 - 0.3*r_BL [#]', B.sg, '', 'shape factor', 'D.4', { sym: 's_γ' });
+      C.calc('s_c', '(s_q*N_q - 1)/(N_q - 1) [#]', B.sc, '', 'shape factor', 'D.4');
+      if (Hh > 0) {
+        if (R.strip) C.input('m_i', 2, '', 'exponent for a strip', 'D.4', { sym: 'm' });
+        else {
+          C.calc('m_B', '(2 + B_s/L_s)/(1 + B_s/L_s) [#]', (2 + B.Bs / B.Ls) / (1 + B.Bs / B.Ls), '', 'm for H along B′', 'D.4');
+          C.calc('m_L', '(2 + L_s/B_s)/(1 + L_s/B_s) [#]', (2 + B.Ls / B.Bs) / (1 + B.Ls / B.Bs), '', 'm for H along L′', 'D.4');
+          const along = g.E.Lp >= g.E.Bp, HL = along ? 'H_x' : 'H_y', HB = along ? 'H_y' : 'H_x', theta = Math.atan2(Math.abs(along ? g.U.Hy : g.U.Hx), Math.abs(along ? g.U.Hx : g.U.Hy));
+          if (Math.abs(along ? g.U.Hx : g.U.Hy) > 0) C.calc('theta', `ATAN(ABS(${HB})/ABS(${HL})) [#]`, theta, '', `angle of H from the L′ direction (rad), L′ along ${along ? 'L' : 'B'}`, 'D.4', { sym: 'θ' });
+          else C.input('theta', Math.PI / 2, '', `H is across L′ (rad)`, 'D.4', { sym: 'θ' });
+          C.calc('m_i', 'm_L*COS(theta)^2 + m_B*SIN(theta)^2 [#]', B.m, '', 'exponent for the inclination', 'D.4', { sym: 'm' });
+        }
+        const base0 = g.U.N + g.E.A * B.c / t;
+        C.calc('r_i', 'MAX(0, 1 - H_d/(N_d + A_e*c_d/tanphi_d)) [#]', base0 > 0 ? Math.max(0, 1 - Hh / base0) : 0, '', "1 − H/(V + A′c′ cot φ′)", 'D.4');
+        C.calc('i_q', 'r_i^m_i [#]', B.iq, '', 'inclination factor', 'D.4');
+        C.calc('i_g', 'r_i^(m_i + 1) [#]', B.ig, '', 'inclination factor', 'D.4', { sym: 'i_γ' });
+      } else { C.input('i_q', 1, '', 'no horizontal load', 'D.4'); C.input('i_g', 1, '', 'no horizontal load', 'D.4', { sym: 'i_γ' }); }
+      C.calc('i_c', 'i_q - (1 - i_q)/(N_c*tanphi_d) [#]', B.ic, '', 'inclination factor', 'D.4');
+      C.calc('q_Rd', 'c_d*N_c*s_c*i_c + q_0*N_q*s_q*i_q + 0.5*gamma_soil*B_s*N_g*s_g*i_g', B.q, 'kPa', 'bearing resistance (γ_R,v = 1.0)', 'D.4, UK NA');
+    }
+    C.check('U_b', 'q_Ed/q_Rd', g.util, 'bearing', '6.5.2');
+    return { key: `bear${key}`, title: C.meta.title, sum: `${g.U.name}: q_Ed ${f1(g.E.q)} / q_Rd ${f1(B.q)} kPa`, util: g.util, C };
+  }
+  // ---------- sliding ----------
+  function slidingZone(R, key) {
+    const set = Pad.SETS[key], rows = R.geoRows.filter(r => r.key === key), s = rows.reduce((a, r) => ((r.slide || 0) > (a.slide || 0) ? r : a), rows[0]), und = R.soil.mode === 'undrained';
+    const C = CalcScript.create({ title: `Sliding, ${set.name}`, tool: TOOL, standard: STD });
+    base(C, R); loads(C, R, und ? KEYS : ['N', 'Hx', 'Hy']);
+    combo(C, s.U, `The combination of ${set.name} with the highest ratio of the horizontal load to the resistance.`);
+    underside(C, R, s.U, und ? ['Mx', 'My', 'Hx', 'Hy'] : ['Hx', 'Hy']);
+    C.head('Sliding resistance');
+    C.calc('H_d', R.strip ? 'ABS(H_x)' : 'SQRT(H_x^2 + H_y^2)', s.H, 'kN', 'resultant horizontal load', '6.5.3');
+    if (und) {
+      effective(C, R, s.E);
+      C.input('c_uk', R.soil.cu, 'kPa', 'undrained shear strength', '', { sym: 'c_u,k' });
+      C.input('gamma_cu', set.gcu, '', `partial factor on c_u, ${set.name}`, 'Table NA.A.4', { sym: 'γ_cu' });
+      C.calc('R_d', 'A_e*c_uk/gamma_cu', s.Rs, 'kN', 'undrained sliding resistance on the effective area', '6.5.3 (6.4a)');
+    } else {
+      C.calc('V_fav', R.F.G.N ? 'N_G + W_b' : 'W_b', R.F.G.N + R.Wb, 'kN', 'the permanent vertical load, favourable at 1.0', '6.5.3');
+      C.input('phi_k', R.soil.phi, 'deg', 'angle of shearing resistance', '', { sym: "φ'_k" });
+      C.input('gamma_phi', set.gphi, '', `partial factor on tan φ′, ${set.name}`, 'Table NA.A.4', { sym: "γ_φ'" });
+      C.calc('R_d', 'MAX(0 kN, V_fav)*TAN(phi_k)/gamma_phi', s.Rs, 'kN', 'drained sliding resistance, δ = φ′ (cast in place)', '6.5.3 (6.3a)');
+    }
+    C.check('U_s', 'H_d/R_d', s.slide, 'sliding', '6.5.3');
+    return { key: `slide${key}`, title: C.meta.title, sum: `${s.U.name}: H_d ${f1(s.H)} / R_d ${f1(s.Rs)} kN`, util: s.slide, C };
+  }
+  // ---------- characteristic pressure ----------
+  function slsZone(R) {
+    const row = R.slsRows.find(r => r.E && r.E.Lp > 0 && r.E.Bp > 0 && r.E.q === R.qSLS), qa = R.soil.mode === 'allowable' ? R.soil.qa : R.inp.qa;
+    const C = CalcScript.create({ title: 'Bearing pressure against the allowable', tool: TOOL, standard: STD });
+    base(C, R); loads(C, R);
+    if (!row) { C.note('Under one characteristic combination the load is not downward or falls outside the base. Not satisfied.'); return { key: 'allow', title: C.meta.title, util: R.qSLS / qa, C }; }
+    combo(C, row.U, 'Characteristic (SLS) combinations: the one giving the highest pressure on the effective area.');
+    underside(C, R, row.U, ['Mx', 'My']); effective(C, R, row.E);
+    C.input('q_a', qa, 'kPa', 'allowable bearing pressure', '');
+    C.check('U_a', 'q_Ed/q_a', R.qSLS / qa, 'characteristic pressure against the allowable', 'SLS');
+    return { key: 'allow', title: C.meta.title, sum: `q ${f1(R.qSLS)} / ${f1(qa)} kPa`, util: R.qSLS / qa, C };
+  }
+  // ---------- overturning ----------
+  function equZone(R) {
+    const eq = R.equ.reduce((a, r) => r.util > a.util ? r : a, R.equ[0]), x = eq.axis === 'x', s = eq.s;
+    const C = CalcScript.create({ title: 'Overturning (EQU)', tool: TOOL, standard: STD });
+    const Mk = x ? 'Mx' : 'My', Hk = x ? 'Hx' : 'Hy';
+    base(C, R); loads(C, R, ['N', Mk, Hk]);
+    C.input('psi_Q', R.psiQ, '', 'ψ₀ for the imposed load', 'Table NA.A1.1', { sym: 'ψ_0,Q' });
+    C.input('psi_W', R.psiW, '', 'ψ₀ for the wind', 'Table NA.A1.1', { sym: 'ψ_0,W' });
+    C.head(`About the ${x ? (s > 0 ? '+x' : '−x') : (s > 0 ? '+y' : '−y')} edge, the most onerous`);
+    C.input('s_e', s, '', `${s > 0 ? '+1' : '−1'}: the edge the moments turn the base about`, '');
+    const ot = c => { const t = [R.F[c][Mk] !== 0 ? nm(Mk, c) : '', R.F[c][Hk] !== 0 ? `${nm(Hk, c)}*h` : ''].filter(Boolean); return t.length ? t.join(' + ') : null; };
+    const otv = c => s * (R.F[c][Mk] + R.F[c][Hk] * R.Hb);
+    for (const c of CASES) { const t = ot(c); if (t) C.calc(`M_o${c}`, `s_e*(${t})`, otv(c), 'kNm', `${CASEN[c]}: overturning moment about the edge`, ''); else C.input(`M_o${c}`, 0, 'kNm', `${CASEN[c]}: no overturning moment`, ''); }
+    const half = x ? 'L/2' : 'B/2', e = x ? (R.ex ? 'e_x' : null) : (R.ey ? 'e_y' : null);
+    const stb = `0.9*(N_G*(${half}${e ? ` - s_e*${e}` : ''}) + W_b*${half})${otv('G') < 0 ? ' - 0.9*M_oG' : ''}`;
+    const dst = `${otv('G') > 0 ? '1.1*M_oG + ' : ''}MAX(1.5*MAX(0 kNm, M_oQ) + 1.5*psi_W*MAX(0 kNm, M_oW), 1.5*MAX(0 kNm, M_oW) + 1.5*psi_Q*MAX(0 kNm, M_oQ))`;
+    if (!R.F.G.N) C.input('N_G', 0, 'kN', 'permanent: vertical load: none', '');
+    C.calc('M_stb', stb, eq.stb, 'kNm', 'stabilising: the permanent load and the base at 0.9 (and a favourable permanent moment)', 'Table A1.2(A), UK NA');
+    C.calc('M_dst', dst, eq.dst, 'kNm', 'destabilising: an unfavourable permanent moment at 1.1, the variable loads at 1.5 (one leading)', 'Table A1.2(A), UK NA');
+    if (eq.stb > 0) C.check('U_eq', 'M_dst/M_stb', eq.util, 'overturning', 'BS EN 1990 Table A1.2(A)');
+    else C.note('Nothing holds the base down: not satisfied.');
+    return { key: 'equ', title: C.meta.title, sum: `M_dst ${f1(eq.dst)} / M_stb ${f1(eq.stb)} kNm`, util: eq.util, C };
+  }
+  // ---------- the structure ----------
+  function section(C, R) {
+    C.head('Section and bars');
+    C.input('c_nom', R.cover, 'mm', 'cover to the bottom bars', '4.4.1');
+    C.input('phi_x', R.phiX, 'mm', R.strip ? 'main bars (across the strip)' : 'bars along L (B1, the outer layer)', '', { sym: 'φ_x' }); C.input('s_x', R.sX, 'mm', 'their spacing', '');
+    C.input('phi_y', R.phiY, 'mm', R.strip ? 'distribution bars' : 'bars along B (B2)', '', { sym: 'φ_y' }); C.input('s_y', R.sY, 'mm', 'their spacing', '');
+    C.calc('d_x', 'h - c_nom - phi_x/2', R.dx, 'mm', 'effective depth, bars along L', '');
+    C.calc('d_y', 'h - c_nom - phi_x - phi_y/2', R.dy, 'mm', 'effective depth, bars along B', '');
+    C.calc('A_sx', 'PI()*phi_x^2/4/s_x*B', R.AsX, 'mm2', 'bars along L, across the breadth B', '');
+    C.calc('A_sy', 'PI()*phi_y^2/4/s_y*L', R.AsY, 'mm2', 'bars along B, across the length L', '');
+  }
+  // the strip of the effective area at the eccentric edge along an axis
+  // (len, lp: the length and the effective length along the axis, m)
+  function zone(C, ax, e, len, lp) {
+    const Lx = ax === 'x' ? 'L' : 'B', Le = ax === 'x' ? 'L_e' : 'B_e';
+    if (e >= 0) { C.calc(`z_0${ax}`, `${Lx} - ${Le}`, (len - lp) * 1000, 'mm', `the pressure acts from here along ${Lx}…`, 'Annex D'); C.calc(`z_1${ax}`, Lx, len * 1000, 'mm', '…to the edge on the side of the eccentricity', ''); }
+    else { C.input(`z_0${ax}`, 0, 'mm', `the pressure acts along ${Lx} from the edge on the side of the eccentricity…`, 'Annex D'); C.calc(`z_1${ax}`, Le, lp * 1000, 'mm', '…to here', ''); }
+  }
+  function bendZone(R, ax) {
+    const x = ax === 'x', b = R.best[x ? 'Mx' : 'My'], row = rowOf(R, b.cb), chk = R.checks.find(k => k.id === (x ? 'bendX' : 'bendY'));
+    const C = CalcScript.create({ title: `Bending, bars along ${x ? 'L' : 'B'}`, tool: TOOL, standard: STD });
+    EC2Script.materials(C, R.c, EC2.steel(R.fyk));
+    base(C, R); loads(C, R, x ? ['N', 'Mx', 'Hx'] : ['N', 'My', 'Hy']); section(C, R);
+    const BD = x ? R.BX : R.BY, Lx = x ? 'L' : 'B', Bx = x ? 'B' : 'L', d = x ? 'd_x' : 'd_y', As = x ? 'A_sx' : 'A_sy', dv = x ? R.dx : R.dy;
+    if (!row) { C.note('No combination presses the base down on the ground: no bending.'); C.input('M_Ed', 0, 'kNm', 'no moment', ''); }
+    else {
+      combo(C, row.cb, `The ${R.inp.comb === '6.10' ? '6.10' : '6.10a/6.10b'} combination giving the largest moment at a column face along ${Lx}.`);
+      underside(C, R, row.U, [x ? 'Mx' : 'My']);
+      effective(C, R, row.E, ax);
+      const e = x ? row.E.exr : row.E.eyr, len = x ? R.L : R.B, lp = x ? row.E.Lp : row.E.Bp, hi = b.side === 'hi', face = x ? R.faceX : R.faceY;
+      C.head(`Moment at the ${hi ? 'far' : 'near'} column face, the ground pressure on the effective ${Lx === 'L' ? 'length' : 'breadth'}`);
+      zone(C, ax, e, len, lp);
+      const c = x ? 'c_1' : 'c_2', eo = x ? (R.ex ? ' + e_x' : '') : (R.ey ? ' + e_y' : '');
+      C.calc(`f_${ax}`, `${Lx}/2${eo} ${hi ? '+' : '-'} ${c}/2`, (hi ? face[1] : face[0]) * 1000, 'mm', `the column face, from the edge at 0`, '');
+      const L_ = `${x ? 'L_e' : 'B_e'}`, z0 = `z_0${ax}`, z1 = `z_1${ax}`, f = `f_${ax}`;
+      if (hi) { C.calc('a_z', `MAX(${f}, ${z0})`, Math.max(face[1], e >= 0 ? len - lp : 0) * 1000, 'mm', 'the loaded length beyond the face starts…', ''); C.calc('b_z', `MIN(${Lx}, ${z1})`, Math.min(len, e >= 0 ? len : lp) * 1000, 'mm', '…and ends', ''); }
+      else { C.calc('a_z', `MAX(0 mm, ${z0})`, Math.max(0, e >= 0 ? len - lp : 0) * 1000, 'mm', 'the loaded length beyond the face starts…', ''); C.calc('b_z', `MIN(${f}, ${z1})`, Math.min(face[0], e >= 0 ? len : lp) * 1000, 'mm', '…and ends', ''); }
+      const arm = hi ? `((a_z - ${f}) + (b_z - ${f}))/2` : `((${f} - a_z) + (${f} - b_z))/2`;
+      C.calc('l_c', hi ? `${Lx} - ${f}` : f, b.lenC * 1000, 'mm', 'the projection beyond the face', '');
+      C.calc('M_Ed', `N_d/${L_}*${arm}*MAX(b_z - a_z, 0 mm) - gamma_G*w*${Bx}*l_c^2/2`, b.M, 'kNm', 'the ground pressure beyond the face less the base’s own weight', '');
+    }
+    C.head('Bending: the steel required (rectangular stress block)');
+    C.calc('K', `M_Ed/(${Bx}*${d}^2*f_ck) [#]`, BD.K, '', 'normalised moment', '3.1.7(3)');
+    C.calc('k_2', '0.6 + 0.0014/epsilon_cu2 [#]', 0.6 + 0.0014 / R.c.ecu2, '', 'UK NA: k₂ is 0.6 + 0.0014/ε_cu2 (k₁ is 0.4)', '5.5(4)');
+    C.input('xd_max', 0.6, '', 'limit on x/d', '5.5(4)', { sym: '(x/d)_max' });
+    const xlim = BD.xlim, sl = R.c.lambda * xlim, Mlim = R.c.eta * R.c.fcd * (x ? R.B : R.L) * 1000 * sl * (dv - sl / 2), Klim = Mlim / ((x ? R.B : R.L) * 1000 * dv * dv * R.fck);
+    C.calc('x_lim', `MIN(0.6/k_2, xd_max)*${d}`, xlim, 'mm', 'limiting depth to the neutral axis (no redistribution)', '5.5(4)');
+    C.calc('s_lim', 'lambda*x_lim', sl, 'mm', 'depth of the stress block at the limit', '3.1.7(3)');
+    C.calc('M_lim', `sigma_c*${Bx}*s_lim*(${d} - s_lim/2)`, Mlim / 1e6, 'kNm', 'moment the concrete can take at x_lim', '3.1.7(3)');
+    C.calc('K_lim', `M_lim/(${Bx}*${d}^2*f_ck) [#]`, Klim, '', "K′", '3.1.7(3)', { sym: "K'" });
+    if (!(b.M > 0)) { C.note('No sagging moment at the faces: the bars need only meet the minimum.'); C.input('A_sreq', 0, 'mm2', 'no steel needed for bending', '', { sym: 'A_s,req' }); }
+    else if (BD.doubly) { C.note('K > K′: the base needs compression steel: deepen it.'); C.check('U_K', 'K/K_lim', BD.K / Klim, 'no compression steel', '3.1.7(3)'); C.given('A_sreq', BD.As, 'mm2', 'tension steel with compression steel at x_lim', 'EC2 rectangular block with A_s2 at the limit', '6.1', { sym: 'A_s,req' }); }
+    else {
+      C.calc('s_b', `${d} - SQRT(${d}^2 - 2*M_Ed/(sigma_c*${Bx}))`, R.c.lambda * BD.x, 'mm', 'depth of the stress block', '3.1.7(3)', { sym: 's' });
+      C.calc('z', `MIN(${d} - s_b/2, 0.95*${d})`, BD.z, 'mm', 'lever arm (not more than 0.95d)', '');
+      C.calc('A_sreq', 'M_Ed/(f_yd*z)', BD.As, 'mm2', 'tension steel required', '6.1', { sym: 'A_s,req' });
+    }
+    C.check('U_bend', `A_sreq/${As}`, BD.As / (x ? R.AsX : R.AsY), `bending, bars along ${Lx}`, '6.1');
+    return { key: `bend${ax}`, title: C.meta.title, sum: `M_Ed ${f1(b.M)} kNm${b.cb ? ` (${b.cb})` : ''}`, util: chk.util, C };
+  }
+  function shearZone(R, ax) {
+    const x = ax === 'x', b = R.best[x ? 'Vx' : 'Vy'], chk = R.checks.find(k => k.id === (x ? 'shearX' : 'shearY'));
+    const C = CalcScript.create({ title: `Beam shear, bars along ${x ? 'L' : 'B'}`, tool: TOOL, standard: STD });
+    EC2Script.materials(C, R.c, EC2.steel(R.fyk), { noFlex: true });
+    base(C, R); loads(C, R, x ? ['N', 'Mx', 'Hx'] : ['N', 'My', 'Hy']); section(C, R);
+    const Lx = x ? 'L' : 'B', Bx = x ? 'B' : 'L', d = x ? 'd_x' : 'd_y', As = x ? 'A_sx' : 'A_sy', dv = x ? R.dx : R.dy, vR = x ? R.vRdcX : R.vRdcY;
+    C.head('Shear resistance without links');
+    C.input('f_ckmax', 50, 'N/mm2', 'UK NA: f_ck for shear not taken above C50/60', '6.2, UK NA', { sym: 'f_ck,max' });
+    C.calc('f_ckv', 'MIN(f_ck, f_ckmax)', R.c.fv, 'N/mm2', 'f_ck for shear', '6.2, UK NA', { sym: 'f_ck,v' });
+    const k = Math.min(2, 1 + Math.sqrt(200 / dv)), rho = x ? R.rhoX : R.rhoY;
+    C.calc('k_v', `MIN(1 + SQRT(200/${d}[#mm]), 2) [#]`, k, '', 'size factor', '6.2.2(1)', { sym: 'k' });
+    C.calc('rho_l', `MIN(${As}/(${Bx}*${d}), 0.02) [#]`, Math.min(rho, 0.02), '', 'tension steel ratio', '6.2.2(1)', { sym: 'ρ_l' });
+    C.calc('v_min', '0.035*k_v^1.5*SQRT(f_ckv[#N/mm2]) [#N/mm2]', 0.035 * k ** 1.5 * Math.sqrt(R.c.fv), 'N/mm2', 'minimum', '6.2.2(1) (6.3N)');
+    C.calc('v_Rdc', 'MAX(0.18/gamma_c*k_v*(100*rho_l*f_ckv[#N/mm2])^(1/3), v_min[#N/mm2]) [#N/mm2]', vR, 'N/mm2', 'shear strength without links', '6.2.2(1) (6.2)', { sym: 'v_Rd,c' });
+    if (!(b.u > 0)) { C.note(`No shear beyond d from the column faces along ${Lx} in any combination.`); return { key: `shear${ax}`, title: C.meta.title, util: chk.util, C }; }
+    const row = rowOf(R, b.cb);
+    combo(C, row.cb, `The combination and section (d or 2d from a face) with the highest ratio of v_Ed to v_Rd,c along ${Lx}.`);
+    underside(C, R, row.U, [x ? 'Mx' : 'My']);
+    effective(C, R, row.E, ax);
+    const e = x ? row.E.exr : row.E.eyr, len = x ? R.L : R.B, lp = x ? row.E.Lp : row.E.Bp, hi = b.side === 'hi', face = x ? R.faceX : R.faceY;
+    C.head(`Shear at ${b.av * 1000 < 1.5 * dv ? 'd' : '2d'} from the ${hi ? 'far' : 'near'} column face`);
+    zone(C, ax, e, len, lp);
+    const c = x ? 'c_1' : 'c_2', eo = x ? (R.ex ? ' + e_x' : '') : (R.ey ? ' + e_y' : ''), f = `f_${ax}`, z0 = `z_0${ax}`, z1 = `z_1${ax}`;
+    C.calc(f, `${Lx}/2${eo} ${hi ? '+' : '-'} ${c}/2`, (hi ? face[1] : face[0]) * 1000, 'mm', 'the column face, from the edge at 0', '');
+    C.calc('a_v', b.av * 1000 < 1.5 * dv ? d : `2*${d}`, b.av * 1000, 'mm', 'the section from the face', '6.2.2(6)');
+    const p0 = hi ? (face[1] + b.av) : 0, p1 = hi ? len : face[0] - b.av, zz = e >= 0 ? [len - lp, len] : [0, lp];
+    if (hi) { C.calc('p_0', `${f} + a_v`, p0 * 1000, 'mm', 'the part beyond the section starts…', ''); C.calc('p_1', Lx, p1 * 1000, 'mm', '…and ends at the edge', ''); }
+    else { C.input('p_0', 0, 'mm', 'the part beyond the section starts at the edge…', ''); C.calc('p_1', `${f} - a_v`, p1 * 1000, 'mm', '…and ends', ''); }
+    const Lv = Math.max(0, Math.min(p1, zz[1]) - Math.max(p0, zz[0]));
+    C.calc('l_p', `MAX(0 mm, MIN(p_1, ${z1}) - MAX(p_0, ${z0}))`, Lv * 1000, 'mm', 'the loaded length of that part', '');
+    C.calc('V_Ed', `MAX(0 kN, N_d/${x ? 'L_e' : 'B_e'}*l_p - gamma_G*w*${Bx}*(p_1 - p_0))`, b.V, 'kN', 'shear: the ground pressure beyond the section less the base’s own weight', '6.2.2');
+    C.calc('beta_v', `MIN(1, a_v/(2*${d})) [#]`, b.beta, '', 'a_v/2d for loads within 2d of the face', '6.2.2(6)', { sym: 'β' });
+    C.calc('v_Ed', `beta_v*V_Ed/(${Bx}*${d})`, b.v, 'N/mm2', 'shear stress', '6.2.2(6)');
+    C.check('U_v', 'v_Ed/v_Rdc', b.u, `beam shear, bars along ${Lx}`, '6.2.2');
+    return { key: `shear${ax}`, title: C.meta.title, sum: `v_Ed ${b.v.toFixed(3)} / v_Rd,c ${vR.toFixed(3)} N/mm² (${b.cb})`, util: chk.util, C };
+  }
+  function punchConcrete(C, R) {
+    C.head('Punching resistance');
+    C.calc('d_m', '(d_x + d_y)/2', R.dave, 'mm', 'mean effective depth', '6.4.2(1)', { sym: 'd' });
+    C.input('f_ckmax', 50, 'N/mm2', 'UK NA: f_ck for shear not taken above C50/60', '6.2, UK NA', { sym: 'f_ck,max' });
+    C.calc('f_ckv', 'MIN(f_ck, f_ckmax)', R.c.fv, 'N/mm2', 'f_ck for shear', '6.2, UK NA', { sym: 'f_ck,v' });
+  }
+  function punchZone(R) {
+    const P = R.best.P, row = rowOf(R, P.cb), chk = R.checks.find(k => k.id === 'punch');
+    const C = CalcScript.create({ title: 'Punching', tool: TOOL, standard: STD });
+    EC2Script.materials(C, R.c, EC2.steel(R.fyk), { noFlex: true });
+    base(C, R); loads(C, R); section(C, R); punchConcrete(C, R);
+    const k = Math.min(2, 1 + Math.sqrt(200 / R.dave));
+    C.calc('rho_x', 'A_sx/(B*d_x) [#]', R.rhoX, '', 'bars along L', '6.4.4(1)', { sym: 'ρ_lx' });
+    C.calc('rho_y', 'A_sy/(L*d_y) [#]', R.rhoY, '', 'bars along B', '6.4.4(1)', { sym: 'ρ_ly' });
+    C.calc('k_v', 'MIN(1 + SQRT(200/d_m[#mm]), 2) [#]', k, '', 'size factor', '6.4.4(1)', { sym: 'k' });
+    C.calc('v_min', '0.035*k_v^1.5*SQRT(f_ckv[#N/mm2]) [#N/mm2]', 0.035 * k ** 1.5 * Math.sqrt(R.c.fv), 'N/mm2', 'minimum', '6.4.4(1)');
+    C.calc('v_Rdc', 'MAX(0.18/gamma_c*k_v*(100*MIN(SQRT(rho_x*rho_y), 0.02)*f_ckv[#N/mm2])^(1/3), v_min[#N/mm2]) [#N/mm2]', R.vRdcP, 'N/mm2', 'punching resistance at 2d, ρ_l = √(ρ_lx ρ_ly) ≤ 0.02', '6.4.4(1) (6.47)', { sym: 'v_Rd,c' });
+    combo(C, row.cb, 'The combination and perimeter with the highest ratio of v_Ed to its resistance.');
+    underside(C, R, row.U, ['Mx', 'My', 'Mc']); effective(C, R, row.E);
+    C.head('The governing perimeter');
+    C.calc('p_Ed', 'N_d/A_e', row.p, 'kPa', 'ground pressure on the effective area', '');
+    zone(C, 'x', row.E.exr, R.L, row.E.Lp); zone(C, 'y', row.E.eyr, R.B, row.E.Bp);
+    C.calc('x_c', `L/2${R.ex ? ' + e_x' : ''}`, (R.L / 2 + R.ex) * 1000, 'mm', 'the column centre, along L', ''); C.calc('y_c', `B/2${R.ey ? ' + e_y' : ''}`, (R.B / 2 + R.ey) * 1000, 'mm', 'and along B', '');
+    C.given('a_p', P.a, 'mm', 'distance of the governing perimeter from the column face', 'the worst of 40 perimeters from the face out to 2d (or to the edge of the base, if nearer)', '6.4.4(2)', { sym: 'a' });
+    const C1 = R.c1 * 1000, C2 = R.c2 * 1000, a = P.a, u = 2 * (C1 + C2) + 2 * Math.PI * a, Ain = C1 * C2 + 2 * a * (C1 + C2) + Math.PI * a * a, rx = (C1 / 2 + a) / 1000, ry = (C2 / 2 + a) / 1000;
+    const zx = row.E.exr >= 0 ? [R.L - row.E.Lp, R.L] : [0, row.E.Lp], zy = row.E.eyr >= 0 ? [R.B - row.E.Bp, R.B] : [0, row.E.Bp], cx = R.L / 2 + R.ex, cy = R.B / 2 + R.ey;
+    const ov = (a0, a1, b0, b1) => Math.max(0, Math.min(a1, b1) - Math.max(a0, b0)), fin = ov(cx - rx, cx + rx, zx[0], zx[1]) * ov(cy - ry, cy + ry, zy[0], zy[1]) / (4 * rx * ry);
+    C.calc('u_p', '2*(c_1 + c_2) + 2*PI()*a_p', u, 'mm', 'perimeter', '6.4.2');
+    C.calc('A_in', 'c_1*c_2 + 2*a_p*(c_1 + c_2) + PI()*a_p^2', Ain, 'mm2', 'area inside it', '6.4.4(2)');
+    C.calc('r_x', 'c_1/2 + a_p', rx * 1000, 'mm', 'half its extent along L', ''); C.calc('r_y', 'c_2/2 + a_p', ry * 1000, 'mm', 'and along B', '');
+    C.calc('f_in', `MAX(0 mm, MIN(x_c + r_x, z_1x) - MAX(x_c - r_x, z_0x))*MAX(0 mm, MIN(y_c + r_y, z_1y) - MAX(y_c - r_y, z_0y))/(4*r_x*r_y) [#]`, fin, '', 'the share of it under the effective area', '');
+    const ded = R.inp.deductSelfWeight !== false;
+    C.calc('dV_Ed', `(p_Ed*f_in${ded ? ' - gamma_G*w' : ''})*A_in`, (row.p * fin - (ded ? row.cb.g * R.w : 0)) * Ain / 1e6, 'kN', `the net upward force inside the perimeter${ded ? ' (the ground pressure less the base’s own weight)' : ''}`, '6.4.4(2)', { sym: 'ΔV_Ed' });
+    C.calc('V_red', 'MAX(0 kN, N_col - dV_Ed)', P.Vred / 1e3, 'kN', 'the punching force, reduced', '6.4.4(2) (6.48)', { sym: 'V_Ed,red' });
+    C.calc('r_12', 'c_1/c_2 [#]', C1 / C2, '', 'c_1/c_2', 'Table 6.1'); C.calc('k_1', kTab('r_12'), Pad.kTable(C1 / C2), '', 'k for the moment along L', 'Table 6.1');
+    C.calc('r_21', 'c_2/c_1 [#]', C2 / C1, '', 'c_2/c_1', 'Table 6.1'); C.calc('k_2', kTab('r_21'), Pad.kTable(C2 / C1), '', 'k for the moment along B', 'Table 6.1');
+    C.calc('W_x', 'c_1^2/2 + c_1*c_2 + 2*c_2*a_p + 4*a_p^2 + PI()*a_p*c_1', C1 * C1 / 2 + C1 * C2 + 2 * C2 * a + 4 * a * a + Math.PI * a * C1, 'mm2', 'shear distribution modulus of the perimeter, along L', '6.4.3(3) (6.41)');
+    C.calc('W_y', 'c_2^2/2 + c_1*c_2 + 2*c_1*a_p + 4*a_p^2 + PI()*a_p*c_2', C2 * C2 / 2 + C1 * C2 + 2 * C1 * a + 4 * a * a + Math.PI * a * C2, 'mm2', 'and along B', '6.4.3(3) (6.41)');
+    if (P.Vred > 0) C.calc('beta', '1 + k_1*ABS(M_xc)/V_red*u_p/W_x + k_2*ABS(M_yc)/V_red*u_p/W_y [#]', P.beta, '', 'the column moments both ways', '6.4.4(2) (6.51)', { sym: 'β' });
+    else C.input('beta', 1, '', 'no punching force', '6.4.4(2)', { sym: 'β' });
+    C.calc('v_Ed', 'beta*V_red/(u_p*d_m)', P.vEd, 'N/mm2', 'punching stress', '6.4.4(2) (6.50)');
+    C.calc('v_Rd', 'v_Rdc*2*d_m/a_p', P.vRd, 'N/mm2', 'resistance at a from the face: v_Rd,c 2d/a', '6.4.4(2) (6.50)');
+    C.check('U_p', 'v_Ed/v_Rd', P.u, 'punching', '6.4.4');
+    return { key: 'punch', title: C.meta.title, sum: `at a = ${Math.round(P.a)} mm: ${P.vEd.toFixed(3)} / ${P.vRd.toFixed(3)} N/mm² (${P.cb})`, util: chk.util, C };
+  }
+  function punchFaceZone(R) {
+    const P = R.best.P0, row = rowOf(R, P.cb), chk = R.checks.find(k => k.id === 'punch0');
+    const C = CalcScript.create({ title: 'Punching at the column face', tool: TOOL, standard: STD });
+    EC2Script.materials(C, R.c, EC2.steel(R.fyk), { noFlex: true });
+    base(C, R); loads(C, R, ['N', 'Mx', 'My']); section(C, R); punchConcrete(C, R);
+    C.calc('nu', '0.6*(1 - f_ckv[#N/mm2]/250) [#]', R.c.nu, '', 'strength reduction for concrete cracked in shear', '6.2.2(6) (6.6N)', { sym: 'ν' });
+    C.calc('f_cdv', 'f_ckv/gamma_c', R.c.fcdV, 'N/mm2', 'f_cd for shear (α_cc of 1.0)', '3.1.6(1)', { sym: 'f_cd' });
+    C.calc('v_Rdmax', '0.5*nu*f_cdv', P.vmax, 'N/mm2', 'the most at the column face', '6.4.5(3), UK NA', { sym: 'v_Rd,max' });
+    combo(C, row.cb, 'The combination with the highest stress at the column face.');
+    C.head('Forces');
+    C.calc('N_col', sumOf(R, 'N') || '0 kN', row.U.Ncol, 'kN', 'factored column load', '');
+    if (sumOf(R, 'Mx')) C.calc('M_xc', sumOf(R, 'Mx'), row.U.MxCol, 'kNm', 'moment from the column along L', ''); else C.input('M_xc', 0, 'kNm', 'no column moment along L', '');
+    if (sumOf(R, 'My')) C.calc('M_yc', sumOf(R, 'My'), row.U.MyCol, 'kNm', 'moment from the column along B', ''); else C.input('M_yc', 0, 'kNm', 'no column moment along B', '');
+    C.head('At the column face');
+    const C1 = R.c1 * 1000, C2 = R.c2 * 1000, a2 = Math.min(2 * R.dave, Math.max(R.distEdge, 1)), u2 = 2 * (C1 + C2) + 2 * Math.PI * a2;
+    C.calc('a_e', `MIN(L/2${R.ex ? ' + e_x' : ''} - c_1/2, L/2${R.ex ? ' - e_x' : ''} - c_1/2, B/2${R.ey ? ' + e_y' : ''} - c_2/2, B/2${R.ey ? ' - e_y' : ''} - c_2/2)`, R.distEdge, 'mm', 'the column faces to the edges of the base, the least', '');
+    C.calc('a_2', 'MIN(2*d_m, MAX(a_e, 1 mm))', a2, 'mm', 'the perimeter β is taken at: 2d, or the edge if nearer', '6.4.3');
+    C.calc('u_2', '2*(c_1 + c_2) + 2*PI()*a_2', u2, 'mm', 'its length', '6.4.2');
+    C.calc('r_12', 'c_1/c_2 [#]', C1 / C2, '', 'c_1/c_2', 'Table 6.1'); C.calc('k_1', kTab('r_12'), Pad.kTable(C1 / C2), '', 'k for the moment along L', 'Table 6.1');
+    C.calc('r_21', 'c_2/c_1 [#]', C2 / C1, '', 'c_2/c_1', 'Table 6.1'); C.calc('k_2', kTab('r_21'), Pad.kTable(C2 / C1), '', 'k for the moment along B', 'Table 6.1');
+    C.calc('W_x', 'c_1^2/2 + c_1*c_2 + 2*c_2*a_2 + 4*a_2^2 + PI()*a_2*c_1', C1 * C1 / 2 + C1 * C2 + 2 * C2 * a2 + 4 * a2 * a2 + Math.PI * a2 * C1, 'mm2', 'W along L', '6.4.3(3) (6.41)');
+    C.calc('W_y', 'c_2^2/2 + c_1*c_2 + 2*c_1*a_2 + 4*a_2^2 + PI()*a_2*c_2', C2 * C2 / 2 + C1 * C2 + 2 * C1 * a2 + 4 * a2 * a2 + Math.PI * a2 * C2, 'mm2', 'W along B', '6.4.3(3) (6.41)');
+    C.calc('beta_0', '1 + k_1*ABS(M_xc)/MAX(N_col, 0.001 kN)*u_2/W_x + k_2*ABS(M_yc)/MAX(N_col, 0.001 kN)*u_2/W_y [#]', P.beta, '', 'β for the column load', '6.4.3(3)', { sym: 'β' });
+    C.calc('u_0', '2*(c_1 + c_2)', 2 * (C1 + C2), 'mm', 'the column perimeter', '6.4.5(3)');
+    C.calc('v_Ed0', 'beta_0*N_col/(u_0*d_m)', P.v, 'N/mm2', 'stress at the column face', '6.4.5(3) (6.53)', { sym: 'v_Ed,0' });
+    C.check('U_p0', 'v_Ed0/v_Rdmax', P.u, 'punching at the column face', '6.4.5(3)');
+    return { key: 'punch0', title: C.meta.title, sum: `${P.v.toFixed(3)} / ${P.vmax.toFixed(3)} N/mm² (${P.cb})`, util: chk.util, C };
+  }
+  function detailZone(R) {
+    const C = CalcScript.create({ title: 'Minimum steel and bar spacing', tool: TOOL, standard: STD });
+    EC2Script.materials(C, R.c, EC2.steel(R.fyk), { noFlex: true });
+    base(C, R); section(C, R);
+    C.head('Minimum steel');
+    C.calc('A_sminx', 'MAX(0.26*f_ctm/f_yk, 0.0013)*B*d_x', R.AsMinX, 'mm2', 'bars along L', '9.2.1.1(1)', { sym: 'A_s,min,x' });
+    C.check('U_mx', 'A_sminx/A_sx', R.AsMinX / R.AsX, 'minimum steel along L', '9.2.1.1');
+    if (!R.strip) {
+      C.calc('A_sminy', 'MAX(0.26*f_ctm/f_yk, 0.0013)*L*d_y', R.AsMinY, 'mm2', 'bars along B', '9.2.1.1(1)', { sym: 'A_s,min,y' });
+      C.check('U_my', 'A_sminy/A_sy', R.AsMinY / R.AsY, 'minimum steel along B', '9.2.1.1');
+    } else {
+      C.given('A_sreq', R.BX.As, 'mm2', 'main steel for bending', 'see Bending, bars along L', '6.1', { sym: 'A_s,req' });
+      C.check('U_my', '0.2*MAX(A_sreq, A_sminx)/B/(A_sy/L)', 0.2 * Math.max(R.BX.As, R.AsMinX) / R.B / (R.AsY / R.L), 'distribution steel: 20 % of the main steel per metre', '9.3.1.1(2)');
+    }
+    C.head('Bar spacing');
+    C.calc('s_max', 'MIN(3*h, 400 mm)', Math.min(3 * R.h, 400), 'mm', 'the most for the main bars', '9.3.1.1(3)');
+    C.check('U_sp', R.strip ? 's_x/s_max' : 'MAX(s_x, s_y)/s_max', Math.max(R.sX, R.strip ? 0 : R.sY) / Math.min(3 * R.h, 400), 'bar spacing', '9.3.1.1(3)');
+    const u = Math.max(...R.checks.filter(k => /^(min|spacing)/.test(k.id)).map(k => k.util));
+    return { key: 'detail', title: C.meta.title, util: u, C };
+  }
+
+  function zones(R) {
+    const out = [baseZone(R)], s = R.soil, has = id => R.checks.some(k => k.id === id);
+    if (s.mode !== 'allowable') ['C1', 'C2'].forEach(k => out.push(bearingZone(R, k)));
+    ['C1', 'C2'].forEach(k => { if (has(`slide${k}`)) out.push(slidingZone(R, k)); });
+    if (has('allow')) out.push(slsZone(R));
+    out.push(equZone(R), bendZone(R, 'x'));
+    if (!R.strip) out.push(bendZone(R, 'y'));
+    out.push(shearZone(R, 'x'));
+    if (!R.strip) { out.push(shearZone(R, 'y')); if (has('punch')) out.push(punchZone(R)); out.push(punchFaceZone(R)); }
+    out.push(detailZone(R));
+    return out;
+  }
+  return { zones };
+})();
+if (typeof module !== 'undefined') module.exports = { PadScript };
+
 </script>
 <script id="drawing-code">
 /* ===== CONNECTION DIAGRAMS (EngineeringTools ConnectionCheck) =====
@@ -1205,6 +2513,16 @@ const groundOf = R => R.soil.mode === 'allowable' ? `allowable ${f0(R.soil.qa)} 
 const subOf = R => R.strip ? `${f0(R.L * 1000)} mm wide strip, ${f0(R.h)} deep, under a ${f0(R.c1 * 1000)} mm wall; ${groundOf(R)}`
   : `${f0(R.L * 1000)} × ${f0(R.B * 1000)} × ${f0(R.h)} mm base under a ${f0(R.c1 * 1000)} × ${f0(R.c2 * 1000)} column; ${groundOf(R)}`;
 let last = null;
+// the full calculation, check by check, each in the combination that governs it; the drawings go with the first to CalcPad
+document.head.insertAdjacentHTML('beforeend', `<style>${CalcScript.CSS}</style>`);
+function zonesFor(R) {
+  const Z = PadScript.zones(R);
+  Z[0].C.items.unshift(...(DrawPad.html(R).match(/<svg[\s\S]*?<\/svg>/g) || []).map(svg => ({ t: 'img', svg, caption: '' })));
+  return Z;
+}
+const cpMeta = title => { const s = collect(); return { project: s.pName, job: s.pJob, by: s.pBy, sheet: s.pRef, title }; };
+const cpName = t => { const s = collect(); return [s.pJob, s.pRef, t].filter(Boolean).join(' '); };
+CalcScript.wire($('results'), () => last && last.Z, cpMeta, cpName, 'Pad foundation calculations');
 function render(R, s) {
   const W = [...R.checks].sort((a, b) => b.util - a.util)[0];
   let h = `<div class="verdict ${R.util > 1 ? 'fail' : ''}"><div><div class="big">${R.util > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(R.util)}</div><div class="sub">Governs: ${sub(W.name.charAt(0).toLowerCase() + W.name.slice(1))} (${esc(W.ref)})<br>${subOf(R)}</div></div></div>`;
@@ -1213,13 +2531,14 @@ function render(R, s) {
   R.warnings.forEach(t => { h += `<div class="note">${sub(t)}</div>`; });
   h += geoTable(R);
   h += `<div class="dlabel">Values</div><div class="kv">${values(R)}</div>`;
+  h += `<div class="dlabel">Full calculation (open a check)</div>${CalcScript.zonesHTML(last.Z)}`;
   h += `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
   $('results').innerHTML = h; redraw();
   $('printBtn').onclick = () => { $('report').innerHTML = report(R, s); window.print(); };
 }
 function run() {
   const s = collect(); try { localStorage.setItem(STORE, JSON.stringify(s)); } catch (e) { /* storage unavailable */ }
-  try { const R = compute(s); last = { R, s }; render(R, s); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div><div id="drawings"></div>`; redraw(); }
+  try { const R = compute(s); last = { R, s, Z: zonesFor(R) }; render(R, s); } catch (e) { $('results').innerHTML = `<div class="err">${esc(e.message)}</div><div id="drawings"></div>`; redraw(); }
 }
 let drawT = 0;
 function redraw() {
@@ -1272,6 +2591,7 @@ function report(R, s) {
   R.checks.filter(c => /^(min|spacing|shear|punch)/.test(c.id)).forEach(c => { b += rl(`${sub(c.name)}: ${sub(c.note)}`, esc(c.ref), okng(c.util)); });
   b += R.warnings.map(t => `<p class="rp">${sub(t)}</p>`).join('') + `</div>`;
   b += `<div class="rs"><h2>4 Drawings</h2>${DrawPad.report(R)}</div>`;
+  b += `<div class="rs"><h2>5 Full calculation</h2><p class="rp">Each check in the combination that governs it.</p></div>` + CalcScript.sheetHTML(last.Z);
   b += `<p class="rp" style="color:#555">BS EN 1997-1:2004+A1:2013 and BS EN 1992-1-1:2004+A1:2014 with the UK National Annexes; BS EN 1990 Tables NA.A1.2(A) to (C). Settlement is not checked. Generated by EngineeringTools — Pad Foundation.</p>`;
   return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
 }
