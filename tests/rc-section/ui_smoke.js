@@ -29,9 +29,9 @@ $('delta').value = '0.5'; calc(); truth('δ below 0.7 rejected', /δ must be bet
 $('delta').value = '1';
 mode('tor'); truth('torsion pane shown, section pane hidden', !$('pane-tor').classList.contains('hidden') && $('pane-sec').classList.contains('hidden'));
 calc(); truth('torsion: struts, links, longitudinal steel', /Torsion \+ shear: concrete struts/.test(res()) && /Links \(one leg, shear \+ torsion\)/.test(res()) && /6\.3\.2/.test(res()));
-mode('crk'); calc(); truth('crack width: w_k against 0.3 mm', /Crack width/.test(res()) && /w_k = s_r,max/.test(res()));
+mode('crk'); calc(); truth('crack width: w_k = s_r,max (ε_sm − ε_cm) in the full calculation', /Crack width/.test(res()) && /wk = sr,max/.test(res().replace(/\s+/g, ' ')));
 $('ckind').value = 'tension'; change('ckind'); $('cel').value = 'slab'; change('cel'); $('cM').value = '300'; calc();
-truth('axial tension per metre: N_qp label, k₂ = 1.0', /N/.test($('cMLab').textContent) && /k₂ = 1/.test(res()));
+truth('axial tension per metre: N_qp label, k₂ = 1.0', /N/.test($('cMLab').textContent) && /k2 = 1(?!\d)/.test(res()));
 mode('anc'); calc(); truth('anchorage: l_bd and l₀ for H20', /l\s*bd\s*\d+/.test(res().replace(/ /g, ' ')) && /8\.7\.3/.test(res()));
 $('printBtn').click(); truth('print: A4 sheet with the calculation', w.printed && /Anchorage and laps/.test($('report').textContent) && /UK National Annex/.test($('report').textContent));
 mode('sec'); $('kind').value = 'beam'; change('kind'); $('shape').value = 'rect'; change('shape'); $('h').value = '600'; $('MEd').value = '300'; $('gk').value = '25'; $('qk').value = '20'; $('VEd').value = '250'; calc();
