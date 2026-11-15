@@ -1273,6 +1273,8 @@ const CalcScript = (() => {
       given(name, v, unit, desc, how, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'val', name, v, unit: unit || '', desc, how, ref }); return v; },
       check(name, expr, v, desc, ref, o = {}) { name0(name); keep(name, v, '', o); items.push({ t: 'chk', name, expr, ...split(expr, ''), v, desc, ref, limit: o.limit ?? 1 }); return v; },
       img(svg, caption) { items.push({ t: 'img', svg, caption }); return C; },
+      // a CalcPad plot line (PLOT(...) or SECTION(...)): drawn live by CalcPad from the values; not on the page, which has its own drawings
+      plot(src) { items.push({ t: 'plot', src }); return C; },
       value: n => vals[n], has: n => names.has(n),
       // ----- the full calculation, for the page and the A4 sheet -----
       html(opts = {}) {
@@ -1283,6 +1285,7 @@ const CalcScript = (() => {
           if (it.t === 'h') { skipping = !!(opts.skip && opts.skip.includes(it.text)); h += skipping ? `<div class="cs-p">${esc(it.text)}: as above.</div>` : `<div class="cs-h">${esc(it.text)}</div>`; continue; }
           if (skipping) continue;
           if (it.t === 'p') { h += `<div class="cs-p">${esc(it.text)}</div>`; continue; }
+          if (it.t === 'plot') continue;
           if (it.t === 'img') { if (!opts.noImg) h += `<div class="cs-img">${it.svg}${it.caption ? `<div class="cs-cap">${esc(it.caption)}</div>` : ''}</div>`; continue; }
           const S = symHTML(it.name, syms[it.name]), res = `${num(it.v)}${it.unit ? '&#8239;' + unitHTML(it.unit) : ''}`;
           let eq;
@@ -1307,6 +1310,7 @@ const CalcScript = (() => {
           if (it.t === 'h') { out.push({ it, text: '' }, { it, text: clean(it.text) }); continue; }
           if (it.t === 'p') { out.push({ it, text: clean(it.text) }); continue; }
           if (it.t === 'img') continue;
+          if (it.t === 'plot') { out.push({ it, text: it.src }); continue; }
           if (it.t === 'in' || it.t === 'val') out.push({ it, text: `${pre(it)}${it.name} = ${lit(it.v)}${it.unit ? ' ' + it.unit : ''}` });
           else out.push({ it, text: `${pre(it)}${it.name} = ${it.core} [${it.spec}]` });
         }
@@ -1331,6 +1335,7 @@ const CalcScript = (() => {
           const br = first ? '' : '<br>'; first = false;
           if (it.t === 'h') { html += `${br}<br><b>${esc(it.text)}</b>`; continue; }
           if (it.t === 'p') { html += `${br}${esc(it.text)}`; continue; }
+          if (it.t === 'plot') { html += `${br}<span contenteditable="false" class="plot-chip" data-plot="${esc(it.src)}"></span> `; continue; }
           if (it.t === 'img') { const src = images[items.indexOf(it)]; if (src) html += `${br}<span contenteditable="false" class="calc-img-wrap"><img src="${src}" draggable="false" style="width:${Math.round(Math.min(images.width || 500, (images.nat && images.nat[items.indexOf(it)]) || Infinity))}px;height:auto"><span class="img-resize-handle"></span><span class="img-size-label"></span></span>${it.caption ? `<br><i>${esc(it.caption)}</i>` : ''}`; else first = !html; continue; }
           const L = C.lines().find(l => l.it === it), text = L.text, k = text.lastIndexOf(`${it.name} = `);
           html += `${br}${esc(text.slice(0, k))}${chip(it)} `;
@@ -1596,6 +1601,13 @@ const EC2Script = (() => {
     C.head('Bending resistance of the bars provided (strain compatibility)');
     const res = R.res, xu = res.x, sU = Math.min(c.lambda * xu, h), webU = flanged && sag && sU > inp.hf && inp.b !== bw;
     C.given('x_u', xu, 'mm', 'depth to the neutral axis with the bars provided', 'found by iteration so that the forces balance (the check is N = 0 below)', '6.1(2)');
+    // the section in CalcPad, drawn live from these names (CalcPad's SECTION line: the bars, x, the strain and the stress block)
+    if (!slab) {
+      const N = arr.n2 ? 'n_1 + n_2' : 'n', fl = flanged ? ', bw: b_w, hf: h_f' : '';
+      C.plot(inp.moment === 'hogging'
+        ? `SECTION(b, h, c_nom, ${comp ? 'n_c, phi_c' : '0, phi'}, link: phi_w${fl}, top: ${N}, phitop: phi, x: x_u, hog: 1)`
+        : `SECTION(b, h, c_nom, ${N}, phi, link: phi_w${fl}${comp ? ', top: n_c, phitop: phi_c' : ''}, x: x_u)`);
+    }
     C.calc('s_u', 'MIN(lambda*x_u, h)', sU, 'mm', 'depth of the stress block', '3.1.7(3)');
     const Acc = webU ? (inp.b - bw) * inp.hf + bw * sU : bc * sU, ycc = webU ? ((inp.b - bw) * inp.hf ** 2 / 2 + bw * sU * sU / 2) / Acc : sU / 2;
     if (webU) { C.calc('A_cc', '(b - b_w)*h_f + b_w*s_u', Acc, 'mm2', 'area of the compressed concrete', ''); C.calc('y_cc', '((b - b_w)*h_f^2/2 + b_w*s_u^2/2)/A_cc', ycc, 'mm', 'depth to its centroid', ''); }

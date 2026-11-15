@@ -26,6 +26,8 @@ function run(tag, inp, mode = 'sec') {
   const er = P.chips.filter(c => c.err || c.dup); if (er.length) { bad++; console.log('CHIP', tag, er.slice(0, 3).map(c => c.text)); }
   // No chip may be in CalcPad's 'Check these definitions' box (up to 603846b every forced unit, [#] or [#N/mm2], was; fixed in 0d11b15)
   if (P.warn) { bad++; console.log('BAD UNIT', tag, P.chips.filter(c => c.bad).slice(0, 5).map(c => c.name + ' [' + c.bad + ']')); }
+  // the section's SECTION line is drawn by CalcPad from the names (since CalcPad ecee29e)
+  const pe = (P.plots || []).filter(p => p.err); if (pe.length || (C.items.some(it => it.t === 'plot') && !(P.plots || []).length)) { bad++; console.log('PLOT', tag, pe.slice(0, 2)); }
   return { C, R, P };
 }
 setTimeout(() => {

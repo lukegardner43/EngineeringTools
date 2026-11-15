@@ -1,4 +1,4 @@
-// Headless CalcPad (tests/calcpad/calcpad.html: CalcPad's index.html at lukegardner43/calcpad 0d11b15 Stop listing forced units as "not a unit", and keep a forced result's unit on paste; refresh it when CalcPad changes): load the app in jsdom, put lines of CalcPad text into the editor through its own paste path, rebuild
+// Headless CalcPad (tests/calcpad/calcpad.html: CalcPad's index.html at lukegardner43/calcpad 3478322 (PLOT and SECTION lines, ecee29e; the strain diagram clear of the section); refresh it when CalcPad changes): load the app in jsdom, put lines of CalcPad text into the editor through its own paste path, rebuild
 // the variables as the app does, and read every variable's value (SI) and the chips' text.
 const { JSDOM, VirtualConsole } = require('jsdom'); const fs = require('fs');
 function open(htmlPath = require('path').join(__dirname, 'calcpad.html')) {
@@ -24,7 +24,9 @@ function open(htmlPath = require('path').join(__dirname, 'calcpad.html')) {
       const errChips = [...w.document.querySelectorAll('.var-error-chip, .formula-chip.error, .chip-error')].map(c => c.textContent);
       // the 'Check these definitions' box (CalcPad's flagUnparseableUnits) is shown
       const warn = !!w.document.querySelector('#unitWarn.show');
-      return { vars: { ...vars }, units: { ...units }, chips, errChips, warn };
+      // the PLOT and SECTION lines, each drawn or showing its error
+      const plots = [...w.document.querySelectorAll('.plot-chip')].map(c => ({ src: c.dataset.plot, err: c.classList.contains('error') ? c.textContent : '' }));
+      return { vars: { ...vars }, units: { ...units }, chips, errChips, warn, plots };
     },
   };
   return api;
