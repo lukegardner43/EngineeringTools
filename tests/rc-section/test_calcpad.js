@@ -24,8 +24,14 @@ function run(tag, inp, mode = 'sec') {
     if (!ok) { bad++; if (bad < 40) console.log('FAIL', tag, it.name, it.expr || '', 'tool', exp, 'calcpad', got); }
   }
   const er = P.chips.filter(c => c.err || c.dup); if (er.length) { bad++; console.log('CHIP', tag, er.slice(0, 3).map(c => c.text)); }
+  // Two CalcPad bugs (603846b) put a chip in its 'Check these definitions' box though its value is right: flagUnparseableUnits
+  // tests a forced display unit ([#], [#N/mm2]) against UNIT_TOKEN_RE without taking the # off, and pasted text keeps the unit
+  // worked out at paste time (before a forced result has its unit) on the chip, so A_swsmin/A_sws [#] carries '/m'. Flags on
+  // chips with a forced display unit are counted and reported; a flag on anything else fails.
+  P.chips.forEach(c => { if (!c.bad) return; if (/^#/.test(c.disp)) forcedFlags++; else { bad++; console.log('BAD UNIT', tag, c.name, c.bad); } });
   return { C, R, P };
 }
+let forcedFlags = 0;
 setTimeout(() => {
   let first = null;
   TCC.rect.forEach((cs, i) => { const I = cs.in, O = cs.out;
@@ -60,6 +66,7 @@ setTimeout(() => {
     const own = H.text(first.C.calcpad()), mine = H.w.document; void mine; n++;
     const P = H.doc(first.C.perega({})), a = P.chips.filter(c => first.C.items.some(i => i.t === 'in' && i.name === c.name));
     if (!(a.length && a.every(c => Math.abs(c.val - own.vars[c.name]) <= 1e-12 * Math.abs(c.val) + 1e-15))) { bad++; console.log('FAIL the .perega inputs differ from CalcPad\'s own'); } }
+  if (forcedFlags) console.log(`note: ${forcedFlags} forced-unit chips flagged by CalcPad's 'Check these definitions' box (a CalcPad bug, see the comment above)`);
   console.log(`\n${n - bad}/${n} RC Section values reproduced by CalcPad`);
   process.exit(bad ? 1 : 0);
 }, 400);

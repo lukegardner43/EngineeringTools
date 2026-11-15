@@ -20,9 +20,11 @@ function open(htmlPath = require('path').join(__dirname, 'calcpad.html')) {
     doc(doc) { w.applyDoc(doc); return api.read(); },
     read() {
       const vars = w.eval('vars'), units = w.eval('varUnits');
-      const chips = [...w.document.querySelectorAll('.var-def-chip')].map(c => ({ name: c.dataset.varName, val: +c.dataset.varVal, text: c.textContent, title: c.title, err: /mismatch|unknown unit|left over|Error/i.test(c.textContent), dup: c.classList.contains('dup-name') }));
+      const chips = [...w.document.querySelectorAll('.var-def-chip')].map(c => ({ name: c.dataset.varName, val: +c.dataset.varVal, text: c.textContent, title: c.title, err: /mismatch|unknown unit|left over|Error/i.test(c.textContent), dup: c.classList.contains('dup-name'), bad: c.classList.contains('bad-unit') ? (c.dataset.badUnit || '?') : '', disp: c.dataset.varDisplayUnit || '' }));
       const errChips = [...w.document.querySelectorAll('.var-error-chip, .formula-chip.error, .chip-error')].map(c => c.textContent);
-      return { vars: { ...vars }, units: { ...units }, chips, errChips };
+      // the 'Check these definitions' box (CalcPad's flagUnparseableUnits) is shown
+      const warn = !!w.document.querySelector('#unitWarn.show');
+      return { vars: { ...vars }, units: { ...units }, chips, errChips, warn };
     },
   };
   return api;
