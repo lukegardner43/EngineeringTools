@@ -788,6 +788,8 @@ if (typeof module !== 'undefined') module.exports = { EC2Toolkit };
         C.given(name, value, unit, desc, how, ref, { sym }), C.check(name, expr, value, desc, ref, { limit, sym }),
         C.img(svg, caption);
         C.html() — the full calculation; C.calcpad() — CalcPad text; C.perega(meta) — a .perega document (object).
+        CalcScript.project([{ C, title }], meta, name) — a .peregaproj (one CalcPad check per script, for a tool with several
+        zones or members whose names repeat); copy(C, meta), download(C, meta, file), downloadProject(list, meta, file) for the buttons.
    Units are CalcPad's: mm cm m km, N kN MN, Pa kPa MPa GPa (N/mm2 for stresses), kg g t, s, deg rad, combined with * / ^
    or run together (kNm, kNm/m, mm2/m). Values are given in the unit stated.
    Source: scratchpad/common/calcscript.js. */
@@ -910,9 +912,11 @@ const CalcScript = (() => {
       // ----- the full calculation, for the page and the A4 sheet -----
       html(opts = {}) {
         const sub = Object.fromEntries(Object.keys(vals).map(n => [n, { v: vals[n], unit: units[n] }]));
-        let h = `<div class="cs${opts.sheet ? ' cs-sheet' : ''}">`;
+        // opts.skip: headings whose sections are left out (the same materials in every zone of a sheet), said in a line
+        let h = `<div class="cs${opts.sheet ? ' cs-sheet' : ''}">`, skipping = false;
         for (const it of items) {
-          if (it.t === 'h') { h += `<div class="cs-h">${esc(it.text)}</div>`; continue; }
+          if (it.t === 'h') { skipping = !!(opts.skip && opts.skip.includes(it.text)); h += skipping ? `<div class="cs-p">${esc(it.text)}: as above.</div>` : `<div class="cs-h">${esc(it.text)}</div>`; continue; }
+          if (skipping) continue;
           if (it.t === 'p') { h += `<div class="cs-p">${esc(it.text)}</div>`; continue; }
           if (it.t === 'img') { if (!opts.noImg) h += `<div class="cs-img">${it.svg}${it.caption ? `<div class="cs-cap">${esc(it.caption)}</div>` : ''}</div>`; continue; }
           const S = symHTML(it.name, syms[it.name]), res = `${num(it.v)}${it.unit ? '&#8239;' + unitHTML(it.unit) : ''}`;
@@ -962,7 +966,7 @@ const CalcScript = (() => {
           const br = first ? '' : '<br>'; first = false;
           if (it.t === 'h') { html += `${br}<br><b>${esc(it.text)}</b>`; continue; }
           if (it.t === 'p') { html += `${br}${esc(it.text)}`; continue; }
-          if (it.t === 'img') { const src = images[items.indexOf(it)]; if (src) html += `${br}<span contenteditable="false" class="calc-img-wrap"><img src="${src}" draggable="false" style="width:${Math.round(images.width || 500)}px;height:auto"><span class="img-resize-handle"></span><span class="img-size-label"></span></span>${it.caption ? `<br><i>${esc(it.caption)}</i>` : ''}`; else first = !html; continue; }
+          if (it.t === 'img') { const src = images[items.indexOf(it)]; if (src) html += `${br}<span contenteditable="false" class="calc-img-wrap"><img src="${src}" draggable="false" style="width:${Math.round(Math.min(images.width || 500, (images.nat && images.nat[items.indexOf(it)]) || Infinity))}px;height:auto"><span class="img-resize-handle"></span><span class="img-size-label"></span></span>${it.caption ? `<br><i>${esc(it.caption)}</i>` : ''}`; else first = !html; continue; }
           const L = C.lines().find(l => l.it === it), text = L.text, k = text.lastIndexOf(`${it.name} = `);
           html += `${br}${esc(text.slice(0, k))}${chip(it)} `;
         }
@@ -977,14 +981,14 @@ const CalcScript = (() => {
   const lit = v => (Number.isFinite(v) ? String(+v.toPrecision(12)) : '0');
   // the drawings as PNG data URLs (CalcPad's Word export takes PNG): resolves to { index: dataURL, width }
   async function rasterise(C, width = 520) {
-    const out = { width };
+    const out = { width, nat: {} };   // nat: each drawing's own width, so a small one is not blown up
     const jobs = C.items.map((it, i) => it.t !== 'img' ? null : new Promise(res => {
       try {
         const doc = new DOMParser().parseFromString(it.svg, 'image/svg+xml'), sv = doc.documentElement;
         if (!sv || sv.nodeName !== 'svg') return res();
         if (!sv.getAttribute('xmlns')) sv.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
         const vb = (sv.getAttribute('viewBox') || '').split(/[ ,]+/).map(Number), w = vb[2] || +sv.getAttribute('width') || 600, h = vb[3] || +sv.getAttribute('height') || 400;
-        sv.setAttribute('width', w); sv.setAttribute('height', h);
+        sv.setAttribute('width', w); sv.setAttribute('height', h); out.nat[i] = w;
         // the page's colours and fonts as the drawing uses them
         const st = doc.createElementNS('http://www.w3.org/2000/svg', 'style'); st.textContent = 'text{font-family:Arial,Helvetica,sans-serif}'; sv.insertBefore(st, sv.firstChild);
         const img = new Image(), url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(sv));
@@ -1010,22 +1014,37 @@ const CalcScript = (() => {
       let ok = false; try { ok = document.execCommand('copy'); } catch (e2) { ok = false; } ta.remove(); return ok;
     }
   }
-  async function download(C, m, fileName) {
-    let images = {}; try { images = await rasterise(C); } catch (e) { images = {}; }
-    const blob = new Blob([JSON.stringify({ ...C.perega(m, images), savedAt: new Date().toISOString() }, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (String(fileName || 'Calculation').replace(/×/g, 'x').replace(/\//g, '-').replace(/[^A-Za-z0-9 ._()-]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Calculation') + '.perega';
+  const fileSafe = s => String(s || 'Calculation').replace(/×/g, 'x').replace(/\//g, '-').replace(/[^A-Za-z0-9 ._()-]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Calculation';
+  function save(text, fileName, ext) {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = fileSafe(fileName) + ext;
     document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   }
+  async function download(C, m, fileName) {
+    let images = {}; try { images = await rasterise(C); } catch (e) { images = {}; }
+    save(JSON.stringify({ ...C.perega(m, images), savedAt: new Date().toISOString() }, null, 2), fileName, '.perega');
+  }
+  // a CalcPad project (.peregaproj): one check per script, in order, each a whole document of its own (CalcPad keeps each
+  // check's names apart, so the zones of a beam can all use M_Ed, d, ...). list: [{ C, title }]
+  async function project(list, m = {}, name = 'Calculation') {
+    const checks = [];
+    for (let k = 0; k < list.length; k++) {
+      const { C, title } = list[k]; let images = {};
+      try { images = typeof document !== 'undefined' ? await rasterise(C) : {}; } catch (e) { images = {}; }
+      checks.push({ id: 'c' + (k + 1), name: title, doc: C.perega({ ...m, title }, images) });
+    }
+    return { kind: 'calcpad-project', version: 1, name: fileSafe(name), activeId: checks.length ? checks[0].id : null, checks, savedAt: new Date().toISOString() };
+  }
+  async function downloadProject(list, m, fileName) { save(JSON.stringify(await project(list, m, fileName), null, 2), fileName, '.peregaproj'); }
   // the style of the full calculation (each tool's page and sheet include it)
   const CSS = `.cs{font-size:13px;line-height:1.45}.cs-h{font-weight:600;font-size:14px;margin:14px 0 4px;padding-bottom:3px;border-bottom:1px solid var(--bdr,#e6e6e6)}
 .cs-p{color:var(--mut,#5f6368);margin:4px 0}.cs-r{display:grid;grid-template-columns:1fr 110px;gap:10px;padding:4px 0;border-bottom:1px solid #f0f0f0}
 .cs-eq{overflow-wrap:anywhere}.cs-eq i{font-style:italic}.cs-eq sub,.cs-eq sup{font-size:75%}.cs-d{color:var(--mut,#5f6368);font-size:12px}
 .cs-ref{color:var(--faint,#6b6b6b);font-size:12px;text-align:right}.cs-ok{color:var(--pass,#247b50);font-weight:600}.cs-ng{color:var(--fail,#c4242a);font-weight:600}
 .cs-val .cs-eq{color:#333}.cs-img{margin:8px 0}.cs-cap{font-size:12px;color:var(--mut,#5f6368)}
-.cs-sheet{font-size:9pt}.cs-sheet .cs-r{grid-template-columns:1fr 70pt;padding:1.5pt 0;break-inside:avoid}.cs-sheet .cs-h{font-size:10pt;margin:8pt 0 2pt}.cs-sheet .cs-d,.cs-sheet .cs-ref{font-size:8pt}
+.cs-sheet{font-size:9pt}.cs-sheet .cs-r{grid-template-columns:1fr 70pt;padding:1pt 0;break-inside:avoid}.cs-sheet .cs-h{font-size:10pt;margin:6pt 0 2pt}.cs-sheet .cs-d,.cs-sheet .cs-ref{font-size:8pt}.cs-sheet .cs-d{display:inline;margin-left:8pt}.cs-sheet .cs-p{margin:2pt 0}
 .cs-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.cs-tools .btn2{width:auto;flex:0 0 auto;margin:0;padding:0 16px}
 @media print{.cs-tools{display:none}}`;
-  return { create, toSI, siUnit, factor, num, exprHTML, symHTML, unitHTML, tokens, rasterise, copy, download, CSS };
+  return { create, toSI, siUnit, factor, num, exprHTML, symHTML, unitHTML, tokens, rasterise, copy, download, project, downloadProject, CSS };
 })();
 if (typeof module !== 'undefined') module.exports = { CalcScript };
 
@@ -1141,8 +1160,10 @@ const EC2Script = (() => {
     }
     // ----- bending: the steel required -----
     const bc = R.secC.b, Bc = flanged && sag ? 'b' : W;   // compression width
+    // the design moment: an input, or worked out by the caller under its own heading (meta.moment(C) defines M_Ed, e.g. at the face of a support)
+    if (meta.moment) meta.moment(C);
     C.head('Bending: the steel required (rectangular stress block)');
-    C.input('M_Ed', inp.MEd / 1e6, 'kNm', slab ? 'design moment on the strip (per metre)' : 'design moment', '');
+    if (!meta.moment) C.input('M_Ed', inp.MEd / 1e6, 'kNm', slab ? 'design moment on the strip (per metre)' : 'design moment', '');
     C.calc('K', `M_Ed/(${Bc}*d^2*f_ck) [#]`, bd.K, '', 'normalised moment', '3.1.7(3)');
     const delta = inp.delta ?? 1;
     C.input('delta', delta, '', 'ratio of the redistributed to the elastic moment', '5.5(4)', { sym: 'δ' });
@@ -1325,7 +1346,8 @@ const EC2Script = (() => {
       if (bd.doubly) C.calc('rho_2', 'A_s2req/A_rho [#]', D.rho2, '', 'compression steel ratio (required)', '7.4.2(2)', { sym: "ρ'" });
       else C.input('rho_2', 0, '', 'compression steel ratio (none required)', '7.4.2(2)', { sym: "ρ'" });
       C.calc('rho_0', '0.001*SQRT(f_ck[#N/mm2]) [#]', 1e-3 * Math.sqrt(c.fck), '', 'reference ratio', '7.4.2(2)', { sym: 'ρ_0' });
-      if (D.rho <= 1e-3 * Math.sqrt(c.fck)) C.calc('ld_b', 'K_s*(11 + 1.5*SQRT(f_ck[#N/mm2])*rho_0/rho + 3.2*SQRT(f_ck[#N/mm2])*(rho_0/rho - 1)^1.5) [#]', D.base, '', 'basic span/depth ratio, ρ ≤ ρ₀', '7.4.2 (7.16a)', { sym: '(l/d)_basic' });
+      if (D.rho < 1e-6) C.given('ld_b', D.base, '', 'basic span/depth ratio', 'ρ is effectively zero (no design moment), so Expression 7.16a has no bound: the limit of 40K below governs', '7.4.2 (7.16a)', { sym: '(l/d)_basic' });
+      else if (D.rho <= 1e-3 * Math.sqrt(c.fck)) C.calc('ld_b', 'K_s*(11 + 1.5*SQRT(f_ck[#N/mm2])*rho_0/rho + 3.2*SQRT(f_ck[#N/mm2])*(rho_0/rho - 1)^1.5) [#]', D.base, '', 'basic span/depth ratio, ρ ≤ ρ₀', '7.4.2 (7.16a)', { sym: '(l/d)_basic' });
       else C.calc('ld_b', 'K_s*(11 + 1.5*SQRT(f_ck[#N/mm2])*rho_0/(rho - rho_2) + SQRT(f_ck[#N/mm2])/12*SQRT(rho_2/rho_0)) [#]', D.base, '', 'basic span/depth ratio, ρ > ρ₀', '7.4.2 (7.16b)', { sym: '(l/d)_basic' });
       if (flanged && sag) C.calc('F_1', 'MAX(0.8, 1 - 0.1*(b/b_w - 1)) [#]', D.F1, '', 'flanged section', 'UK NA Table NA.5');
       else C.input('F_1', 1, '', 'not a flanged section', 'UK NA Table NA.5');
@@ -1349,8 +1371,11 @@ const EC2Script = (() => {
   function shear(C, inp, R, W) {
     const c = R.c, st = R.st, V = inp.shear, d = R.d, bw = R.bw, slab = inp.kind === 'slab', S = R.shear;
     C.head(`Shear${slab ? ' (no shear reinforcement)' : ''}`);
-    C.input('V_Ed', V.VEd / 1e3, 'kN', 'design shear at the face of the support', '');
-    if (V.w) { C.input('w_Ed', V.w, 'kN/m', 'design load along the member (for the shear at d)', '6.2.1(8)'); C.calc('V_Edd', 'MAX(V_Ed - w_Ed*d, 0*V_Ed)', S.VEd_d / 1e3, 'kN', 'shear at d from the face', '6.2.1(8)', { sym: 'V_Ed,d' }); }
+    // V.from: the shears are from an analysis (a continuous beam's envelope), stated with where they were taken
+    if (V.from) { C.given('V_Ed', V.VEd / 1e3, 'kN', 'design shear at the face of the support', V.from.face, '6.2.1(8)'); C.given('V_Edd', S.VEd_d / 1e3, 'kN', 'design shear at d from the face', V.from.d, '6.2.1(8)', { sym: 'V_Ed,d' }); }
+    else C.input('V_Ed', V.VEd / 1e3, 'kN', 'design shear at the face of the support', '');
+    if (V.from) { /* given above */ }
+    else if (V.w) { C.input('w_Ed', V.w, 'kN/m', 'design load along the member (for the shear at d)', '6.2.1(8)'); C.calc('V_Edd', 'MAX(V_Ed - w_Ed*d, 0*V_Ed)', S.VEd_d / 1e3, 'kN', 'shear at d from the face', '6.2.1(8)', { sym: 'V_Ed,d' }); }
     else C.calc('V_Edd', 'V_Ed', S.VEd_d / 1e3, 'kN', 'shear at d from the face (no distributed load given)', '6.2.1(8)', { sym: 'V_Ed,d' });
     const vc = S.vc;
     C.calc('k_v', 'MIN(1 + SQRT(200/d[#mm]), 2) [#]', vc.k, '', 'size factor', '6.2.2(1)', { sym: 'k' });
@@ -1541,7 +1566,7 @@ const EC2Script = (() => {
     C.calc('l_0', 'MAX(alpha_1*a_235*alpha_6*l_brqd, l_0min)', a.l0, 'mm', 'design lap length', '8.7.3(1)', { sym: 'l_0' });
     return C;
   }
-  return { section, torsion, crackWidth, anchorage, materials, kSizeExpr, interp };
+  return { section, shear, torsion, crackWidth, anchorage, materials, kSizeExpr, interp };
 })();
 if (typeof module !== 'undefined') module.exports = { EC2Script };
 

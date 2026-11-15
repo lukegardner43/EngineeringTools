@@ -18,6 +18,11 @@ truth('Calculate keeps the drawings with the verdict', /PASS|FAIL/.test(res()) &
 truth('calculates: verdict, elevation, BM and SF envelopes, tables', /PASS|FAIL/.test(res()) && !!$('results').querySelector('svg.elev') && $('results').querySelectorAll('svg.env').length === 2 && $('results').querySelectorAll('table').length === 4 && !$('results').querySelector('.err'));
 truth('results list support, span and shear rows and curtailment', /4 column/.test(res()) && /Span 2 left/.test(res()) && /Support 2 top, into span 1/.test(res()) && /50% may stop/.test(res()));
 truth('zones open to the calculation steps', d.querySelectorAll('#results details.zone').length >= 3 + 4 + 6 && /5\.3\.2\.2/.test(res()));
+{ const Z = [...d.querySelectorAll('#results details.zone')], txt = s => s.replace(/\s+/g, ' ');
+  truth('full calculation: loads, then every zone with its own CalcPad buttons, and one project download', /Loads, load arrangements and analysis/.test(Z[0].textContent) && Z.slice(1).every(z => z.querySelector('[data-cp="copy"]') && z.querySelector('[data-cp="save"]') && z.querySelector('.cs')) && d.querySelectorAll('[data-cp="proj"]').length === 1);
+  const sup = Z.find(z => /Support 2, span 1 side/.test(z.textContent)), sh = Z.find(z => /Span 1, left end: shear/.test(z.textContent));
+  truth('a support zone works out M_Ed at the face, then K, z, A_s, M_Rd, the SLS stress and the cracks', !!sup && /MEd = max\(MEd,face, 0\.65·MEd,cl\)/.test(txt(sup.textContent)) && /K = MEd/.test(sup.textContent) && /σs,k/.test(sup.textContent) && /wk = /.test(sup.textContent));
+  truth('a shear zone reads V at the face and at d from the analysis, then V_Rd,c, θ and the links', !!sh && /from the analysis/.test(sh.textContent) && /V Rd,c|VRd,c/.test(txt(sh.textContent)) && /cot θ/.test(sh.textContent) && /A sw\/s|Asw\/s/.test(txt(sh.textContent))); }
 $('suggest').click();
 truth('suggest bars: all checks pass', /PASS/.test(res()) && !$('results').querySelector('.err'));
 const sup2 = d.querySelector('#barRows .row[data-kind="sup"][data-i="1"]');
@@ -40,7 +45,7 @@ rows('supRows')[2].querySelector('.delta').value = '0.5'; $('calc').click(); tru
 rows('supRows')[2].querySelector('.delta').value = '0.85'; const s4 = rows('supRows')[4]; s4.querySelector('.kind').value = 'free'; change(s4.querySelector('.kind')); $('calc').click();
 truth('both ends free over three supports: two overhangs calculate', /PASS|FAIL/.test(res()) && !$('results').querySelector('.err'));
 s4.querySelector('.kind').value = 'knife'; change(s4.querySelector('.kind')); $('suggest').click();
-$('printBtn').click(); truth('print: A4 sheet with elevation, envelopes, zones, design sections and summary', w.printed && $('report').querySelectorAll('svg').length === 4 && /Sections at the supports and mid-spans/.test($('report').textContent) && /Summary/.test($('report').textContent) && /Basis/.test($('report').textContent));
+$('printBtn').click(); truth('print: A4 sheet with elevation, envelopes, every zone\'s full calculation (materials once), design sections and summary', w.printed && $('report').querySelectorAll('svg').length === 4 && $('report').querySelectorAll('.cs-sheet').length >= 1 + 4 + 3 + 6 && /Materials: as above/.test($('report').textContent) && /Sections at the supports and mid-spans/.test($('report').textContent) && /Summary/.test($('report').textContent) && /Basis/.test($('report').textContent));
 const w2 = page(w.localStorage.getItem('et-rc-beam-v1')), d2 = w2.document;
 truth('inputs restored', d2.querySelectorAll('#spanRows .row').length === 4 && d2.getElementById('rule').value === '6.10ab' && d2.querySelectorAll('#supRows .kind')[0].value === 'free' && d2.querySelectorAll('#loadRows .row').length === 8);
 // the drawings follow the inputs
