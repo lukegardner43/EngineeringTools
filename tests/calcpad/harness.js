@@ -1,4 +1,4 @@
-// Headless CalcPad (tests/calcpad/calcpad.html: CalcPad's index.html at lukegardner43/calcpad 4e47011 (PLOT and SECTION lines from ecee29e; formulas saved as definitions from 4e47011); refresh it when CalcPad changes): load the app in jsdom, put lines of CalcPad text into the editor through its own paste path, rebuild
+// Headless CalcPad (tests/calcpad/calcpad.html: CalcPad's index.html at lukegardner43/calcpad dd29f6a (PLOT and SECTION lines from ecee29e; formulas saved as definitions from 4e47011; shared values in a pack from dd29f6a); refresh it when CalcPad changes): load the app in jsdom, put lines of CalcPad text into the editor through its own paste path, rebuild
 // the variables as the app does, and read every variable's value (SI) and the chips' text.
 const { JSDOM, VirtualConsole } = require('jsdom'); const fs = require('fs');
 function open(htmlPath = require('path').join(__dirname, 'calcpad.html')) {
@@ -18,6 +18,11 @@ function open(htmlPath = require('path').join(__dirname, 'calcpad.html')) {
     },
     // a saved document (.perega object) as File ▸ Open does
     doc(doc) { w.applyDoc(doc); return api.read(); },
+    // a project (.peregaproj object) as File ▸ Open project does, then each check opened in turn: [{ name, shared, ...read() }]
+    project(p) {
+      w.adoptLoadedProject(JSON.parse(JSON.stringify(p)), 'test.peregaproj');
+      return p.checks.map(c => { w.openCheck(c.id); return { name: c.name, shared: !!c.shared, ...api.read() }; });
+    },
     read() {
       const vars = w.eval('vars'), units = w.eval('varUnits');
       const chips = [...w.document.querySelectorAll('.var-def-chip')].map(c => ({ name: c.dataset.varName, val: +c.dataset.varVal, text: c.textContent, title: c.title, err: /mismatch|unknown unit|left over|Error/i.test(c.textContent), dup: c.classList.contains('dup-name'), bad: c.classList.contains('bad-unit') ? (c.dataset.badUnit || '?') : '', disp: c.dataset.varDisplayUnit || '' }));

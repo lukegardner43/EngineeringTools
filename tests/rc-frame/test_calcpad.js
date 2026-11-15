@@ -27,13 +27,14 @@ function frame(tag, inp) {
   let D; try { const An = RCFrame.analyse(inp); D = RCFrame.design({ ...inp, beamBars: RCFrame.suggestBeams(An), colBars: RCFrame.suggestColumns(An) }); } catch (e) { return; }
   const Z = RCFrameScript.zones(D, inp).all; frames++;
   for (const zn of Z) { zones++; check(`${tag} ${zn.key}`, zn.C, H.text(zn.C.calcpad())); }
+  return Z;
 }
 // ---------- the four-storey frames ----------
 const beam = { h: 500, bw: 300, hf: 150, shape: 'T' }, edge = { b: 300, h: 300 }, int = { b: 350, h: 350 };
 const base = { mode: 'frame', spans: [6, 7.5, 6], cantL: 0, cantR: 1.5, bay: 6, storeys: [4, 3.5, 3.5, 3.5].map(H => ({ H, beam, edge, int })), base: 'F',
   fck: 32, fyk: 500, cover: { top: 35, btm: 35 }, coverCol: 35, selfWeight: 'downstand', rule: '6.10ab', chequer: true, redist: 'limited', delta: 0.85,
   loads: [{ level: 'all', span: 'all', type: 'udl', G: 30, Q: 12 }, { level: 4, span: 'all', type: 'udl', G: -10, Q: -6 }, { level: 1, span: 1, type: 'point', G: 40, Q: 25, a: 3 }] };
-frame('braced', { ...base, braced: true });
+const F = frame('braced', { ...base, braced: true });
 frame('unbraced', { ...base, braced: false, wind: [25, 22, 22, 12] });
 // ---------- random sub-frames and frames ----------
 let seed = 4021; const rnd = () => (seed = seed * 16807 % 2147483647) / 2147483647, pick = a => a[Math.floor(rnd() * a.length)];
@@ -50,6 +51,15 @@ for (let k = 0; k < 8; k++) {
   frame(`frame${k}`, { ...base, spans, cantR: rnd() < 0.3 ? 1.5 : 0, storeys: Array.from({ length: ns }, () => ({ H: pick([3.5, 4]), beam, edge, int })), braced, wind: braced ? undefined : Array.from({ length: ns }, () => pick([10, 20, 30])),
     chequer: rnd() < 0.5, fck: pick([30, 32, 40]), loads: [{ level: 'all', span: 'all', type: 'udl', G: pick([25, 30, 40]), Q: pick([10, 15]) }] });
 }
-console.log(`${zones} checks of ${frames} frames`);
-console.log(`\n${n - bad}/${n} RC 2D Frame values reproduced by CalcPad`);
-process.exit(bad ? 1 : 0);
+// ---------- the braced frame's project: the values its checks repeat are shared once; every check still has all its values ----------
+(async () => {
+  const list = F.map(zn => ({ C: zn.C, title: zn.title })), sz = x => JSON.stringify(x).length;
+  const P = await CalcScript.project(list, { project: 'Test' }, 'Frame'), Pn = await CalcScript.project(list, { project: 'Test' }, 'Frame', { share: false });
+  n++; if (P.checks.length !== F.length + 1 || !P.checks[0].shared) { bad++; console.log('FAIL the project has the wrong shape'); }
+  H.project(P).slice(1).forEach((r, k) => check(`project ${r.name}`, F[k].C, r));
+  n++; if (!(sz(P) < 0.85 * sz(Pn))) { bad++; console.log('FAIL sharing did not make the pack smaller', sz(P), sz(Pn)); }
+  console.log(`project: ${P.checks.length} checks, ${(sz(P) / 1e6).toFixed(2)} MB with the shared values, ${(sz(Pn) / 1e6).toFixed(2)} MB without`);
+  console.log(`${zones} checks of ${frames} frames`);
+  console.log(`\n${n - bad}/${n} RC 2D Frame values reproduced by CalcPad`);
+  process.exit(bad ? 1 : 0);
+})();

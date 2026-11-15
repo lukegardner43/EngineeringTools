@@ -2421,12 +2421,53 @@ const CalcScript = (() => {
   }
   // a CalcPad project (.peregaproj): one check per script, in order, each a whole document of its own (CalcPad keeps each
   // check's names apart, so the zones of a beam can all use M_Ed, d, ...). list: [{ C, title }]
-  async function project(list, m = {}, name = 'Calculation') {
+  // Values several checks define alike (the same name, definition, unit, description and source: the materials, a section
+  // several zones share, ...) go once into a first check of shared values, which CalcPad (a pack's shared check, from CalcPad dd29f6a) gives
+  // to every other check of the pack; each check says, where they were, which of its values come from there. A value stays
+  // in a check unless everything it uses there is shared too, so a check with a different f_ck keeps its own f_cd.
+  // Returns the list with the shared check first ({ C, title, shared: true }), or the list as it was if nothing repeats.
+  const IDENT = /[A-Za-z][A-Za-z0-9_]*/g;
+  function shareOut(list) {
+    const defs = it => it.t === 'in' || it.t === 'val' || it.t === 'calc';
+    const key = it => JSON.stringify([it.t, it.name, it.t === 'calc' ? `${it.core} [${it.spec}]` : `${lit(it.v)} ${it.unit}`, it.desc || '', it.ref || '', it.how || '']);
+    const count = new Map();
+    list.forEach(({ C }) => { const seen = new Set(); C.items.forEach(it => { if (!defs(it)) return; const k = key(it); if (!seen.has(k)) { seen.add(k); count.set(k, (count.get(k) || 0) + 1); } }); });
+    const best = new Map();   // name → the definition most checks share (one per name)
+    for (const [k, c] of count) { if (c < 2) continue; const nm = JSON.parse(k)[1], b = best.get(nm); if (!b || c > count.get(b)) best.set(nm, k); }
+    if (!best.size) return list;
+    const shared = [], sharedKeys = new Set();
+    const out = list.map(({ C, title, ...rest }) => {
+      const local = new Set(C.items.filter(defs).map(it => it.name)), gone = new Set();
+      C.items.forEach(it => {
+        if (!defs(it) || best.get(it.name) !== key(it)) return;
+        const uses = it.t === 'calc' ? (it.core.match(IDENT) || []).filter(n => n !== it.name && local.has(n)) : [];
+        if (uses.every(n => gone.has(n))) gone.add(it.name);
+      });
+      if (!gone.size) return { C, title, ...rest };
+      const C2 = create({ ...C.meta }); let head = null, run = [];
+      const flush = () => { if (run.length) { C2.items.push({ t: 'p', text: `From the shared values: ${run.join(', ')}.` }); run = []; } };
+      for (const it of C.items) {
+        if (it.t === 'h') { flush(); head = it.text; C2.items.push(it); continue; }
+        if (defs(it) && gone.has(it.name)) { run.push(it.name); const k = key(it); if (!sharedKeys.has(k)) { sharedKeys.add(k); shared.push({ head, it }); } continue; }
+        flush(); C2.items.push(it);
+      }
+      flush();
+      return { C: C2, title, ...rest };
+    });
+    if (!shared.length) return list;
+    const S = create({ title: 'Shared values', tool: list[0].C.meta.tool, standard: list[0].C.meta.standard });
+    S.items.push({ t: 'p', text: 'The values several checks of this project use, defined once: CalcPad gives them to every other check. A check that needs a different value defines its own.' });
+    let h = null;
+    for (const { head, it } of shared) { if (head !== h) { h = head; if (head) S.items.push({ t: 'h', text: head }); } S.items.push(it); }
+    return [{ C: S, title: 'Shared values', shared: true }, ...out];
+  }
+  async function project(list, m = {}, name = 'Calculation', o = {}) {
     const checks = [];
+    if (o.share !== false && list.length > 1) list = shareOut(list);
     for (let k = 0; k < list.length; k++) {
-      const { C, title } = list[k]; let images = {};
+      const { C, title, shared } = list[k]; let images = {};
       try { images = typeof document !== 'undefined' ? await rasterise(C) : {}; } catch (e) { images = {}; }
-      checks.push({ id: 'c' + (k + 1), name: title, doc: C.perega({ ...m, title }, images) });
+      checks.push({ id: 'c' + (k + 1), name: title, doc: C.perega({ ...m, title }, images), ...(shared ? { shared: true } : {}) });
     }
     return { kind: 'calcpad-project', version: 1, name: fileSafe(name), activeId: checks.length ? checks[0].id : null, checks, savedAt: new Date().toISOString() };
   }

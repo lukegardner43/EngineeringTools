@@ -66,8 +66,14 @@ for (let t = 0; made < 40 && t < 400; t++) {
 // ---------- the project of the first random beam opens in CalcPad check by check with the same values ----------
 (async () => {
   const P = await CalcScript.project(first.Z.map(zn => ({ C: zn.C, title: zn.title })), { project: 'Test', job: '1' }, 'Beam');
-  n++; if (P.kind !== 'calcpad-project' || P.checks.length !== first.Z.length) { bad++; console.log('FAIL the project has the wrong shape'); }
-  P.checks.forEach((ch, k) => check(`project ${ch.name}`, first.Z[k].C, H.doc(ch.doc)));
+  // the values the zones repeat go once into a first check of shared values, which CalcPad gives to every other check:
+  // each zone, opened in the project, still has every value of its own calculation; and the pack is smaller for it
+  n++; if (P.kind !== 'calcpad-project' || P.checks.length !== first.Z.length + 1 || !P.checks[0].shared || P.checks.slice(1).some(c => c.shared)) { bad++; console.log('FAIL the project has the wrong shape'); }
+  const R = H.project(P);
+  R.slice(1).forEach((r, k) => check(`project ${r.name}`, first.Z[k].C, r));
+  const Pn = await CalcScript.project(first.Z.map(zn => ({ C: zn.C, title: zn.title })), { project: 'Test', job: '1' }, 'Beam', { share: false });
+  const sz = x => JSON.stringify(x).length; n++; if (!(sz(P) < 0.85 * sz(Pn))) { bad++; console.log('FAIL sharing did not make the pack smaller', sz(P), sz(Pn)); }
+  console.log(`project: ${P.checks.length} checks, ${(sz(P) / 1e3).toFixed(0)} kB with the shared values, ${(sz(Pn) / 1e3).toFixed(0)} kB without`);
   console.log(`${zones} zones of ${made} random and ${Math.ceil(TCC.cases.length / 3)} TCC41 beams`);
   console.log(`\n${n - bad}/${n} RC Beam values reproduced by CalcPad`);
   process.exit(bad ? 1 : 0);
