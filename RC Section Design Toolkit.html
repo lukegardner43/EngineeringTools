@@ -1035,6 +1035,30 @@ const CalcScript = (() => {
     return { kind: 'calcpad-project', version: 1, name: fileSafe(name), activeId: checks.length ? checks[0].id : null, checks, savedAt: new Date().toISOString() };
   }
   async function downloadProject(list, m, fileName) { save(JSON.stringify(await project(list, m, fileName), null, 2), fileName, '.peregaproj'); }
+  // a tool with several zones (Z: [{ key, title, sum, util, C }]): the project button, then each zone as a <details> with its
+  // own buttons and its full calculation; wire() answers the buttons (once per page, on a container that stays)
+  const uf = u => (Number.isFinite(u) ? u.toFixed(3) : '>99');
+  function zonesHTML(Z) {
+    return `<div class="cs-tools"><button class="btn2" type="button" data-cp="proj">Download CalcPad project (.peregaproj)</button><span class="aux" data-cpmsg="proj"></span></div>`
+      + Z.map(zn => `<details class="zone"><summary><span>${esc(zn.title)}${zn.sum ? `<small> · ${esc(zn.sum)}</small>` : ''}</span>${zn.util != null ? `<span class="u ${zn.util > 1 ? 'over' : ''}">${uf(zn.util)}</span>` : ''}</summary>`
+        + `<div class="zfull"><div class="cs-tools"><button class="btn2" type="button" data-cp="copy" data-zone="${esc(zn.key)}">Copy for CalcPad</button><button class="btn2" type="button" data-cp="save" data-zone="${esc(zn.key)}">Download .perega</button><span class="aux" data-cpmsg="${esc(zn.key)}"></span></div>${zn.C.html({ noImg: true })}</div></details>`).join('');
+  }
+  // getZ() → the zones shown; meta(title) → the project details; name(title) → a file name; proj: the project's title
+  function wire(root, getZ, meta, name, proj) {
+    root.addEventListener('click', async e => {
+      const b = e.target.closest('[data-cp]'), Z = getZ(); if (!b || !Z) return;
+      const msg = k => root.querySelector(`[data-cpmsg="${k}"]`) || { textContent: '' };
+      if (b.dataset.cp === 'proj') { await downloadProject(Z.map(zn => ({ C: zn.C, title: zn.title })), meta(proj), name(proj)); msg('proj').textContent = 'Downloaded: open it in CalcPad (File ▸ Open project). Each zone is a check of its own.'; return; }
+      const zn = Z.find(z => z.key === b.dataset.zone); if (!zn) return;
+      if (b.dataset.cp === 'copy') { const ok = await copy(zn.C, meta(zn.title)); msg(zn.key).textContent = ok ? 'Copied: paste it into a CalcPad sheet.' : 'Could not copy: use Download .perega.'; }
+      else { await download(zn.C, meta(zn.title), name(zn.title)); msg(zn.key).textContent = 'Downloaded: open it in CalcPad (File ▸ Open).'; }
+    });
+  }
+  // the zones on the A4 sheet: every zone in full, the materials set out once and "as above" after
+  function sheetHTML(Z, h2 = t => `<h2>${t}</h2>`) {
+    let mat = false;
+    return Z.map(zn => { const s = `<div class="rs">${h2(`${esc(zn.title)}${zn.sum ? ` <span style="font-weight:400;color:#555">· ${esc(zn.sum)}</span>` : ''}`)}${zn.C.html({ sheet: true, noImg: true, skip: mat ? ['Materials'] : [] })}</div>`; if (zn.C.items.some(it => it.t === 'h' && it.text === 'Materials')) mat = true; return s; }).join('');
+  }
   // the style of the full calculation (each tool's page and sheet include it)
   const CSS = `.cs{font-size:13px;line-height:1.45}.cs-h{font-weight:600;font-size:14px;margin:14px 0 4px;padding-bottom:3px;border-bottom:1px solid var(--bdr,#e6e6e6)}
 .cs-p{color:var(--mut,#5f6368);margin:4px 0}.cs-r{display:grid;grid-template-columns:1fr 110px;gap:10px;padding:4px 0;border-bottom:1px solid #f0f0f0}
@@ -1042,9 +1066,9 @@ const CalcScript = (() => {
 .cs-ref{color:var(--faint,#6b6b6b);font-size:12px;text-align:right}.cs-ok{color:var(--pass,#247b50);font-weight:600}.cs-ng{color:var(--fail,#c4242a);font-weight:600}
 .cs-val .cs-eq{color:#333}.cs-img{margin:8px 0}.cs-cap{font-size:12px;color:var(--mut,#5f6368)}
 .cs-sheet{font-size:9pt}.cs-sheet .cs-r{grid-template-columns:1fr 70pt;padding:1pt 0;break-inside:avoid}.cs-sheet .cs-h{font-size:10pt;margin:6pt 0 2pt}.cs-sheet .cs-d,.cs-sheet .cs-ref{font-size:8pt}.cs-sheet .cs-d{display:inline;margin-left:8pt}.cs-sheet .cs-p{margin:2pt 0}
-.cs-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.cs-tools .btn2{width:auto;flex:0 0 auto;margin:0;padding:0 16px}
+.zone .zfull{padding:0 10px 8px}.zone summary small{color:var(--faint,#6b6b6b);font-size:12px}.cs-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.cs-tools .btn2{width:auto;flex:0 0 auto;margin:0;padding:0 16px}
 @media print{.cs-tools{display:none}}`;
-  return { create, toSI, siUnit, factor, num, exprHTML, symHTML, unitHTML, tokens, rasterise, copy, download, project, downloadProject, CSS };
+  return { create, toSI, siUnit, factor, num, exprHTML, symHTML, unitHTML, tokens, rasterise, copy, download, project, downloadProject, zonesHTML, wire, sheetHTML, CSS };
 })();
 if (typeof module !== 'undefined') module.exports = { CalcScript };
 
@@ -1372,9 +1396,10 @@ const EC2Script = (() => {
     const c = R.c, st = R.st, V = inp.shear, d = R.d, bw = R.bw, slab = inp.kind === 'slab', S = R.shear;
     C.head(`Shear${slab ? ' (no shear reinforcement)' : ''}`);
     // V.from: the shears are from an analysis (a continuous beam's envelope), stated with where they were taken
-    if (V.from) { C.given('V_Ed', V.VEd / 1e3, 'kN', 'design shear at the face of the support', V.from.face, '6.2.1(8)'); C.given('V_Edd', S.VEd_d / 1e3, 'kN', 'design shear at d from the face', V.from.d, '6.2.1(8)', { sym: 'V_Ed,d' }); }
+    if (V.defined) { /* the caller has defined V_Ed and V_Edd */ }
+    else if (V.from) { C.given('V_Ed', V.VEd / 1e3, 'kN', 'design shear at the face of the support', V.from.face, '6.2.1(8)'); C.given('V_Edd', S.VEd_d / 1e3, 'kN', 'design shear at d from the face', V.from.d, '6.2.1(8)', { sym: 'V_Ed,d' }); }
     else C.input('V_Ed', V.VEd / 1e3, 'kN', 'design shear at the face of the support', '');
-    if (V.from) { /* given above */ }
+    if (V.from || V.defined) { /* given above, or V_Ed and V_Edd defined by the caller */ }
     else if (V.w) { C.input('w_Ed', V.w, 'kN/m', 'design load along the member (for the shear at d)', '6.2.1(8)'); C.calc('V_Edd', 'MAX(V_Ed - w_Ed*d, 0*V_Ed)', S.VEd_d / 1e3, 'kN', 'shear at d from the face', '6.2.1(8)', { sym: 'V_Ed,d' }); }
     else C.calc('V_Edd', 'V_Ed', S.VEd_d / 1e3, 'kN', 'shear at d from the face (no distributed load given)', '6.2.1(8)', { sym: 'V_Ed,d' });
     const vc = S.vc;

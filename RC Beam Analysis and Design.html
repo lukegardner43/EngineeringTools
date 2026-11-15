@@ -1400,6 +1400,30 @@ const CalcScript = (() => {
     return { kind: 'calcpad-project', version: 1, name: fileSafe(name), activeId: checks.length ? checks[0].id : null, checks, savedAt: new Date().toISOString() };
   }
   async function downloadProject(list, m, fileName) { save(JSON.stringify(await project(list, m, fileName), null, 2), fileName, '.peregaproj'); }
+  // a tool with several zones (Z: [{ key, title, sum, util, C }]): the project button, then each zone as a <details> with its
+  // own buttons and its full calculation; wire() answers the buttons (once per page, on a container that stays)
+  const uf = u => (Number.isFinite(u) ? u.toFixed(3) : '>99');
+  function zonesHTML(Z) {
+    return `<div class="cs-tools"><button class="btn2" type="button" data-cp="proj">Download CalcPad project (.peregaproj)</button><span class="aux" data-cpmsg="proj"></span></div>`
+      + Z.map(zn => `<details class="zone"><summary><span>${esc(zn.title)}${zn.sum ? `<small> · ${esc(zn.sum)}</small>` : ''}</span>${zn.util != null ? `<span class="u ${zn.util > 1 ? 'over' : ''}">${uf(zn.util)}</span>` : ''}</summary>`
+        + `<div class="zfull"><div class="cs-tools"><button class="btn2" type="button" data-cp="copy" data-zone="${esc(zn.key)}">Copy for CalcPad</button><button class="btn2" type="button" data-cp="save" data-zone="${esc(zn.key)}">Download .perega</button><span class="aux" data-cpmsg="${esc(zn.key)}"></span></div>${zn.C.html({ noImg: true })}</div></details>`).join('');
+  }
+  // getZ() → the zones shown; meta(title) → the project details; name(title) → a file name; proj: the project's title
+  function wire(root, getZ, meta, name, proj) {
+    root.addEventListener('click', async e => {
+      const b = e.target.closest('[data-cp]'), Z = getZ(); if (!b || !Z) return;
+      const msg = k => root.querySelector(`[data-cpmsg="${k}"]`) || { textContent: '' };
+      if (b.dataset.cp === 'proj') { await downloadProject(Z.map(zn => ({ C: zn.C, title: zn.title })), meta(proj), name(proj)); msg('proj').textContent = 'Downloaded: open it in CalcPad (File ▸ Open project). Each zone is a check of its own.'; return; }
+      const zn = Z.find(z => z.key === b.dataset.zone); if (!zn) return;
+      if (b.dataset.cp === 'copy') { const ok = await copy(zn.C, meta(zn.title)); msg(zn.key).textContent = ok ? 'Copied: paste it into a CalcPad sheet.' : 'Could not copy: use Download .perega.'; }
+      else { await download(zn.C, meta(zn.title), name(zn.title)); msg(zn.key).textContent = 'Downloaded: open it in CalcPad (File ▸ Open).'; }
+    });
+  }
+  // the zones on the A4 sheet: every zone in full, the materials set out once and "as above" after
+  function sheetHTML(Z, h2 = t => `<h2>${t}</h2>`) {
+    let mat = false;
+    return Z.map(zn => { const s = `<div class="rs">${h2(`${esc(zn.title)}${zn.sum ? ` <span style="font-weight:400;color:#555">· ${esc(zn.sum)}</span>` : ''}`)}${zn.C.html({ sheet: true, noImg: true, skip: mat ? ['Materials'] : [] })}</div>`; if (zn.C.items.some(it => it.t === 'h' && it.text === 'Materials')) mat = true; return s; }).join('');
+  }
   // the style of the full calculation (each tool's page and sheet include it)
   const CSS = `.cs{font-size:13px;line-height:1.45}.cs-h{font-weight:600;font-size:14px;margin:14px 0 4px;padding-bottom:3px;border-bottom:1px solid var(--bdr,#e6e6e6)}
 .cs-p{color:var(--mut,#5f6368);margin:4px 0}.cs-r{display:grid;grid-template-columns:1fr 110px;gap:10px;padding:4px 0;border-bottom:1px solid #f0f0f0}
@@ -1407,9 +1431,9 @@ const CalcScript = (() => {
 .cs-ref{color:var(--faint,#6b6b6b);font-size:12px;text-align:right}.cs-ok{color:var(--pass,#247b50);font-weight:600}.cs-ng{color:var(--fail,#c4242a);font-weight:600}
 .cs-val .cs-eq{color:#333}.cs-img{margin:8px 0}.cs-cap{font-size:12px;color:var(--mut,#5f6368)}
 .cs-sheet{font-size:9pt}.cs-sheet .cs-r{grid-template-columns:1fr 70pt;padding:1pt 0;break-inside:avoid}.cs-sheet .cs-h{font-size:10pt;margin:6pt 0 2pt}.cs-sheet .cs-d,.cs-sheet .cs-ref{font-size:8pt}.cs-sheet .cs-d{display:inline;margin-left:8pt}.cs-sheet .cs-p{margin:2pt 0}
-.cs-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.cs-tools .btn2{width:auto;flex:0 0 auto;margin:0;padding:0 16px}
+.zone .zfull{padding:0 10px 8px}.zone summary small{color:var(--faint,#6b6b6b);font-size:12px}.cs-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.cs-tools .btn2{width:auto;flex:0 0 auto;margin:0;padding:0 16px}
 @media print{.cs-tools{display:none}}`;
-  return { create, toSI, siUnit, factor, num, exprHTML, symHTML, unitHTML, tokens, rasterise, copy, download, project, downloadProject, CSS };
+  return { create, toSI, siUnit, factor, num, exprHTML, symHTML, unitHTML, tokens, rasterise, copy, download, project, downloadProject, zonesHTML, wire, sheetHTML, CSS };
 })();
 if (typeof module !== 'undefined') module.exports = { CalcScript };
 
@@ -1737,9 +1761,10 @@ const EC2Script = (() => {
     const c = R.c, st = R.st, V = inp.shear, d = R.d, bw = R.bw, slab = inp.kind === 'slab', S = R.shear;
     C.head(`Shear${slab ? ' (no shear reinforcement)' : ''}`);
     // V.from: the shears are from an analysis (a continuous beam's envelope), stated with where they were taken
-    if (V.from) { C.given('V_Ed', V.VEd / 1e3, 'kN', 'design shear at the face of the support', V.from.face, '6.2.1(8)'); C.given('V_Edd', S.VEd_d / 1e3, 'kN', 'design shear at d from the face', V.from.d, '6.2.1(8)', { sym: 'V_Ed,d' }); }
+    if (V.defined) { /* the caller has defined V_Ed and V_Edd */ }
+    else if (V.from) { C.given('V_Ed', V.VEd / 1e3, 'kN', 'design shear at the face of the support', V.from.face, '6.2.1(8)'); C.given('V_Edd', S.VEd_d / 1e3, 'kN', 'design shear at d from the face', V.from.d, '6.2.1(8)', { sym: 'V_Ed,d' }); }
     else C.input('V_Ed', V.VEd / 1e3, 'kN', 'design shear at the face of the support', '');
-    if (V.from) { /* given above */ }
+    if (V.from || V.defined) { /* given above, or V_Ed and V_Edd defined by the caller */ }
     else if (V.w) { C.input('w_Ed', V.w, 'kN/m', 'design load along the member (for the shear at d)', '6.2.1(8)'); C.calc('V_Edd', 'MAX(V_Ed - w_Ed*d, 0*V_Ed)', S.VEd_d / 1e3, 'kN', 'shear at d from the face', '6.2.1(8)', { sym: 'V_Ed,d' }); }
     else C.calc('V_Edd', 'V_Ed', S.VEd_d / 1e3, 'kN', 'shear at d from the face (no distributed load given)', '6.2.1(8)', { sym: 'V_Ed,d' });
     const vc = S.vc;
@@ -1984,27 +2009,28 @@ const RCBeamScript = (() => {
     return C;
   }
 
-  function supportZone(D, inp, z, sd) {
-    const A = D.A, P = A.P, j = z.j, su = P.supports[j], s = P.spans[sd.i], sec = sd.sec, R = sd.R;
-    const title = `Support ${j + 1}${z.sides.length > 1 ? `, span ${sd.i + 1} side` : ''}: hogging`;
+  // the design moment at a support from the analysis envelope (5.3.2.2, 9.2.1.2(1)), as a hook for EC2Script.section; shared
+  // with the one-way slab. o: { mono (restrains rotation; default the support's own), beta1, beta1Ref, what (the support) }
+  function supportMoment(A, j, sd, s, su, o = {}) {
+    const mono = o.mono ?? su.monolithic, beta1 = o.beta1 ?? RCBeamDesign.BETA1, b1ref = o.beta1Ref || '9.2.1.2(1)', sec = sd.sec;
     const xc = sd.side === 'L' ? s.L : 0, xf = sd.side === 'L' ? Math.max(0, s.L - su.width / 2) : Math.min(s.L, su.width / 2);
     const from = x => `from the analysis: the design envelope of the ULS arrangements at x = ${m(x)} m in span ${sd.i + 1}`;
-    const moment = C => {
+    return C => {
       C.head('Design moment at the support');
       if (!(sd.Mdes >= 1)) { C.input('M_Ed', sec.MEd / 1e6, 'kNm', 'no hogging moment at this support: a nominal value, so its bars are checked for the minimum steel, spacing and cracking', ''); return; }
       if (s.cant) {
-        if (su.monolithic) C.given('M_Ed', sd.Mface / 1e6, 'kNm', 'design moment at the root of the cantilever, at the face of the support', from(xf), '5.3.2.2(3)');
+        if (mono) C.given('M_Ed', sd.Mface / 1e6, 'kNm', 'design moment at the root of the cantilever, at the face of the support', from(xf), '5.3.2.2(3)');
         else C.given('M_Ed', sd.Mcl / 1e6, 'kNm', 'design moment at the root of the cantilever, at the centreline of the support', from(xc), '5.3.2.2');
         return;
       }
       C.given('M_cl', sd.Mcl / 1e6, 'kNm', 'hogging moment at the centreline of the support', from(xc), '5.3.2.2', { sym: 'M_Ed,cl' });
-      if (su.monolithic) {
-        C.input('t_s', su.width, 'mm', 'width of the support (column)', '', { sym: 't' });
+      if (mono) {
+        C.input('t_s', su.width, 'mm', `width of the support (${o.what || 'column'})`, '', { sym: 't' });
         C.given('M_face', sd.Mface / 1e6, 'kNm', 'hogging moment at the face of the support, t/2 from the centreline', from(xf), '5.3.2.2(3)', { sym: 'M_Ed,face' });
         if (su.end) {
-          C.given('M_span', A.spanM[sd.i].redist / 1e6, 'kNm', `design moment in span ${sd.i + 1}`, 'from the analysis (see that span)', '9.2.1.2(1)');
-          C.input('beta_1', RCBeamDesign.BETA1, '', 'least moment at a monolithic end support, as a fraction of the span moment (UK NA)', '9.2.1.2(1)', { sym: 'β_1' });
-          C.calc('M_Ed', 'MAX(M_face, 0.65*M_cl, beta_1*M_span)', sd.Mdes / 1e6, 'kNm', 'design moment: at the face, not less than 0.65 of the centreline moment, nor β₁ times the span moment', '5.3.2.2(3), 9.2.1.2(1)');
+          C.given('M_span', A.spanM[sd.i].redist / 1e6, 'kNm', `design moment in span ${sd.i + 1}`, 'from the analysis (see that span)', b1ref);
+          C.input('beta_1', beta1, '', 'least moment at a monolithic end support, as a fraction of the span moment (UK NA)', b1ref, { sym: 'β_1' });
+          C.calc('M_Ed', 'MAX(M_face, 0.65*M_cl, beta_1*M_span)', sd.Mdes / 1e6, 'kNm', 'design moment: at the face, not less than 0.65 of the centreline moment, nor β₁ times the span moment', `5.3.2.2(3), ${b1ref}`);
         } else C.calc('M_Ed', 'MAX(M_face, 0.65*M_cl)', sd.Mdes / 1e6, 'kNm', 'design moment: at the face, not less than 0.65 of the centreline moment', '5.3.2.2(3)');
       } else {
         C.given('F_Ed', A.Rmax[j] / 1e3, 'kN', 'largest ULS reaction at the support', 'from the analysis', '5.3.2.2(4)', { sym: 'F_Ed,sup' });
@@ -2012,6 +2038,23 @@ const RCBeamScript = (() => {
         C.calc('M_Ed', 'MAX(M_cl - F_Ed*t_s/8, 0*M_cl)', sd.Mdes / 1e6, 'kNm', 'design moment: the centreline moment less F_Ed,sup t/8 (a support that does not restrain rotation)', '5.3.2.2(4)');
       }
     };
+  }
+  // the design moment in a span: the redistributed moment, not below δ_f × the elastic moment (5.5)
+  function spanMoment(sm, g, sec) {
+    return C => {
+      C.head('Design moment in the span');
+      if (!(g.M >= 1)) { C.input('M_Ed', sec.MEd / 1e6, 'kNm', 'no sagging moment in this span: a nominal value', ''); return; }
+      C.given('M_el', sm.elastic / 1e6, 'kNm', 'largest elastic sagging moment of the ULS arrangements', 'from the analysis, before redistribution', '5.4');
+      C.given('M_eq', sm.equilibrium / 1e6, 'kNm', 'largest sagging moment with the support moments redistributed', 'from the analysis: the span moments in equilibrium with the redistributed support moments', '5.5');
+      C.input('delta_f', sm.df, '', 'the smaller δ of the span\u2019s supports', '5.5(4)', { sym: 'δ_f' });
+      C.calc('M_Ed', 'MAX(M_eq, delta_f*M_el)', g.M / 1e6, 'kNm', 'design moment: not less than δ_f times the elastic moment', '5.5');
+    };
+  }
+
+  function supportZone(D, inp, z, sd) {
+    const A = D.A, P = A.P, j = z.j, su = P.supports[j], s = P.spans[sd.i], sec = sd.sec, R = sd.R;
+    const title = `Support ${j + 1}${z.sides.length > 1 ? `, span ${sd.i + 1} side` : ''}: hogging`;
+    const moment = supportMoment(A, j, sd, s, su);
     const C = CalcScript.create({ title, tool: TOOL, standard: STD });
     C.note(`${su.kind === 'column' ? 'Column' : su.kind === 'fixed' ? 'Fixed' : 'Knife-edge'} support ${j + 1}, the section in span ${sd.i + 1} at the support: top bars ${z.top.n}H${z.top.phi}${z.top.layers > 1 ? ' in 2 layers' : ''}${z.comp ? `, bottom bars ${z.comp.n}H${z.comp.phi} through the support in compression` : ''}.`);
     EC2Script.section(sec, R, { C, moment });
@@ -2039,14 +2082,7 @@ const RCBeamScript = (() => {
     const A = D.A, sm = A.spanM[z.i], g = z.sag, sec = g.sec, R = g.R;
     const C = CalcScript.create({ title: `Span ${z.i + 1}: sagging, and the links in the middle zone`, tool: TOOL, standard: STD });
     C.note(`${SYSN[g.sys] || g.sys}, ${f2(z.s.L / 1000)} m; bottom bars ${z.bot.n}H${z.bot.phi}${z.bot.layers > 1 ? ' in 2 layers' : ''}.`);
-    const moment = C => {
-      C.head('Design moment in the span');
-      if (!(g.M >= 1)) { C.input('M_Ed', sec.MEd / 1e6, 'kNm', 'no sagging moment in this span: a nominal value', ''); return; }
-      C.given('M_el', sm.elastic / 1e6, 'kNm', 'largest elastic sagging moment of the ULS arrangements', 'from the analysis, before redistribution', '5.4');
-      C.given('M_eq', sm.equilibrium / 1e6, 'kNm', 'largest sagging moment with the support moments redistributed', 'from the analysis: the span moments in equilibrium with the redistributed support moments', '5.5');
-      C.input('delta_f', sm.df, '', 'the smaller δ of the span’s supports', '5.5(4)', { sym: 'δ_f' });
-      C.calc('M_Ed', 'MAX(M_eq, delta_f*M_el)', g.M / 1e6, 'kNm', 'design moment: not less than δ_f times the elastic moment', '5.5');
-    };
+    const moment = spanMoment(sm, g, sec);
     EC2Script.section(sec, R, { C, moment });
     if (sm.delta < 0.7 - 1e-9) C.check('u_delta', '0.7/delta', 0.7 / sm.delta, 'redistribution in the span: δ not below 0.7', '5.5(4)');
     middleLinks(C, z, inp, sec.shape === 'flanged' ? 'b_w' : 'b', null);
@@ -2105,7 +2141,7 @@ const RCBeamScript = (() => {
     return out;
   }
   const A_delta = (D, i) => { const dl = D.A.spanM[i].delta; return dl < 0.7 - 1e-9 ? 0.7 / dl : 0; };
-  return { zones, loads, supportZone, spanZone, midZone, shearZone };
+  return { zones, loads, supportZone, spanZone, midZone, shearZone, supportMoment, spanMoment };
 })();
 if (typeof module !== 'undefined') module.exports = { RCBeamScript };
 

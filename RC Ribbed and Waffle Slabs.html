@@ -1137,6 +1137,7 @@ const RCSlabDesign = (() => {
   /* inp: { lx, ly (mm, lx <= ly), h, fck, fyk, dg, cover { top, btm }, edges { L1, L2, S1, S2 }, gk (incl. self-weight unless selfWeight), qk (kN/m²), selfWeight, gc,
             rule, psi0, psi2, wk, brittle, bars { x { phi, s } (short span, outer bottom layer), y { phi, s }, L1, L2, S1, S2 { phi, s } (top; L1/L2 in the outer top layer) } } */
   function twoWay(inp) {
+    const des = sec => Object.assign(EC2Section.design(sec), { sec });   // each zone keeps its section's input (for the full calculation)
     const c = EC2.concrete(inp.fck), fyk = inp.fyk || 500, gc = inp.gc ?? 25;
     if (!(inp.lx > 0 && inp.ly > 0 && inp.h > 0)) throw new Error('Give l_x, l_y and h');
     if (inp.ly < inp.lx - 1e-9) throw new Error('l_x must be the shorter span');
@@ -1153,18 +1154,18 @@ const RCSlabDesign = (() => {
     // effective depths: short-span bars in the outer layers; long-span bars inside them
     const covY = inp.cover.btm + bx.phi, contL = [inp.edges.L1, inp.edges.L2].filter(Boolean).length;
     const sys = contL === 2 ? 'interior' : contL === 1 ? 'end' : 'ss';
-    const Rx = EC2Section.design({ ...common, moment: 'sagging', h: inp.h, b: 1000, cover: inp.cover.btm, coverComp: inp.cover.top, bar: bx, MEd: K.bxp * nU * lx2, wk: (inp.wk && inp.wk.btm) || 0.3,
+    const Rx = des({ ...common, moment: 'sagging', h: inp.h, b: 1000, cover: inp.cover.btm, coverComp: inp.cover.top, bar: bx, MEd: K.bxp * nU * lx2, wk: (inp.wk && inp.wk.btm) || 0.3,
       defl: { system: sys, span: inp.lx, brittle: inp.brittle !== false } });
-    const Ry = EC2Section.design({ ...common, moment: 'sagging', h: inp.h, b: 1000, cover: covY, coverComp: inp.cover.top, bar: by, MEd: K.byp * nU * lx2, wk: (inp.wk && inp.wk.btm) || 0.3, defl: null });
+    const Ry = des({ ...common, moment: 'sagging', h: inp.h, b: 1000, cover: covY, coverComp: inp.cover.top, bar: by, MEd: K.byp * nU * lx2, wk: (inp.wk && inp.wk.btm) || 0.3, defl: null });
     step('', `short span M = β_sx n l_x² = ${r1(kNm(K.bxp * nU * lx2))} kNm/m (d = ${r1(Rx.d)} mm, outer layer); long span M = β_sy n l_x² = ${r1(kNm(K.byp * nU * lx2))} kNm/m (d = ${r1(Ry.d)} mm, inner layer)`);
-    const zones = [{ id: 'x', name: 'Short span (bottom, outer layer)', R: Rx, M: K.bxp * nU * lx2 }, { id: 'y', name: 'Long span (bottom, inner layer)', R: Ry, M: K.byp * nU * lx2 }];
+    const zones = [{ id: 'x', name: 'Short span (bottom, outer layer)', R: Rx, M: K.bxp * nU * lx2, beta: K.bxp, sec: Rx.sec }, { id: 'y', name: 'Long span (bottom, inner layer)', R: Ry, M: K.byp * nU * lx2, beta: K.byp, sec: Ry.sec }];
     const edgeName = { L1: 'Long edge 1', L2: 'Long edge 2', S1: 'Short edge 1', S2: 'Short edge 2' };
     for (const e of ['L1', 'L2', 'S1', 'S2']) {
       if (!inp.edges[e]) continue;
       const long = e[0] === 'L', beta = long ? K.bxn : K.byn; if (beta == null) continue;
       const bar = tb(e), cov = long ? inp.cover.top : inp.cover.top + Math.max(tb('L1').phi, tb('L2').phi), M = beta * nU * lx2;
-      const R = EC2Section.design({ ...common, moment: 'hogging', h: inp.h, b: 1000, cover: cov, coverComp: inp.cover.btm, bar, MEd: M, wk: (inp.wk && inp.wk.top) || 0.3, defl: null });
-      zones.push({ id: e, name: `${edgeName[e]} (top${long ? ', outer layer' : ', inner layer'})`, R, M });
+      const R = des({ ...common, moment: 'hogging', h: inp.h, b: 1000, cover: cov, coverComp: inp.cover.btm, bar, MEd: M, wk: (inp.wk && inp.wk.top) || 0.3, defl: null });
+      zones.push({ id: e, name: `${edgeName[e]} (top${long ? ', outer layer' : ', inner layer'})`, R, M, beta, sec: R.sec });
     }
     // shear on each edge (6.2.2, no links) with the top steel at continuous edges and the bottom steel at discontinuous edges
     const shear = [];

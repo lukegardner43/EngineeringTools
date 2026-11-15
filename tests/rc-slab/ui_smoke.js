@@ -14,6 +14,9 @@ truth('page loads without script errors', w.errs.length === 0);
 truth('drawings on load, before Calculate: elevation, BM, SF and the per-metre sections', !!$('drawings').querySelector('svg.elev') && $('drawings').querySelectorAll('svg.env').length === 2 && /Sections, per metre width/.test($('drawings').textContent) && /G 1\.5/.test($('drawings').querySelector('svg.elev').textContent) && !/PASS|FAIL/.test(res()));
 truth('default one-way slab: 3 spans, 4 supports, 6 loads, 7 bar rows', rows('spanRows').length === 3 && rows('supRows').length === 4 && rows('loadRows').length === 6 && rows('barRows').length === 7);
 $('calc').click();
+{ const Z = [...d.querySelectorAll('#results details.zone')];
+  truth('one-way full calculation: loads, every support side, span and end, each with its CalcPad buttons, and one project download', Z.length >= 1 + 3 + 6 && /Loads, load arrangements and analysis/.test(Z[0].textContent) && Z.every(z => z.querySelector('[data-cp="copy"]') && z.querySelector('.cs')) && d.querySelectorAll('[data-cp="proj"]').length === 1
+    && Z.some(z => /left end: shear/.test(z.textContent) && /V Ed,max|VEd,max/.test(z.textContent.replace(/\s+/g, ' ')) && /from the analysis/.test(z.textContent)) && Z.some(z => /Distribution steel/.test(z.textContent))); }
 truth('one-way sections: four supports and three spans, bars and utilisations', (() => { const t = $('drawings').querySelector('svg.dk').textContent; return (t.match(/Support \d/g) || []).length === 4 && (t.match(/Span \d/g) || []).length === 3 && /H12 @ 175 top, 646 mm²\/m/.test(t) && /utilisation 1\.021/.test(t); })());
 truth('one-way: verdict, elevation, envelopes, tables, zones', /PASS|FAIL/.test(res()) && !!$('results').querySelector('svg.elev') && $('results').querySelectorAll('svg.env').length === 2 && /Distribution/.test(res()) && /9\.3\.1\.2\(2\)/.test(res()) && !$('results').querySelector('.err'));
 $('suggest').click(); truth('one-way suggestion passes', /PASS/.test(res()) && !$('results').querySelector('.err'));
@@ -34,7 +37,7 @@ $('calc').click(); truth('two-way: case 4, plan drawing, coefficients and edge s
 $('eL2').checked = true; change($('eL2')); truth('making long edge 2 continuous adds its bar row', rows('tbarRows').length === 5);
 $('tsuggest').click(); truth('two-way suggestion passes', /PASS/.test(res()) && /One short edge discontinuous/.test(res()));
 $('ly').value = '4'; $('calc').click(); truth('l_x longer than l_y rejected', /shorter span/.test(res()));
-$('ly').value = '7.5'; $('calc').click(); $('printBtn').click(); truth('two-way print: plan, sections and edge shears', $('report').querySelectorAll('svg').length === 2 && /Sections, per metre width/.test($('report').textContent) && /Shear at the edges/.test($('report').textContent));
+$('ly').value = '7.5'; $('calc').click(); $('printBtn').click(); truth('two-way print: plan, sections, every zone and edge shear in full', $('report').querySelectorAll('svg').length === 2 && /Sections, per metre width/.test($('report').textContent) && /Shear at long edge 1/.test($('report').textContent) && /M Ed = β·n·lx2·b|MEd = β·n·lx/.test($('report').textContent.replace(/\s+/g, ' ')) && /Materials: as above/.test($('report').textContent));
 const w2 = page(w.localStorage.getItem('et-rc-slab-v1')), $2 = id => w2.document.getElementById(id);
 truth('inputs restored, two-way mode', !$2('pane-two').classList.contains('hidden') && $2('eL2').checked && $2('ly').value === '7.5' && w2.document.querySelectorAll('#spanRows .row').length === 4);
 // the drawings follow the inputs, both modes
