@@ -1,4 +1,4 @@
-// Headless CalcPad (tests/calcpad/calcpad.html: CalcPad's index.html at lukegardner43/calcpad 603846b Save to a chosen place on disk, and keep saving back to it; refresh it when CalcPad changes): load the app in jsdom, put lines of CalcPad text into the editor through its own paste path, rebuild
+// Headless CalcPad (tests/calcpad/calcpad.html: CalcPad's index.html at lukegardner43/calcpad 0d11b15 Stop listing forced units as "not a unit", and keep a forced result's unit on paste; refresh it when CalcPad changes): load the app in jsdom, put lines of CalcPad text into the editor through its own paste path, rebuild
 // the variables as the app does, and read every variable's value (SI) and the chips' text.
 const { JSDOM, VirtualConsole } = require('jsdom'); const fs = require('fs');
 function open(htmlPath = require('path').join(__dirname, 'calcpad.html')) {
