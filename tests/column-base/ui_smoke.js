@@ -19,10 +19,14 @@ truth('verdict and column checks, no base checks', /PASS|FAIL/.test(res()) && /F
 truth('15 ULS combinations listed (6.10, wind both ways)', /15 ULS combinations/.test(res()));
 truth('elevation with moments and the cap plan drawn', d.querySelectorAll('#drawings svg.dk').length === 2 && /M<tspan[^>]*>y,nom<\/tspan>/.test($('drawings').innerHTML));
 truth('SN048 breakdown shown', /SN048b:/.test(res()));
+{ const z = [...$('results').querySelectorAll('details.zone')], s = q => q.querySelector('summary').textContent;
+  truth('the full calculation: the actions, then each governing combination with its member checks and SN048b, with the CalcPad buttons and one download of the whole as a single check',
+    z.length >= 5 && /^Actions and combinations/.test(s(z[0])) && z.some(q => /: the design actions/.test(s(q)) && /e_?y|ey/.test(q.textContent.replace(/[\s,]/g, ''))) && z.some(q => /Flexural and torsional buckling/.test(s(q))) && z.some(q => /SN048b/.test(s(q)))
+    && z.every(q => !!q.querySelector('[data-cp="save"]')) && $('results').querySelectorAll('[data-cp="all"]').length === 1); }
 $('rule').value = '6.10ab'; calc(); truth('6.10a/b: 25 combinations', /25 ULS combinations/.test(res()));
 $('simple').checked = false; $('simple').onchange(); calc(); truth('without simple construction: no SN048 bar, no cap plan, share disabled', !/Simple column interaction/.test(res()) && $('share').disabled && d.querySelectorAll('#drawings svg.dk').length === 1);
 $('series').value = 'UKB'; $('series').onchange(); calc(); truth('UKB column calculates', /UKB/.test(res()) && !$('results').querySelector('.err'));
-$('printBtn').click(); truth('print: A4 sheet with the drawings and the actions at the base', w.printed && /Steel column/.test($('report').textContent) && /Actions at the base/.test($('report').textContent) && $('report').querySelectorAll('svg.dk').length >= 1);
+$('printBtn').click(); truth('print: A4 sheet with the drawings, the actions at the base and the full calculation', w.printed && /Steel column/.test($('report').textContent) && /Actions at the base/.test($('report').textContent) && $('report').querySelectorAll('svg.dk').length >= 1 && /Full calculation/.test($('report').textContent));
 $('H').value = '0'; calc(); truth('invalid height reported', /Height must be positive/.test(res()));
 $('H').value = '5.2'; calc();
 // hand-over: every combination's actions at the base go to Base Plate Design, keeping its plate inputs

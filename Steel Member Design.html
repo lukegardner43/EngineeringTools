@@ -3483,9 +3483,10 @@ const SteelMemberScript = (() => {
     C.head('The member and its actions');
     C.input('L', inp.L, 'mm', 'length of the member', '');
     if (o.N !== false) C.input('N_Ed', inp.N / 1e3, 'kN', 'axial force (compression positive)', '');
-    if (o.My !== false && !inp.Myf) {
+    if (o.My !== false && (!inp.Myf || inp.wUdl != null)) {
       C.input('M_yB', inp.MyB / 1e6, 'kNm', 'major-axis moment at the bottom (x = 0), sagging positive', '');
       C.input('M_yT', inp.MyT / 1e6, 'kNm', 'major-axis moment at the top (x = L)', '');
+      if (inp.wUdl != null) C.input('w_Ed', inp.wUdl, 'kN/m', 'uniform load along the member, bending about y-y', '', { sym: 'w_Ed' });
     }
     if (o.Mz !== false && (Math.abs(inp.MzB) + Math.abs(inp.MzT) > 0)) {
       C.input('M_zB', inp.MzB / 1e6, 'kNm', 'minor-axis moment at the bottom', '');
@@ -3529,7 +3530,10 @@ const SteelMemberScript = (() => {
     C.input('x', x, 'mm', 'position along the member from the bottom', '');
     const L = inp.L, My = inp.Myf ? inp.Myf(x) : inp.MyB + (inp.MyT - inp.MyB) * x / L, V = inp.Vzf ? inp.Vzf(x) : (inp.MyT - inp.MyB) / L;
     const Mz = inp.MzB + (inp.MzT - inp.MzB) * x / L, Vz = (inp.MzT - inp.MzB) / L, hasMz = Math.abs(inp.MzB) + Math.abs(inp.MzT) > 0;
-    if (inp.Myf) { C.given('M_yEd', My / 1e6, 'kNm', 'major-axis moment', 'from the analysis of the frame', ''); C.given('V_zEd', V / 1e3, 'kN', 'shear parallel to the web', 'from the analysis of the frame', ''); }
+    if (inp.wUdl != null) {
+      C.calc('M_yEd', 'M_yB + (M_yT - M_yB)*x/L + w_Ed*x*(L - x)/2', My / 1e6, 'kNm', 'major-axis moment: the end moments and the uniform load', '', { sym: 'M_y,Ed' });
+      C.calc('V_zEd', '(M_yT - M_yB)/L + w_Ed*(L/2 - x)', V / 1e3, 'kN', 'shear parallel to the web: the slope of the moment', '', { sym: 'V_z,Ed' });
+    } else if (inp.Myf) { C.given('M_yEd', My / 1e6, 'kNm', 'major-axis moment', 'from the analysis of the frame', ''); C.given('V_zEd', V / 1e3, 'kN', 'shear parallel to the web', 'from the analysis of the frame', ''); }
     else {
       C.calc('M_yEd', 'M_yB + (M_yT - M_yB)*x/L', My / 1e6, 'kNm', 'major-axis moment: linear between the ends', '', { sym: 'M_y,Ed' });
       C.calc('V_zEd', '(M_yT - M_yB)/L', V / 1e3, 'kN', 'shear parallel to the web: the slope of the moment', '', { sym: 'V_z,Ed' });
@@ -3580,7 +3584,7 @@ const SteelMemberScript = (() => {
       C.input('i_seg', g.seg + 1, '', `segment ${g.seg + 1} of ${Math.max(1, Math.round(inp.nLT || 1))}: where it governs`, '', { sym: 'segment' });
       C.calc('x_a', '(i_seg - 1)*L_LT', g.xa, 'mm', 'its start', ''); C.calc('x_b', 'x_a + L_LT', g.xa + g.Lseg, 'mm', 'its end', '');
     }
-    if (inp.Myf) { C.given(o.M || 'M_Ed', g.Mmax / 1e6, 'kNm', 'the largest major-axis moment in the segment', 'from the analysis', '', { sym: 'M_y,Ed' }); return; }
+    if (inp.Myf) { C.given(o.M || 'M_Ed', g.Mmax / 1e6, 'kNm', 'the largest major-axis moment in the segment', inp.wUdl != null ? 'the largest of M_y(x) = M_yB + (M_yT − M_yB)x/L + w_Ed x(L − x)/2 at eleven points along the segment' : 'from the analysis', '', { sym: 'M_y,Ed' }); return; }
     C.calc('M_ya', 'M_yB + (M_yT - M_yB)*x_a/L', My(g.xa) / 1e6, 'kNm', 'moment at the start', '', { sym: 'M_y(x_a)' });
     C.calc('M_yb', 'M_yB + (M_yT - M_yB)*x_b/L', My(g.xa + (g.over ? L : g.Lseg)) / 1e6, 'kNm', 'moment at the end', '', { sym: 'M_y(x_b)' });
     C.calc(o.M || 'M_Ed', 'MAX(ABS(M_ya), ABS(M_yb))', g.Mmax / 1e6, 'kNm', 'the largest moment in the segment (linear)', '', { sym: 'M_y,Ed' });
