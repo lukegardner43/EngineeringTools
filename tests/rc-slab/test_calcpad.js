@@ -18,14 +18,15 @@ function check(tag, C, P) {
     if (!it.name) continue; n++;
     const exp = it.t === 'chk' ? it.v : CalcScript.toSI(it.v, it.unit), got = P.vars[it.name];
     // (1e-9 absolute, in SI: a zone with no moment has steel and depths of order 1e-11 that CalcPad's rounding takes to 0)
-    const ok = got !== undefined && Math.abs(got - exp) <= 1e-6 * Math.abs(exp) + (it.name === 'N_res' ? 1e-2 : 1e-9);
+    const ok = got !== undefined && Math.abs(got - exp) <= 1e-6 * Math.abs(exp) + (/^N_res(_\d+)*$/.test(it.name) ? 1e-2 : 1e-9);
     if (!ok) { bad++; if (bad < 40) console.log('FAIL', tag, it.name, it.expr || '', 'tool', exp, 'calcpad', got); }
   }
   const er = P.chips.filter(c => c.err || c.dup); if (er.length) { bad++; console.log('CHIP', tag, er.slice(0, 3).map(c => c.text)); }
   const pe = (P.plots || []).filter(p => p.err); if (pe.length || (C.items.some(it => it.t === 'plot') && !(P.plots || []).length)) { bad++; console.log('PLOT', tag, pe.slice(0, 2)); }
   if (P.warn) { bad++; console.log('BAD UNIT', tag, P.chips.filter(c => c.bad).slice(0, 5).map(c => c.name + ' [' + c.bad + ']')); }
 }
-function run(tag, Z) { slabs++; for (const zn of Z) { zones++; check(`${tag} ${zn.key}`, zn.C, H.text(zn.C.calcpad())); } }
+let firstZ = null;
+function run(tag, Z) { if (!firstZ && Z.length > 1) firstZ = Z; slabs++; for (const zn of Z) { zones++; check(`${tag} ${zn.key}`, zn.C, H.text(zn.C.calcpad())); } }
 function one(tag, inp) { let D; try { D = RCSlabDesign.oneWay({ ...inp, bars: RCSlabDesign.suggestOneWay(inp) }); } catch (e) { return; } run(tag, RCSlabScript.zonesOne(D, inp)); }
 function two(tag, inp) { let T; try { const bars = { ...(inp.bars || {}), ...RCSlabDesign.suggestTwoWay(inp) }; T = RCSlabDesign.twoWay({ ...inp, bars }); inp = { ...inp, bars }; } catch (e) { return; } run(tag, RCSlabScript.zonesTwo(T, inp)); }
 // ---------- TCC31: every other slab ----------
@@ -61,5 +62,7 @@ for (const mask of [...Array(16).keys()]) for (const r of [1, 1.25, 1.5, 1.75, 2
     rule: pick(['6.10', '6.10ab']), psi0: 0.7, psi2: 0.3, selfWeight: rnd() < 0.8, gc: 25, wk: { top: 0.3, btm: 0.3 }, brittle: true });
 }
 console.log(`${zones} zones of ${slabs} slabs and panels`);
+// the whole calculation as one CalcPad check (.perega): its parts merged, every value still the tool's, as pasted and as opened
+{ const M = CalcScript.merge(firstZ.map(zn => ({ C: zn.C, title: zn.title })), { title: 'Whole' }); check('one check', M, H.text(M.calcpad())); check('one check, opened', M, H.doc(M.perega({}))); }
 console.log(`\n${n - bad}/${n} RC Slab values reproduced by CalcPad`);
 process.exit(bad ? 1 : 0);

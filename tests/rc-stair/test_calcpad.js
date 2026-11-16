@@ -17,7 +17,7 @@ function check(tag, C, Pc) {
   for (const it of C.items) {
     if (!it.name) continue; n++;
     const exp = it.t === 'chk' ? it.v : sb.CS.toSI(it.v, it.unit), got = Pc.vars[it.name];
-    const ok = got !== undefined && Math.abs(got - exp) <= 1e-6 * Math.abs(exp) + (it.name === 'N_res' ? 1e-2 : 1e-9);
+    const ok = got !== undefined && Math.abs(got - exp) <= 1e-6 * Math.abs(exp) + (/^N_res(_\d+)*$/.test(it.name) ? 1e-2 : 1e-9);
     if (!ok) { bad++; if (bad < 40) console.log('FAIL', tag, it.name, it.expr || '', 'tool', exp, 'calcpad', got); }
   }
   const er = Pc.chips.filter(c => c.err || c.dup); if (er.length) { bad++; console.log('CHIP', tag, er.slice(0, 3).map(c => c.text)); }
@@ -54,6 +54,8 @@ for (let t = 0; t < 40; t++) flight('r' + t, { fck: pick([25, 30, 32, 40]), cove
 (async () => {
   const list = Z0.map(zn => ({ C: zn.C, title: zn.title })), sz = x => JSON.stringify(x).length;
   const P = await sb.CS.project(list, { project: 'Test' }, 'Stair');
+  // the whole calculation as one CalcPad check (.perega): its parts merged, every value still the tool's, as pasted and as opened
+  { const M = sb.CS.merge(list, { title: 'Whole' }); check('one check', M, H.text(M.calcpad())); check('one check, opened', M, H.doc(M.perega({}))); }
   n++; if (P.checks.length !== Z0.length + 1 || !P.checks[0].shared) { bad++; console.log('FAIL the project has the wrong shape'); }
   H.project(P).slice(1).forEach((r, k) => check(`project ${r.name}`, Z0[k].C, r));
   console.log(`project: ${P.checks.length} checks, ${(sz(P) / 1e3).toFixed(0)} kB; ${zones} checks`);

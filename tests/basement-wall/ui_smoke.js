@@ -20,7 +20,7 @@ function page(store) {
   truth('no sliding or overturning check (slab and prop)', !/Sliding, DA1/.test(res()) && !/Overturning/.test(res()));
   const zones = () => [...$('results').querySelectorAll('details.zone summary')].map(s => s.textContent);
   truth('the full calculation: bearing in each combination, the wall both faces, toe, heel and restraint, with the CalcPad buttons', zones().filter(z => /^Bearing, /.test(z)).length === 4 && zones().some(z => /^Stem: back face/.test(z)) && zones().some(z => /^Stem: front face in the span/.test(z))
-    && zones().some(z => /^Heel: top face/.test(z)) && zones().some(z => /^Horizontal bars: early-age restraint/.test(z)) && $('results').querySelectorAll('details.zone [data-cp="copy"]').length === zones().length && $('results').querySelectorAll('[data-cp="proj"]').length === 1);
+    && zones().some(z => /^Heel: top face/.test(z)) && zones().some(z => /^Horizontal bars: early-age restraint/.test(z)) && $('results').querySelectorAll('details.zone [data-cp="copy"]').length === zones().length && $('results').querySelectorAll('[data-cp="all"]').length === 1);
   { const t = [...$('results').querySelectorAll('details.zone')].find(z => /^Stem: back face/.test(z.querySelector('summary').textContent)).textContent.replace(/\s/g, ''); truth('the stem: the prop force and the slab reaction stated, then the strip', /Propforce/.test(t) && /Reactionintotheslab/.test(t) && /A_?s,?req/.test(t)); }
   set('fixBase', 'pinned'); $('calc').click();
   truth('pinned at the slab: a result and the diagram says so', /PASS|FAIL/.test(res()) && /base pinned/.test(draw()));

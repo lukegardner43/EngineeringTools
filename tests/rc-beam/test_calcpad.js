@@ -19,7 +19,7 @@ function check(tag, C, P) {
     if (!it.name) continue; n++;
     const exp = it.t === 'chk' ? it.v : CalcScript.toSI(it.v, it.unit), got = P.vars[it.name];
     // (1e-9 absolute, in SI: a zone with no moment has steel and depths of order 1e-11 that CalcPad's rounding takes to 0)
-    const ok = got !== undefined && Math.abs(got - exp) <= 1e-6 * Math.abs(exp) + (it.name === 'N_res' ? 1e-2 : 1e-9);
+    const ok = got !== undefined && Math.abs(got - exp) <= 1e-6 * Math.abs(exp) + (/^N_res(_\d+)*$/.test(it.name) ? 1e-2 : 1e-9);
     if (!ok) { bad++; if (bad < 40) console.log('FAIL', tag, it.name, it.expr || '', 'tool', exp, 'calcpad', got); }
   }
   const er = P.chips.filter(c => c.err || c.dup); if (er.length) { bad++; console.log('CHIP', tag, er.slice(0, 3).map(c => c.text)); }
@@ -66,6 +66,8 @@ for (let t = 0; made < 40 && t < 400; t++) {
 // ---------- the project of the first random beam opens in CalcPad check by check with the same values ----------
 (async () => {
   const P = await CalcScript.project(first.Z.map(zn => ({ C: zn.C, title: zn.title })), { project: 'Test', job: '1' }, 'Beam');
+  // the whole calculation as one CalcPad check (.perega): its parts merged, every value still the tool's, as pasted and as opened
+  { const M = CalcScript.merge(first.Z.map(zn => ({ C: zn.C, title: zn.title })), { title: 'Whole' }); check('one check', M, H.text(M.calcpad())); check('one check, opened', M, H.doc(M.perega({}))); }
   // the values the zones repeat go once into a first check of shared values, which CalcPad gives to every other check:
   // each zone, opened in the project, still has every value of its own calculation; and the pack is smaller for it
   n++; if (P.kind !== 'calcpad-project' || P.checks.length !== first.Z.length + 1 || !P.checks[0].shared || P.checks.slice(1).some(c => c.shared)) { bad++; console.log('FAIL the project has the wrong shape'); }

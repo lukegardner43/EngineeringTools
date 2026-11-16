@@ -15,7 +15,7 @@ truth('wall panel first: reinforced inputs shown, plain hidden', shown($('pane-p
 $('calc').click();
 truth('panel: verdict, strip, N–M diagram, checks, values', /PASS|FAIL/.test(res()) && !!$('results').querySelector('svg.strip') && !!$('results').querySelector('svg.mn') && /9\.6\.2/.test(res()) && /λlim/.test(res()) && !$('results').querySelector('.err'));
 const zones = () => [...$('results').querySelectorAll('details.zone summary')].map(s => s.textContent);
-truth('panel: the full calculation, bending and the 9.6 rules, each with its CalcPad buttons, one project download', zones().length === 2 && /^Wall panel: axial load and bending/.test(zones()[0]) && /^Wall panel: reinforcement rules/.test(zones()[1]) && $('results').querySelectorAll('details.zone [data-cp="copy"]').length === 2 && $('results').querySelectorAll('[data-cp="proj"]').length === 1);
+truth('panel: the full calculation, bending and the 9.6 rules, each with its CalcPad buttons, one download of the whole as a single check', zones().length === 2 && /^Wall panel: axial load and bending/.test(zones()[0]) && /^Wall panel: reinforcement rules/.test(zones()[1]) && $('results').querySelectorAll('details.zone [data-cp="copy"]').length === 2 && $('results').querySelectorAll('[data-cp="all"]').length === 1);
 $('wl').value = '6000'; $('wN').value = '600'; $('calc').click();
 truth('panel: a slender wall shows Kr, Kφ and M2', /\(slender\)/.test(res()) && /Kr/.test(res()) && /M₂/.test(res()));
 $('wbr').value = 'unbraced'; $('calc').click(); truth('panel: unbraced', /unbraced wall/.test(res()) && /M02 \+ M2|e0 NEd/.test(res()));

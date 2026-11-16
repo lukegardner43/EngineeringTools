@@ -19,7 +19,7 @@ $('calc').click();
 truth('flat slab: verdict, elevation, moments, plan, strips, punching', /PASS|FAIL/.test(res()) && !!$('results').querySelector('svg.elev') && !!$('results').querySelector('svg.env') && !!$('results').querySelector('svg.plan') && $('results').querySelectorAll('svg.dk').length === 3 && /Punching at column/.test(res()) && /CS H/.test($('results').querySelector('svg.plan').textContent) && /Table I\.1/.test(res()) && /Punching shear at the columns/.test(res()) && !$('results').querySelector('.err'));
 truth('the governing check is named', /Governs: (Column|Span) \d/.test(res()));
 { const Z = $('results').querySelectorAll('details.zone');   // the loads, at each of 4 columns its two strips and punching, in each of 3 spans its two strips
-  truth('the full calculation: 19 zones, each with its CalcPad buttons, and one project download', Z.length === 19 && [...Z].every(z => z.querySelector('[data-cp="copy"]') && z.querySelector('[data-cp="save"]') && z.querySelector('.cs')) && $('results').querySelectorAll('[data-cp="proj"]').length === 1
+  truth('the full calculation: 19 zones, each with its CalcPad buttons, and one download of the whole as a single check', Z.length === 19 && [...Z].every(z => z.querySelector('[data-cp="copy"]') && z.querySelector('[data-cp="save"]') && z.querySelector('.cs')) && $('results').querySelectorAll('[data-cp="all"]').length === 1
     && /Column 2: column strip, top/.test(Z[6].textContent) && /9\.4\.1\(2\)/.test(Z[6].textContent) && /Column 1: punching shear/.test(Z[3].textContent) && /v_Rd,c|vRd,c|v<sub>Rd,c/.test(Z[3].innerHTML)); }
 truth('moment transfer to the end columns reported', /Mt,max/.test(res()) && /I\.1\.2\(5\)/.test(res()));
 const links = [...$('results').querySelectorAll('a.lnk')];

@@ -21,7 +21,7 @@ function page(store) {
   truth('governs: punching at 0.915', /0\.915/.test(res()) && /Governs: punching/.test(res()));
   { const Z = [...$('results').querySelectorAll('details.zone')].map(z => z.querySelector('summary').textContent);   // every check written out, each with its CalcPad buttons
     truth('the full calculation: the base, bearing and sliding in each combination, EQU, bending, shear and punching each way, the detailing', Z.length === 13 && /^Base, loads and ground/.test(Z[0]) && Z.some(z => /^Bearing, DA1-2/.test(z)) && Z.some(z => /^Sliding, DA1-1/.test(z)) && Z.some(z => /^Punching at the column face/.test(z)) && /^Minimum steel/.test(Z[12])
-      && $('results').querySelectorAll('details.zone [data-cp="copy"]').length === 13 && $('results').querySelectorAll('[data-cp="proj"]').length === 1); }
+      && $('results').querySelectorAll('details.zone [data-cp="copy"]').length === 13 && $('results').querySelectorAll('[data-cp="all"]').length === 1); }
   set('H', '350'); $('calc').click(); truth('a thin base fails', /FAIL/.test(res()));
   set('H', '600'); set('soil', 'undrained'); set('cu', '60'); $('calc').click();
   truth('undrained: c_u shown, φ′ hidden, D.3 resistance', !$('cu').closest('.form-group').hidden && $('phi').closest('.form-group').hidden && /Bearing, DA1-2/.test(res()));

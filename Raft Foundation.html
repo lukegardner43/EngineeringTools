@@ -380,7 +380,9 @@ const CalcScript = (() => {
       img(svg, caption) { items.push({ t: 'img', svg, caption }); return C; },
       // a CalcPad plot line (PLOT(...) or SECTION(...)): drawn live by CalcPad from the values; not on the page, which has its own drawings
       plot(src) { items.push({ t: 'plot', src }); return C; },
-      value: n => vals[n], has: n => names.has(n),
+      value: n => vals[n], has: n => names.has(n), sym: n => syms[n],
+      // an item as it is (merge() renames items and puts them in a check of their own)
+      raw(it, sym) { if (it.name) { name0(it.name); keep(it.name, it.v, it.t === 'chk' ? '' : it.unit, sym ? { sym } : null); } items.push(it); return C; },
       // ----- the full calculation, for the page and the A4 sheet -----
       html(opts = {}) {
         const sub = Object.fromEntries(Object.keys(vals).map(n => [n, { v: vals[n], unit: units[n] }]));
@@ -551,21 +553,53 @@ const CalcScript = (() => {
     }
     return { kind: 'calcpad-project', version: 1, name: fileSafe(name), activeId: checks.length ? checks[0].id : null, checks, savedAt: new Date().toISOString() };
   }
+  // every part of a calculation as one CalcPad check (one .perega), each part under its own heading, in order. A value a
+  // later part defines just as an earlier part did (the same name and the same value, or the same formula of the same
+  // values: the materials, the section, a load) is written once, where it first comes, and the later part says so; a name
+  // a later part defines differently takes the part's number (M_Ed → M_Ed_3), in that part's formulas too, so every value
+  // is still the tool's. list: [{ C, title }]
+  // a unit in brackets, or a name (one followed by a colon is an option of a PLOT or SECTION line, not a name)
+  const TOK = /(\[[^\]]*\])|([A-Za-z][A-Za-z0-9_]*)(\s*:)?/g;
+  function merge(list, meta = {}) {
+    const M = create({ ...(list[0] ? list[0].C.meta : {}), ...meta }), byKey = new Map();
+    list.forEach(({ C, title }, zi) => {
+      const k = zi + 1, ren = new Map(), re = s => String(s).replace(TOK, (t, u, n, colon) => u || colon ? t : (ren.get(n) || n));
+      if (list.length > 1) M.items.push({ t: 'h', text: `Part ${k}: ${title}` });
+      let hIdx = -1, same = [];
+      const flush = () => {
+        if (hIdx < 0) return;
+        if (M.items.length === hIdx + 1 && !same.length) M.items.splice(hIdx, 1);
+        else if (same.length) M.items.splice(hIdx + 1, 0, { t: 'p', text: `As in an earlier part: ${same.join(', ')}.` });
+        hIdx = -1; same = [];
+      };
+      for (const it of C.items) {
+        if (it.t === 'h') { flush(); hIdx = M.items.length; M.items.push(it); continue; }
+        if (!it.name) { M.items.push(it.t === 'plot' ? { ...it, src: re(it.src) } : it); continue; }
+        const core = it.core != null ? re(it.core) : null;
+        const key = JSON.stringify([it.t === 'chk' ? 'chk' : 'def', it.name, core != null ? `${core} [${it.spec}]` : `${lit(it.v)} ${it.unit}`]);
+        if (byKey.has(key)) { ren.set(it.name, byKey.get(key)); same.push(byKey.get(key)); continue; }
+        let nm = it.name;
+        if (M.has(nm)) { nm = `${it.name}_${k}`; for (let j = 2; M.has(nm); j++) nm = `${it.name}_${k}_${j}`; }
+        ren.set(it.name, nm); byKey.set(key, nm);
+        M.raw(core != null ? { ...it, name: nm, core, expr: `${core} [${it.spec}]` } : { ...it, name: nm }, C.sym(it.name));
+      }
+      flush();
+    });
+    return M;
+  }
   async function downloadProject(list, m, fileName) { save(JSON.stringify(await project(list, m, fileName), null, 2), fileName, '.peregaproj'); }
   // a tool with several zones (Z: [{ key, title, sum, util, C }]): the project button, then each zone as a <details> with its
   // own buttons and its full calculation; wire() answers the buttons (once per page, on a container that stays)
   const uf = u => (Number.isFinite(u) ? u.toFixed(3) : '>99');
-  // o.noProj: no project button (a page that shows its zones in several places, with one project button of its own).
-  // A calculation of one part downloads as one CalcPad check (.perega), never a project; a calculation of several parts
-  // offers each part as a check of its own and, above them, all of them together as a project (.peregaproj), because the
-  // parts reuse names (M_Ed, d, ...) that one check cannot hold twice.
+  // The whole calculation downloads as one CalcPad check (.perega): its parts merged in order (merge()). Each part also
+  // downloads on its own. o.noProj: no buttons for the whole (a page that shows its parts in several places and has its
+  // own buttons for the whole, data-cp="all" and "copyall").
+  const allTools = (n, msg = '') => `<div class="cs-tools"><button class="btn2" type="button" data-cp="all">Download CalcPad check (.perega)</button><button class="btn2" type="button" data-cp="copyall">Copy for CalcPad</button><span class="aux" data-cpmsg="all">${msg || (n > 1 ? `The whole calculation as one check, its ${n} parts in order. Each part below also downloads on its own.` : '')}</span></div>`;
   function zonesHTML(Z, o = {}) {
-    const one = Z.length === 1, k1 = one ? esc(Z[0].key) : '';
-    const top = o.noProj ? '' : one
-      ? `<div class="cs-tools"><button class="btn2" type="button" data-cp="save" data-zone="${k1}">Download CalcPad check (.perega)</button><button class="btn2" type="button" data-cp="copy" data-zone="${k1}">Copy for CalcPad</button><span class="aux" data-cpmsg="${k1}"></span></div>`
-      : `<div class="cs-tools"><button class="btn2" type="button" data-cp="proj">Download all ${Z.length} checks as one CalcPad project (.peregaproj)</button><span class="aux" data-cpmsg="proj">Or open a part below to download it as a single check (.perega).</span></div>`;
-    return top + Z.map(zn => `<details class="zone"><summary><span>${esc(zn.title)}${zn.sum ? `<small> · ${esc(zn.sum)}</small>` : ''}</span>${zn.util != null ? `<span class="u ${zn.util > 1 ? 'over' : ''}">${uf(zn.util)}</span>` : ''}</summary>`
-        + `<div class="zfull"><div class="cs-tools"><button class="btn2" type="button" data-cp="save" data-zone="${esc(zn.key)}">Download this check (.perega)</button><button class="btn2" type="button" data-cp="copy" data-zone="${esc(zn.key)}">Copy for CalcPad</button><span class="aux" data-cpmsg="${esc(zn.key)}"></span></div>${zn.C.html({ noImg: true })}</div></details>`).join('');
+    const many = Z.length > 1;
+    return (o.noProj ? '' : allTools(Z.length))
+      + Z.map(zn => `<details class="zone"><summary><span>${esc(zn.title)}${zn.sum ? `<small> · ${esc(zn.sum)}</small>` : ''}</span>${zn.util != null ? `<span class="u ${zn.util > 1 ? 'over' : ''}">${uf(zn.util)}</span>` : ''}</summary>`
+        + `<div class="zfull"><div class="cs-tools"><button class="btn2" type="button" data-cp="save" data-zone="${esc(zn.key)}">${many ? 'Download this part (.perega)' : 'Download CalcPad check (.perega)'}</button><button class="btn2" type="button" data-cp="copy" data-zone="${esc(zn.key)}">${many ? 'Copy this part' : 'Copy for CalcPad'}</button><span class="aux" data-cpmsg="${esc(zn.key)}"></span></div>${zn.C.html({ noImg: true })}</div></details>`).join('');
   }
   // getZ() → the zones shown; meta(title) → the project details; name(title) → a file name; proj: the project's title
   function wire(root, getZ, meta, name, proj) {
@@ -573,7 +607,10 @@ const CalcScript = (() => {
       const b = e.target.closest('[data-cp]'), Z = getZ(); if (!b || !Z) return;
       // the message goes beside the button pressed
       const msg = k => (b.closest('.cs-tools') && b.closest('.cs-tools').querySelector('[data-cpmsg]')) || root.querySelector(`[data-cpmsg="${k}"]`) || { textContent: '' };
-      if (b.dataset.cp === 'proj') { await downloadProject(Z.map(zn => ({ C: zn.C, title: zn.title })), meta(proj), name(proj)); msg('proj').textContent = 'Downloaded the project: open it in CalcPad with File ▸ Open project. Each part is a check of its own. For one part as a single check, open it below and use Download this check.'; return; }
+      const all = () => Z.length === 1 ? Z[0].C : merge(Z.map(zn => ({ C: zn.C, title: zn.title })), { title: proj });
+      if (b.dataset.cp === 'all') { await download(all(), meta(proj), name(proj)); msg('all').textContent = 'Downloaded the check (.perega): open it in CalcPad with File ▸ Open.'; return; }
+      if (b.dataset.cp === 'copyall') { const ok = await copy(all(), meta(proj)); msg('all').textContent = ok ? 'Copied: paste it into a CalcPad sheet.' : 'Could not copy: use Download CalcPad check.'; return; }
+      if (b.dataset.cp === 'proj') { await downloadProject(Z.map(zn => ({ C: zn.C, title: zn.title })), meta(proj), name(proj)); msg('proj').textContent = 'Downloaded the project: open it in CalcPad with File ▸ Open project.'; return; }
       const zn = Z.find(z => z.key === b.dataset.zone); if (!zn) return;
       if (b.dataset.cp === 'copy') { const ok = await copy(zn.C, meta(zn.title)); msg(zn.key).textContent = ok ? 'Copied: paste it into a CalcPad sheet.' : 'Could not copy: use Download this check.'; }
       else { await download(zn.C, meta(zn.title), name(zn.title)); msg(zn.key).textContent = 'Downloaded the check (.perega): open it in CalcPad with File ▸ Open.'; }
@@ -593,7 +630,7 @@ const CalcScript = (() => {
 .cs-sheet{font-size:9pt}.cs-sheet .cs-r{grid-template-columns:1fr 70pt;padding:1pt 0;break-inside:avoid}.cs-sheet .cs-h{font-size:10pt;margin:6pt 0 2pt}.cs-sheet .cs-d,.cs-sheet .cs-ref{font-size:8pt}.cs-sheet .cs-d{display:inline;margin-left:8pt}.cs-sheet .cs-p{margin:2pt 0}
 .zone .zfull{padding:0 10px 8px}.zone summary small{color:var(--faint,#6b6b6b);font-size:12px}.cs-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.cs-tools .btn2{width:auto;flex:0 0 auto;margin:0;padding:0 16px}
 @media print{.cs-tools{display:none}}`;
-  return { create, toSI, siUnit, factor, num, exprHTML, symHTML, unitHTML, tokens, rasterise, copy, download, project, downloadProject, zonesHTML, wire, sheetHTML, CSS };
+  return { create, toSI, siUnit, factor, num, exprHTML, symHTML, unitHTML, tokens, rasterise, copy, download, merge, project, downloadProject, zonesHTML, allTools, wire, sheetHTML, CSS };
 })();
 if (typeof module !== 'undefined') module.exports = { CalcScript };
 

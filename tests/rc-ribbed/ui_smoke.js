@@ -17,8 +17,8 @@ $('calc').click();
 truth('one-way: the defaults pass, with the drawings, checks, tables and zones', /PASS/.test(res()) && !!$('drawings').querySelector('svg.elev') && /Where the ribs start/.test(res()) && /Self-weight/.test(res()) && d.querySelectorAll('#results details.zone').length >= 6 && !$('results').querySelector('.err'));
 truth('the governing check is named', /Governs: /.test(res()));
 const zones = () => [...$('results').querySelectorAll('details.zone summary')].map(s => s.textContent);
-truth('one-way: the full calculation, check by check, with the CalcPad buttons and one project download', /^The ribs, loads and analysis/.test(zones()[0]) && zones().some(z => /^Support 2, span 1 side: hogging/.test(z)) && zones().some(z => /^Span 2: sagging/.test(z))
-  && zones().some(z => /^Span 1, right end: shear where the ribs start/.test(z)) && zones().some(z => /^Topping and ribs/.test(z)) && $('results').querySelectorAll('details.zone [data-cp="copy"]').length === zones().length && $('results').querySelectorAll('[data-cp="proj"]').length === 1);
+truth('one-way: the full calculation, check by check, with the CalcPad buttons and one download of the whole as a single check', /^The ribs, loads and analysis/.test(zones()[0]) && zones().some(z => /^Support 2, span 1 side: hogging/.test(z)) && zones().some(z => /^Span 2: sagging/.test(z))
+  && zones().some(z => /^Span 1, right end: shear where the ribs start/.test(z)) && zones().some(z => /^Topping and ribs/.test(z)) && $('results').querySelectorAll('details.zone [data-cp="copy"]').length === zones().length && $('results').querySelectorAll('[data-cp="all"]').length === 1);
 { const t = [...$('results').querySelectorAll('details.zone')].find(z => /^Span 2: sagging/.test(z.querySelector('summary').textContent)).textContent.replace(/\s/g, ''); truth('a span: the effective flange and the moment per rib from the moment per metre', /b_?eff/.test(t) && /m_?Ed/.test(t) && /K=M_Ed|K=MEd/.test(t)); }
 truth('spans without transverse ribs are noted (5.3.1(6))', /Transverse ribs \(5\.3\.1\(6\)/.test(res()));
 // the solid zone inputs reach the engine: the ribs start where it ends

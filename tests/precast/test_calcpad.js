@@ -83,6 +83,8 @@ for (let t = 0; t < 60; t++) {
 (async () => {
   for (const [Z, nm] of [[Z0, 'Bearing'], [Z1, 'Half-joint'], [Z2, 'Splice']]) {
     const P = await CalcScript.project(Z.map(zn => ({ C: zn.C, title: zn.title })), { project: 'Test' }, nm);
+    // the whole calculation as one CalcPad check (.perega): its parts merged, every value still the tool's, as pasted and as opened
+    { const M = CalcScript.merge(Z.map(zn => ({ C: zn.C, title: zn.title })), { title: 'Whole' }); check('one check', M, H.text(M.calcpad())); check('one check, opened', M, H.doc(M.perega({}))); }
     H.project(P).slice(-Z.length).forEach((r, k) => check(`project ${nm}`, Z[k].C, r));
   }
   console.log(`${joints} connections: ${Object.entries(kinds).map(([k, v]) => `${v} ${k}`).join(', ')}`);

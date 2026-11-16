@@ -17,7 +17,7 @@ truth('calculate: verdict, frame and moment drawings', /PASS|FAIL/.test(res()) &
 truth('floor selector, beam line views and tables', d.querySelectorAll('#floorSeg button').length === 4 && !!$('floorBox').querySelector('svg.elev') && $('floorBox').querySelectorAll('svg.env').length === 2 && /Curtailment/.test(res()));
 truth('columns table and base reactions', /Line 1, storey 1/.test(res()) && /Base reactions/.test(res()) && /λ/.test(res()));
 { const Z = w.eval('last.Z'), nCol = w.eval('last.D.C.length');
-  truth('full calculation: one project button, the frame check, each floor\'s zones and each column in and out of the plane, each with its CalcPad buttons', d.querySelectorAll('#results [data-cp="proj"]').length === 1 && /Frame: loads, combinations and analysis/.test(res())
+  truth('full calculation: one button for the whole as a single check, the frame check, each floor\'s zones and each column in and out of the plane, each with its CalcPad buttons', d.querySelectorAll('#results [data-cp="all"]').length === 1 && /Frame: loads, combinations and analysis/.test(res())
     && $('floorBox').querySelectorAll('details.zone [data-cp="copy"]').length === Z.floors[0].length && Z.cols.flat().length === 2 * nCol && d.querySelectorAll('#results details.zone').length === 1 + Z.floors[0].length + 2 * nCol
     && /Column line 1, storey 1: in the plane of the frame/.test(res()) && /from the analysis/.test(res()) && /cot θ/.test(res())); }
 d.querySelectorAll('#floorSeg button')[2].click();

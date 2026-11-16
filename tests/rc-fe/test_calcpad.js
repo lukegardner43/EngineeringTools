@@ -95,6 +95,8 @@ for (let t = 0; t < 10; t++) {
 (async () => {
   const list = Z0.map(zn => ({ C: zn.C, title: zn.title }));
   const P = await CalcScript.project(list, { project: 'Test' }, 'RC slab FE');
+  // the whole calculation as one CalcPad check (.perega): its parts merged, every value still the tool's, as pasted and as opened
+  { const M = CalcScript.merge(list, { title: 'Whole' }); check('one check', M, H.text(M.calcpad())); check('one check, opened', M, H.doc(M.perega({}))); }
   n++; if (P.checks.length !== Z0.length + 1 || !P.checks[0].shared) { bad++; console.log('FAIL the project has the wrong shape'); }
   H.project(P).slice(1).forEach((r, k) => check(`project ${r.name}`, Z0[k].C, r));
   console.log(`project: ${P.checks.length} checks, ${(JSON.stringify(P).length / 1e3).toFixed(0)} kB`);

@@ -14,7 +14,7 @@ truth('flight pane first', shown($('pane-flight')) && !shown($('pane-landing')))
 $('calc').click();
 truth('flight: verdict, elevation, grouped checks, values', /PASS|FAIL/.test(res()) && !!$('results').querySelector('svg.dk') && /Flight: sectional elevation/.test(res()) && /Landing A/.test(res()) && /Flight/.test(res()) && /Landing C/.test(res()) && /7\.4\.2/.test(res()) && /ULS reactions/.test(res()));
 const zones = () => [...$('results').querySelectorAll('details.zone summary')].map(s => s.textContent);
-truth('flight: the full calculation, the loads and each part, with the CalcPad buttons and one project download', /^Flight: geometry, loads/.test(zones()[0]) && zones().some(z => /^Flight: bottom steel/.test(z)) && $('results').querySelectorAll('details.zone [data-cp="copy"]').length === zones().length && $('results').querySelectorAll('[data-cp="proj"]').length === 1);
+truth('flight: the full calculation, the loads and each part, with the CalcPad buttons and one download of the whole as a single check', /^Flight: geometry, loads/.test(zones()[0]) && zones().some(z => /^Flight: bottom steel/.test(z)) && $('results').querySelectorAll('details.zone [data-cp="copy"]').length === zones().length && $('results').querySelectorAll('[data-cp="all"]').length === 1);
 $('pA').value = '600'; $('pC').value = '300'; $('calc').click();
 truth('projections: top steel checked at both supports', /Support at landing A \(top\)/.test(res()) && /Support at landing C \(top\)/.test(res()));
 truth('projections: each support’s top steel written out', zones().some(z => /^Support at landing A: top steel/.test(z)) && zones().some(z => /^Support at landing C: top steel/.test(z)));

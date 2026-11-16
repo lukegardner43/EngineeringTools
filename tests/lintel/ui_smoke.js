@@ -28,8 +28,8 @@ function page(store) {
   set('L', '0'); $('calc').click(); truth('a zero span is reported', !!$('results').querySelector('.err') && /Clear span/.test(res()));
   set('L', '1800'); set('phil', '6'); $('calc').click();
   const zones = () => [...$('results').querySelectorAll('details.zone summary')].map(s => s.textContent);
-  truth('the full calculation: the take-down, the section and the lintel checks, with the CalcPad buttons and one project download', zones().length === 3 && /^Loads on the lintel: the take-down/.test(zones()[0]) && /^The section: bending/.test(zones()[1]) && /^Links, lateral stability and bearing/.test(zones()[2])
-    && $('results').querySelectorAll('details.zone [data-cp="copy"]').length === 3 && $('results').querySelectorAll('[data-cp="proj"]').length === 1);
+  truth('the full calculation: the take-down, the section and the lintel checks, with the CalcPad buttons and one download of the whole as a single check', zones().length === 3 && /^Loads on the lintel: the take-down/.test(zones()[0]) && /^The section: bending/.test(zones()[1]) && /^Links, lateral stability and bearing/.test(zones()[2])
+    && $('results').querySelectorAll('details.zone [data-cp="copy"]').length === 3 && $('results').querySelectorAll('[data-cp="all"]').length === 1);
   { const t = $('results').querySelectorAll('details.zone')[1].textContent; truth('the section: M_Ed from the permanent and imposed parts, the shear at d, bending and span/depth', /M_?Ed/.test(t.replace(/\s/g, '')) && /γ_?G/.test(t.replace(/\s/g, '')) && /K = M_Ed|K = MEd/.test(t) && /span\/depth/i.test(t)); }
   $('printBtn').click(); truth('print: the A4 sheet with the drawings, the checks and the full calculation (drawings once)', w.printed && $('report').querySelectorAll('svg.dk').length === 5 && /3 Checks/.test($('report').textContent) && /4 Full calculation/.test($('report').textContent) && /K = M_Ed|K = MEd/.test($('report').textContent));
   // ---- check a Naylor lintel against the brochure ----

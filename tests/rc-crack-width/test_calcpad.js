@@ -71,6 +71,8 @@ for (let t = 0; t < 40; t++) wall(`random ${t}`, { h: pick([200, 250, 300, 400, 
 // ---------- the project opens in CalcPad with the same values ----------
 (async () => {
   const P = await CalcScript.project(Z0.map(zn => ({ C: zn.C, title: zn.title })), { project: 'Test' }, 'Crack control');
+  // the whole calculation as one CalcPad check (.perega): its parts merged, every value still the tool's, as pasted and as opened
+  { const M = CalcScript.merge(Z0.map(zn => ({ C: zn.C, title: zn.title })), { title: 'Whole' }); check('one check', M, H.text(M.calcpad())); check('one check, opened', M, H.doc(M.perega({}))); }
   H.project(P).slice(-Z0.length).forEach((r, k) => check(`project ${r.name}`, Z0[k].C, r));
   n++; if (errs.length) { bad++; console.log('PAGE ERRORS', errs.slice(0, 3)); }
   console.log(`${walls} walls; ${seen.size} kinds (configuration / R1 / governing early / long term / T1 / shrinkage)`);

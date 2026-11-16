@@ -55,6 +55,8 @@ for (let t = 0; t < 40; t++) building(`random ${t}`, { buildingUse: pick(['house
 // ---------- the project opens in CalcPad with the same values ----------
 (async () => {
   const P = await CalcScript.project(Z0.map(zn => ({ C: zn.C, title: zn.title })), { project: 'Test' }, 'Ties');
+  // the whole calculation as one CalcPad check (.perega): its parts merged, every value still the tool's, as pasted and as opened
+  { const M = CalcScript.merge(Z0.map(zn => ({ C: zn.C, title: zn.title })), { title: 'Whole' }); check('one check', M, H.text(M.calcpad())); check('one check, opened', M, H.doc(M.perega({}))); }
   H.project(P).slice(-Z0.length).forEach((r, k) => check(`project ${r.name}`, Z0[k].C, r));
   n++; if (errs.length) { bad++; console.log('PAGE ERRORS', errs.slice(0, 3)); }
   console.log(`${cases} buildings: ${[...seen].sort().join('; ')}`);

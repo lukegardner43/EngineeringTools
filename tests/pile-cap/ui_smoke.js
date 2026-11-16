@@ -23,7 +23,7 @@ function page(store) {
   truth('pile resistance checks appear', /safe working load/.test(res()) && /R_c,d|Rc,d/.test(res()));
   { const Z = [...$('results').querySelectorAll('details.zone')].map(z => z.querySelector('summary').textContent);   // every check written out, each with its CalcPad buttons
     truth('the full calculation: the cap, the pile loads, bending, shear, punching, anchorage and the detailing, each with its CalcPad buttons', /^Cap, piles and loads/.test(Z[0]) && Z.some(z => /^Pile load, DA1/.test(z)) && Z.some(z => /^Bending, bars along y/.test(z)) && Z.some(z => /^Shear across the cap, piles along x/.test(z)) && Z.some(z => /^Punching at the column face/.test(z)) && Z.some(z => /^Anchorage past the piles/.test(z)) && /^Minimum steel/.test(Z[Z.length - 1])
-      && $('results').querySelectorAll('details.zone [data-cp="copy"]').length === Z.length && $('results').querySelectorAll('[data-cp="proj"]').length === 1); }
+      && $('results').querySelectorAll('details.zone [data-cp="copy"]').length === Z.length && $('results').querySelectorAll('[data-cp="all"]').length === 1); }
   set('method', 'truss'); $('calc').click();
   truth('truss: ties and nodes', /Tie along x/.test(res()) && /Node under the column \(CCC\)/.test(res()) && /Node over the pile/.test(res()) && /struts/.test(draw()));
   truth('truss: the ties and nodes written out', [...$('results').querySelectorAll('details.zone summary')].some(s => /^Truss: ties and nodes/.test(s.textContent)));
