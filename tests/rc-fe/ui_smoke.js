@@ -26,7 +26,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   sel.value = 'pv2'; change(sel); truth('switching the plan to the top steel provided', $('results').querySelector('svg.map').dataset.key === 'pv2');
   sel.value = 'mx'; change(sel); truth('moments use the diverging scale', /hogging/.test($('results').querySelector('.scale').textContent));
   truth('the governing spot is marked', !!$('results').querySelector('svg.map circle'));
-  $('printBtn').click(); truth('print: six plans, tables and the summary', w.printed && $('report').querySelectorAll('svg.map').length === 6 && /Summary/.test($('report').textContent) && /Reinforcement/.test($('report').textContent));
+  const zones = [...$('results').querySelectorAll('details.zone')], zt = k => zones[k] ? zones[k].textContent.replace(/\s/g, '') : '';
+  truth('the full calculation: the slab, four layers, shear, six columns and the deflection, each with CalcPad buttons', zones.length === 13 && /^The slab, its loads/.test(zones[0].querySelector('summary').textContent) && zones.every(z => !!z.querySelector('[data-cp="copy"]')));
+  truth('full calculation: Wood–Armer, the strip design, punching, creep', /Wood–Armer/.test(zones[1].textContent) && /A_?s,?req/.test(zt(1)) && /Column A1: punching/.test(zones[6].textContent) && /φ_?RH/.test(zt(12)));
+  truth('each layer and the shear carry a plan with the governing element ringed (for CalcPad)', w.document && [1, 2, 3, 4, 5].every(k => !!w.eval(`last.Z[${k}].C.items[0].svg`)) && /<circle/.test(w.eval('last.Z[1].C.items[0].svg')));
+  $('printBtn').click(); truth('print: six plans, tables and the summary', w.printed && $('report').querySelectorAll('svg.map').length === 6 && /Summary/.test($('report').textContent) && /Reinforcement/.test($('report').textContent) && /Full calculation/.test($('report').textContent) && /Wood–Armer/.test($('report').textContent));
   // columns chosen on the plan
   d.querySelectorAll('#prev .ci')[0].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
   truth('clicking an intersection removes its column and switches to chosen columns', $('colAt').value === 'custom' && /5 columns/.test($('prevNote').textContent));
