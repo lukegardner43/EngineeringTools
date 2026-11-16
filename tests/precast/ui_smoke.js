@@ -18,6 +18,8 @@ function page(store) {
   truth('bearing drawing on load (Figure 10.6 chain)', d.querySelectorAll('#drawings svg.dk').length === 1 && /a required/.test(draw()) && /a provided 250/.test(draw()));
   $('calc').click();
   truth('bearing check: verdict, nominal length and stress', /PASS/.test(res()) && /Nominal bearing length a/.test(res()) && /Bearing stress/.test(res()) && /160/.test(res()));
+  const calcText = () => { const z = $('results').querySelector('details.zone'); return z ? z.textContent.replace(/\s/g, '') : ''; };
+  truth('bearing: the full calculation with its CalcPad buttons: f_Rd, the table column, (10.6)', $('results').querySelectorAll('details.zone').length === 1 && /^Bearing \(10\.9\.5\)/.test($('results').querySelector('details.zone summary').textContent) && /f_?Rd/.test(calcText()) && /Δa_?2/.test(calcText()) && !!$('results').querySelector('details.zone [data-cp="copy"]'));
   set('b_conn', 'dry'); $('calc').click(); truth('dry: the 0.3 f_cd check appears', /Dry connection/.test(res()));
   set('b_conn', 'pad'); set('b_tPad', '10'); set('b_lpad', '150'); $('calc').click(); truth('pad: the transverse steel of (10.5) and the pad length', /soft pad/.test(res()) && /Pad or bedding long enough/.test(res()) && !d.querySelector('.b-pad').hidden);
   set('b_aProv', '120'); $('calc').click(); truth('a short seating fails', /FAIL/.test(res()));
@@ -28,6 +30,7 @@ function page(store) {
   truth('half-joint: inputs shown, drawing with the strut-and-tie forces', !d.querySelector('.m-half').hidden && d.querySelector('.m-bearing').hidden && /F<tspan[^>]*>t<\/tspan> 198 kN/.test(draw()) && /a 186/.test(draw()));
   $('calc').click();
   truth('half-joint check: node, tie, hangers, bottom tie, bearing node, strut, shear, anchorages', ['Compression node at the hangers', 'Nib tie', 'Hangers at the re-entrant corner', 'Bottom tie', 'Bearing node', 'Strut from the bearing', 'Shear in the nib', 'loops', 'U-bars'].every(t => res().includes(t)) && /PASS/.test(res()));
+  truth('half-joint: the full calculation, the node at the hangers and the anchorages', /^Half-joint/.test($('results').querySelector('details.zone summary').textContent) && /a_?x/.test(calcText()) && /l_?b,?rqd/.test(calcText()) && /φ_?m,?min/.test(calcText()));
   set('j_alpha', '50'); set('j_nInc', '2'); $('calc').click(); truth('half-joint: inclined bars share the load', /Inclined bars/.test(res()) && /Links in the nib/.test(res()) && !d.querySelector('.j-inc').hidden);
   set('j_alpha', '0'); set('j_VEd', '600'); $('calc').click(); truth('half-joint: 600 kN fails', /FAIL/.test(res()));
   set('j_VEd', '200'); $('calc').click(); $('printBtn').click(); truth('half-joint print: the node layout and the checks', /Half-joint to BS EN 1992-1-1 10.9.4.6/.test($('report').textContent) && /CCIP-057/.test($('report').textContent));
@@ -35,6 +38,7 @@ function page(store) {
   truth('splice: section and elevation drawings', d.querySelectorAll('#drawings svg.dk').length === 2 && /8H25 in sleeves of 45 mm/.test(draw()) && /embedment 220/.test(draw()));
   $('calc').click();
   truth("splice check: N, M, shear across the bed and the maker's requirements", /Axial compression/.test(res()) && /Bending across h/.test(res()) && /Shear across the grout bed/.test(res()) && /Embedment/.test(res()) && /Grout strength/.test(res()) && /Clear spacing/.test(res()));
+  truth('splice: the full calculation, M_Rd by axis and the grout bed', /^Grouted sleeve splice/.test($('results').querySelector('details.zone summary').textContent) && /M_?Rd,?h/.test(calcText()) && /v_?Rdi/.test(calcText()));
   set('s_leProv', '150'); $('calc').click(); truth('splice: short embedment NOT MET', /NOT MET/.test(res()) && /FAIL/.test(res()));
   set('s_leProv', '220'); set('s_capMode', 'value'); set('s_Fk', '150'); set('s_NEd', '-300'); set('s_Mh', '0'); $('calc').click();
   truth('splice: a splice rated below the bar, in tension', /Tension across the joint/.test(res()) && /below the bar/.test(res()) && !d.querySelector('.s-cap').hidden);

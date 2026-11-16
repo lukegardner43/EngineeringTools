@@ -253,6 +253,8 @@ Build order and the planned CalcPad round trip / EngineeringSuite repo: see [doc
 
 **Basement Wall** is the sixteenth: its engine is the Retaining Wall's, propped at the ground floor, so its full calculation is `RetWallScript` too (no sliding or overturning where the slab holds the base and the prop restrains the top; the prop force and the slab reaction stated with the wall; the back face at the base and the front face in the span; the toe and heel; the early-age bars). `tests/basement-wall/test_calcpad.js`: the TCC61 walls (outputs only), set cases and 40 random basement walls (39,098 values).
 
+**Precast Connections** is the seventeenth (`precast/script.js`), one calculation for each kind. A bearing: f_Rd (bedded, a pad, or dry at 0.4 f_cd), the column of Tables 10.2 and 10.3 that σ_Ed/f_cd falls in (the iteration stated), a_1 to a_3, Δa_2 and Δa_3 by formula, the nominal length (10.6), the stress, a dry connection's 0.3 f_cd, a soft pad's transverse steel (10.5). A half-joint: the share of each model, the node at the hangers (a_x at k₂ν′f_cd, z from z² − d_n z + a_x a/2 = 0), the ties, the bearing node, the strut, the nib's shear limit, and each anchorage (l_b,rqd and l_bd, then a loop or U-bar's mandrel by (8.1)). A grouted sleeve splice: the joint's f_ck, N_Rd, M_Rd about each axis with N_Ed (by bisection, stated), (5.39), shear across the grout bed (6.2.5) and the maker's data. `tests/precast/test_calcpad.js`: set cases of each kind and 60 random connections (5,529 values).
+
 | Tedds entry | Module | Status |
 |---|---|---|
 | RC Column Design | RC Column Design | Done (checked and reworked November 2026) |
