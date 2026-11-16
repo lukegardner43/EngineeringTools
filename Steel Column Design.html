@@ -1676,9 +1676,10 @@ const Design = (() => {
 
     // In-plane buckling length of a cantilever under axial compression: the tip is free to sway vertically, so
     // Lcr,y comes from the buckling load of the whole beam on its supports (a fixed 2L would be unconservative
-    // where the root is a continuous support rather than a built-in end)
+    // where the root is a continuous support rather than a built-in end). Found too with no compression when the interaction
+    // is checked (horizontal loads): N_cr,y must be finite there, or n_y = 0/0
     let LcryCant = null;
-    if (N > 0 && lay.mem.some(m => m.kind !== 'span')) {
+    if ((N > 0 || hasH) && lay.mem.some(m => m.kind !== 'span')) {
       const Ncry = EC3.ncrFE({ L: lay.Ltot, EI: EC3.E * sec.Iy, restraints: lay.sup.map(s => ({ x: s.x, type: s.type === 'fixed' ? 'fixed' : 'pin' })), nEl: 80 });
       LcryCant = Ncry > 0 ? Math.PI * Math.sqrt(EC3.E * sec.Iy / Ncry) : Infinity;
     }
@@ -1744,18 +1745,20 @@ const Design = (() => {
       for (const { cb, ci, own, ownH } of order) {
         out.ltbStats.candidates++;
         const fac = [cb.gG, ...cb.qFac], c = combRes[ci];
-        let Cmy = null, CmLT = null, Cmz = 1, MzEd = 0;
+        let Cmy = null, CmLT = null, Cmz = 1, MzEd = 0, cmO = null;   // cmO: the Table B.3 rows behind them (for the full calculation)
         if (doInt) {
           let memSt = memStCache.get(ci); if (!memSt) memStCache.set(ci, memSt = segmentData(res, c, m.x0, m.x1));
           if (ownH) {                // minor-axis bending between supports: Cmz over the member (sway for a cantilever)
             const mh = segmentData(resH, combResH[ci], m.x0, m.x1);
             MzEd = ownH.Mmax;
-            Cmz = m.kind !== 'span' ? 0.9 : mh.Mmax > 0 ? EC3.cmFactor(mh.xs, mh.Ms, mh.qs.some(v => Math.abs(v) > 1e-9), mh.P.length > 0).Cm : 1;
+            const cz = m.kind !== 'span' ? { sway: true, Cm: 0.9 } : mh.Mmax > 0 ? EC3.cmFactor(mh.xs, mh.Ms, mh.qs.some(v => Math.abs(v) > 1e-9), mh.P.length > 0) : { row: 'zero', Cm: 1 };
+            Cmz = cz.Cm; cmO = { z: cz };
           }
           // Table B.3: sway buckling mode (cantilever, or a span with Lcr,y > L) -> Cmy = 0.9. A free-tip LT segment is outside Table B.3:
           // CmLT = 1.0, the upper limit, is taken (kzy increases with CmLT, so this is the conservative choice)
-          Cmy = (m.kind !== 'span' || ky[sg.mem] > 1 + 1e-9) ? 0.9 : EC3.cmFactor(memSt.xs, memSt.Ms, memSt.qs.some(v => Math.abs(v) > 1e-9), memSt.P.length > 0).Cm;
-          CmLT = sg.free ? 1.0 : EC3.cmFactor(own.xs, own.Ms, own.qs.some(v => Math.abs(v) > 1e-9), own.P.length > 0).Cm;
+          const cy = (m.kind !== 'span' || ky[sg.mem] > 1 + 1e-9) ? { sway: true, Cm: 0.9 } : EC3.cmFactor(memSt.xs, memSt.Ms, memSt.qs.some(v => Math.abs(v) > 1e-9), memSt.P.length > 0);
+          const cl = sg.free ? { free: true, Cm: 1.0 } : EC3.cmFactor(own.xs, own.Ms, own.qs.some(v => Math.abs(v) > 1e-9), own.P.length > 0);
+          Cmy = cy.Cm; CmLT = cl.Cm; cmO = { ...(cmO || {}), y: cy, LT: cl };
         }
         // screening bound
         let muUb = 0; fac.forEach((f, g) => { if (f) muUb += f * sm.muG[g]; });
@@ -1768,7 +1771,7 @@ const Design = (() => {
         if (own.Mmax < 1) {          // minor-axis bending only in this segment and combination: no lateral-torsional buckling
           out.ltbStats.solved++;
           const ir = interaction(sec, fy, cls, Nc, abk, own.Mmax, 1, Cmy, CmLT, MzEd, Cmz, annexA ? annexAParams(sm, own, sg, m, ci, abk, null) : null);
-          track(out.gov, 'interaction', ir.util, { combo: cb.label, seg: si, ir, ab: abk, chiLT: 1, swayY: m.kind !== 'span' || ky[sg.mem] > 1 + 1e-9, freeLT: !!sg.free, MzEd });
+          track(out.gov, 'interaction', ir.util, { combo: cb.label, seg: si, ir, ab: abk, chiLT: 1, swayY: m.kind !== 'span' || ky[sg.mem] > 1 + 1e-9, freeLT: !!sg.free, MzEd, MyEd: own.Mmax, cm: cmO, lt: null });
           bestInt = Math.max(bestInt, ir.util);
           continue;
         }
@@ -1787,7 +1790,7 @@ const Design = (() => {
         track(out.gov, 'ltb', r.util, { ...r });
         if (doInt) {
           const ir = interaction(sec, fy, cls, Nc, abk, own.Mmax, lt.chiMod, Cmy, CmLT, MzEd, Cmz, annexA ? annexAParams(sm, own, sg, m, ci, abk, sm.CQ ? sm.md.lambda(CM) : lam) : null);
-          track(out.gov, 'interaction', ir.util, { combo: cb.label, seg: si, ir, ab: abk, chiLT: lt.chiMod, swayY: m.kind !== 'span' || ky[sg.mem] > 1 + 1e-9, freeLT: !!sg.free, MzEd });
+          track(out.gov, 'interaction', ir.util, { combo: cb.label, seg: si, ir, ab: abk, chiLT: lt.chiMod, swayY: m.kind !== 'span' || ky[sg.mem] > 1 + 1e-9, freeLT: !!sg.free, MzEd, MyEd: own.Mmax, cm: cmO, lt: r });
           bestInt = Math.max(bestInt, ir.util);
         }
       }

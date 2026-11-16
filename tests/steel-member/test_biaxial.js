@@ -44,7 +44,9 @@ near('horizontal deflection (characteristic) 5wL^4/384EIz', Math.abs(r.memDefl[0
 // cantilever with a horizontal tip load: sway mode, Cmz = 0.9
 { const rc = Design.designBeam({ ...base, spans: [], cantR: 2000, endLeft: 'fixed', restraint: [{ mode: 'ends' }], tipRestrained: { R: false },
     loads: [{ case: 'G', member: 0, type: 'point', P: 5e3, a: 2000, dir: 'h' }, { case: 'G', member: 0, type: 'udl', w: 5 }] });
-  near('cantilever: Cmz = 0.9 (sway)', rc.gov.interaction.ir.Cmz, 0.9, 1e-12); }
+  near('cantilever: Cmz = 0.9 (sway)', rc.gov.interaction.ir.Cmz, 0.9, 1e-12);
+  truthy('cantilever, no axial force: the interaction is a number (N_cr,y from the whole beam, n_y = 0)', Number.isFinite(rc.gov.interaction.util) && Number.isFinite(rc.utilMax));
+  near('cantilever, no axial force: n_y = 0', rc.gov.interaction.ir.nY, 0, 1e-12); }
 // member mode: Mz with N = 0 now gets the 6.3.3 interaction
 { const rm = Design.designMember({ sec, grade: 'S355', L: 4000, N: 0, MyT: 100e6, MyB: 0, MzT: 20e6, MzB: 0, ky: 1, kz: 1, nLT: 1 });
   truthy('member mode: biaxial bending with N = 0 is checked by 6.61/6.62', !!rm.gov.interaction);

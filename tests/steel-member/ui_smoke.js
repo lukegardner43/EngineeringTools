@@ -50,7 +50,11 @@ const block = (h, id) => h.match(new RegExp(`<script id="${id}">([\\s\\S]*?)</sc
     truth('beam page: one span with G and Q loads by default', d.querySelectorAll('#spanRows .row').length === 1 && d.querySelectorAll('#loadRows .row').length === 2);
     await calc(w); const r = $('results').textContent;
     truth('beam page: results with combinations, LTB, bearing and deflection', /ULS combinations/.test(r) && /Lateral-torsional buckling/.test(r) && /Web bearing/.test(r) && /Deflection/.test(r) && !$('results').querySelector('.err'));
-    $('printBtn').click(); truth('beam page: A4 sheet names the tool', w.printed && /Steel Beam Analysis & Design/.test($('report').textContent));
+    { const z = [...$('results').querySelectorAll('details.zone')], t = q => q.textContent.replace(/\s/g, '');
+      truth('beam page: the full calculation, part by part, with CalcPad buttons', z.length >= 7 && /^Section, steel and class/.test(z[0].querySelector('summary').textContent) && z.every(q => !!q.querySelector('[data-cp="save"]')) && $('results').querySelectorAll('[data-cp="all"]').length === 1);
+      truth('beam page: loads and combinations, the cross-section, LTB, web bearing and deflection written out', z.some(q => /Loads, combinations/.test(q.textContent) && /γ/.test(q.textContent)) && z.some(q => /Cross-section at x/.test(q.textContent)) && z.some(q => /Lateral-torsional/.test(q.textContent) && /M_?cr|Mcr/.test(t(q))) && z.some(q => /Web bearing/.test(q.textContent) && /(6\.14)|F_?Rd|FRd/.test(t(q))) && z.some(q => /Deflection/.test(q.textContent) && /NA\.2\.23/.test(q.textContent)));
+    }
+    $('printBtn').click(); truth('beam page: A4 sheet names the tool', w.printed && /Steel Beam Analysis & Design/.test($('report').textContent) && /Full calculation/.test($('report').textContent));
     truth('beam page: inputs saved under its own key', !!w.localStorage.getItem('et-steel-beam-v1'));
     truth('beam page: no script errors', w.errs.length === 0); }
   // a beam set up in the combined page before the split opens in the beam page; a member set-up stays in the member page

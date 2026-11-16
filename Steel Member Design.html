@@ -2322,9 +2322,10 @@ const Design = (() => {
 
     // In-plane buckling length of a cantilever under axial compression: the tip is free to sway vertically, so
     // Lcr,y comes from the buckling load of the whole beam on its supports (a fixed 2L would be unconservative
-    // where the root is a continuous support rather than a built-in end)
+    // where the root is a continuous support rather than a built-in end). Found too with no compression when the interaction
+    // is checked (horizontal loads): N_cr,y must be finite there, or n_y = 0/0
     let LcryCant = null;
-    if (N > 0 && lay.mem.some(m => m.kind !== 'span')) {
+    if ((N > 0 || hasH) && lay.mem.some(m => m.kind !== 'span')) {
       const Ncry = EC3.ncrFE({ L: lay.Ltot, EI: EC3.E * sec.Iy, restraints: lay.sup.map(s => ({ x: s.x, type: s.type === 'fixed' ? 'fixed' : 'pin' })), nEl: 80 });
       LcryCant = Ncry > 0 ? Math.PI * Math.sqrt(EC3.E * sec.Iy / Ncry) : Infinity;
     }
@@ -2390,18 +2391,20 @@ const Design = (() => {
       for (const { cb, ci, own, ownH } of order) {
         out.ltbStats.candidates++;
         const fac = [cb.gG, ...cb.qFac], c = combRes[ci];
-        let Cmy = null, CmLT = null, Cmz = 1, MzEd = 0;
+        let Cmy = null, CmLT = null, Cmz = 1, MzEd = 0, cmO = null;   // cmO: the Table B.3 rows behind them (for the full calculation)
         if (doInt) {
           let memSt = memStCache.get(ci); if (!memSt) memStCache.set(ci, memSt = segmentData(res, c, m.x0, m.x1));
           if (ownH) {                // minor-axis bending between supports: Cmz over the member (sway for a cantilever)
             const mh = segmentData(resH, combResH[ci], m.x0, m.x1);
             MzEd = ownH.Mmax;
-            Cmz = m.kind !== 'span' ? 0.9 : mh.Mmax > 0 ? EC3.cmFactor(mh.xs, mh.Ms, mh.qs.some(v => Math.abs(v) > 1e-9), mh.P.length > 0).Cm : 1;
+            const cz = m.kind !== 'span' ? { sway: true, Cm: 0.9 } : mh.Mmax > 0 ? EC3.cmFactor(mh.xs, mh.Ms, mh.qs.some(v => Math.abs(v) > 1e-9), mh.P.length > 0) : { row: 'zero', Cm: 1 };
+            Cmz = cz.Cm; cmO = { z: cz };
           }
           // Table B.3: sway buckling mode (cantilever, or a span with Lcr,y > L) -> Cmy = 0.9. A free-tip LT segment is outside Table B.3:
           // CmLT = 1.0, the upper limit, is taken (kzy increases with CmLT, so this is the conservative choice)
-          Cmy = (m.kind !== 'span' || ky[sg.mem] > 1 + 1e-9) ? 0.9 : EC3.cmFactor(memSt.xs, memSt.Ms, memSt.qs.some(v => Math.abs(v) > 1e-9), memSt.P.length > 0).Cm;
-          CmLT = sg.free ? 1.0 : EC3.cmFactor(own.xs, own.Ms, own.qs.some(v => Math.abs(v) > 1e-9), own.P.length > 0).Cm;
+          const cy = (m.kind !== 'span' || ky[sg.mem] > 1 + 1e-9) ? { sway: true, Cm: 0.9 } : EC3.cmFactor(memSt.xs, memSt.Ms, memSt.qs.some(v => Math.abs(v) > 1e-9), memSt.P.length > 0);
+          const cl = sg.free ? { free: true, Cm: 1.0 } : EC3.cmFactor(own.xs, own.Ms, own.qs.some(v => Math.abs(v) > 1e-9), own.P.length > 0);
+          Cmy = cy.Cm; CmLT = cl.Cm; cmO = { ...(cmO || {}), y: cy, LT: cl };
         }
         // screening bound
         let muUb = 0; fac.forEach((f, g) => { if (f) muUb += f * sm.muG[g]; });
@@ -2414,7 +2417,7 @@ const Design = (() => {
         if (own.Mmax < 1) {          // minor-axis bending only in this segment and combination: no lateral-torsional buckling
           out.ltbStats.solved++;
           const ir = interaction(sec, fy, cls, Nc, abk, own.Mmax, 1, Cmy, CmLT, MzEd, Cmz, annexA ? annexAParams(sm, own, sg, m, ci, abk, null) : null);
-          track(out.gov, 'interaction', ir.util, { combo: cb.label, seg: si, ir, ab: abk, chiLT: 1, swayY: m.kind !== 'span' || ky[sg.mem] > 1 + 1e-9, freeLT: !!sg.free, MzEd });
+          track(out.gov, 'interaction', ir.util, { combo: cb.label, seg: si, ir, ab: abk, chiLT: 1, swayY: m.kind !== 'span' || ky[sg.mem] > 1 + 1e-9, freeLT: !!sg.free, MzEd, MyEd: own.Mmax, cm: cmO, lt: null });
           bestInt = Math.max(bestInt, ir.util);
           continue;
         }
@@ -2433,7 +2436,7 @@ const Design = (() => {
         track(out.gov, 'ltb', r.util, { ...r });
         if (doInt) {
           const ir = interaction(sec, fy, cls, Nc, abk, own.Mmax, lt.chiMod, Cmy, CmLT, MzEd, Cmz, annexA ? annexAParams(sm, own, sg, m, ci, abk, sm.CQ ? sm.md.lambda(CM) : lam) : null);
-          track(out.gov, 'interaction', ir.util, { combo: cb.label, seg: si, ir, ab: abk, chiLT: lt.chiMod, swayY: m.kind !== 'span' || ky[sg.mem] > 1 + 1e-9, freeLT: !!sg.free, MzEd });
+          track(out.gov, 'interaction', ir.util, { combo: cb.label, seg: si, ir, ab: abk, chiLT: lt.chiMod, swayY: m.kind !== 'span' || ky[sg.mem] > 1 + 1e-9, freeLT: !!sg.free, MzEd, MyEd: own.Mmax, cm: cmO, lt: r });
           bestInt = Math.max(bestInt, ir.util);
         }
       }
@@ -3292,25 +3295,31 @@ const EC3Script = (() => {
       C.check('U_LT', `${M}/M_bRd`, lt.util, 'bending of the member', '6.3.2.1');
       return lt.util;
     }
-    C.calc('M_cr0', 'PI()/L_LT*SQRT(E*I_z*G*I_t*(1 + PI()^2*E*I_w/(L_LT^2*G*I_t)))', EC3.mcrUniform(s, o.Lseg) / 1e6, 'kNm', 'elastic critical moment for uniform moment between forks', 'SN003, NCCI', { sym: 'M_cr,0' });
-    if (o.over) {
+    const unb = !Number.isFinite(lt.Mcr);
+    if (unb) C.note(`${o.McrHow ? `M_cr by ${o.McrHow}` : 'M_cr by finite elements'}: no lateral-torsional buckling mode under this moment (the compression flange is held), so M_cr is unbounded and λ̄_LT = 0.`);
+    else C.calc('M_cr0', 'PI()/L_LT*SQRT(E*I_z*G*I_t*(1 + PI()^2*E*I_w/(L_LT^2*G*I_t)))', EC3.mcrUniform(s, o.Lseg) / 1e6, 'kNm', 'elastic critical moment for uniform moment between forks', 'SN003, NCCI', { sym: 'M_cr,0' });
+    if (unb) { /* nothing more to find */ }
+    else if (o.over) {
       C.given('C_1', lt.C1, '', 'from the moment diagram of the member: M_cr by finite elements over its length over M_cr,0 of the same length', 'finite elements', '', { sym: 'C_1' });
       C.calc('M_cr', 'C_1*M_cr0', lt.Mcr / 1e6, 'kNm', 'elastic critical moment over L_LT', '', { sym: 'M_cr' });
     } else {
       C.given('M_cr', lt.Mcr / 1e6, 'kNm', 'elastic critical moment of the segment', o.McrHow || 'finite elements (beam elements with warping: forks at the restraints, the moment diagram of the segment, loads at the shear centre)', '6.3.2.2(2)', { sym: 'M_cr' });
-      if (lt.C1 != null) C.calc('C_1', 'M_cr/M_cr0', lt.C1, '', 'equivalent uniform moment factor implied', '', { sym: 'C_1' });
+      if (lt.C1 != null && o.C1given) C.given('C_1', lt.C1, '', 'equivalent uniform moment factor of the moment diagram alone', 'M_cr with the loads at the shear centre (finite elements) over M_cr,0: the load height is left out of k_c', '6.3.2.3(2)', { sym: 'C_1' });
+      else if (lt.C1 != null) C.calc('C_1', 'M_cr/M_cr0', lt.C1, '', 'equivalent uniform moment factor implied', '', { sym: 'C_1' });
     }
     const Wn = cls <= 2 ? 'W_ply' : cls === 3 ? 'W_ely' : null;
     if (Wn) C.calc('W_yLT', Wn, lt.Wy / 1e3, 'cm3', `Class ${cls}: ${cls <= 2 ? 'plastic' : 'elastic'} modulus`, '6.3.2.2(1)', { sym: 'W_y' });
     else C.given('W_yLT', lt.Wy / 1e3, 'cm3', 'Class 4: effective modulus', 'EN 1993-1-5 4.4', '6.3.2.2(1)', { sym: 'W_eff,y' });
-    C.calc('lam_LT', 'SQRT(W_yLT*f_y/M_cr)', lt.lamLT, '', 'non-dimensional slenderness', '6.3.2.2(1)', { sym: 'λ̄_LT' });
+    if (unb) C.input('lam_LT', 0, '', 'M_cr unbounded', '6.3.2.2(1)', { sym: 'λ̄_LT' });
+    else C.calc('lam_LT', 'SQRT(W_yLT*f_y/M_cr)', lt.lamLT, '', 'non-dimensional slenderness', '6.3.2.2(1)', { sym: 'λ̄_LT' });
     const rolled = lt.method === '6.3.2.3';
     const why = s.shape === 'RHS' ? `${s.cold ? 'cold-formed' : 'hot-finished'} hollow section, h/b = ${f2(s.h / s.b)}` : s.shape === 'PFC' ? 'a hot-rolled channel' : `${s.rolled ? 'rolled' : 'welded'} I, h/b = ${f2(s.h / s.b)}`;
     C.note(`${rolled ? '6.3.2.3 with the UK NA (NA.2.17)' : '6.3.2.2'}: ${why}, buckling curve ${lt.curve}.`);
     C.input('lam_LT0', lt.lam0, '', 'plateau length', rolled ? '6.3.2.3, UK NA' : '6.3.2.2', { sym: 'λ̄_LT,0' });
     C.input('beta_LT', lt.beta, '', '', rolled ? '6.3.2.3, UK NA' : '6.3.2.2', { sym: 'β' });
     C.input('alpha_LT', lt.alpha, '', `imperfection factor, curve ${lt.curve}`, 'Table 6.3, UK NA', { sym: 'α_LT' });
-    if (lt.ignored) {
+    if (lt.ignored && unb) C.input('chi_LTm', 1, '', 'λ̄_LT = 0: no reduction', '6.3.2.2(4)', { sym: 'χ_LT,mod' });
+    else if (lt.ignored) {
       C.calc('r_Mcr', `${M}/M_cr`, lt.Mmax / lt.Mcr, '', `λ̄_LT ≤ λ̄_LT,0 or M_Ed/M_cr ≤ λ̄_LT,0² (= ${f3(lt.lam0 ** 2)}): buckling may be ignored`, '6.3.2.2(4), 6.3.2.3', { sym: 'M_Ed/M_cr' });
       C.input('chi_LTm', 1, '', 'no reduction', '6.3.2.2(4)', { sym: 'χ_LT,mod' });
     } else {
@@ -3318,7 +3327,7 @@ const EC3Script = (() => {
       C.calc('chi_LT', 'MIN(1, 1/lam_LT^2, 1/(Phi_LT + SQRT(Phi_LT^2 - beta_LT*lam_LT^2)))', lt.chi, '', '', rolled ? '6.3.2.3 (6.57)' : '6.3.2.2 (6.56)', { sym: 'χ_LT' });
       if (rolled) {
         if (lt.C1 && lt.C1 > 1) C.calc('k_c', 'MAX(0.6, MIN(1, 1/SQRT(C_1)))', lt.kc, '', 'correction factor k_c = 1/√C₁, not less than 0.6', '6.3.2.3(2), Table 6.6', { sym: 'k_c' });
-        else C.input('k_c', lt.kc, '', 'uniform moment (C₁ = 1)', 'Table 6.6', { sym: 'k_c' });
+        else C.input('k_c', lt.kc, '', o.kcHow || (lt.C1 != null ? 'C₁ not more than 1: k_c = 1' : 'uniform moment (C₁ = 1)'), 'Table 6.6', { sym: 'k_c' });
         C.calc('f_LT', 'MIN(1, 1 - 0.5*(1 - k_c)*(1 - 2*(lam_LT - 0.8)^2))', lt.f, '', '', '6.3.2.3(2) (6.58)', { sym: 'f' });
         C.calc('chi_LTm', 'MIN(1, 1/lam_LT^2, chi_LT/f_LT)', lt.chiMod, '', 'modified for the moment distribution', '6.3.2.3(2) (6.58)', { sym: 'χ_LT,mod' });
       } else C.calc('chi_LTm', 'chi_LT', lt.chiMod, '', 'no modification under 6.3.2.2', '6.3.2.2', { sym: 'χ_LT' });
@@ -3333,6 +3342,7 @@ const EC3Script = (() => {
   function cmFactor(C, name, cm, how, sym) {
     if (cm.sway) { C.input(name, 0.9, '', `${how}: a sway buckling mode (L_cr longer than the member)`, 'Table B.3 note', { sym }); return; }
     if (cm.row === 'zero') { C.input(name, 1, '', `${how}: no moment`, 'Table B.3', { sym }); return; }
+    if (cm.free) { C.input(name, 1, '', `${how}: a segment with a free tip is outside Table B.3; 1.0, the upper limit, is taken`, 'Table B.3', { sym }); return; }
     const p = name.replace(/^C_m/, '');
     C.input(`psi_${p}`, cm.psi, '', `${how}: ψ, the smaller end moment over the larger`, 'Table B.3', { sym: `ψ_${p}` });
     if (cm.row === 'linear') { C.calc(name, `MAX(0.4, 0.6 + 0.4*psi_${p})`, cm.Cm, '', `${how}: linear moment`, 'Table B.3', { sym }); return; }
@@ -3397,8 +3407,14 @@ const EC3Script = (() => {
     if (s.shape === 'CHS') C.input('lam_0', k.lam0, '', 'a circular hollow section: λ̄₀ = 0', 'Table A.2', { sym: 'λ̄₀' });
     else {
       if (!C.has('W_yLT')) { const W = cls <= 2 ? 'W_ply' : cls === 3 ? 'W_ely' : null; if (W) C.calc('W_yLT', W, (cls <= 2 ? s.Wply : s.Wely) / 1e3, 'cm3', `Class ${cls}`, '6.3.2.2(1)', { sym: 'W_y' }); else C.given('W_yLT', EC3.wyByClass(s, fy, cls) / 1e3, 'cm3', 'Class 4: effective modulus', 'EN 1993-1-5 4.4', '', { sym: 'W_eff,y' }); }
+      if (o.lam0Given && !(ir.lam0 > 0)) C.input('lam_0', 0, '', 'no lateral-torsional buckling of the segment under a uniform moment (M_cr,0 unbounded)', 'Table A.2', { sym: 'λ̄₀' });
+      else if (o.lam0Given) {
+        C.given('M_cr0A', ir.lam0 > 0 ? EC3.wyByClass(s, fy, cls) * fy / ir.lam0 ** 2 / 1e6 : Infinity, 'kNm', 'elastic critical moment of the segment under a uniform moment', o.Mcr0How || 'finite elements: the model of the segment used for M_cr, with a uniform moment', 'Table A.2', { sym: 'M_cr,0' });
+        C.calc('lam_0', 'SQRT(W_yLT*f_y/M_cr0A)', k.lam0, '', 'λ̄₀: the slenderness for lateral-torsional buckling under uniform moment', 'Table A.2', { sym: 'λ̄₀' });
+      } else {
       if (!C.has('M_cr0')) C.calc('M_cr0', 'PI()/L_LT*SQRT(E*I_z*G*I_t*(1 + PI()^2*E*I_w/(L_LT^2*G*I_t)))', o.Mcr0 / 1e6, 'kNm', 'elastic critical moment for uniform moment between forks', 'SN003, NCCI', { sym: 'M_cr,0' });
       C.calc('lam_0', 'SQRT(W_yLT*f_y/M_cr0)', k.lam0, '', 'λ̄₀: the slenderness for lateral-torsional buckling under uniform moment', 'Table A.2', { sym: 'λ̄₀' });
+      }
     }
     const NT = Number.isFinite(ab.NcrTF ?? ab.NcrTpure) ? (ab.NcrTF ? 'N_crTF' : 'N_crTp') : null;
     if (torsional) C.calc('lim_0', `0.2*SQRT(C_1A)*MAX(0, (1 - ${NE}/N_crz)*(1 - ${NT ? `${NE}/${NT}` : '0'}))^0.25`, k.lim0, '', `0.2√C₁ ⁴√((1 − ${NE}/N_cr,z)(1 − ${NE}/N_cr,TF)): λ̄₀ ${k.smallLam0 ? '≤' : '>'} it`, 'Table A.2', { sym: 'λ̄₀,lim' });
@@ -3628,6 +3644,209 @@ const SteelMemberScript = (() => {
   return { zones, segLTB };
 })();
 if (typeof module !== 'undefined') module.exports = { SteelMemberScript };
+
+/* ===== STEEL BEAM: FULL CALCULATION (EngineeringTools) =====
+   Design.designBeam written out step by step for the page, the A4 sheet and CalcPad. The analysis of the continuous beam
+   (stiffness method, every pattern of the imposed load) and the elastic critical moments (finite elements) are not hand
+   calculations: their moments, shears, M_cr and deflections are given, each with the combination and place they came
+   from; everything after them is a formula. In parts: the section, its steel and class; the loads and the combinations;
+   the cross-section at each station where a check governs; flexural buckling; lateral-torsional buckling of the governing
+   segment; the interaction; web bearing (EN 1993-1-5 section 6 and 7.2); and the deflection.
+   Source: scratchpad/steel/beamscript.js. Needs CalcScript, EC3, Design, EC3Script. */
+const SteelBeamScript = (() => {
+  'use strict';
+  const TOOL = 'Steel Beam Analysis & Design', STD = 'BS EN 1993-1-1 + UK NA; BS EN 1993-1-5; BS EN 1990 + UK NA';
+  const create = title => CalcScript.create({ title, tool: TOOL, standard: STD });
+  const f2 = v => (+v).toFixed(2), kN = v => (v / 1e3).toFixed(1), kNm = v => (v / 1e6).toFixed(1);
+  const memName = (lay, i) => { const m = lay.mem[i]; return m.kind === 'cantL' ? 'left cantilever' : m.kind === 'cantR' ? 'right cantilever' : `span ${lay.mem.slice(0, i + 1).filter(q => q.kind === 'span').length}`; };
+  const at = (R, x) => { const m = R.lay.mem.findIndex(q => x >= q.x0 - 1e-6 && x <= q.x1 + 1e-6); return `x = ${f2(x / 1000)} m${m >= 0 ? ` (${memName(R.lay, m)})` : ''}`; };
+  const base = (C, R, inp) => { EC3Script.section(C, R.sec); EC3Script.steel(C, R.sec, inp.grade, R.fy); };
+  const axial = (C, inp) => C.input('N_Ed', (inp.N || 0) / 1e3, 'kN', 'axial force, constant along the beam (compression positive)', '');
+  const memberClass = (C, R, inp) => EC3Script.classify(C, R.sec, R.fy, inp.N || 0, true, R.hasH, 'N_Ed', '', 'Class of the beam, Table 5.2 (for buckling)');
+
+  // ---------- the section, its steel and class ----------
+  function sectionZone(R, inp) {
+    const C = create('Section, steel and class');
+    base(C, R, inp); axial(C, inp); memberClass(C, R, inp);
+    return { key: 'section', title: C.meta.title, sum: `${R.sec.name}, f_y ${R.fy} N/mm², Class ${EC3.classify(R.sec, R.fy, inp.N || 0, true, R.hasH).cls}`, util: null, C };
+  }
+
+  // ---------- loads and combinations ----------
+  function loadsZone(R, inp) {
+    const C = create('Loads, combinations and the analysis'), lay = R.lay;
+    C.head('The beam');
+    C.note(lay.mem.map((m, i) => `${memName(lay, i)}: ${f2(m.L / 1000)} m`).join('; ') + `. Supports: ${lay.sup.map((s, i) => `${String.fromCharCode(65 + i)} ${s.type} at ${f2(s.x / 1000)} m`).join(', ')}.`);
+    C.head('Characteristic loads');
+    if (inp.selfWeight) {
+      C.input('m_s', R.sec.mass, 'kg/m', 'mass of the section', '');
+      C.input('g_n', 9.80665, 'm/s2', 'standard gravity', '');
+      C.calc('g_sw', 'm_s*g_n', R.sec.mass * 9.80665e-3, 'kN/m', 'self-weight, permanent, on every member', '');
+    }
+    const desc = l => {
+      const v = l.type === 'udl' ? `${l.w} kN/m along the member` : l.type === 'pudl' ? `${l.w} kN/m from ${f2(l.a / 1000)} to ${f2(l.b / 1000)} m` : l.type === 'vdl' ? `${l.w1} to ${l.w2} kN/m from ${f2(l.a / 1000)} to ${f2(l.b / 1000)} m` : l.type === 'point' ? `${kN(l.P)} kN at ${f2(l.a / 1000)} m` : `${kNm(l.M)} kNm at ${f2(l.a / 1000)} m`;
+      return `${l.case === 'G' ? 'permanent' : 'imposed'}${l.dir === 'h' ? ', horizontal (minor axis, through the shear centre)' : ''}, ${memName(lay, l.member)}: ${v}`;
+    };
+    C.note(inp.loads.map(desc).join('; ') + '.');
+    C.head(`ULS combinations, BS EN 1990 ${inp.rule === '6.10' ? '(6.10)' : '(6.10a) and (6.10b)'} with the UK NA`);
+    C.input('gamma_Gsup', 1.35, '', 'permanent, unfavourable', 'Table NA.A1.2(B)', { sym: 'γ_G,sup' });
+    C.input('gamma_Ginf', 1.0, '', 'permanent, favourable', 'Table NA.A1.2(B)', { sym: 'γ_G,inf' });
+    C.input('gamma_Q', 1.5, '', 'variable', 'Table NA.A1.2(B)', { sym: 'γ_Q' });
+    if (inp.rule !== '6.10') {
+      C.input('psi_0', inp.psi0, '', 'combination factor', 'Table NA.A1.1', { sym: 'ψ_0' });
+      C.input('xi', 0.925, '', 'reduction factor on the permanent load in (6.10b)', 'Table NA.A1.2(B)', { sym: 'ξ' });
+      C.calc('f_Q610a', 'psi_0*gamma_Q', inp.psi0 * 1.5, '', 'factor on Q in (6.10a)', '(6.10a)', { sym: 'ψ_0γ_Q' });
+      C.calc('f_G610b', 'xi*gamma_Gsup', 0.925 * 1.35, '', 'factor on G in (6.10b)', '(6.10b)', { sym: 'ξγ_G' });
+    }
+    C.note(`${R.combos.length} combinations: each set of factors with the imposed load on every pattern of the members that carry it (UK NA). The beam is analysed by the stiffness method with EI = E I_y${R.hasH ? ' (and E I_z for the horizontal loads)' : ''}; the moments, shears and deflections below are the analysis's.`);
+    return { key: 'loads', title: C.meta.title, sum: `${inp.loads.length} loads${inp.selfWeight ? ' + self-weight' : ''}, ${R.combos.length} combinations`, util: null, C };
+  }
+
+  // ---------- the cross-section at a station ----------
+  function crossZone(R, inp, st, k) {
+    const nm = { bending: 'bending', shear: 'shear', axial: 'axial force' }, g = st.g;
+    const C = create(`Cross-section at ${at(R, st.x)} (${st.checks.map(c => nm[c]).join(', ')})`);
+    base(C, R, inp); axial(C, inp);
+    C.head('Actions at the station');
+    C.note(`${at(R, st.x)}, combination ${g.combo}.`);
+    C.given('M_yEd', (g.M || 0) / 1e6, 'kNm', 'major-axis moment (sagging positive)', `from the analysis: ${g.combo}`, '', { sym: 'M_y,Ed' });
+    C.given('V_zEd', (g.V || 0) / 1e3, 'kN', 'shear parallel to the web', 'from the analysis', '', { sym: 'V_z,Ed' });
+    if (R.hasH) { C.given('M_zEd', (g.Mz || 0) / 1e6, 'kNm', 'minor-axis moment from the horizontal loads', 'from the analysis', '', { sym: 'M_z,Ed' }); C.given('V_yEd', (g.Vz || 0) / 1e3, 'kN', 'shear parallel to the flanges', 'from the analysis', '', { sym: 'V_y,Ed' }); }
+    const r = EC3Script.cross(C, R.sec, R.fy, { N: inp.N || 0, My: g.M || 0, V: g.V || 0, Mz: g.Mz || 0, Vz: g.Vz || 0 }, { N: 'N_Ed', My: 'M_yEd', V: 'V_zEd', Mz: R.hasH ? 'M_zEd' : null, Vz: R.hasH ? 'V_yEd' : null });
+    return { key: `cs${k}`, title: C.meta.title, sum: `M_y ${kNm(g.M || 0)} kNm, V ${kN(g.V || 0)} kN, ${g.combo}`, util: r.util, C, checks: st.checks };
+  }
+
+  // the buckling lengths of a segment
+  function lengths(C, R, inp, si, ab) {
+    const sg = R.segs[si], m = R.lay.mem[sg.mem], ky = inp.ky ? inp.ky[sg.mem] : (m.kind === 'span' ? 1 : 2);
+    C.head('Buckling lengths');
+    C.note(`The segment of the ${memName(R.lay, sg.mem)} from x = ${f2(sg.xa / 1000)} to ${f2(sg.xb / 1000)} m${sg.free ? ', with a free tip' : ''}.`);
+    if (m.kind === 'span') { C.input('L_m', m.L, 'mm', `length of the ${memName(R.lay, sg.mem)}`, ''); C.input('k_y', ky, '', 'effective length factor about y-y', '6.3.1.3'); C.calc('L_cry', 'k_y*L_m', ab.Lcry, 'mm', 'buckling length about y-y', '6.3.1.3', { sym: 'L_cr,y' }); }
+    else C.given('L_cry', ab.Lcry, 'mm', 'buckling length about y-y of the cantilever', 'from the buckling load of the whole beam on its supports (finite elements): the tip is free to sway', '6.3.1.3', { sym: 'L_cr,y' });
+    if (sg.free && (inp.N || 0) > 0) {
+      C.given('L_crz', ab.Lcrz, 'mm', 'buckling length about z-z', 'the free cantilever with its backspan segment (finite elements)', '6.3.1.3', { sym: 'L_cr,z' });
+      C.given('L_T', ab.LT, 'mm', 'torsional buckling length', 'the free cantilever with its backspan segment (finite elements)', '6.3.1.4', { sym: 'L_T' });
+    } else {
+      C.input('L_seg', sg.xb - sg.xa, 'mm', 'length of the segment between lateral and torsional restraints', '');
+      C.calc('L_crz', 'L_seg', ab.Lcrz, 'mm', 'buckling length about z-z: the segment', '6.3.1.3', { sym: 'L_cr,z' });
+      C.calc('L_T', 'L_seg', ab.LT, 'mm', 'torsional buckling length: the segment', '6.3.1.4', { sym: 'L_T' });
+    }
+  }
+
+  // ---------- flexural buckling ----------
+  function flexuralZone(R, inp) {
+    const g = R.gov.flexural, C = create('Flexural and torsional buckling');
+    base(C, R, inp); axial(C, inp);
+    lengths(C, R, inp, g.seg, g.ab);
+    const u = EC3Script.flexural(C, R.sec, R.fy, inp.grade, g.ab, 'N_Ed');
+    return { key: 'flexural', title: C.meta.title, sum: `N_b,Rd ${kN(g.ab.NbRd)} kN`, util: u, C };
+  }
+
+  // the LTB of a segment under a combination
+  function ltbBlock(C, R, inp, lt, M) {
+    const sg = R.segs[lt.seg];
+    C.head('The segment');
+    C.note(`The segment of the ${memName(R.lay, sg.mem)} from x = ${f2(sg.xa / 1000)} to ${f2(sg.xb / 1000)} m${sg.free ? ' (a free cantilever tip, modelled with its backspan)' : sg.topRestrained ? ' (the top flange restrained throughout)' : ''}, combination ${lt.combo}.`);
+    C.input('L_LT', sg.xb - sg.xa, 'mm', 'length between lateral and torsional restraints', '', { sym: 'L_LT' });
+    C.given(M, lt.Mmax / 1e6, 'kNm', 'the largest major-axis moment in the segment', `from the analysis: ${lt.combo}`, '', { sym: 'M_y,Ed' });
+    const how = `finite elements: beam elements with warping over the segment${sg.free ? ' and its backspan, the root restrained' : ', forks at its ends'}, its own moment diagram${inp.destab ? ', every gravity load at the top flange (destabilising)' : ', loads at the shear centre'}${sg.topRestrained ? ', the top flange held laterally' : ''}`;
+    EC3Script.ltb(C, R.sec, R.fy, EC3.classify(R.sec, R.fy, inp.N || 0, true, R.hasH).cls, lt, { Lseg: sg.xb - sg.xa, M, McrHow: how, C1given: inp.destab && lt.C1 != null, kcHow: lt.C1 == null ? (sg.free ? 'a free cantilever segment: C₁ not defined, k_c = 1' : 'the top flange restrained: k_c = 1') : null });
+  }
+
+  // ---------- lateral-torsional buckling ----------
+  function ltbZone(R, inp) {
+    const g = R.gov.ltb, C = create('Lateral-torsional buckling');
+    base(C, R, inp); axial(C, inp); memberClass(C, R, inp);
+    ltbBlock(C, R, inp, g, 'M_Ed');
+    return { key: 'ltb', title: C.meta.title, sum: `${memName(R.lay, R.segs[g.seg].mem)}, M_cr ${kNm(g.Mcr)} kNm, M_b,Rd ${kNm(g.MbRd)} kNm`, util: g.util, C };
+  }
+
+  // ---------- interaction ----------
+  function interactionZone(R, inp) {
+    const g = R.gov.interaction, ir = g.ir, C = create(`Bending and axial compression, 6.3.3 (Annex ${ir.method})`), sec = R.sec, cls = EC3.classify(sec, R.fy, inp.N || 0, true, R.hasH).cls;
+    base(C, R, inp); axial(C, inp); memberClass(C, R, inp);
+    if (!(inp.N > 0)) C.calc('N_c', 'MAX(N_Ed, 0*N_Ed)', 0, 'kN', inp.N < 0 ? 'compression for buckling: the beam is in tension, which is ignored' : 'no compression: the minor-axis moment with the major', '6.3.3');
+    const NN = inp.N > 0 ? 'N_Ed' : 'N_c';
+    lengths(C, R, inp, g.seg, g.ab);
+    EC3Script.flexural(C, sec, R.fy, inp.grade, g.ab, inp.N > 0 ? NN : null);
+    if (g.lt) ltbBlock(C, R, inp, g.lt, 'M_yEd');
+    else { C.given('M_yEd', (g.MyEd || 0) / 1e6, 'kNm', 'the largest major-axis moment in the segment', `from the analysis: ${g.combo}`, '', { sym: 'M_y,Ed' }); C.input('chi_LTm', 1, '', 'no major-axis moment: no lateral-torsional buckling', '', { sym: 'χ_LT' }); C.input('L_LT', R.segs[g.seg].xb - R.segs[g.seg].xa, 'mm', 'the segment', '', { sym: 'L_LT' }); }
+    if (R.hasH) C.given('M_zEd', g.MzEd / 1e6, 'kNm', 'the largest minor-axis moment in the segment', `from the analysis: ${g.combo}`, '', { sym: 'M_z,Ed' });
+    const cm = g.cm || {}, cmz = cm.z || { row: 'zero', Cm: 1 };
+    const u = EC3Script.interaction(C, sec, R.fy, cls, g.ab, ir, { N: NN, Mz: R.hasH, MzV: R.hasH ? g.MzEd : 0, cmy: cm.y, cmz, cmLT: cm.LT,
+      epsY: ir.method === 'A' && inp.N > 0 ? g.MyEd / inp.N * g.ab.A / (cls === 4 ? EC3.weffBending(sec, R.fy).Weff : sec.Wely) : Infinity,
+      lam0Given: true, cm0y: 'Table A.2 for this combination: the general expression with the member\'s own deflection where it carries transverse load (1.0 for a cantilever, a sway mode)', cm0z: 'Table A.2 about z-z for this combination' });
+    return { key: 'interaction', title: C.meta.title, sum: `${g.combo}: (6.61) ${ir.u61.toFixed(3)}, (6.62) ${ir.u62.toFixed(3)}`, util: Math.max(...C.items.filter(it => it.t === 'chk').map(it => it.v)), C };
+  }
+
+  // ---------- web bearing, EN 1993-1-5 section 6 and 7.2 ----------
+  function bearingZone(R, inp) {
+    const g = R.gov.bearing, b = g.wb, s = R.sec, C = create(`Web bearing at ${at(R, g.x)} (${g.where})`);
+    base(C, R, inp);
+    C.head('The force and its bearing');
+    C.given('F_Ed', g.F / 1e3, 'kN', g.where === 'support' ? 'the largest ULS reaction' : 'the largest ULS point load here', 'from the analysis', 'EN 1993-1-5 6.1', { sym: 'F_Ed' });
+    C.input('s_s', g.ss, 'mm', 'stiff bearing length', 'EN 1993-1-5 6.3');
+    C.note(g.type === 'c' ? 'Type (c): the force near an unstiffened end of the member.' : 'Type (a): the force applied through one flange and resisted by shear in the web.');
+    if (g.type === 'c') C.input('c', g.c, 'mm', 'from the end of the member to the edge of the bearing', 'EN 1993-1-5 Figure 6.1');
+    C.calc('h_w', 'h - 2*t_f', b.hw, 'mm', 'depth of the web', '');
+    C.calc('b_feff', s.shape === 'PFC' ? 'MIN(b, t_w + 15*eps*t_f)' : 'MIN(b, t_w + 30*eps*t_f)', b.bfEff, 'mm', 'flange width for m₁, not more than 15εt_f each side of the web', 'EN 1993-1-5 6.5(1)', { sym: 'b_f' });
+    if (g.type === 'c') C.calc('k_F', 'MIN(6, 2 + 6*(s_s + c)/h_w)', b.kF, '', 'type (c), no transverse stiffeners', 'EN 1993-1-5 Figure 6.1', { sym: 'k_F' });
+    else C.input('k_F', b.kF, '', 'type (a), no transverse stiffeners', 'EN 1993-1-5 Figure 6.1', { sym: 'k_F' });
+    C.calc('F_cr', '0.9*k_F*E*t_w^3/h_w', b.Fcr / 1e3, 'kN', '', 'EN 1993-1-5 (6.5)', { sym: 'F_cr' });
+    C.calc('m_1', 'b_feff/t_w', b.m1, '', 'f_yf = f_yw', 'EN 1993-1-5 (6.8)', { sym: 'm_1' });
+    if (b.m2 > 0) C.calc('m_2', '0.02*(h_w/t_f)^2', b.m2, '', 'λ̄_F > 0.5', 'EN 1993-1-5 (6.9)', { sym: 'm_2' });
+    else C.input('m_2', 0, '', 'λ̄_F ≤ 0.5: m₂ = 0', 'EN 1993-1-5 (6.9)', { sym: 'm_2' });
+    if (g.type === 'c') {
+      C.calc('l_e', 'MIN(k_F*E*t_w^2/(2*f_y*h_w), s_s + c)', b.le, 'mm', '', 'EN 1993-1-5 (6.13)', { sym: 'l_e' });
+      C.calc('l_y', 'MIN(s_s + 2*t_f*(1 + SQRT(m_1 + m_2)), l_e + t_f*SQRT(m_1/2 + (l_e/t_f)^2 + m_2), l_e + t_f*SQRT(m_1 + m_2))', b.ly, 'mm', 'effective loaded length, type (c)', 'EN 1993-1-5 (6.10) to (6.12)', { sym: 'l_y' });
+    } else C.calc('l_y', 's_s + 2*t_f*(1 + SQRT(m_1 + m_2))', b.ly, 'mm', 'effective loaded length', 'EN 1993-1-5 (6.10)', { sym: 'l_y' });
+    C.calc('lam_F', 'SQRT(l_y*t_w*f_y/F_cr)', b.lamF, '', '', 'EN 1993-1-5 (6.4)', { sym: 'λ̄_F' });
+    C.calc('chi_F', 'MIN(1, 0.5/lam_F)', b.chiF, '', '', 'EN 1993-1-5 (6.3)', { sym: 'χ_F' });
+    C.calc('L_eff', 'chi_F*l_y', b.Leff, 'mm', '', 'EN 1993-1-5 (6.2)', { sym: 'L_eff' });
+    C.calc('F_Rd', 'f_y*L_eff*t_w/gamma_M1', b.FRd / 1e3, 'kN', 'resistance to the transverse force', 'EN 1993-1-5 (6.1)', { sym: 'F_Rd' });
+    C.check('U_F', 'F_Ed/F_Rd', g.eta2, 'η₂: resistance to the transverse force', 'EN 1993-1-5 (6.14)');
+    C.head('With the bending moment, EN 1993-1-5 7.2');
+    C.given('M_Ed', g.M / 1e6, 'kNm', 'the largest ULS moment at this place', 'from the envelope of the analysis', '', { sym: 'M_Ed' });
+    const cls = EC3.classify(s, R.fy, inp.N || 0, true, R.hasH).cls;
+    if (Math.max(3, cls) === 3) C.calc('W_1', 'W_ely', s.Wely / 1e3, 'cm3', 'elastic modulus (η₁ by EN 1993-1-5 4.6)', 'EN 1993-1-5 4.6', { sym: 'W_el,y' });
+    else C.given('W_1', EC3.wyByClass(s, R.fy, 4) / 1e3, 'cm3', 'effective modulus', 'EN 1993-1-5 4.4', 'EN 1993-1-5 4.6', { sym: 'W_eff,y' });
+    C.calc('eta_1', 'M_Ed/(W_1*f_y/gamma_M0)', g.eta1, '', '', 'EN 1993-1-5 (4.14)', { sym: 'η₁' });
+    C.check('U_72', '(U_F + 0.8*eta_1)/1.4', g.u72, 'transverse force with bending', 'EN 1993-1-5 (7.2)');
+    return { key: 'bearing', title: C.meta.title, sum: `F_Ed ${kN(g.F)} kN, F_Rd ${kN(b.FRd)} kN`, util: g.util, C };
+  }
+
+  // ---------- deflection ----------
+  function deflectionZone(R, inp) {
+    const C = create('Deflection under the imposed load');
+    C.note('Characteristic imposed load on every pattern of the members that carry it; the limits of the UK NA (NA.2.23).');
+    for (const d of R.memDefl) {
+      const nm = memName(R.lay, d.mem), k = d.mem + 1;
+      C.head(`The ${nm}`);
+      C.input(`L_${k}`, d.L, 'mm', `length of the ${nm}`, '');
+      C.given(`w_Q${k}`, Math.abs(d.wQ), 'mm', 'the largest deflection under the imposed load', `from the analysis${d.xQ != null ? `, at x = ${f2(d.xQ / 1000)} m` : ''}`, '', { sym: `δ_Q,${k}` });
+      C.input(`n_${k}`, d.div, '', d.kind !== 'span' ? 'cantilever: span/180' : d.div === 360 ? 'beams carrying plaster or other brittle finishes: span/360' : 'other beams: span/200', 'UK NA NA.2.23', { sym: 'span/' });
+      C.calc(`w_lim${k}`, `L_${k}/n_${k}`, d.lim, 'mm', 'limit', 'UK NA NA.2.23', { sym: `δ_lim,${k}` });
+      C.check(`U_d${k}`, `w_Q${k}/w_lim${k}`, d.util, 'deflection under the imposed load', 'UK NA NA.2.23');
+    }
+    return { key: 'deflection', title: C.meta.title, sum: R.memDefl.map(d => `${memName(R.lay, d.mem)} ${Math.abs(d.wQ).toFixed(1)}/${d.lim.toFixed(1)} mm`).join(', '), util: Math.max(...R.memDefl.map(d => d.util)), C };
+  }
+
+  function zones(R, inp) {
+    const Z = [sectionZone(R, inp), loadsZone(R, inp)], g = R.gov, st = [];
+    for (const k of ['bending', 'shear', 'axial']) if (g[k]) {
+      const same = st.find(s => Math.abs(s.x - g[k].x) < 1e-6 && (k === 'axial' || s.g.combo === g[k].combo));
+      if (same) same.checks.push(k); else st.push({ x: g[k].x, g: k === 'axial' ? { ...(g.bending || {}), ...g[k], M: (g.bending && Math.abs(g.bending.x - g[k].x) < 1e-6 ? g.bending.M : 0) } : g[k], checks: [k] });
+    }
+    st.forEach((s, k) => Z.push(crossZone(R, inp, s, k)));
+    if (g.flexural) Z.push(flexuralZone(R, inp));
+    if (g.ltb) Z.push(ltbZone(R, inp));
+    if (g.interaction) Z.push(interactionZone(R, inp));
+    if (g.bearing) Z.push(bearingZone(R, inp));
+    if (g.deflection) Z.push(deflectionZone(R, inp));
+    return Z;
+  }
+  return { zones };
+})();
+if (typeof module !== 'undefined') module.exports = { SteelBeamScript };
 
 </script>
 <script id="drawing-code">
@@ -4340,6 +4559,7 @@ function renderA(R, inp, ms) {
   if (R.bearing && R.bearing.length) h += `<div class="dlabel">Web bearing, EN 1993-1-5 &sect;6</div><table class="t"><tr><th>Location</th><th>Type</th><th>F<sub>Ed</sub></th><th>s<sub>s</sub></th><th>&chi;<sub>F</sub></th><th>F<sub>Rd</sub></th><th>&eta;<sub>2</sub></th><th>(7.2)</th></tr>` +
     R.bearing.map(b => `<tr><td>${b.where} x = ${(b.x / 1000).toFixed(2)}</td><td>(${b.type})</td><td>${fmt(kN(b.F))}</td><td>${b.ss}</td><td>${b.wb.chiF.toFixed(3)}</td><td>${fmt(kN(b.wb.FRd))}</td><td>${ufmt(b.eta2)}</td><td>${ufmt(b.u72)}</td></tr>`).join('') + `</table>`;
   h += notesHTML(R, inp);
+  if (lastZ) h += `<div class="dlabel">Full calculation (open a part)</div>${CalcScript.zonesHTML(lastZ)}`;
   h += `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
   $('runInfo').textContent = `${ms} ms`;
   return h;
@@ -4547,6 +4767,7 @@ function run() {
       if (mode === 'A') {
         inp = buildBeamInput(s, sec);
         R = Design.designBeam(inp);
+        lastZ = SteelBeamScript.zones(R, inp);
         html = renderA(R, inp, Math.round(performance.now() - t0));
       } else {
         inp = memberInput(s, sec);
