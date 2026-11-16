@@ -1631,9 +1631,12 @@ const Torsion = (() => {
       const c = EC3.chiLT(lamLT, MEd / Mcrseg, lp, 1);
       const Bs = sc.kind === 'closed' ? 0 : Math.max(...seg.map(p => Math.abs(p.B))), BRk = fy * sc.Ww;
       const MyRk = W * fy;
-      const kw = 0.7 - 0.2 * Bs / (BRk / EC3.GM1), kzw = 1, ka = Number.isFinite(Mcrseg) ? 1 / (1 - MEd / Mcrseg) : 1;
-      const u = MEd / (c.chiMod * MyRk / EC3.GM1) + (Bs > 0 ? kw * kzw * ka * Bs / (BRk / EC3.GM1) : 0);
-      const r = { xa, xb, Ls, MEd, Mcr: Mcrseg, lamLT, chi: c.chiMod, BEd: Bs, BRk, MyRk, kw, kzw, ka, u, ltbIgnored: c.ignored };
+      // k_alpha = 1/(1 - M_Ed/M_cr) holds below M_cr only: at or above it the segment is elastically unstable (k_alpha would turn
+      // negative and the bimoment would wrongly reduce the utilisation)
+      const unstable = Number.isFinite(Mcrseg) && MEd >= Mcrseg;
+      const kw = 0.7 - 0.2 * Bs / (BRk / EC3.GM1), kzw = 1, ka = !Number.isFinite(Mcrseg) ? 1 : unstable ? Infinity : 1 / (1 - MEd / Mcrseg);
+      const u = unstable ? Infinity : MEd / (c.chiMod * MyRk / EC3.GM1) + (Bs > 0 ? kw * kzw * ka * Bs / (BRk / EC3.GM1) : 0);
+      const r = { xa, xb, Ls, MEd, Mcr: Mcrseg, lamLT, chi: c.chiMod, BEd: Bs, BRk, MyRk, kw, kzw, ka, u, unstable, ltbIgnored: c.ignored };
       if (!worstSeg || r.u > worstSeg.u) worstSeg = r;
     }
     const rotMax = Math.max(...ts.phi.map(Math.abs));

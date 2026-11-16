@@ -6,6 +6,7 @@ else mods = require('./load.js');
 const { EC3, Torsion, SECTION_DATA, PFC_DATA } = mods;
 const REF = require('./ref_torsion.json');
 let n = 0, fails = 0;
+const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`); if (!c) fails++; };
 const near = (name, got, exp, tol, scale, quiet) => { n++; const ok = Math.abs(got - exp) <= tol * (scale ?? Math.max(Math.abs(exp), 1e-30)); if (!ok || !quiet) console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: got ${(+got).toPrecision(6)} expected ${(+exp).toPrecision(6)}`); if (!ok) fails++; };
 for (const c of REF.cases) {
   const r = Torsion.analyse({ L: c.L, EIw: REF.EIw, GIt: REF.GIt, ends: c.ends, mt: c.m ? [{ a: 0, b: c.L, m: c.m }] : [], Tpt: c.T0 ? [{ x: c.a, T: c.T0 }] : [], nEl: 300 });
@@ -49,5 +50,11 @@ for (const c of REF.cases) {
   const g = R.gov.member.seg, kw = 0.7 - 0.2 * g.BEd / g.BRk, ka = 1 / (1 - g.MEd / g.Mcr);
   near('design: EN 1993-6 Annex A interaction', g.u, g.MEd / (g.chi * g.MyRk) + kw * ka * g.BEd / g.BRk, 1e-12);
   near('design: SLS rotation from the characteristic loads', R.gov.rotation.rot, Math.max(...Torsion.analyse({ L, EIw: EC3.E * s.Iw, GIt: EC3.G * s.It, ends: ['fork', 'fork'], mt: [{ a: 0, b: L, m: 10 * 75 }] }).phi), 1e-9); }
+// a segment whose moment reaches M_cr is elastically unstable: k_alpha = 1/(1 - M/M_cr) must not turn negative and let the
+// bimoment reduce the utilisation (it gave -1.95 for this beam)
+{ const s = EC3.fromRow(SECTION_DATA.find(r => r[0] === '457×191×67 UKB'));
+  const R = Torsion.design({ sec: s, grade: 'S355', L: 7000, sys: 'ss', ends: ['fork', 'fork'], loadsG: [{ type: 'udl', w: 10, e: 75 }], loadsQ: [{ type: 'udl', w: 10, e: 75 }], gG: 1.35, gQ: 1.5, lateral: { restraints: [], destab: true }, rotLimitDeg: 2 });
+  const g = R.gov.member.seg;
+  truth('M_Ed at or above M_cr: the segment is unstable and the member check fails (no negative k_alpha)', g.MEd >= g.Mcr && g.unstable && !(g.u < 1) && R.gov.member.util > 1 && R.utilMax > 1); }
 console.log(`${n - fails}/${n} torsion checks passed`);
 process.exit(fails ? 1 : 0);
