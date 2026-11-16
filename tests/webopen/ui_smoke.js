@@ -13,6 +13,10 @@ const w = page(), d = w.document, $ = id => d.getElementById(id), calc = () => $
 truth('page loads without script errors', w.errs.length === 0);
 truth('three default openings, steel mode', $('ops').children.length === 3 && !$('gk').closest('.card').classList.contains('hidden') && $('hs').closest('.card').classList.contains('hidden'));
 calc(); truth('steel: verdict, opening and web-post checks', /PASS|FAIL/.test(res()) && /Vierendeel bending/.test(res()) && /Web-post 1–2/.test(res()) && !err());
+{ const z = [...$('results').querySelectorAll('details.zone')], sm = q => q.querySelector('summary').textContent;
+  truth('steel: the full calculation, the beam, every opening with its Tees and Vierendeel bending, the web-posts and the deflections, with the CalcPad buttons and one download of the whole as a single check',
+    /^Beam: bending and shear/.test(sm(z[0])) && z.some(q => /^Opening 1:/.test(sm(q)) && /Vierendeel/.test(q.textContent)) && z.some(q => /^Web-post 1–2/.test(sm(q)) && /ℓ_?w/.test(q.textContent)) && /^Deflections with the openings/.test(sm(z[z.length - 1]))
+    && z.every(q => !!q.querySelector('[data-cp="save"]')) && $('results').querySelectorAll('[data-cp="all"]').length === 1); }
 truth('steel: span drawn with three openings', $('results').querySelectorAll('#drawings svg.dk').length === 2 && /3 openings at true scale/.test($('drawings').textContent));
 $('pts').value = '6.5, 10, 15'; calc(); truth('steel: point load accepted', !err() && /Total deflection incl. openings/.test(res()));
 $('addOp').click(); truth('opening added', $('ops').children.length === 4);
@@ -21,9 +25,10 @@ calc(); truth('elongated opening checked', /Opening 4 \(500×200/.test(res()) &&
 r4.querySelector('.xbtn').click(); truth('opening removed', $('ops').children.length === 3);
 d.querySelector('#modeSeg button[data-m=comp]').click(); truth('composite mode shows the slab inputs', !$('hs').closest('.card').classList.contains('hidden') && $('gk').closest('.card').classList.contains('hidden'));
 calc(); truth('composite: beam and opening checks', /Composite bending/.test(res()) && /Opening 1/.test(res()) && !err());
+truth('composite: the full calculation starts with the composite beam’s parts and has the construction-stage openings', [...$('results').querySelectorAll('details.zone summary')].some(q => /^Beam: Shear connection/.test(q.textContent)) && [...$('results').querySelectorAll('details.zone summary')].some(q => /^Construction: Opening 1/.test(q.textContent)));
 truth('composite (unpropped): construction-stage opening checks', /Construction: Opening 1/.test(res()));
 $('propped').checked = true; calc(); truth('composite (propped): no construction-stage opening checks', !/Construction: Opening/.test(res()));
-$('printBtn').click(); truth('print: sheet built', w.printed && /Web openings/.test($('report').textContent) && /Vierendeel/.test($('report').textContent));
+$('printBtn').click(); truth('print: sheet built, with the full calculation', w.printed && /Web openings/.test($('report').textContent) && /Vierendeel/.test($('report').textContent) && /Full calculation/.test($('report').textContent));
 const saved = w.localStorage.getItem('et-web-openings-v1'); truth('inputs saved with the openings', saved && JSON.parse(saved).ops.length === 3 && JSON.parse(saved).mode === 'comp');
 const w2 = page(saved); truth('inputs restored on reload', w2.document.getElementById('ops').children.length === 3 && !w2.document.getElementById('hs').closest('.card').classList.contains('hidden'));
 d.querySelector('#modeSeg button[data-m=steel]').click(); $('ops').children[1].querySelector('.o-x').value = '1.7'; calc(); truth('overlap rejected', /overlap/.test(res()));
