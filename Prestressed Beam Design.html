@@ -359,6 +359,355 @@ textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;}
 </div>
 <div id="report"></div>
 <script id="engine">
+/* ===== CALCULATION SCRIPT (EngineeringTools) =====
+   One record of a tool's calculation, written step by step, from which the tool shows its full calculation (on the page
+   and the A4 sheet) and writes it for CalcPad (text to paste, or a .perega file to open), so that the two cannot differ.
+   Every number the calculation reports is one of:
+   - an input, with its unit;
+   - a formula in CalcPad's syntax (names, + − * / ^, SQRT MIN MAX ABS IF LOG EXP ROUND PI(), x[#unit] for a value as a
+     plain number in a given unit, as the empirical Eurocode formulas need), shown as the symbols, then the numbers put
+     in, then the result, with its clause; CalcPad recalculates these itself;
+   - a value the formula language cannot reach (an iteration, a table read, an analysis), stated as such with how it
+     was found and, where it can be, an equation that confirms it;
+   - a utilisation, with its limit.
+   API: const C = CalcScript.create({ title, tool, standard });
+        C.head(text), C.note(text),
+        C.input(name, value, unit, desc, ref, { sym }), C.calc(name, expr, value, unit, desc, ref, { sym }),
+        C.given(name, value, unit, desc, how, ref, { sym }), C.check(name, expr, value, desc, ref, { limit, sym }),
+        C.img(svg, caption);
+        C.html() — the full calculation; C.calcpad() — CalcPad text; C.perega(meta) — a .perega document (object).
+        CalcScript.project([{ C, title }], meta, name) — a .peregaproj (one CalcPad check per script, for a tool with several
+        zones or members whose names repeat); copy(C, meta), download(C, meta, file), downloadProject(list, meta, file) for the buttons.
+   Units are CalcPad's: mm cm m km, N kN MN, Pa kPa MPa GPa (N/mm2 for stresses), kg g t, s, deg rad, combined with * / ^
+   or run together (kNm, kNm/m, mm2/m). Values are given in the unit stated.
+   Source: scratchpad/common/calcscript.js. */
+const CalcScript = (() => {
+  'use strict';
+  // CalcPad's unit table: the SI factor and the SI symbol of each unit
+  const CONV = { mm: 1e-3, cm: 1e-2, m: 1, km: 1e3, N: 1, kN: 1e3, MN: 1e6, g: 1e-3, kg: 1, t: 1e3, Pa: 1, kPa: 1e3, MPa: 1e6, GPa: 1e9, s: 1, ms: 1e-3, min: 60, hr: 3600, deg: Math.PI / 180, rad: 1 };
+  const SIB = { mm: 'm', cm: 'm', m: 'm', km: 'm', N: 'N', kN: 'N', MN: 'N', g: 'kg', kg: 'kg', t: 'kg', Pa: 'Pa', kPa: 'Pa', MPa: 'Pa', GPa: 'Pa', s: 's', ms: 's', min: 's', hr: 's', deg: 'rad', rad: 'rad' };
+  const ORDER = { N: 0, kN: 0, MN: 0, Pa: 1, kPa: 1, MPa: 1, GPa: 1, J: 2, W: 2, Hz: 2, kg: 4, g: 4, t: 4, m: 5, mm: 5, cm: 5, km: 5, s: 6, ms: 6, min: 6, hr: 6, rad: 7, deg: 7 };
+  // "kNm" → kN, m (longest known symbol first, as CalcPad reads run-together units)
+  function split(tok) {
+    if (CONV[tok] !== undefined) return [tok];
+    const go = s => { if (!s) return []; for (let n = Math.min(3, s.length); n >= 1; n--) { if (CONV[s.slice(0, n)] === undefined) continue; const r = go(s.slice(n)); if (r) return [s.slice(0, n), ...r]; } return null; };
+    return go(tok);
+  }
+  function terms(u) {
+    const s = String(u || '').replace(/²/g, '^2').replace(/³/g, '^3').replace(/⁴/g, '^4').replace(/·/g, '*'), out = [];
+    const add = (str, sign) => str.split('*').forEach(p => { const t = p.trim(); if (!t) return; const m = t.match(/^([a-zA-Z]+)(?:\^?(-?\d+))?$/); if (!m) throw new Error(`CalcScript: unit "${u}"`); const e = m[2] ? +m[2] : 1, sy = split(m[1]); if (!sy) throw new Error(`CalcScript: unknown unit "${m[1]}"`); sy.forEach((x, i) => out.push([x, sign * (i === sy.length - 1 ? e : 1)])); });
+    const parts = s.split('/'); add(parts[0], 1); for (let i = 1; i < parts.length; i++) add(parts[i], -1);
+    return out;
+  }
+  const factor = u => terms(u).reduce((f, [s, e]) => f * CONV[s] ** e, 1);
+  const toSI = (v, u) => (u ? v * factor(u) : v);
+  function siUnit(u) {   // the SI unit string CalcPad stores with a literal (as unitObjToStr(toSIUnitObj(...)))
+    const o = {}; for (const [s, e] of terms(u)) { const b = SIB[s]; o[b] = (o[b] || 0) + e; if (!o[b]) delete o[b]; }
+    const rank = s => (ORDER[s] !== undefined ? ORDER[s] : 3), cmp = ([a], [b]) => rank(a) - rank(b) || a.localeCompare(b);
+    const f = ([s, e]) => (Math.abs(e) === 1 ? s : s + '^' + Math.abs(e));
+    const pos = Object.entries(o).filter(([, e]) => e > 0).sort(cmp), neg = Object.entries(o).filter(([, e]) => e < 0).sort(cmp);
+    return pos.map(f).join('·') + (neg.length ? '/' + neg.map(f).join('·') : '');
+  }
+  // ---------- display ----------
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const GREEK = { alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', zeta: 'ζ', eta: 'η', theta: 'θ', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', rho: 'ρ', sigma: 'σ', tau: 'τ', phi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω', Delta: 'Δ', Sigma: 'Σ', Phi: 'Φ' };
+  // a name as a symbol: the part before the first _ as the base (Greek where it is a Greek letter's name), the rest subscript;
+  // sym overrides the text ("A_s,req")
+  function symHTML(name, sym) {
+    const s = sym || name, i = s.indexOf('_'), base = i < 0 ? s : s.slice(0, i), sub = i < 0 ? '' : s.slice(i + 1);
+    const g = x => GREEK[x] || x;
+    return `<i>${esc(g(base))}</i>${sub ? `<sub>${esc(sub.split(',').map(g).join(','))}</sub>` : ''}`;
+  }
+  const UNIT_SHOW = { 'N/mm2': 'N/mm²', MPa: 'N/mm²', mm2: 'mm²', mm3: 'mm³', mm4: 'mm⁴', 'mm2/m': 'mm²/m', kNm: 'kNm', 'kN*m': 'kNm', 'kNm/m': 'kNm/m', 'kN*m/m': 'kNm/m', 'kN/m2': 'kN/m²', 'kN/m3': 'kN/m³', m2: 'm²', m3: 'm³', m4: 'm⁴' };
+  const unitHTML = u => (u ? esc(UNIT_SHOW[u] || String(u).replace(/\^-(\d)(?![0-9])/g, (_, k) => '⁻' + '⁰¹²³⁴⁵⁶⁷⁸⁹'[k]).replace(/\^?2(?![0-9])/g, '²').replace(/\^?3(?![0-9])/g, '³').replace(/\*/g, '·')) : '');
+  // a number to about four significant figures, no exponent for the sizes met in design
+  function num(v) {
+    if (v === Infinity) return '∞'; if (v === -Infinity) return '−∞'; if (!Number.isFinite(v)) return '–';
+    if (v === 0) return '0';
+    const a = Math.abs(v);
+    let s = a >= 1e4 ? Math.round(v).toLocaleString('en-GB') : a >= 1000 ? Math.round(v).toString() : a >= 100 ? (Math.round(v * 10) / 10).toString() : a >= 1e-4 ? (+v.toPrecision(4)).toString() : v.toExponential(3);
+    return s.replace(/^-/, '−');
+  }
+  // CalcPad expression → tokens
+  function tokens(expr) {
+    const out = []; let i = 0; const s = String(expr);
+    while (i < s.length) {
+      const ch = s[i];
+      if (/\s/.test(ch)) { i++; continue; }
+      if (/\d/.test(ch) || (ch === '.' && /\d/.test(s[i + 1] || ''))) { let n = ''; while (i < s.length && /[\d.]/.test(s[i])) n += s[i++]; if (/[eE]/.test(s[i] || '') && /[-+\d]/.test(s[i + 1] || '')) { n += s[i++]; if (/[-+]/.test(s[i])) n += s[i++]; while (/\d/.test(s[i] || '')) n += s[i++]; } out.push({ t: 'n', v: n }); continue; }
+      if (/[A-Za-z]/.test(ch)) {
+        let n = ''; while (i < s.length && /[A-Za-z0-9_]/.test(s[i])) n += s[i++];
+        let unit = ''; if (s[i] === '[') { const j = s.indexOf(']', i); unit = s.slice(i + 1, j); i = j + 1; }
+        let k = i; while (/\s/.test(s[k] || '')) k++;
+        out.push(s[k] === '(' && /^[A-Z][A-Z0-9]*$/.test(n) ? { t: 'f', v: n } : { t: 'id', v: n, unit }); continue;
+      }
+      const two = s.slice(i, i + 2);
+      if (['<=', '>=', '==', '!=', '<>'].includes(two)) { out.push({ t: 'op', v: two }); i += 2; continue; }
+      out.push({ t: 'op', v: ch }); i++;
+    }
+    return out;
+  }
+  const FN = { SQRT: '√', ABS: 'abs', MIN: 'min', MAX: 'max', IF: 'if', LOG: 'log', EXP: 'exp', ROUND: 'round', SIN: 'sin', COS: 'cos', TAN: 'tan', ATAN: 'atan', ASIN: 'asin', ACOS: 'acos', PI: 'π' };
+  const OPS = { '*': '·', '<=': '≤', '>=': '≥', '!=': '≠', '<>': '≠', '==': '=', '-': '−' };
+  // the expression as HTML: symbols (sub = null) or with each name's value put in (sub = name → { v, unit })
+  function exprHTML(expr, syms, sub) {
+    const tk = tokens(expr); let h = '';
+    for (let i = 0; i < tk.length; i++) {
+      const t = tk[i], nx = tk[i + 1];
+      if (t.t === 'n') h += esc(t.v.replace(/^(\d+)\.?0*$/, '$1'));
+      else if (t.t === 'f') { if (t.v === 'PI') { h += 'π'; i += 2; continue; } h += FN[t.v] || t.v.toLowerCase(); }
+      else if (t.t === 'id') {
+        // a value put in: bracketed where it is negative, or carries a unit and is raised to a power
+        if (sub && sub[t.v]) { const q = sub[t.v], u = t.unit ? '' : unitHTML(q.unit), br = q.v < 0 || (u && nx && nx.v === '^'); h += `${br ? '(' : ''}${num(q.v)}${u ? '&#8239;' + u : ''}${br ? ')' : ''}`; }
+        else h += symHTML(t.v, syms[t.v]);
+      } else if (t.v === '^') {
+        // a power: the next token (or bracket group) raised
+        let j = i + 1, depth = 0, grp = '';
+        do { const q = tk[j]; grp += q.t === 'op' ? q.v : (q.unit ? `${q.v}[${q.unit}]` : q.v); if (q.v === '(') depth++; if (q.v === ')') depth--; j++; } while (depth > 0 && j < tk.length);
+        const inner = grp.replace(/^\((.*)\)$/, '$1');
+        h += `<sup>${exprHTML(inner, syms, null)}</sup>`; i = j - 1;
+      } else if (t.v === '*') h += sub ? ' × ' : '·';
+      else if (t.v === '/') h += ' / ';
+      else if (t.v === '-' && (i === 0 || (tk[i - 1].t === 'op' && ['(', ',', '+', '-', '*', '/', '^', '<', '>', '<=', '>='].includes(tk[i - 1].v)))) h += '−';   // unary minus
+      else if (['+', '-', '<=', '>=', '<', '>', '==', '!=', '<>'].includes(t.v)) h += ` ${OPS[t.v] || esc(t.v)} `;
+      else if (t.v === ',') h += ', ';
+      else h += esc(t.v);
+      void nx;
+    }
+    return h.replace(/\s+/g, ' ').trim();
+  }
+  // ---------- the script ----------
+  function create(meta = {}) {
+    const items = [], vals = {}, syms = {}, units = {}, names = new Set();
+    const name0 = (n, kind) => {
+      if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(n)) throw new Error(`CalcScript: "${n}" is not a CalcPad name`);
+      if (names.has(n)) throw new Error(`CalcScript: "${n}" is defined twice`);
+      names.add(n); void kind;
+    };
+    const keep = (name, v, unit, o) => { vals[name] = v; units[name] = unit || ''; if (o && o.sym) syms[name] = o.sym; };
+    // a formula and the unit CalcPad shows it in: [unit], [#unit] (an empirical formula's result) or [#] (a plain number)
+    const split = (expr, unit) => { const m = String(expr).match(/^(.*?)\s*\[([^\]]+)\]\s*$/); return m ? { core: m[1].trim(), spec: m[2].trim() } : { core: String(expr).trim(), spec: unit || '#' }; };
+    const C = {
+      meta, items,
+      head(text) { items.push({ t: 'h', text }); return C; },
+      note(text) { items.push({ t: 'p', text }); return C; },
+      input(name, v, unit, desc, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'in', name, v, unit: unit || '', desc, ref }); return v; },
+      calc(name, expr, v, unit, desc, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'calc', name, expr, ...split(expr, unit), v, unit: unit || '', desc, ref }); return v; },
+      given(name, v, unit, desc, how, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'val', name, v, unit: unit || '', desc, how, ref }); return v; },
+      check(name, expr, v, desc, ref, o = {}) { name0(name); keep(name, v, '', o); items.push({ t: 'chk', name, expr, ...split(expr, ''), v, desc, ref, limit: o.limit ?? 1 }); return v; },
+      img(svg, caption) { items.push({ t: 'img', svg, caption }); return C; },
+      // a CalcPad plot line (PLOT(...) or SECTION(...)): drawn live by CalcPad from the values; not on the page, which has its own drawings
+      plot(src) { items.push({ t: 'plot', src }); return C; },
+      value: n => vals[n], has: n => names.has(n),
+      // ----- the full calculation, for the page and the A4 sheet -----
+      html(opts = {}) {
+        const sub = Object.fromEntries(Object.keys(vals).map(n => [n, { v: vals[n], unit: units[n] }]));
+        // opts.skip: headings whose sections are left out (the same materials in every zone of a sheet), said in a line
+        let h = `<div class="cs${opts.sheet ? ' cs-sheet' : ''}">`, skipping = false;
+        for (const it of items) {
+          if (it.t === 'h') { skipping = !!(opts.skip && opts.skip.includes(it.text)); h += skipping ? `<div class="cs-p">${esc(it.text)}: as above.</div>` : `<div class="cs-h">${esc(it.text)}</div>`; continue; }
+          if (skipping) continue;
+          if (it.t === 'p') { h += `<div class="cs-p">${esc(it.text)}</div>`; continue; }
+          if (it.t === 'plot') continue;
+          if (it.t === 'img') { if (!opts.noImg) h += `<div class="cs-img">${it.svg}${it.caption ? `<div class="cs-cap">${esc(it.caption)}</div>` : ''}</div>`; continue; }
+          const S = symHTML(it.name, syms[it.name]), res = `${num(it.v)}${it.unit ? '&#8239;' + unitHTML(it.unit) : ''}`;
+          let eq;
+          if (it.t === 'in') eq = `${S} = ${res}`;
+          else if (it.t === 'val') eq = `${S} = ${res}`;
+          else {
+            const sy = exprHTML(it.core, syms, null), nu = exprHTML(it.core, syms, sub);
+            eq = `${S} = ${sy}${nu !== sy ? ` = ${nu}` : ''} = <b>${res}</b>`;
+            if (it.t === 'chk') eq += ` ${it.v <= it.limit + 1e-9 ? `≤ ${num(it.limit)} <span class="cs-ok">OK</span>` : `> ${num(it.limit)} <span class="cs-ng">NOT OK</span>`}`;
+          }
+          const d = [it.desc, it.how].filter(Boolean).map(esc).join('; ');
+          h += `<div class="cs-r cs-${it.t}"><div class="cs-eq">${eq}${d ? `<div class="cs-d">${d}</div>` : ''}</div><div class="cs-ref">${esc(it.ref || '')}</div></div>`;
+        }
+        return h + '</div>';
+      },
+      // ----- CalcPad text: paste into a sheet and every line becomes a live chip -----
+      lines() {
+        const out = [];
+        // an "=" in the words would start a definition in CalcPad: "a = b" is written "a is b"
+        const clean = s => String(s || '').replace(/\s*=\s*/g, ' is ').replace(/\s+/g, ' ').trim();
+        const pre = it => { const d = clean([it.desc, it.t === 'val' && it.how ? `(${it.how})` : ''].filter(Boolean).join(' ')), r = clean(it.ref); return `${d}${r ? `${d ? ', ' : ''}${r}` : ''}${d || r ? ': ' : ''}`; };
+        for (const it of items) {
+          if (it.t === 'h') { out.push({ it, text: '' }, { it, text: clean(it.text) }); continue; }
+          if (it.t === 'p') { out.push({ it, text: clean(it.text) }); continue; }
+          if (it.t === 'img') continue;
+          if (it.t === 'plot') { out.push({ it, text: it.src }); continue; }
+          if (it.t === 'in' || it.t === 'val') out.push({ it, text: `${pre(it)}${it.name} = ${lit(it.v)}${it.unit ? ' ' + it.unit : ''}` });
+          else out.push({ it, text: `${pre(it)}${it.name} = ${it.core} [${it.spec}]` });
+        }
+        return out;
+      },
+      calcpad() { const L = C.lines().map(l => l.text); while (L.length && !L[0]) L.shift(); return L.join('\n'); },
+      // ----- a .perega document: the same lines as CalcPad's own chips, with the drawings as images -----
+      perega(m = {}, images = {}) {
+        let html = '';
+        const chip = it => {
+          if (it.t === 'in' || it.t === 'val') {
+            const si = toSI(it.v, it.unit), su = it.unit ? siUnit(it.unit) : '';
+            const a = { 'data-var-name': it.name, 'data-var-val': String(si), 'data-bare': '1' };   // data-bare: CalcPad draws it on opening
+            if (it.unit) { a['data-var-unit'] = it.unit; if (su && su !== it.unit) a['data-var-si-unit'] = su; if (lit(it.v) !== String(si)) a['data-var-orig-num'] = lit(it.v); }
+            return `<span contenteditable="false" class="var-def-chip" ${Object.entries(a).map(([k, v]) => `${k}="${esc(v)}"`).join(' ')}><span class="vdc-name">${esc(it.name)} = </span><span class="vdc-val">${esc(lit(it.v))}${it.unit ? ' ' + esc(it.unit) : ''}</span></span>`;
+          }
+          const a = { 'data-var-name': it.name, 'data-var-val': String(toSI(it.v, it.unit)), 'data-var-expr': it.core, 'data-var-display-unit': it.spec, 'data-bare': '1' };
+          return `<span contenteditable="false" class="var-def-chip" ${Object.entries(a).map(([k, v]) => `${k}="${esc(v)}"`).join(' ')}><span class="vdc-name">${esc(it.name)} = ${esc(it.core)}</span></span>`;
+        };
+        let first = true;
+        for (const it of items) {
+          const br = first ? '' : '<br>'; first = false;
+          if (it.t === 'h') { html += `${br}<br><b>${esc(it.text)}</b>`; continue; }
+          if (it.t === 'p') { html += `${br}${esc(it.text)}`; continue; }
+          if (it.t === 'plot') { html += `${br}<span contenteditable="false" class="plot-chip" data-plot="${esc(it.src)}"></span> `; continue; }
+          if (it.t === 'img') { const src = images[items.indexOf(it)]; if (src) html += `${br}<span contenteditable="false" class="calc-img-wrap"><img src="${src}" draggable="false" style="width:${Math.round(Math.min(images.width || 500, (images.nat && images.nat[items.indexOf(it)]) || Infinity))}px;height:auto"><span class="img-resize-handle"></span><span class="img-size-label"></span></span>${it.caption ? `<br><i>${esc(it.caption)}</i>` : ''}`; else first = !html; continue; }
+          const L = C.lines().find(l => l.it === it), text = L.text, k = text.lastIndexOf(`${it.name} = `);
+          html += `${br}${esc(text.slice(0, k))}${chip(it)} `;
+        }
+        const today = new Date().toISOString().slice(0, 10);
+        return { version: 2, meta: { 'm-project': m.project || '', 'm-projno': m.job || '', 'm-date': m.date || today, 'm-desc': m.title || meta.title || '', 'm-sheet': m.sheet || '', 'm-orig': m.by || '', 'm-deliv': '', 'm-checked': '', 'm-suit': '', 'm-rev': '' },
+          pages: [html], preferredUnits: {}, et: { tool: meta.tool || '', standard: meta.standard || '' } };
+      },
+    };
+    return C;
+  }
+  // a number as CalcPad reads it: full precision, no grouping
+  const lit = v => (Number.isFinite(v) ? String(+v.toPrecision(12)) : '0');
+  // the drawings as PNG data URLs (CalcPad's Word export takes PNG): resolves to { index: dataURL, width }
+  async function rasterise(C, width = 520) {
+    const out = { width, nat: {} };   // nat: each drawing's own width, so a small one is not blown up
+    const jobs = C.items.map((it, i) => it.t !== 'img' ? null : new Promise(res => {
+      try {
+        const doc = new DOMParser().parseFromString(it.svg, 'image/svg+xml'), sv = doc.documentElement;
+        if (!sv || sv.nodeName !== 'svg') return res();
+        if (!sv.getAttribute('xmlns')) sv.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        const vb = (sv.getAttribute('viewBox') || '').split(/[ ,]+/).map(Number), w = vb[2] || +sv.getAttribute('width') || 600, h = vb[3] || +sv.getAttribute('height') || 400;
+        sv.setAttribute('width', w); sv.setAttribute('height', h); out.nat[i] = w;
+        // the page's colours and fonts as the drawing uses them
+        const st = doc.createElementNS('http://www.w3.org/2000/svg', 'style'); st.textContent = 'text{font-family:Arial,Helvetica,sans-serif}'; sv.insertBefore(st, sv.firstChild);
+        const img = new Image(), url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(sv));
+        img.onload = () => { const k = 2, cv = document.createElement('canvas'); cv.width = w * k; cv.height = h * k; const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, cv.width, cv.height); out[i] = cv.toDataURL('image/png'); res(); };
+        img.onerror = () => res(); img.src = url;
+      } catch (e) { res(); }
+    }));
+    await Promise.all(jobs.filter(Boolean));
+    return out;
+  }
+  // the buttons' work: copy the CalcPad text (with the chips as HTML for a paste straight into CalcPad), download a .perega
+  async function copy(C, m) {
+    const text = C.calcpad();
+    try {
+      if (navigator.clipboard && window.ClipboardItem) {
+        const doc = C.perega(m), html = doc.pages[0];
+        await navigator.clipboard.write([new ClipboardItem({ 'text/plain': new Blob([text], { type: 'text/plain' }), 'text/html': new Blob([html], { type: 'text/html' }) })]);
+        return true;
+      }
+      await navigator.clipboard.writeText(text); return true;
+    } catch (e) {
+      const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+      let ok = false; try { ok = document.execCommand('copy'); } catch (e2) { ok = false; } ta.remove(); return ok;
+    }
+  }
+  const fileSafe = s => String(s || 'Calculation').replace(/×/g, 'x').replace(/\//g, '-').replace(/[^A-Za-z0-9 ._()-]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Calculation';
+  function save(text, fileName, ext) {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = fileSafe(fileName) + ext;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+  async function download(C, m, fileName) {
+    let images = {}; try { images = await rasterise(C); } catch (e) { images = {}; }
+    save(JSON.stringify({ ...C.perega(m, images), savedAt: new Date().toISOString() }, null, 2), fileName, '.perega');
+  }
+  // a CalcPad project (.peregaproj): one check per script, in order, each a whole document of its own (CalcPad keeps each
+  // check's names apart, so the zones of a beam can all use M_Ed, d, ...). list: [{ C, title }]
+  // Values several checks define alike (the same name, definition, unit, description and source: the materials, a section
+  // several zones share, ...) go once into a first check of shared values, which CalcPad (a pack's shared check, from CalcPad dd29f6a) gives
+  // to every other check of the pack; each check says, where they were, which of its values come from there. A value stays
+  // in a check unless everything it uses there is shared too, so a check with a different f_ck keeps its own f_cd.
+  // Returns the list with the shared check first ({ C, title, shared: true }), or the list as it was if nothing repeats.
+  const IDENT = /[A-Za-z][A-Za-z0-9_]*/g;
+  function shareOut(list) {
+    const defs = it => it.t === 'in' || it.t === 'val' || it.t === 'calc';
+    const key = it => JSON.stringify([it.t, it.name, it.t === 'calc' ? `${it.core} [${it.spec}]` : `${lit(it.v)} ${it.unit}`, it.desc || '', it.ref || '', it.how || '']);
+    const count = new Map();
+    list.forEach(({ C }) => { const seen = new Set(); C.items.forEach(it => { if (!defs(it)) return; const k = key(it); if (!seen.has(k)) { seen.add(k); count.set(k, (count.get(k) || 0) + 1); } }); });
+    const best = new Map();   // name → the definition most checks share (one per name)
+    for (const [k, c] of count) { if (c < 2) continue; const nm = JSON.parse(k)[1], b = best.get(nm); if (!b || c > count.get(b)) best.set(nm, k); }
+    if (!best.size) return list;
+    const shared = [], sharedKeys = new Set();
+    const out = list.map(({ C, title, ...rest }) => {
+      const local = new Set(C.items.filter(defs).map(it => it.name)), gone = new Set();
+      C.items.forEach(it => {
+        if (!defs(it) || best.get(it.name) !== key(it)) return;
+        const uses = it.t === 'calc' ? (it.core.match(IDENT) || []).filter(n => n !== it.name && local.has(n)) : [];
+        if (uses.every(n => gone.has(n))) gone.add(it.name);
+      });
+      if (!gone.size) return { C, title, ...rest };
+      const C2 = create({ ...C.meta }); let head = null, run = [];
+      const flush = () => { if (run.length) { C2.items.push({ t: 'p', text: `From the shared values: ${run.join(', ')}.` }); run = []; } };
+      for (const it of C.items) {
+        if (it.t === 'h') { flush(); head = it.text; C2.items.push(it); continue; }
+        if (defs(it) && gone.has(it.name)) { run.push(it.name); const k = key(it); if (!sharedKeys.has(k)) { sharedKeys.add(k); shared.push({ head, it }); } continue; }
+        flush(); C2.items.push(it);
+      }
+      flush();
+      return { C: C2, title, ...rest };
+    });
+    if (!shared.length) return list;
+    const S = create({ title: 'Shared values', tool: list[0].C.meta.tool, standard: list[0].C.meta.standard });
+    S.items.push({ t: 'p', text: 'The values several checks of this project use, defined once: CalcPad gives them to every other check. A check that needs a different value defines its own.' });
+    let h = null;
+    for (const { head, it } of shared) { if (head !== h) { h = head; if (head) S.items.push({ t: 'h', text: head }); } S.items.push(it); }
+    return [{ C: S, title: 'Shared values', shared: true }, ...out];
+  }
+  async function project(list, m = {}, name = 'Calculation', o = {}) {
+    const checks = [];
+    if (o.share !== false && list.length > 1) list = shareOut(list);
+    for (let k = 0; k < list.length; k++) {
+      const { C, title, shared } = list[k]; let images = {};
+      try { images = typeof document !== 'undefined' ? await rasterise(C) : {}; } catch (e) { images = {}; }
+      checks.push({ id: 'c' + (k + 1), name: title, doc: C.perega({ ...m, title }, images), ...(shared ? { shared: true } : {}) });
+    }
+    return { kind: 'calcpad-project', version: 1, name: fileSafe(name), activeId: checks.length ? checks[0].id : null, checks, savedAt: new Date().toISOString() };
+  }
+  async function downloadProject(list, m, fileName) { save(JSON.stringify(await project(list, m, fileName), null, 2), fileName, '.peregaproj'); }
+  // a tool with several zones (Z: [{ key, title, sum, util, C }]): the project button, then each zone as a <details> with its
+  // own buttons and its full calculation; wire() answers the buttons (once per page, on a container that stays)
+  const uf = u => (Number.isFinite(u) ? u.toFixed(3) : '>99');
+  // o.noProj: no project button (a page that shows its zones in several places, with one project button of its own)
+  function zonesHTML(Z, o = {}) {
+    return (o.noProj ? '' : `<div class="cs-tools"><button class="btn2" type="button" data-cp="proj">Download CalcPad project (.peregaproj)</button><span class="aux" data-cpmsg="proj"></span></div>`)
+      + Z.map(zn => `<details class="zone"><summary><span>${esc(zn.title)}${zn.sum ? `<small> · ${esc(zn.sum)}</small>` : ''}</span>${zn.util != null ? `<span class="u ${zn.util > 1 ? 'over' : ''}">${uf(zn.util)}</span>` : ''}</summary>`
+        + `<div class="zfull"><div class="cs-tools"><button class="btn2" type="button" data-cp="copy" data-zone="${esc(zn.key)}">Copy for CalcPad</button><button class="btn2" type="button" data-cp="save" data-zone="${esc(zn.key)}">Download .perega</button><span class="aux" data-cpmsg="${esc(zn.key)}"></span></div>${zn.C.html({ noImg: true })}</div></details>`).join('');
+  }
+  // getZ() → the zones shown; meta(title) → the project details; name(title) → a file name; proj: the project's title
+  function wire(root, getZ, meta, name, proj) {
+    root.addEventListener('click', async e => {
+      const b = e.target.closest('[data-cp]'), Z = getZ(); if (!b || !Z) return;
+      const msg = k => root.querySelector(`[data-cpmsg="${k}"]`) || { textContent: '' };
+      if (b.dataset.cp === 'proj') { await downloadProject(Z.map(zn => ({ C: zn.C, title: zn.title })), meta(proj), name(proj)); msg('proj').textContent = 'Downloaded: open it in CalcPad (File ▸ Open project). Each zone is a check of its own.'; return; }
+      const zn = Z.find(z => z.key === b.dataset.zone); if (!zn) return;
+      if (b.dataset.cp === 'copy') { const ok = await copy(zn.C, meta(zn.title)); msg(zn.key).textContent = ok ? 'Copied: paste it into a CalcPad sheet.' : 'Could not copy: use Download .perega.'; }
+      else { await download(zn.C, meta(zn.title), name(zn.title)); msg(zn.key).textContent = 'Downloaded: open it in CalcPad (File ▸ Open).'; }
+    });
+  }
+  // the zones on the A4 sheet: every zone in full, the materials set out once and "as above" after
+  function sheetHTML(Z, h2 = t => `<h2>${t}</h2>`) {
+    let mat = false;
+    return Z.map(zn => { const s = `<div class="rs">${h2(`${esc(zn.title)}${zn.sum ? ` <span style="font-weight:400;color:#555">· ${esc(zn.sum)}</span>` : ''}`)}${zn.C.html({ sheet: true, noImg: true, skip: mat ? ['Materials'] : [] })}</div>`; if (zn.C.items.some(it => it.t === 'h' && it.text === 'Materials')) mat = true; return s; }).join('');
+  }
+  // the style of the full calculation (each tool's page and sheet include it)
+  const CSS = `.cs{font-size:13px;line-height:1.45}.cs-h{font-weight:600;font-size:14px;margin:14px 0 4px;padding-bottom:3px;border-bottom:1px solid var(--bdr,#e6e6e6)}
+.cs-p{color:var(--mut,#5f6368);margin:4px 0}.cs-r{display:grid;grid-template-columns:1fr 110px;gap:10px;padding:4px 0;border-bottom:1px solid #f0f0f0}
+.cs-eq{overflow-wrap:anywhere}.cs-eq i{font-style:italic}.cs-eq sub,.cs-eq sup{font-size:75%}.cs-d{color:var(--mut,#5f6368);font-size:12px}
+.cs-ref{color:var(--faint,#6b6b6b);font-size:12px;text-align:right}.cs-ok{color:var(--pass,#247b50);font-weight:600}.cs-ng{color:var(--fail,#c4242a);font-weight:600}
+.cs-val .cs-eq{color:#333}.cs-img{margin:8px 0}.cs-cap{font-size:12px;color:var(--mut,#5f6368)}
+.cs-sheet{font-size:9pt}.cs-sheet .cs-r{grid-template-columns:1fr 70pt;padding:1pt 0;break-inside:avoid}.cs-sheet .cs-h{font-size:10pt;margin:6pt 0 2pt}.cs-sheet .cs-d,.cs-sheet .cs-ref{font-size:8pt}.cs-sheet .cs-d{display:inline;margin-left:8pt}.cs-sheet .cs-p{margin:2pt 0}
+.zone .zfull{padding:0 10px 8px}.zone summary small{color:var(--faint,#6b6b6b);font-size:12px}.cs-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.cs-tools .btn2{width:auto;flex:0 0 auto;margin:0;padding:0 16px}
+@media print{.cs-tools{display:none}}`;
+  return { create, toSI, siUnit, factor, num, exprHTML, symHTML, unitHTML, tokens, rasterise, copy, download, project, downloadProject, zonesHTML, wire, sheetHTML, CSS };
+})();
+if (typeof module !== 'undefined') module.exports = { CalcScript };
+
 /* ===== EC2 DESIGN CORE (EngineeringTools) =====
    Clean-room implementation from BS EN 1992-1-1:2004 + A1:2014 and the UK National Annex (NA to BS EN 1992-1-1:2004+A1:2014),
    cross-read with The Concrete Centre "How to design concrete structures using Eurocode 2". Units: N, mm (stresses N/mm2).
@@ -1210,6 +1559,533 @@ const PSC = (() => {
 })();
 if (typeof module !== 'undefined') module.exports = { PSC };
 
+/* ===== PRESTRESSED BEAM: FULL CALCULATION (EngineeringTools) =====
+   PSC.design written out, one CalcScript per part (one CalcPad check each in a project):
+   - the section: each trapezium of the stack and the gross properties by formula (A, y_b, I, z_t, z_b);
+   - the materials: the concrete at 28 days and at transfer (3.1.2), creep and shrinkage by Annex B, the tendon's limits;
+   - the prestress at mid-span: pretensioned, the release stresses of each layer from the 2 × 2 equations of the transformed
+     section (the self-weight acting), then each layer's time-dependent loss by Expression 5.46 (or the separate sums) with
+     its relaxation (3.3.2(7)); post-tensioned, friction by formula, the draw-in and the averaged elastic shortening stated,
+     then the loss;
+   - the stresses: each limit at the section where it governs (the force there stated: it follows the transmission length
+     near the ends), the moments by formula, the fibre stresses, the check;
+   - the tendon stresses; the deflections (integrated, stated) against their limits; ULS bending by strain compatibility at
+     the governing section (the neutral axis and the compression block stated, the tendons' strains and stresses by
+     formula); shear (6.2.2 with 6.2a or 6.4, 6.2.3) at the sections that govern; lateral stability; the end block.
+   Source: scratchpad/prestress/script.js. Needs CalcScript, EC2, PSC. */
+const PSCScript = (() => {
+  'use strict';
+  const TOOL = 'Prestressed Beam Design', STD = 'BS EN 1992-1-1:2004+A1:2014, UK NA; BS EN 1990, UK NA';
+  const f0 = v => String(Math.round(v)), f2 = v => (Math.round(v * 100) / 100).toFixed(2);
+  const create = title => CalcScript.create({ title, tool: TOOL, standard: STD });
+  const ck = (R, id) => R.checks.find(k => k.id === id);
+  const at = x => `x = ${f2(x / 1000)} m`;
+
+  // ---------- the section: the stack of trapezia ----------
+  function sectionZone(R) {
+    const C = create('The section'), sp = R.sp, L = sp.L;
+    C.head('The section as a stack of trapezia from the soffit');
+    const A = [], S = [], I0 = [];
+    L.forEach((t, i) => {
+      const k = i + 1, h = t.z1 - t.z0, d = (t.b1 - t.b0) / h;
+      C.input(`h_${k}`, h, 'mm', `layer ${k}: depth`, ''); C.input(`b_0${k}`, t.b0, 'mm', 'width at its foot', ''); C.input(`b_1${k}`, t.b1, 'mm', 'width at its head', '');
+      if (k === 1) C.input('z_01', 0, 'mm', 'its foot: the soffit', ''); else C.calc(`z_0${k}`, `z_0${k - 1} + h_${k - 1}`, t.z0, 'mm', 'its foot above the soffit', '');
+      C.calc(`A_${k}`, `(b_0${k} + b_1${k})/2*h_${k}`, (t.b0 + t.b1) / 2 * h, 'mm2', 'area', '');
+      C.calc(`D_${k}`, `(b_1${k} - b_0${k})/h_${k} [#]`, d, '', 'rate of widening', '');
+      C.calc(`m_1${k}`, `b_0${k}*h_${k}^2/2 + D_${k}*h_${k}^3/3`, t.b0 * h * h / 2 + d * h ** 3 / 3, 'mm3', 'first moment about its foot', '');
+      C.calc(`m_2${k}`, `b_0${k}*h_${k}^3/3 + D_${k}*h_${k}^4/4`, t.b0 * h ** 3 / 3 + d * h ** 4 / 4, 'mm4', 'second moment about its foot', '');
+      A.push(`A_${k}`); S.push(`m_1${k} + z_0${k}*A_${k}`); I0.push(`m_2${k} + 2*z_0${k}*m_1${k} + z_0${k}^2*A_${k}`);
+    });
+    C.head('Gross properties');
+    C.calc('h', L.map((_, i) => `h_${i + 1}`).join(' + '), sp.h, 'mm', 'overall depth', '');
+    C.calc('A_c', A.join(' + '), sp.A, 'mm2', 'area', '', { sym: 'A' });
+    C.calc('S_0', S.join(' + '), sp.yb * sp.A, 'mm3', 'first moment about the soffit', '');
+    C.calc('I_0', I0.join(' + '), sp.I + sp.A * sp.yb ** 2, 'mm4', 'second moment about the soffit', '');
+    C.calc('y_b', 'S_0/A_c', sp.yb, 'mm', 'centroid above the soffit', '');
+    C.calc('I_c', 'I_0 - A_c*y_b^2', sp.I, 'mm4', 'second moment about the centroid', '', { sym: 'I' });
+    C.calc('y_t', 'h - y_b', sp.yt, 'mm', 'centroid below the top', '');
+    C.calc('z_t', 'I_c/y_t', sp.zt, 'mm3', 'section modulus, top', ''); C.calc('z_b', 'I_c/y_b', sp.zb, 'mm3', 'section modulus, bottom', '');
+    C.given('u', sp.u, 'mm', 'perimeter exposed to drying', 'the outline of the section', '');
+    C.calc('h_0', '2*A_c/u', sp.h0, 'mm', 'notional size', '3.1.4(5)');
+    C.given('b_w', sp.bw, 'mm', 'smallest width in the tension zone (below the centroid)', 'the stack searched in steps of a twentieth of each layer', '6.2.2(1)');
+    C.given('bS', sp.bS, 'mm^-2', 'smallest b/S over the depth (for 6.4)', 'the stack searched in steps of a twentieth of each layer', '6.2.2(2)', { sym: 'b/S' });
+    return { key: 'section', title: C.meta.title, sum: `A ${f0(sp.A)} mm², I ${f0(sp.I / 1e6)}×10⁶ mm⁴`, util: null, C };
+  }
+  const secGiven = (C, R) => {
+    const sp = R.sp, how = 'see The section';
+    C.given('A_c', sp.A, 'mm2', 'area of the section', how, '', { sym: 'A' }); C.given('I_c', sp.I, 'mm4', 'second moment', how, '', { sym: 'I' });
+    C.given('y_b', sp.yb, 'mm', 'centroid above the soffit', how, ''); C.given('h', sp.h, 'mm', 'depth', how, '');
+  };
+
+  // ---------- the materials ----------
+  function concrete(C, R, o = {}) {
+    const c = R.c, cs = R.inp.conc || {}, T = c.T;
+    C.head('Concrete');
+    C.input('f_ck', c.fck, 'N/mm2', 'characteristic strength at 28 days', 'Table 3.1');
+    C.calc('f_cm', 'f_ck[#N/mm2] + 8 [#N/mm2]', c.fcm, 'N/mm2', 'mean strength', 'Table 3.1');
+    C.calc('f_ctm', c.fck <= 50 ? '0.30*f_ck[#N/mm2]^(2/3) [#N/mm2]' : '2.12*LOG(1 + f_cm[#N/mm2]/10) [#N/mm2]', c.fctm, 'N/mm2', 'mean tensile strength', 'Table 3.1');
+    if (cs.Ec != null) C.input('E_cm', R.Ecm, 'N/mm2', 'modulus at 28 days, given', '');
+    else { C.input('k_agg', c.aggF, '', `aggregate (${cs.agg || 'quartzite'})`, '3.1.3(2)'); C.calc('E_cm', 'k_agg*22000*(f_cm[#N/mm2]/10)^0.3 [#N/mm2]', R.Ecm, 'N/mm2', 'secant modulus at 28 days', 'Table 3.1, 3.1.3(2)'); }
+    if (o.short) return;
+    C.head('At transfer');
+    if (T.src === 'given') { C.input('f_ckt', T.fck, 'N/mm2', 'strength at transfer, given', '3.1.2(5)', { sym: 'f_ck(t)' }); C.calc('f_cmt', 'f_ckt[#N/mm2] + 8 [#N/mm2]', T.fcm, 'N/mm2', 'mean strength at transfer', '3.1.2', { sym: 'f_cm(t)' }); C.calc('beta_cc', 'f_cmt/f_cm [#]', T.bcc, '', '', '3.1.2(6)', { sym: 'β_cc(t)' }); }
+    else {
+      C.input('t_0', T.t0, '', 'age at transfer, days', ''); C.input('s_c', { S: 0.38, N: 0.25, R: 0.20 }[cs.cement || 'N'], '', `cement class ${cs.cement || 'N'}`, '3.1.2(6)', { sym: 's' });
+      C.calc('beta_cc', T.t0 >= 28 ? '1 [#]' : 'EXP(s_c*(1 - SQRT(28/t_0))) [#]', T.bcc, '', 'strength development', '3.1.2(6) (3.2)', { sym: 'β_cc(t)' });
+      C.calc('f_cmt', 'beta_cc*f_cm', T.fcm, 'N/mm2', 'mean strength at transfer', '3.1.2 (3.1)', { sym: 'f_cm(t)' });
+      C.calc('f_ckt', 'MIN(f_ck[#N/mm2], f_cmt[#N/mm2] - 8) [#N/mm2]', T.fck, 'N/mm2', 'characteristic strength at transfer', '3.1.2(5)', { sym: 'f_ck(t)' });
+    }
+    C.calc('f_ctmt', 'beta_cc*f_ctm', T.fctm, 'N/mm2', 'tensile strength at transfer', '3.1.2(9)', { sym: 'f_ctm(t)' });
+    if (cs.EcT != null) C.input('E_cmt', R.EcmT, 'N/mm2', 'modulus at transfer, given', '', { sym: 'E_cm(t)' });
+    else C.calc('E_cmt', '(f_cmt/f_cm)^0.3*E_cm', R.EcmT, 'N/mm2', 'modulus at transfer', '3.1.3(3)', { sym: 'E_cm(t)' });
+  }
+  function creepShrink(C, R) {
+    const c = R.c, cs = R.inp.conc || {}, cr = R.cr, sh = R.sh;
+    if (!cr) { C.head('Creep and shrinkage, given'); C.input('phi', R.phi, '', 'creep coefficient φ(∞, t₀)', '3.1.4', { sym: 'φ' }); C.input('epsilon_cs', R.ecs, '', 'shrinkage after transfer', '3.1.4', { sym: 'ε_cs' }); return; }
+    C.head('Creep, Annex B.1');
+    C.input('RH', cs.RH ?? 50, '', 'relative humidity, %', ''); C.input('h_0n', R.h0, '', 'notional size h₀ in mm', '3.1.4(5)', { sym: 'h_0' });
+    if (!C.has('t_0')) C.input('t_0', R.c.T.t0, '', 'age at loading (transfer), days', '');
+    C.input('T_c', cs.temp ?? 20, '', 'curing temperature, °C', 'B.10');
+    C.input('alpha_cem', { S: -1, N: 0, R: 1 }[cs.cement || 'N'] ?? 0, '', `for cement class ${cs.cement || 'N'}`, 'B.9', { sym: 'α' });
+    const hi = c.fcm > 35;
+    C.calc('f_cmn', 'f_cm[#N/mm2] [#]', c.fcm, '', 'f_cm in N/mm²', '');
+    if (hi) { C.calc('alpha_1', '(35/f_cmn)^0.7 [#]', (35 / c.fcm) ** 0.7, '', '', 'B.8c', { sym: 'α_1' }); C.calc('alpha_2', '(35/f_cmn)^0.2 [#]', (35 / c.fcm) ** 0.2, '', '', 'B.8c', { sym: 'α_2' });
+      C.calc('phi_RH', '(1 + (1 - RH/100)/(0.1*h_0n^(1/3))*alpha_1)*alpha_2 [#]', cr.phiRH, '', 'humidity factor, f_cm > 35', 'B.3b', { sym: 'φ_RH' }); }
+    else C.calc('phi_RH', '1 + (1 - RH/100)/(0.1*h_0n^(1/3)) [#]', cr.phiRH, '', 'humidity factor', 'B.3a', { sym: 'φ_RH' });
+    C.calc('beta_fcm', '16.8/SQRT(f_cmn) [#]', cr.bfcm, '', 'strength factor', 'B.4', { sym: 'β(f_cm)' });
+    C.calc('t_T', 't_0*EXP(-(4000/(273 + T_c) - 13.65)) [#]', cr.tT, '', 'age adjusted for temperature, days', 'B.10');
+    C.calc('t_0a', 'MAX(0.5, t_T*(9/(2 + t_T^1.2) + 1)^alpha_cem) [#]', cr.t0a, '', 'age adjusted for the cement, days', 'B.9', { sym: 't_0' });
+    C.calc('beta_t0', '1/(0.1 + t_0a^0.2) [#]', cr.bt0, '', 'loading age factor', 'B.5', { sym: 'β(t_0)' });
+    C.calc('phi', 'phi_RH*beta_fcm*beta_t0 [#]', R.phi, '', 'creep coefficient φ(∞, t₀) = φ₀', 'B.2', { sym: 'φ' });
+    C.head('Shrinkage, 3.1.4(6) and Annex B.2');
+    C.input('alpha_ds1', { S: 3, N: 4, R: 6 }[cs.cement || 'N'] ?? 4, '', '', 'B.12', { sym: 'α_ds1' }); C.input('alpha_ds2', { S: 0.13, N: 0.12, R: 0.11 }[cs.cement || 'N'] ?? 0.12, '', '', 'B.12', { sym: 'α_ds2' });
+    C.calc('beta_RH', '1.55*(1 - (RH/100)^3) [#]', sh.bRH, '', '', 'B.12', { sym: 'β_RH' });
+    C.calc('e_cd0', '0.85*(220 + 110*alpha_ds1)*EXP(-alpha_ds2*f_cmn/10)*1E-6*beta_RH [#]', sh.ecd0, '', 'basic drying shrinkage', 'B.11', { sym: 'ε_cd,0' });
+    C.calc('k_h', 'IF(h_0n <= 100, 1, IF(h_0n <= 200, 1 - 0.15*(h_0n - 100)/100, IF(h_0n <= 300, 0.85 - 0.1*(h_0n - 200)/100, IF(h_0n <= 500, 0.75 - 0.05*(h_0n - 300)/200, 0.7)))) [#]', sh.kh, '', '', 'Table 3.3');
+    C.calc('e_cdi', 'k_h*e_cd0 [#]', sh.ecdInf, '', 'final drying shrinkage', '3.1.4(6) (3.9)', { sym: 'ε_cd,∞' });
+    C.calc('e_cai', '2.5*(f_ck[#N/mm2] - 10)*1E-6 [#]', sh.ecaInf, '', 'final autogenous shrinkage', '3.1.4(6) (3.12)', { sym: 'ε_ca,∞' });
+    C.input('t_s', Math.min(cs.ts ?? 1, R.c.T.t0), '', 'age at the end of curing, days', '');
+    C.calc('beta_ds', 'MAX(t_0 - t_s, 0)/(MAX(t_0 - t_s, 0) + 0.04*SQRT(h_0n^3)) [#]', sh.ecdT0 / Math.max(sh.ecdInf, 1e-30), '', 'drying before transfer', '3.1.4(6) (3.10)', { sym: 'β_ds(t_0)' });
+    C.calc('beta_as', '1 - EXP(-0.2*SQRT(t_0)) [#]', sh.ecaT0 / Math.max(sh.ecaInf, 1e-30), '', 'autogenous before transfer', '3.1.4(6) (3.13)', { sym: 'β_as(t_0)' });
+    C.calc('epsilon_cs', 'e_cdi - beta_ds*e_cdi + MAX(0, e_cai - beta_as*e_cai) [#]', R.ecs, '', 'shrinkage after transfer', '3.1.4(6)', { sym: 'ε_cs' });
+  }
+  function steel(C, R) {
+    const pr = R.inp.pre || {};
+    C.head('Prestressing steel');
+    C.input('f_pk', R.fpk, 'N/mm2', 'tensile strength', '3.3.3');
+    if (pr.fp01k > 0) C.input('f_p01', R.fp01, 'N/mm2', '0.1 % proof stress', '3.3.3', { sym: 'f_p0.1k' }); else C.calc('f_p01', '0.88*f_pk', R.fp01, 'N/mm2', '0.1 % proof stress (0.88 f_pk)', '3.3.3', { sym: 'f_p0.1k' });
+    C.input('E_p', R.Ep, 'N/mm2', 'modulus', '3.3.6(2)');
+    C.calc('f_pd', 'f_p01/1.15', R.fpd, 'N/mm2', 'design strength', '3.3.6(6)');
+    C.calc('s_pmax', 'MIN(0.8*f_pk, 0.9*f_p01)', R.sMax, 'N/mm2', 'the most at stressing', '5.10.2.1', { sym: 'σ_p,max' });
+    C.calc('s_pm0', 'MIN(0.75*f_pk, 0.85*f_p01)', R.sPm0, 'N/mm2', 'the most after transfer', '5.10.3(2)', { sym: 'σ_pm0,max' });
+    C.input('sigma_J', R.sigJ, 'N/mm2', 'initial (jacking) stress', '', { sym: 'σ_J' });
+  }
+  function materialsZone(R) {
+    const C = create('Materials, creep and shrinkage');
+    concrete(C, R); creepShrink(C, R); steel(C, R);
+    return { key: 'materials', title: C.meta.title, sum: `φ ${f2(R.phi)}, ε_cs ${f0(R.ecs * 1e6)}×10⁻⁶`, util: null, C };
+  }
+
+  // ---------- loads and the moments and shears at x ----------
+  function loads(C, R) {
+    const ld = R.inp.loads || {};
+    C.head('Loads');
+    C.input('L', R.L / 1000, 'm', 'span between the bearing centres', '');
+    C.input('rho_c', ld.rho ?? 25, 'kN/m3', 'weight density of the concrete', 'BS EN 1991-1-1', { sym: 'ρ' });
+    C.calc('g_sw', 'rho_c*A_c', R.gSW, 'kN/m', 'self-weight', '');
+    if ((ld.gT ?? 0) !== 0) { C.input('g_t1', ld.gT, 'kN/m', 'other load at transfer', ''); C.calc('g_T', 'g_sw + g_t1', R.gT, 'kN/m', 'permanent load at transfer', ''); } else C.calc('g_T', 'g_sw', R.gT, 'kN/m', 'permanent load at transfer', '');
+    if ((ld.g2 ?? 0) !== 0) { C.input('g_2', ld.g2, 'kN/m', 'finishes', ''); C.calc('g_G', 'g_T + g_2', R.gG, 'kN/m', 'permanent load in service', ''); } else C.calc('g_G', 'g_T', R.gG, 'kN/m', 'permanent load in service', '');
+    C.input('q', R.q, 'kN/m', 'imposed load', '');
+    R.pts.forEach((p, k) => { C.input(`a_${k + 1}`, p.a / 1000, 'm', `point load ${k + 1}: from the left bearing`, ''); C.input(`G_${k + 1}`, p.G / 1e3, 'kN', 'permanent', ''); C.input(`Q_${k + 1}`, p.Q / 1e3, 'kN', 'imposed', ''); });
+    C.input('psi_2', R.psi2, '', 'quasi-permanent factor', 'Table NA.A1.1', { sym: 'ψ_2' });
+  }
+  // M_T, M_G, M_Q at x (names with sfx); 0 outside the span
+  function moments(C, R, s, sfx, which = 'TGQ') {
+    const x = s.x, inS = x >= 0 && x <= R.L, ptT = (P, k) => x <= R.pts[k].a ? `${P}_${k + 1}*(L - a_${k + 1})*x${sfx}/L` : `${P}_${k + 1}*a_${k + 1}*(L - x${sfx})/L`;
+    C.input(`x${sfx}`, x / 1000, 'm', 'the section, from the left bearing', '');
+    const mk = (nm, w, P, v, d) => { if (!which.includes(nm)) return; const terms = [`${w}*x${sfx}*(L - x${sfx})/2`, ...(P ? R.pts.map((p, k) => ptT(P, k)) : [])]; if (inS) C.calc(`M_${nm}${sfx}`, terms.join(' + '), v / 1e6, 'kNm', d, ''); else C.input(`M_${nm}${sfx}`, 0, 'kNm', `${d}: beyond the bearing, none`, ''); };
+    mk('T', 'g_T', null, s.MT, 'moment at transfer'); mk('G', 'g_G', 'G', s.MG, 'permanent moment in service'); mk('Q', 'q', 'Q', s.MQ, 'imposed moment');
+  }
+
+  // ---------- the prestress at mid-span ----------
+  function relaxExpr(C, R, sfx, s0) {
+    const pr = R.inp.pre || {};
+    if ((pr.relMode || 'ec2') === 'factor') { if (!C.has('k_rel')) { C.input('k_rel', pr.relFactor ?? 2.5, '', 'relaxation: a multiple of ρ1000', ''); C.input('rho_1000', pr.rho1000 ?? 2.5, '', 'relaxation at 1000 hours, %', '3.3.2(4)', { sym: 'ρ_1000' }); }
+      C.calc(`Dsr${sfx}`, `k_rel*rho_1000/100*s_0${sfx}`, (pr.relFactor ?? 2.5) * (pr.rho1000 ?? 2.5) / 100 * s0, 'N/mm2', 'relaxation loss', '', { sym: 'Δσ_pr' }); return; }
+    const cls = pr.relClass ?? 2, K = { 1: [5.39, 6.7], 2: [0.66, 9.1], 3: [1.98, 8.0] }[cls] || [0.66, 9.1];
+    if (!C.has('k_r1')) { C.input('k_r1', K[0], '', `relaxation class ${cls}`, '3.3.2(7)'); C.input('k_r2', K[1], '', '', '3.3.2(7)'); C.input('rho_1000', pr.rho1000 ?? 2.5, '', 'relaxation at 1000 hours, %', '3.3.2(4)', { sym: 'ρ_1000' }); C.input('t_rel', 500000, '', 'hours (the end of the design life)', '3.3.2(8)'); }
+    C.calc(`mu${sfx}`, `s_0${sfx}/f_pk [#]`, s0 / R.fpk, '', 'σ_pi/f_pk', '3.3.2(7)', { sym: 'μ' });
+    const v = PSC.relaxation({ cls, rho1000: pr.rho1000 ?? 2.5, mu: s0 / R.fpk }) * s0;
+    C.calc(`Dsr${sfx}`, `k_r1*rho_1000*EXP(k_r2*mu${sfx})*(t_rel/1000)^(0.75*(1 - mu${sfx}))*1E-5*s_0${sfx}`, v, 'N/mm2', 'relaxation loss', '3.3.2(7) (3.28)', { sym: 'Δσ_pr' });
+  }
+  function lossExpr(C, R, sfx, l, ApName, zcp) {
+    if ((R.inp.lossMode || 'ec2') === 'sum') {
+      C.calc(`Dsc${sfx}`, `E_p*phi*s_cqp${sfx}/(1.05*E_cm)`, l.tl.parts.creep, 'N/mm2', 'creep loss (the specific creep φ/1.05E_cm)', 'Mosley 11.3', { sym: 'Δσ_c' });
+      C.calc(`Dss${sfx}`, 'epsilon_cs*E_p', l.tl.parts.shrink, 'N/mm2', 'shrinkage loss', '', { sym: 'Δσ_s' });
+      C.calc(`Ds${sfx}`, `Dsc${sfx} + Dss${sfx} + Dsr${sfx}`, l.tl.ds, 'N/mm2', 'time-dependent loss', '', { sym: 'Δσ_p,c+s+r' });
+    } else {
+      if (!C.has('alpha_e')) C.calc('alpha_e', 'E_p/E_cm [#]', R.ae28, '', 'modular ratio', '', { sym: 'α_e' });
+      C.calc(`Ds${sfx}`, `(epsilon_cs*E_p + 0.8*Dsr${sfx} + alpha_e*phi*s_cqp${sfx})/(1 + alpha_e*${ApName}/A_c*(1 + A_c/I_c*${zcp}^2)*(1 + 0.8*phi))`, l.tl.ds, 'N/mm2', 'time-dependent loss', '5.10.6 (5.46)', { sym: 'Δσ_p,c+s+r' });
+    }
+  }
+  function prestressZone(R) {
+    const C = create('Prestress and losses at mid-span'), s = R.cmid;
+    secGiven(C, R);
+    C.head('Materials');
+    C.given('E_cmt', R.EcmT, 'N/mm2', 'modulus at transfer', 'see Materials', '', { sym: 'E_cm(t)' }); C.given('E_cm', R.Ecm, 'N/mm2', 'modulus at 28 days', 'see Materials', '');
+    C.given('phi', R.phi, '', 'creep coefficient', 'see Materials', '', { sym: 'φ' }); C.given('epsilon_cs', R.ecs, '', 'shrinkage after transfer', 'see Materials', '', { sym: 'ε_cs' });
+    C.input('f_pk', R.fpk, 'N/mm2', 'tensile strength of the tendons', '3.3.3'); C.input('E_p', R.Ep, 'N/mm2', 'their modulus', '3.3.6(2)'); C.input('sigma_J', R.sigJ, 'N/mm2', 'initial (jacking) stress', '', { sym: 'σ_J' });
+    C.calc('alpha_eT', 'E_p/E_cmt [#]', R.aeT, '', 'modular ratio at transfer', '', { sym: 'α_e(t)' });
+    loads(C, R); moments(C, R, s, 'm');
+    C.calc('M_QP', 'M_Gm + psi_2*M_Qm', (s.MG + R.psi2 * s.MQ) / 1e6, 'kNm', 'quasi-permanent moment', '');
+    if (R.pre) {
+      C.head('Release: the transformed section (the strands bonded, the self-weight acting)');
+      const Ls = R.layers;
+      Ls.forEach((l, k) => {
+        const j = k + 1, b = s.ly[k].beta1;
+        C.input(`n_${j}`, l.n, '', `layer ${j}: strands`, ''); C.input(`A_p${j}`, l.Ap1, 'mm2', 'one strand', ''); C.input(`z_${j}`, l.z, 'mm', 'above the soffit', '');
+        C.calc(`A_${j}`, `n_${j}*A_p${j}`, l.A, 'mm2', 'layer area', ''); C.calc(`e_${j}`, `y_b - z_${j}`, l.e, 'mm', 'eccentricity (below the centroid +)', '');
+        if (b === 1) C.input(`beta_${j}`, 1, '', 'bonded in full here', '8.10.2.2', { sym: `β_${j}` });
+        else C.given(`beta_${j}`, b, '', 'share of its force developed here', 'beyond the debonding, the transmission length l_pt1 = 0.8 l_pt', '8.10.2.2', { sym: `β_${j}` });
+      });
+      const J = Ls.map((_, k) => k + 1), W0 = Ls.reduce((t, l, k) => t + s.ly[k].beta1 * l.A, 0), W1 = Ls.reduce((t, l, k) => t + s.ly[k].beta1 * l.A * l.e, 0), W2 = Ls.reduce((t, l, k) => t + s.ly[k].beta1 * l.A * l.e * l.e, 0);
+      C.calc('W_0', J.map(j => `beta_${j}*A_${j}`).join(' + '), W0, 'mm2', 'bonded steel', '');
+      C.calc('W_1', J.map(j => `beta_${j}*A_${j}*e_${j}`).join(' + '), W1, 'mm3', '', '');
+      C.calc('W_2', J.map(j => `beta_${j}*A_${j}*e_${j}^2`).join(' + '), W2, 'mm4', '', '');
+      const a11 = R.sp.A + R.aeT * W0, a12 = R.aeT * W1, a22 = R.sp.I + R.aeT * W2, b1 = W0 * R.sigJ, b2 = W1 * R.sigJ - s.MT, det = a11 * a22 - a12 * a12, ca = (b1 * a22 - a12 * b2) / det, cb = (a11 * b2 - a12 * b1) / det;
+      C.note('After release the concrete stress is σ_c(e) = c_a + c_b e; the strand loses α_e σ_c at its level, and the forces and moments balance: (A + α_e W₀) c_a + α_e W₁ c_b = σ_J W₀ and α_e W₁ c_a + (I + α_e W₂) c_b = σ_J W₁ − M_T.');
+      C.calc('a_11', 'A_c + alpha_eT*W_0', a11, 'mm2', '', ''); C.calc('a_12', 'alpha_eT*W_1', a12, 'mm3', '', ''); C.calc('a_22', 'I_c + alpha_eT*W_2', a22, 'mm4', '', '');
+      C.calc('B_1', 'sigma_J*W_0', b1 / 1e3, 'kN', '', ''); C.calc('B_2', 'sigma_J*W_1 - M_Tm', b2 / 1e6, 'kNm', '', '');
+      C.calc('det', 'a_11*a_22 - a_12^2', det, 'mm6', '', '');
+      C.calc('c_a', '(B_1*a_22 - a_12*B_2)/det', ca, 'N/mm2', 'concrete stress at the centroid', '');
+      C.calc('c_b', '(a_11*B_2 - a_12*B_1)/det', cb, 'N/mm3', 'and its gradient (per mm below the centroid)', '');
+      J.forEach(j => C.calc(`s_0${j}`, `sigma_J - alpha_eT*(c_a + c_b*e_${j})`, s.ly[j - 1].s0, 'N/mm2', `layer ${j}: stress after release`, '5.10.4', { sym: `σ_pm0,${j}` }));
+      C.calc('P_0', J.map(j => `beta_${j}*A_${j}*s_0${j}`).join(' + '), s.P0 / 1e3, 'kN', 'force after transfer', '');
+      C.calc('P_0e', J.map(j => `beta_${j}*A_${j}*s_0${j}*e_${j}`).join(' + '), s.Pe0 / 1e6, 'kNm', 'its moment about the centroid', '', { sym: 'P_0 e' });
+      C.calc('z_cp', 'W_1/W_0', s.zcpE, 'mm', 'centroid of the tendons below the centroid of the section', '');
+      C.head('Time-dependent losses, each layer');
+      J.forEach(j => {
+        const l = s.ly[j - 1];
+        C.calc(`s_cqp${j}`, `P_0/A_c + (P_0e - M_QP)*(y_b - z_${j})/I_c`, l.scQP, 'N/mm2', `layer ${j}: concrete stress at its level, quasi-permanent`, '5.10.6', { sym: `σ_c,QP,${j}` });
+        relaxExpr(C, R, j, l.s0); lossExpr(C, R, j, l, 'W_0', 'z_cp');
+        C.calc(`s_i${j}`, `s_0${j} - Ds${j}`, l.sInf, 'N/mm2', 'final stress', '', { sym: `σ_p,∞,${j}` });
+      });
+      C.calc('P_inf', J.map(j => `beta_${j}*A_${j}*s_i${j}`).join(' + '), s.P / 1e3, 'kN', 'final force', '', { sym: 'P_∞' });
+      C.calc('P_inf_e', J.map(j => `beta_${j}*A_${j}*s_i${j}*e_${j}`).join(' + '), s.Pe / 1e6, 'kNm', 'its moment', '', { sym: 'P_∞ e' });
+      C.calc('K_r', 'P_inf/P_0 [#]', s.P / s.P0, '', 'ratio of the final to the transfer force', '', { sym: 'K' });
+      const m = Ls.meta;
+      C.head('Transmission lengths (8.10.2.2)');
+      C.input('alpha_1', m.a1, '', R.inp.pre.release === 'sudden' ? 'sudden release' : 'gradual release', '8.10.2.2(2)', { sym: 'α_1' }); C.input('alpha_2', m.a2, '', m.wire ? 'indented wire' : '7-wire strand', '8.10.2.2(2)', { sym: 'α_2' });
+      C.input('eta_p1', m.ep1, '', '', '8.10.2.2(1)', { sym: 'η_p1' }); C.input('eta_1', m.eta1, '', R.inp.pre.bondGood === false ? 'poor bond' : 'good bond', '8.10.2.2(1)', { sym: 'η_1' });
+      C.given('f_ctmt', R.c.T.fctm, 'N/mm2', 'tensile strength at transfer', 'see Materials', '', { sym: 'f_ctm(t)' });
+      C.calc('f_bpt', 'eta_p1*eta_1*0.7*f_ctmt/1.5', m.fbpt, 'N/mm2', 'bond stress at release', '8.10.2.2 (8.15)');
+      Ls.forEach((l, k) => { const j = k + 1; C.input(`phi_${j}`, l.phi, 'mm', `layer ${j}: strand diameter`, '', { sym: `φ_${j}` }); C.given(`s_f${j}`, l.s0Full, 'N/mm2', 'its stress just after release, no moment', 'the release equations with M = 0', ''); C.calc(`l_pt${j}`, `alpha_1*alpha_2*phi_${j}*s_f${j}/f_bpt`, l.lpt, 'mm', 'transmission length', '8.10.2.2 (8.16)', { sym: `l_pt,${j}` }); });
+    } else {
+      const p = R.post, x = s.x, aL = R.a;
+      C.head('Friction and lock-off (5.10.5)');
+      C.input('A_p', p.Ap, 'mm2', 'tendon area', ''); C.input('z_E', p.zE, 'mm', 'tendon at the ends, above the soffit', ''); C.input('z_M', p.zM, 'mm', 'at mid-span', '');
+      C.calc('e_m', 'y_b - (z_E + (z_M - z_E)*4*xm*(L - xm)/L^2)', R.sp.yb - p.zOf(x), 'mm', 'eccentricity of the parabolic tendon at the section', '');
+      C.calc('P_j', 'sigma_J*A_p', p.Pj / 1e3, 'kN', 'jacking force', '');
+      C.input('mu_f', p.mu, '', 'coefficient of friction', '5.10.5.2', { sym: 'μ' }); C.input('k_w', p.k, 'm^-1', 'unintentional angular displacement', '5.10.5.2', { sym: 'k' });
+      C.input('a_e', aL / 1000, 'm', 'the anchor beyond the bearing centre (half the bearing)', '');
+      C.calc('s_E', '4*(z_M - z_E)*(L + 2*a_e)/L^2 [#]', p.slope(-aL), '', 'slope of the parabola at the anchor', '');
+      C.calc('s_x', `4*(z_M - z_E)*(L - 2*x${'m'})/L^2 [#]`, p.slope(x), '', 'slope at the section', '');
+      const Pfl = p.Pj * Math.exp(-p.mu * (Math.abs(Math.atan(p.slope(-aL)) - Math.atan(p.slope(x))) + p.k / 1000 * (x + aL)));
+      C.calc('P_fl', 'P_j*EXP(-mu_f*(ABS(ATAN(s_E) - ATAN(s_x)) + k_w*(xm + a_e)))', Pfl / 1e3, 'kN', 'after friction from the left anchor', '5.10.5.2 (5.45)');
+      if (p.both) { const Pfr = p.Pj * Math.exp(-p.mu * (Math.abs(Math.atan(p.slope(R.L + aL)) - Math.atan(p.slope(x))) + p.k / 1000 * (R.L + aL - x)));
+        C.calc('P_fr', 'P_j*EXP(-mu_f*(ABS(ATAN(-s_E) - ATAN(s_x)) + k_w*(L + a_e - xm)))', Pfr / 1e3, 'kN', 'and from the right anchor', '5.10.5.2 (5.45)');
+        C.calc('P_f', 'MAX(P_fl, P_fr)', s.Pf / 1e3, 'kN', 'after friction, stressed from both ends', ''); }
+      else C.calc('P_f', 'P_fl', s.Pf / 1e3, 'kN', 'after friction', '');
+      if (Math.abs(s.Pl - s.Pf) > 1e-6 * s.Pf) C.given('P_l', s.Pl / 1e3, 'kN', 'after the draw-in', `the draw-in ${p.dIn} mm reaches ${f0(p.lset)} mm along the tendon: the force within it is mirrored about P(l_set) (l_set found by bisection on the area between the curves)`, '5.10.5.3');
+      else C.calc('P_l', 'P_f', s.Pl / 1e3, 'kN', `after lock-off (the draw-in reaches ${f0(p.lset)} mm, short of the section)`, '5.10.5.3');
+      C.given('DP_el', p.dEl / 1e3, 'kN', 'loss by elastic shortening', `averaged along the tendon (ducts not yet grouted), j = ${f2(p.j)}: j α_e A_p c₀/(1 + j α_e A_p c₁), c the mean of (1/A + e²/I) and of P(1/A + e²/I)`, '5.10.5.1', { sym: 'ΔP_el' });
+      C.calc('P_0', 'P_l - DP_el', s.P0 / 1e3, 'kN', 'force after transfer', '');
+      C.calc('P_0e', 'P_0*e_m', s.Pe0 / 1e6, 'kNm', 'its moment', '', { sym: 'P_0 e' });
+      C.calc('s_0', 'P_0/A_p', s.s0, 'N/mm2', 'stress after transfer', '', { sym: 'σ_pm0' });
+      C.head('Time-dependent losses');
+      C.calc('s_cqp', 'P_0/A_c + (P_0e - M_QP)*e_m/I_c', s.scQP, 'N/mm2', 'concrete stress at the tendon, quasi-permanent', '5.10.6', { sym: 'σ_c,QP' });
+      relaxExpr(C, R, '', s.s0); lossExpr(C, R, '', s, 'A_p', 'e_m');
+      C.calc('P_inf', 'P_0 - A_p*Ds', s.P / 1e3, 'kN', 'final force', '', { sym: 'P_∞' });
+      C.calc('K_r', 'P_inf/P_0 [#]', s.P / s.P0, '', 'ratio of the final to the transfer force', '', { sym: 'K' });
+    }
+    return { key: 'prestress', title: C.meta.title, sum: `P₀ ${f0(s.P0 / 1e3)} kN, P∞ ${f0(s.P / 1e3)} kN at ${at(s.x)}`, util: null, C };
+  }
+
+  // ---------- stresses ----------
+  function stressZone(R) {
+    const C = create('Stresses at transfer and in service'), lim = R.inp.limits || {}, comb = { char: 1, freq: R.psi1, qp: R.psi2 };
+    secGiven(C, R); loads(C, R);
+    C.input('psi_1', R.psi1, '', 'frequent factor', 'Table NA.A1.1', { sym: 'ψ_1' });
+    C.head('Limits');
+    C.given('f_ckt', R.c.T.fck, 'N/mm2', 'strength at transfer', 'see Materials', '', { sym: 'f_ck(t)' }); C.input('f_ck', R.c.fck, 'N/mm2', 'at 28 days', 'Table 3.1');
+    C.input('k_6', R.k6, '', R.pre ? 'compression at transfer (pretensioned)' : 'compression at transfer', '5.10.2.2(5)');
+    C.calc('f_cT', 'k_6*f_ckt', R.fcT, 'N/mm2', 'compression at transfer', '5.10.2.2(5)');
+    C.calc('f_c6', '0.6*f_ck', R.fc06, 'N/mm2', 'compression, characteristic', '7.2(2)'); C.calc('f_c45', '0.45*f_ck', R.fc045, 'N/mm2', 'compression, quasi-permanent', '7.2(3)');
+    const tl = (nm, m, v, d, src) => { if (m.mode === 'value') C.input(nm, v, 'N/mm2', `${d}, given`, ''); else if (m.mode === 'zero') C.input(nm, 0, 'N/mm2', `${d}: none`, ''); else C.given(nm, v, 'N/mm2', `${d}: f_ctm`, src, '7.1(2)'); };
+    tl('f_TT', lim.tT || { mode: 'fctm' }, R.fTT, 'tension at transfer', 'f_ctm(t), see Materials'); tl('f_TS', lim.tS || { mode: 'fctm' }, R.fTS, 'tension in service', 'f_ctm, see Materials');
+    const one = (id, f) => { const k = ck(R, id); if (!k) return; const s = R.st.find(q => q.x === k.x) || R.cmid; f(k, s, '_' + id); };
+    const transfer = (k, s, x) => {
+      C.head(`${k.name} (${at(s.x)})`); moments(C, R, s, x, 'T');
+      C.given(`P_0${x}`, s.P0 / 1e3, 'kN', 'force after transfer there', s.x === R.cmid.x ? 'see Prestress and losses' : 'the release equations there (the strands developed over l_pt1)', '');
+      C.given(`P_0e${x}`, s.Pe0 / 1e6, 'kNm', 'its moment', 'as P_0', '');
+      C.calc(`s_t${x}`, `P_0${x}/A_c + (P_0e${x} - M_T${x})*(y_b - h)/I_c`, R.rows.find(r => r.x === s.x).T.top, 'N/mm2', 'top fibre', '');
+      C.calc(`s_b${x}`, `P_0${x}/A_c + (P_0e${x} - M_T${x})*y_b/I_c`, R.rows.find(r => r.x === s.x).T.bot, 'N/mm2', 'bottom fibre', '');
+    };
+    one('tc', (k, s, x) => { transfer(k, s, x); C.check('U_tc', `MAX(s_t${x}, s_b${x})/f_cT`, k.util, 'compression at transfer', '5.10.2.2(5)'); });
+    one('tt', (k, s, x) => { transfer(k, s, x);
+      if (R.fTT > 0) C.check('U_tt', `MAX(0*s_t${x}, -MIN(s_t${x}, s_b${x}))/f_TT`, k.util, 'tension at transfer', '7.1(2)');
+      else if (Number.isFinite(k.util)) C.check('U_tt', `0*MAX(0*s_t${x}, -MIN(s_t${x}, s_b${x}))/f_ck`, 0, 'no tension at transfer', 'limit chosen');
+      else C.note('Tension at transfer where none is allowed: the check is not satisfied.'); });
+    const service = (k, s, x, cmb, deco) => {
+      C.head(`${k.name} (${at(s.x)})`); moments(C, R, s, x);
+      C.given(`P${x}`, s.P / 1e3, 'kN', 'final force there', s.x === R.cmid.x ? 'see Prestress and losses' : 'the release and the losses there, as at mid-span', '', { sym: 'P_∞' });
+      C.given(`Pe${x}`, s.Pe / 1e6, 'kNm', 'its moment', 'as P', '', { sym: 'P_∞ e' });
+      const r = R.rows.find(q => q.x === s.x).S[cmb];
+      C.calc(`M_s${x}`, cmb === 'char' ? `M_G${x} + M_Q${x}` : `M_G${x} + ${cmb === 'qp' ? 'psi_2' : 'psi_1'}*M_Q${x}`, (s.MG + comb[cmb] * s.MQ) / 1e6, 'kNm', `moment, ${cmb === 'char' ? 'characteristic' : cmb === 'qp' ? 'quasi-permanent' : 'frequent'}`, '');
+      if (deco) {
+        C.given('z_dec', R.zDec, 'mm', 'level for decompression: 25 mm below the lowest tendon or duct', 'Table 7.1N', 'Table 7.1N');
+        C.calc(`s_l${x}`, `P${x}/A_c + (Pe${x} - M_T${x})*(y_b - z_dec)/I_c`, r.lo.at(R.zDec), 'N/mm2', 'stress there with the transfer load only', '');
+        C.calc(`s_h${x}`, `P${x}/A_c + (Pe${x} - M_s${x})*(y_b - z_dec)/I_c`, r.hi.at(R.zDec), 'N/mm2', 'and with the full load', '');
+        return;
+      }
+      C.calc(`s_tl${x}`, `P${x}/A_c + (Pe${x} - M_T${x})*(y_b - h)/I_c`, r.lo.top, 'N/mm2', 'top fibre, the transfer load only', '');
+      C.calc(`s_bl${x}`, `P${x}/A_c + (Pe${x} - M_T${x})*y_b/I_c`, r.lo.bot, 'N/mm2', 'bottom fibre, the transfer load only', '');
+      C.calc(`s_th${x}`, `P${x}/A_c + (Pe${x} - M_s${x})*(y_b - h)/I_c`, r.hi.top, 'N/mm2', 'top fibre, the full load', '');
+      C.calc(`s_bh${x}`, `P${x}/A_c + (Pe${x} - M_s${x})*y_b/I_c`, r.hi.bot, 'N/mm2', 'bottom fibre, the full load', '');
+    };
+    const four = x => `s_tl${x}, s_bl${x}, s_th${x}, s_bh${x}`;
+    one('sc', (k, s, x) => { service(k, s, x, 'char'); C.check('U_sc', `MAX(${four(x)})/f_c6`, k.util, 'compression, characteristic', '7.2(2)'); });
+    one('sq', (k, s, x) => { service(k, s, x, 'qp'); C.check('U_sq', `MAX(${four(x)})/f_c45`, k.util, 'compression, quasi-permanent', '7.2(3)'); });
+    one('st', (k, s, x) => { service(k, s, x, R.tComb);
+      if (R.fTS > 0) C.check('U_st', `MAX(0*s_tl${x}, -MIN(${four(x)}))/f_TS`, k.util, `tension, ${R.tComb === 'char' ? 'characteristic' : 'frequent'}`, '7.1(2)');
+      else if (Number.isFinite(k.util)) C.check('U_st', `0*MAX(0*s_tl${x}, -MIN(${four(x)}))/f_ck`, 0, 'no tension in service', 'limit chosen');
+      else C.note('Tension in service where none is allowed: the check is not satisfied.'); });
+    one('dec', (k, s, x) => { service(k, s, x, R.decComb, true);
+      if (Number.isFinite(k.util)) C.check('U_dec', `0*MAX(0*s_l${x}, -MIN(s_l${x}, s_h${x}))/f_ck`, 0, 'decompression: none', 'Table 7.1N');
+      else C.note('The level 25 mm below the tendons decompresses: the check is not satisfied.'); });
+    const ids = ['tc', 'tt', 'sc', 'sq', 'st', 'dec'];
+    return { key: 'stress', title: C.meta.title, util: Math.max(...R.checks.filter(k => ids.includes(k.id)).map(k => k.util)), C };
+  }
+
+  // ---------- tendon stresses and deflection ----------
+  function tendonZone(R) {
+    const C = create('Tendon stresses and deflection');
+    steel(C, R);
+    C.head('Tendon stresses');
+    if (R.pre) C.check('U_sj', 'sigma_J/s_pmax', ck(R, 'sj').util, 'stress at stressing', '5.10.2.1');
+    else { C.given('s_jmax', Math.max(R.post.Pj / R.post.Ap, ...R.st.map(s => s.Pf / R.post.Ap)), 'N/mm2', 'the most along the tendon at stressing', 'P_j/A_p and the friction profile from each anchor', '5.10.2.1', { sym: 'σ_p,max' }); C.check('U_sj', 's_jmax/s_pmax', ck(R, 'sj').util, 'stress at stressing', '5.10.2.1'); }
+    C.given('s_0max', Math.max(...R.st.map(s => Math.max(...s.ly.map(l => l.s0)))), 'N/mm2', 'the most after transfer, any tendon, any section', 'see Prestress and losses (each section worked out the same way)', '5.10.3(2)', { sym: 'σ_pm0' });
+    C.check('U_s0', 's_0max/s_pm0', ck(R, 's0').util, 'stress after transfer', '5.10.3(2)');
+    C.given('s_pc', ck(R, 'sp').util * 0.75 * R.fpk, 'N/mm2', 'the most under the characteristic load', 'σ_p,∞ + α_e (M_G + M_Q − M_T) e/I at each bonded tendon and section', '7.2(5)', { sym: 'σ_p' });
+    C.check('U_sp', 's_pc/(0.75*f_pk)', ck(R, 'sp').util, 'tendon stress, characteristic', '7.2(5)');
+    const d = R.defl, df = R.inp.defl || {};
+    C.head('Deflection (7.4.1)');
+    C.input('L', R.L / 1000, 'm', 'span', '');
+    C.given('y_L', d.Lg.max, 'mm', 'the largest long-term sag, quasi-permanent (down +)', `the curvature (M − Pe)/E I integrated along the span, E_c,eff = E_cm/(1 + φ) = ${f0(d.Ecf)} N/mm²`, '7.4.3');
+    C.input('n_1', df.lim1 ?? 250, '', 'limit L/n', '7.4.1(4)');
+    C.check('U_d1', 'MAX(y_L, 0 mm)/(L/n_1)', ck(R, 'd1').util, 'long-term sag', '7.4.1(4)');
+    C.given('y_D', Math.max(Math.abs(d.D.max), Math.abs(d.D.min)), 'mm', 'the largest movement after the finishes', 'the long-term deflection less that with the finishes, integrated the same way', '7.4.1(5)');
+    C.input('n_2', df.lim2 ?? 500, '', 'limit L/n', '7.4.1(5)');
+    C.check('U_d2', 'y_D/(L/n_2)', ck(R, 'd2').util, 'movement after the finishes', '7.4.1(5)');
+    return { key: 'tendon', title: C.meta.title, util: Math.max(...['sj', 's0', 'sp', 'd1', 'd2'].map(id => ck(R, id).util)), C };
+  }
+
+  // ---------- ULS bending ----------
+  function ulsZone(R) {
+    const C = create('Bending resistance (ULS)'), k = ck(R, 'mu'), u = R.ulsSt.find(q => q.x === k.x), s = R.st.find(q => q.x === k.x), c = R.c;
+    secGiven(C, R); loads(C, R);
+    C.head(`The section at ${at(s.x)}`); moments(C, R, s, 'U', 'GQ');
+    const sets = R.sets;
+    C.calc('M_Ed', sets.length > 1 ? `MAX(${sets.map(t => `${+t.gG.toFixed(6)}*M_GU + ${+t.gQ.toFixed(6)}*M_QU`).join(', ')})` : `${sets[0].gG}*M_GU + ${sets[0].gQ}*M_QU`, u.MEd / 1e6, 'kNm', `design moment (${sets.map(t => t.label).join(', ')})`, 'BS EN 1990 6.4.3.2');
+    C.head('Strain compatibility');
+    C.input('f_ck', c.fck, 'N/mm2', 'concrete', 'Table 3.1'); C.calc('f_cd', '0.85*f_ck/1.5', c.fcd, 'N/mm2', '', '3.1.6(1)');
+    C.input('eta', c.eta, '', '', '3.1.7(3)', { sym: 'η' }); C.input('lambda', c.lambda, '', '', '3.1.7(3)', { sym: 'λ' }); C.input('epsilon_cu2', c.ecu2, '', '', 'Table 3.1', { sym: 'ε_cu2' });
+    C.input('E_p', R.Ep, 'N/mm2', 'tendons', ''); C.input('f_p01', R.fp01, 'N/mm2', '', ''); C.calc('f_pd', 'f_p01/1.15', R.fpd, 'N/mm2', '', '3.3.6(6)');
+    C.input('gamma_P', 0.9, '', 'on the prestrain (favourable)', '2.4.2.2, UK NA', { sym: 'γ_P,fav' });
+    const R0 = u.R;
+    C.given('x_u', R0.x, 'mm', 'depth to the neutral axis', 'by bisection, so that the compression balances the steel forces', '6.1');
+    const tds = R.pre ? s.ly.map((l, i) => ({ l, i, A: R.layers[i].A * (l.beta1 > 0 || l.beta2 > 0 ? 1 : 0) })).filter(t => t.A > 0) : [{ l: s.ly[0], i: 0, A: R.post.Ap }];
+    const T = [], M = [];
+    tds.forEach((t, j) => {
+      const n = j + 1, rs = R0.tendons[j], d = R.pre ? R.sp.h - R.layers[t.i].z : R.sp.h - R.post.zOf(Math.max(0, Math.min(R.L, s.x)));
+      C.input(`A_t${n}`, t.A, 'mm2', `tendon ${n}`, ''); C.input(`d_t${n}`, d, 'mm', 'its depth', '');
+      C.given(`s_i${n}`, t.l.sInf, 'N/mm2', 'its final stress there', 'see Prestress and losses (worked out the same way at this section)', '', { sym: `σ_p,∞` });
+      C.calc(`e_0${n}`, `gamma_P*s_i${n}/E_p [#]`, 0.9 * t.l.sInf / R.Ep, '', 'prestrain', '', { sym: 'ε_0' });
+      C.calc(`e_t${n}`, `e_0${n} + epsilon_cu2*(d_t${n} - x_u)/x_u [#]`, rs.eps, '', 'total strain', '');
+      const cap = R.pre ? (() => { const l = R.layers[t.i], a = R.a, dL = Math.min(s.x + a - l.db, R.L + a - s.x - l.db); if (dL <= 0) return 0; const lbpd = l.lpt2 + l.a2 * l.phi * Math.max(0, R.fpd - t.l.sInf) / l.fbpd; return dL <= l.lpt2 ? t.l.sInf * dL / l.lpt2 : dL <= lbpd ? t.l.sInf + (R.fpd - t.l.sInf) * (dL - l.lpt2) / (lbpd - l.lpt2) : R.fpd; })() : Infinity;
+      if (Number.isFinite(cap) && cap < R.fpd - 1e-9) { C.given(`f_c${n}`, cap, 'N/mm2', 'the most the strand develops here', 'its anchorage length l_bpd from the end of its debonding (8.10.2.3)', '8.10.2.3'); C.calc(`s_t${n}`, `MAX(-f_pd, MIN(E_p*e_t${n}, f_pd, f_c${n}))`, rs.s, 'N/mm2', 'stress (bilinear, horizontal top branch)', '3.3.6(7)'); }
+      else C.calc(`s_t${n}`, `MAX(-f_pd, MIN(E_p*e_t${n}, f_pd))`, rs.s, 'N/mm2', 'stress (bilinear, horizontal top branch)', '3.3.6(7)');
+      T.push(`A_t${n}*s_t${n}`); M.push(`A_t${n}*s_t${n}*d_t${n}`);
+    });
+    const bars = (R.inp.bars || []).filter(b => b && b.As > 0);
+    bars.forEach((b, j) => {
+      const n = j + 1, rs = R0.bars[j], d = R.sp.h - b.z;
+      C.input(`A_b${n}`, b.As, 'mm2', `bars ${n}`, ''); C.input(`d_b${n}`, d, 'mm', 'their depth', ''); C.input(`f_yk${n}`, b.fyk || 500, 'N/mm2', '', '');
+      C.calc(`e_b${n}`, `epsilon_cu2*(d_b${n} - x_u)/x_u [#]`, rs.eps, '', 'strain', '');
+      const comp = rs.s < 0 && d < c.lambda * R0.x;   // compression bars inside the block
+      if (!C.has('E_s')) C.input('E_s', 200000, 'N/mm2', 'modulus of the bars', '3.2.7(4)');
+      C.calc(`s_b${n}`, `MAX(-f_yk${n}/1.15, MIN(E_s*e_b${n}, f_yk${n}/1.15))${comp ? ' + eta*f_cd' : ''}`, rs.s, 'N/mm2', comp ? 'stress, net of the displaced concrete' : 'stress', '');
+      T.push(`A_b${n}*s_b${n}`); M.push(`A_b${n}*s_b${n}*d_b${n}`);
+    });
+    C.calc('T_s', T.join(' + '), R0.T / 1e3, 'kN', 'the steel forces (tension +)', '');
+    C.given('A_cc', R0.C / (c.eta * c.fcd), 'mm2', 'area of the section within λx of the top', 'the stack sliced at λx', '3.1.7(3)');
+    const Mt = R0.tendons.reduce((t, q, j) => t + tds[j].A * q.s * (R.pre ? R.sp.h - R.layers[tds[j].i].z : R.sp.h - R.post.zOf(Math.max(0, Math.min(R.L, s.x)))), 0) + R0.bars.reduce((t, q, j) => t + bars[j].As * q.s * (R.sp.h - bars[j].z), 0);
+    C.given('y_cc', R0.C > 0 ? (Mt - R0.MRd) / R0.C : 0, 'mm', 'depth of its centroid from the top', 'the stack sliced at λx', '3.1.7(3)');
+    C.calc('C_c', 'eta*f_cd*A_cc', R0.C / 1e3, 'kN', 'compression in the concrete', '3.1.7(3)');
+    C.calc('N_res', 'C_c - T_s', (R0.C - R0.T) / 1e3, 'kN', 'equilibrium: zero (rounding apart)', '');
+    C.calc('M_Rd', `${M.join(' + ')} - C_c*y_cc`, R0.MRd / 1e6, 'kNm', 'moment of resistance', '6.1');
+    C.check('U_mu', 'M_Ed/M_Rd', k.util, 'bending resistance', '6.1');
+    return { key: 'uls', title: C.meta.title, sum: `M_Ed ${f2(u.MEd / 1e6)} against M_Rd ${f2(R0.MRd / 1e6)} kNm at ${at(s.x)}`, util: k.util, C };
+  }
+
+  // ---------- shear ----------
+  function shearAtC(C, R, q, sfx, o = {}) {
+    const s = R.st.find(t => t.x === q.x), V = q.R, ul = R.inp.uls || {}, c = R.c;
+    C.head(`${o.title} (${at(q.x)})`);
+    C.input(`x${sfx}`, q.x / 1000, 'm', 'the section, from the left bearing', '');
+    const vT = (P, k) => q.x <= R.pts[k].a ? `${P}_${k + 1}*(L - a_${k + 1})/L` : `-${P}_${k + 1}*a_${k + 1}/L`;
+    const VG = `g_G*(L/2 - x${sfx})${R.pts.map((p, k) => ' + ' + vT('G', k)).join('')}`, VQ = `q*(L/2 - x${sfx})${R.pts.map((p, k) => ' + ' + vT('Q', k)).join('')}`;
+    C.calc(`V_G${sfx}`, VG, (() => { let v = R.gG * (R.L / 2 - q.x); R.pts.forEach(p => { v += q.x <= p.a ? p.G * (R.L - p.a) / R.L : -p.G * p.a / R.L; }); return v / 1e3; })(), 'kN', 'shear from the permanent load', '');
+    C.calc(`V_Q${sfx}`, VQ, (() => { let v = R.q * (R.L / 2 - q.x); R.pts.forEach(p => { v += q.x <= p.a ? p.Q * (R.L - p.a) / R.L : -p.Q * p.a / R.L; }); return v / 1e3; })(), 'kN', 'and the imposed', '');
+    C.calc(`V_Ed${sfx}`, R.sets.length > 1 ? `MAX(${R.sets.map(t => `ABS(${+t.gG.toFixed(6)}*V_G${sfx} + ${+t.gQ.toFixed(6)}*V_Q${sfx})`).join(', ')})` : `ABS(${R.sets[0].gG}*V_G${sfx} + ${R.sets[0].gQ}*V_Q${sfx})`, V.VEd / 1e3, 'kN', 'design shear', '6.2.1');
+    C.given(`d${sfx}`, q.d, 'mm', 'effective depth: the tendons (and bars) in tension there', 'their centroid', '6.2.2(1)');
+    C.given(`P${sfx}`, R.pre ? s.ly.reduce((t, l, k) => t + l.beta2 * R.layers[k].A * l.sInf, 0) / 1e3 : s.P / 1e3, 'kN', R.pre ? 'final force developed there (each strand over l_pt2, α_l)' : 'final force there', 'see Prestress and losses (worked out the same way at this section)', '6.2.2(2)');
+    if (!o.onlyMax) {
+      C.given(`A_sl${sfx}`, V.rho * R.sp.bw * q.d, 'mm2', 'bonded tension steel', 'the tendons developed there and the bars below the centroid', '6.2.2(1)');
+    }
+    C.calc(`f_v${sfx}`, 'MIN(f_ck[#N/mm2], 50) [#]', Math.min(c.fck, 50), '', 'f_ck for shear, N/mm²', '6.2, UK NA');
+    C.calc(`f_cdv${sfx}`, `f_v${sfx}/1.5 [#N/mm2]`, Math.min(c.fck, 50) / 1.5, 'N/mm2', '', '');
+    C.calc(`s_cp${sfx}`, `0.9*P${sfx}/A_c`, V.scp, 'N/mm2', 'mean prestress, γ_P,fav = 0.9', '6.2.2(1)', { sym: 'σ_cp' });
+    if (o.onlyMax) {
+      C.calc(`z${sfx}`, `0.9*d${sfx}`, V.z, 'mm', 'lever arm', '6.2.3(1)');
+      C.calc(`nu${sfx}`, `0.6*(1 - f_v${sfx}/250) [#]`, V.nu, '', '', '6.2.3(3)', { sym: 'ν_1' });
+      C.calc(`a_cw${sfx}`, `IF(s_cp${sfx} <= 0*f_cdv${sfx}, 1, IF(s_cp${sfx} <= 0.25*f_cdv${sfx}, 1 + s_cp${sfx}/f_cdv${sfx}, IF(s_cp${sfx} <= 0.5*f_cdv${sfx}, 1.25, MAX(0, 2.5*(1 - s_cp${sfx}/f_cdv${sfx}))))) [#]`, V.acw, '', '', '6.2.3(3) (6.11aN)', { sym: 'α_cw' });
+      if (R.ductRed > 0) C.given(`b_wn${sfx}`, R.sp.bw - R.ductRed, 'mm', 'web net of the ducts', '6.2.3(6)', '6.2.3(6)'); else C.calc(`b_wn${sfx}`, 'b_w', R.sp.bw, 'mm', '', '');
+      C.calc(`V_max45${sfx}`, `a_cw${sfx}*b_wn${sfx}*z${sfx}*nu${sfx}*f_cdv${sfx}/2`, V.Vmax45 / 1e3, 'kN', 'strut resistance at θ = 45°', '6.2.3(3) (6.9)', { sym: 'V_Rd,max' });
+      return;
+    }
+    C.calc(`k_v${sfx}`, `MIN(1 + SQRT(200/d${sfx}[#mm]), 2) [#]`, V.k, '', 'size factor', '6.2.2(1)', { sym: 'k' });
+    C.calc(`rho_l${sfx}`, `MIN(A_sl${sfx}/(b_w*d${sfx}), 0.02) [#]`, V.rho, '', '', '6.2.2(1)', { sym: 'ρ_l' });
+    C.calc(`s_cpc${sfx}`, `MIN(s_cp${sfx}, 0.2*f_cdv${sfx})`, V.scpC, 'N/mm2', 'σ_cp for 6.2a (not over 0.2 f_cd)', '6.2.2(1)');
+    C.calc(`v_1${sfx}`, `0.18/1.5*k_v${sfx}*(100*rho_l${sfx}*f_v${sfx})^(1/3) [#N/mm2]`, V.v1, 'N/mm2', '', '6.2.2(1)', { sym: 'v_Rd,c' });
+    C.calc(`v_m${sfx}`, `0.035*k_v${sfx}^1.5*SQRT(f_v${sfx}) [#N/mm2]`, V.vmin, 'N/mm2', '', '6.2.2(1) (6.3N)', { sym: 'v_min' });
+    C.calc(`V_c1${sfx}`, `(MAX(v_1${sfx}, v_m${sfx}) + 0.15*s_cpc${sfx})*b_w*d${sfx}`, V.Vc1 / 1e3, 'kN', 'cracked in flexure', '6.2.2(1) (6.2a)', { sym: 'V_Rd,c(6.2a)' });
+    C.given(`f_ctk${sfx}`, V.fctk, 'N/mm2', 'characteristic tensile strength f_ctk,0.05', 'see Materials (0.7 f_ctm, or given)', 'Table 3.1');
+    C.calc(`f_ctd${sfx}`, `f_ctk${sfx}/1.5`, V.fctd, 'N/mm2', '', '3.1.6(2)');
+    C.calc(`V_c2${sfx}`, `I_c*bS*SQRT(f_ctd${sfx}^2 + s_cp${sfx}*f_ctd${sfx})`, V.Vc2 / 1e3, 'kN', 'uncracked in flexure (α_l in the force developed)', '6.2.2(2) (6.4)', { sym: 'V_Rd,c(6.4)' });
+    if ((ul.shearRule || 'ec2') === 'lower') C.calc(`V_Rdc${sfx}`, `MIN(V_c1${sfx}, V_c2${sfx})`, V.VRdc / 1e3, 'kN', 'the lower of the two (Mosley et al.)', '6.2.2', { sym: 'V_Rd,c' });
+    else C.calc(`V_Rdc${sfx}`, V.uncracked ? `V_c2${sfx}` : `V_c1${sfx}`, V.VRdc / 1e3, 'kN', V.uncracked ? `uncracked in flexure at the ULS (σ_bot ${f2(V.sigBot)} N/mm² > −f_ctd)` : `cracked in flexure at the ULS (σ_bot ${f2(V.sigBot)} N/mm²)`, '6.2.2', { sym: 'V_Rd,c' });
+    if (!R.pre && V.Vt > 0) {
+      C.calc(`s_x${sfx}`, `4*(z_M - z_E)*(L - 2*x${sfx})/L^2 [#]`, R.post.slope(q.x), '', 'slope of the tendon', '');
+      C.calc(`V_t${sfx}`, `P${sfx}*SIN(ATAN(ABS(s_x${sfx})))`, V.Vt / 1e3, 'kN', 'vertical part of the tendon force', '6.2.1(1)');
+      C.calc(`V_n${sfx}`, `MAX(V_Ed${sfx} - 0.9*V_t${sfx}, 0*V_Ed${sfx})`, V.Vnet / 1e3, 'kN', 'shear less γ_P,fav V_t', '6.2.1(1)');
+    } else C.calc(`V_n${sfx}`, `V_Ed${sfx}`, V.Vnet / 1e3, 'kN', 'shear', '');
+  }
+  function shearZone(R) {
+    const C = create('Shear'), lk = (R.inp.uls || {}).links || {};
+    secGiven(C, R);
+    C.given('b_w', R.sp.bw, 'mm', 'web width (the least in the tension zone)', 'see The section', '');
+    C.given('bS', R.sp.bS, 'mm^-2', 'the least b/S', 'see The section', '', { sym: 'b/S' });
+    loads(C, R); C.input('f_ck', R.c.fck, 'N/mm2', 'concrete', 'Table 3.1');
+    if (!R.pre) { C.input('z_E', R.post.zE, 'mm', 'tendon at the ends', ''); C.input('z_M', R.post.zM, 'mm', 'at mid-span', ''); }
+    const zoneSt = R.shearSt.filter(q => q.x >= R.xFace + q.d - 1e-6 && q.x <= R.L - R.xFace - q.d + 1e-6), Z = zoneSt.length ? zoneSt : R.shearSt;
+    let util = 0;
+    if (R.AswSprov > 0) {
+      const wq = Z.reduce((b, q) => { const r = q.R.need ? q.R.AswS : 0; return !b || r > b.r || (r === b.r && q.R.Vnet / q.R.Vcap > b.q.R.Vnet / b.q.R.Vcap) ? { r, q } : b; }, null).q;
+      shearAtC(C, R, wq, '_l', { title: 'Links where they are most needed' });
+      const V = wq.R;
+      C.calc('z_l', '0.9*d_l', V.z, 'mm', 'lever arm', '6.2.3(1)');
+      C.input('f_ywk', lk.fywk ?? 500, 'N/mm2', 'links', ''); C.calc('f_ywd', 'f_ywk/1.15', V.fywd, 'N/mm2', '', '');
+      C.input('n_l', lk.legs ?? 2, '', 'legs', ''); C.input('phi_w', lk.phi, 'mm', 'link diameter', '', { sym: 'φ_w' }); C.input('s_w', lk.s, 'mm', 'spacing', '');
+      C.calc('A_sws', 'n_l*PI()*phi_w^2/4/s_w', R.AswSprov, 'mm2/mm', 'links provided', '', { sym: 'A_sw/s' });
+      C.calc('A_swmin', '0.08*SQRT(f_ck[#N/mm2])/f_ywk[#N/mm2]*b_w[#mm] [#mm2/mm]', V.AswSmin, 'mm2/mm', 'minimum links', '9.2.2(5) (9.5N)', { sym: 'A_sw/s_min' });
+      if (V.need) {
+        C.calc('nu_l', '0.6*(1 - f_v_l/250) [#]', V.nu, '', '', '6.2.3(3)', { sym: 'ν_1' });
+        C.calc('a_cwl', 'IF(s_cp_l <= 0.25*f_cdv_l, 1 + s_cp_l/f_cdv_l, IF(s_cp_l <= 0.5*f_cdv_l, 1.25, MAX(0, 2.5*(1 - s_cp_l/f_cdv_l)))) [#]', V.acw, '', '', '6.2.3(3)', { sym: 'α_cw' });
+        if (R.ductRed > 0) C.given('b_wn', R.sp.bw - R.ductRed, 'mm', 'web net of the ducts', '6.2.3(6)', '6.2.3(6)'); else C.calc('b_wn', 'b_w', R.sp.bw, 'mm', '', '');
+        C.calc('V_m22', 'a_cwl*b_wn*z_l*nu_l*f_cdv_l/(2.5 + 1/2.5)', V.Vmax22 / 1e3, 'kN', 'strut at cot θ = 2.5', '6.2.3(3)'); C.calc('V_m45', 'a_cwl*b_wn*z_l*nu_l*f_cdv_l/2', V.Vmax45 / 1e3, 'kN', 'strut at θ = 45°', '6.2.3(3)');
+        if (V.cot >= 2.5 - 1e-12) C.input('cot_th', 2.5, '', 'V_Ed ≤ V_Rd,max at cot θ = 2.5', '6.2.3(2)', { sym: 'cot θ' });
+        else if (V.strutOK) C.calc('cot_th', '1/TAN(0.5*ASIN(V_Ed_l/V_m45)) [#]', V.cot, '', 'the strut angle where V_Rd,max = V_Ed', '6.2.3(3)', { sym: 'cot θ' });
+        else C.input('cot_th', 1, '', 'V_Ed exceeds V_Rd,max at 45°', '6.2.3(3)', { sym: 'cot θ' });
+        C.calc('A_swreq', 'V_n_l/(z_l*f_ywd*cot_th)', V.AswS, 'mm2/mm', 'links required', '6.2.3(3) (6.8)', { sym: 'A_sw/s_req' });
+      } else C.note('V_Ed ≤ V_Rd,c everywhere from d beyond the support face: minimum links only.');
+      const anyNot = Z.some(q => !q.R.need), expr = R.needAny ? (anyNot ? 'MAX(A_swreq, A_swmin)' : 'A_swreq') : 'A_swmin';
+      C.calc('A_swr', expr, R.reqMax, 'mm2/mm', 'the most required along the span', '6.2.3, 9.2.2(5)');
+      C.check('U_vl', 'A_swr/A_sws', ck(R, 'vl').util, R.needAny ? 'shear links' : 'shear links (minimum)', R.needAny ? '6.2.3(3)' : '9.2.2(5)');
+      const dmin = Math.min(...R.shearSt.map(q => q.d));
+      C.given('d_min', dmin, 'mm', 'the least effective depth along the span', 'each section', '');
+      if (Number.isFinite(ck(R, 'vs').util)) C.check('U_vs', 'IF(s_w <= 0.75*d_min, 0, 1)', 0, 'link spacing not over 0.75 d', '9.2.2(6)');
+      else C.note('The links are spaced wider than 0.75 d: the check is not satisfied.');
+      util = Math.max(ck(R, 'vl').util, ck(R, 'vs').util);
+    } else {
+      const wq = Z.reduce((b, q) => !b || q.R.Vnet / q.R.VRdc > b.R.Vnet / b.R.VRdc ? q : b, null);
+      shearAtC(C, R, wq, '_c', { title: 'Shear without links, where it governs' });
+      C.check('U_vc', 'V_n_c/V_Rdc_c', ck(R, 'vc').util, 'shear without links', '6.2.2');
+      util = ck(R, 'vc').util;
+    }
+    const fq = R.shearSt.reduce((b, q) => Math.abs(q.x - R.xFace) < Math.abs(b.x - R.xFace) ? q : b);
+    shearAtC(C, R, fq, '_f', { title: 'Web crushing at the support face', onlyMax: true });
+    C.check('U_vm', 'V_Ed_f/V_max45_f', ck(R, 'vm').util, 'web crushing at the support face', '6.2.3(3)');
+    util = Math.max(util, ck(R, 'vm').util);
+    const ft = ck(R, 'ft');
+    if (ft) {
+      const w = R.shearSt.filter(q => !q.R.uncracked).reduce((b, q) => q.Fu > b.Fu ? q : b), V = w.R, s = R.st.find(t => t.x === w.x);
+      C.head(`Tension chord with the shear (${at(w.x)})`);
+      C.input('x_t', w.x / 1000, 'm', 'the section', '');
+      const Mt = Math.max(...R.sets.map(t => t.gG * s.MG + t.gQ * s.MQ));
+      C.given('M_Edt', w.MEd / 1e6, 'kNm', 'design moment there', 'as in Bending resistance, at this section', ''); void Mt;
+      C.given('d_t', w.d, 'mm', 'effective depth there', 'the tendons in tension', '');
+      C.calc('z_t', '0.9*d_t', V.z, 'mm', '', '6.2.3(1)');
+      C.given('V_nt', V.Vnet / 1e3, 'kN', 'shear less γ_P V_t there', 'worked out as above', '');
+      C.given('cot_t', V.cot, '', 'cot θ there', 'worked out as above', '', { sym: 'cot θ' });
+      C.calc('DF_td', '0.5*V_nt*cot_t', V.dFtd / 1e3, 'kN', 'additional tension from the shear', '6.2.3(7) (6.18)', { sym: 'ΔF_td' });
+      C.given('M_Edmax', Math.max(...R.ulsSt.map(u => u.MEd)) / 1e6, 'kNm', 'the largest design moment along the span', 'as in Bending resistance', '');
+      C.calc('F_req', 'MIN(M_Edt/z_t + DF_td, M_Edmax/z_t)', w.Freq / 1e3, 'kN', 'tension chord force', '6.2.3(7)');
+      C.given('F_cap', w.Fcap / 1e3, 'kN', 'what the bonded steel can develop there', 'each strand up to its anchorage (8.10.2.3) and f_pd, the bars at f_yd', '8.10.2.3');
+      C.check('U_ft', 'F_req/F_cap', ft.util, 'tension chord with the shear', '6.2.3(7)');
+      util = Math.max(util, ft.util);
+    }
+    return { key: 'shear', title: C.meta.title, util, C };
+  }
+
+  // ---------- lateral stability and the end block ----------
+  function otherZone(R) {
+    const C = create('Lateral stability' + (R.eb ? ' and the end block' : '')), k = ck(R, 'lt');
+    C.head('Lateral stability (5.9(3))');
+    C.input('l_0t', R.l0t, 'mm', R.inp.lt > 0 ? 'distance between torsional restraints, given' : 'the span', '');
+    C.given('b_f', R.sp.bTop, 'mm', 'width of the compression flange', 'the top of the section', ''); C.given('h', R.sp.h, 'mm', 'depth', 'see The section', '');
+    C.calc('r_l', '50/(h/b_f)^(1/3) [#]', R.latLim, '', 'the limit on l_0t/b', '5.9(3) (5.40a)');
+    C.check('U_lt', 'MAX(l_0t/b_f/r_l, h/b_f/2.5)', k.util, 'lateral stability', '5.9(3)');
+    let util = k.util;
+    if (R.eb) {
+      const e = R.eb, ei = R.inp.end;
+      C.head('End block (6.7, 8.10.3)');
+      C.given('P_a', e.P / 1e3, 'kN', 'jacking force per anchor', 'P_j / the number of anchors', '');
+      C.input('gamma_Pl', e.gp, '', 'on the local effect', '2.4.2.2(3)', { sym: 'γ_P' });
+      C.given('f_ckt', R.c.T.fck, 'N/mm2', 'strength at transfer', 'see Materials', '', { sym: 'f_ck(t)' });
+      C.calc('f_cdt', 'f_ckt/1.5', R.c.T.fck / 1.5, 'N/mm2', '', '6.7');
+      C.input('a_0', ei.a0, 'mm', 'anchor plate', ''); C.input('b_1', ei.b1, 'mm', 'end zone width', ''); C.input('h_1', ei.h1, 'mm', 'and depth', '');
+      const circ = (ei.shape || 'circle') === 'circle';
+      C.calc('A_c0', circ ? 'PI()*a_0^2/4' : 'a_0^2', e.Ac0, 'mm2', 'loaded area', '6.7');
+      C.calc('A_c1', circ ? 'MIN(PI()*MIN(b_1, h_1)^2/4, 9*A_c0)' : 'MIN(MIN(b_1, h_1)^2, 9*A_c0)', e.Ac1, 'mm2', 'distribution area', '6.7');
+      C.calc('f_Rdu', 'MIN(f_cdt*SQRT(A_c1/A_c0), 3*f_cdt)', e.fRdu, 'N/mm2', 'concentrated resistance', '6.7 (6.63)');
+      C.calc('s_bk', 'gamma_Pl*P_a/A_c0', e.sb, 'N/mm2', 'bearing stress under the anchor', '');
+      C.check('U_eb1', 's_bk/f_Rdu', ck(R, 'eb1').util, 'bearing under the anchor', '6.7(2)');
+      C.calc('F_s', '0.5*gamma_Pl*P_a/COS(ATAN(2/3))', e.Fs / 1e3, 'kN', 'strut force (spread at arctan 2/3)', '8.10.3(5)');
+      C.calc('s_s', 'F_s/(b_1*h_1*COS(ATAN(2/3)))', e.sStrut, 'N/mm2', 'strut stress', '');
+      C.calc('s_Rd', '0.6*(1 - f_ckt[#N/mm2]/250)*f_cdt', e.sRd, 'N/mm2', 'strut strength', '6.5.2(2)');
+      C.check('U_eb2', 's_s/s_Rd', ck(R, 'eb2').util, 'end block strut', '6.5.2(2)');
+      C.calc('T_b', 'gamma_Pl*P_a*TAN(ATAN(2/3))/2', e.T / 1e3, 'kN', 'bursting tie per anchor', '8.10.3(5)');
+      C.note(`Bursting steel: ${f0(e.As)} mm² at ${f0(e.ss)} N/mm²; ${e.nZone} closed H${e.phiZone} links round each anchor over ${f0(e.lenZone)} mm${e.Tall ? `; all anchors together ${f0(e.Tall / 1e3)} kN, ${f0(e.AsAll)} mm²` : ''}.`);
+      util = Math.max(util, ck(R, 'eb1').util, ck(R, 'eb2').util);
+    }
+    return { key: 'other', title: C.meta.title, util, C };
+  }
+  const zones = R => [sectionZone(R), materialsZone(R), prestressZone(R), stressZone(R), tendonZone(R), ulsZone(R), shearZone(R), otherZone(R)];
+  return { zones };
+})();
+if (typeof module !== 'undefined') module.exports = { PSCScript };
+
 </script>
 <script id="ui">
 'use strict';
@@ -1229,6 +2105,14 @@ const STRANDS = [['s93', '9.3 mm strand, Y1860S7, 52 mm²', 9.3, 52, 1860, 'stra
 $('strand').innerHTML = STRANDS.map(s => `<option value="${s[0]}"${s[0] === 's129' ? ' selected' : ''}>${esc(s[1]).replace('f_pk', 'f<sub>pk</sub>')}</option>`).join('');
 const setVal = (id, v) => { const el = $(id); if (!el || v == null) return; if (el.type === 'checkbox') { el.checked = !!v; return; } if (el.tagName === 'SELECT' && ![...el.options].some(o => o.value === String(v))) return; el.value = v; };
 let mode = 'pre', last = null;
+document.head.insertAdjacentHTML('beforeend', `<style>${CalcScript.CSS}</style>`);
+const cpMeta = title => { const s = collect(); return { project: s.pName, job: s.pJob, by: s.pBy, sheet: s.pRef, title }; };
+const cpName = t => { const s = collect(); return [s.pJob, s.pRef, t].filter(Boolean).join(' '); };
+function zonesFor(R) {
+  const Z = PSCScript.zones(R), at = (key, ...svgs) => { const z = Z.find(zn => zn.key === key); if (z) z.C.items.unshift(...svgs.map(svg => ({ t: 'img', svg, caption: '' }))); };
+  at('section', svgSection(R, true)); at('prestress', chartForce(R, true)); at('stress', svgZone(R, true));
+  return Z;
+}
 // ---------- dynamic rows ----------
 function layRow(s = {}) {
   s = { n: 2, z: 60, db: 0, ...s };
@@ -1503,13 +2387,14 @@ function render() {
   h += `<div class="dlabel">Top fibre stress</div>${chartStress(R, false, 'top')}<div class="dlabel">Bottom fibre stress</div>${chartStress(R, false, 'bot')}`;
   h += `<div class="dlabel">Deflection</div>${chartDefl(R, false)}<div class="help">Transfer: P₀ and the self-weight on E<sub>cm</sub>(t). With the finishes: add them on E<sub>cm</sub>, before most losses. Long term: the quasi-permanent load and the final force on E<sub>c,eff</sub> = E<sub>cm</sub>/(1 + φ) = ${f1(R.defl.Ecf / 1e3)} kN/mm². Movement after the finishes = long term − with the finishes: ${updn(R.defl.D.mid)} mm at mid-span.</div>`;
   h += `<div class="dlabel">Shear, support to mid-span</div><div class="tscroll">${shearTable(R)}</div><div class="help">kN and mm²/mm. V<sub>Rd,c</sub> by 6.2a where the section cracks in flexure at the ULS, by 6.4 (with α<sub>l</sub> over l<sub>pt2</sub>) where it does not${R.inp.uls.shearRule === 'lower' ? '; here the lower of the two, as Mosley et al. do' : ''}. σ<sub>cp</sub> and the inclined tendon force V<sub>t</sub> take γ<sub>P,fav</sub> = 0.9. Links where V<sub>Ed</sub> − γ<sub>P</sub>V<sub>t</sub> > V<sub>Rd,c</sub>, from d beyond the support face; z = 0.9d.</div>`;
+  h += `<div class="dlabel">Full calculation (open a part)</div>${CalcScript.zonesHTML(last.Z)}`;
   h += `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
   $('results').innerHTML = h;
   $('printBtn').onclick = () => { $('report').innerHTML = report(); window.print(); };
 }
 function run() {
   try { localStorage.setItem(STORE, JSON.stringify(collect())); } catch (e) { /* storage unavailable */ }
-  try { const inp = input(), R = PSC.design(inp); last = { R, inp }; render(); } catch (e) { $("results").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+  try { const inp = input(), R = PSC.design(inp); last = { R, inp, Z: zonesFor(R) }; render(); } catch (e) { $("results").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }
 // ---------- A4 sheet ----------
 const rl = (txt, cl, val) => `<div class="rl"><div>${txt}</div><div class="cl">${cl || ''}</div><div class="rv">${val}</div></div>`;
@@ -1533,10 +2418,12 @@ function report() {
   b += `<div class="rs"><h2>ULS</h2>` + rl(`M<sub>Ed</sub> = ${kNm(R.MEd(R.L / 2))} kNm at mid-span (${R.inp.uls.rule === '6.10' ? '6.10' : '6.10a/b'}); strain compatibility, ε<sub>cu2</sub> = ${(c.ecu2 * 1e3).toFixed(1)}‰, block ${f3(c.eta)} × ${f2(c.fcd)} over ${f2(c.lambda)}x, prestrain γ<sub>P</sub>σ<sub>p</sub>/E<sub>p</sub> with γ<sub>P,fav</sub> = 0.9, f<sub>pd</sub> = ${f0(R.fpd)} N/mm²: x = ${f0(R.ulsMid.x)} mm, M<sub>Rd</sub> = ${kNm(R.ulsMid.MRd)} kNm`, '6.1, 3.3.6', '')
     + `<div class="tscroll">${shearTable(R).replace('class="t"', 'class="rtab"')}</div></div>`;
   b += `<div class="rs"><h2>Checks</h2>${R.checks.map(q => rl(`${q.name}: ${q.note}`, q.ref, q.rule ? (q.util <= 1 ? '<span class="ok">OK</span>' : '<span class="ng">FAIL</span>') : okng(q.util))).join('')}${R.notes.map(n => `<p class="rp">${n}</p>`).join('')}</div>`;
+  b += `<div class="rs"><h2>Full calculation</h2></div>` + CalcScript.sheetHTML(last.Z);
   b += `<p class="rp" style="color:#555">Generated by EngineeringTools — Prestressed Beam Design.</p>`;
   return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
 }
 $('calc').onclick = run;
+CalcScript.wire($('results'), () => last && last.Z, cpMeta, cpName, 'Prestressed beam calculations');
 (function init() {
   let s = null; try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
   if (s && s.v === 1) {

@@ -17,6 +17,9 @@ truth('calculate: verdict PASS', /PASS/.test(res()) && !$('results').querySelect
 truth('section, cable zone, Magnel and four charts drawn', !!$('results').querySelector('svg.psec') && $('results').querySelectorAll('svg.frame').length === 6);
 truth('losses, checks and the shear table', /Elastic shortening at release/.test(res()) && /Tension chord|Bending resistance/.test(res()) && /Shear, support to mid-span/.test(res()));
 truth('Magnel aids: feasible range and minimum moduli', /Feasible at mid-span/.test(res()) && /Minimum moduli/.test(res()));
+const zones = () => [...$('results').querySelectorAll('details.zone')], zt = k => { const z = zones()[k]; return z ? z.textContent.replace(/\s/g, '') : ''; };
+truth('the full calculation: eight parts, each with its CalcPad buttons', zones().length === 8 && /^The section/.test(zones()[0].querySelector('summary').textContent) && zones().every(z => !!z.querySelector('[data-cp="copy"]')));
+truth('full calculation: the stack, Annex B creep, the transformed section at release, strain compatibility', /I_?0=/.test(zt(0)) && /y_?b=/.test(zt(0)) && /φ_?RH/.test(zt(1)) && /P_?0/.test(zt(2)) && /M_?Rd/.test(zt(5)));
 $('addLay').click(); truth('add a strand layer', d.querySelectorAll('#layRows .row').length === 4);
 d.querySelectorAll('#layRows .row')[3].querySelector('.xbtn').click(); truth('remove it', d.querySelectorAll('#layRows .row').length === 3);
 $('stype').value = 'rect'; change('stype'); truth('rectangle fields', shown(d.querySelector('.st-rect')) && !shown(d.querySelector('.st-dt')));
@@ -41,6 +44,7 @@ $('ebOn').checked = false; change('ebOn'); $('calc').click(); truth('end block o
 $('expo').value = 'XC2'; $('calc').click(); truth('XC2: decompression check', /Decompression, quasi-permanent/.test(res()));
 $('tS').value = 'zero'; change('tS'); $('tComb').value = 'char'; $('calc').click(); truth('no tension allowed: rule check shown', /No tension, characteristic/.test(res()));
 $('printBtn').click(); truth('print: A4 sheet with drawings', w.printed && $('report').querySelectorAll('svg').length >= 3 && /Post-tensioned beam to BS EN 1992-1-1/.test($('report').textContent));
+truth('post-tensioned: friction in the full calculation and on the A4 sheet', /P_?f,?l/.test(zt(2)) && /Full calculation/.test($('report').textContent) && $('report').querySelectorAll('.cs-sheet, .zone-sheet, [data-zone]').length + ($('report').textContent.match(/Prestress and losses at mid-span/g) || []).length >= 1);
 // bad input
 $('L').value = '0'; $('calc').click(); truth('bad input: message, no crash', !!$('results').querySelector('.err') && /span/.test(res()));
 $('L').value = '20';
