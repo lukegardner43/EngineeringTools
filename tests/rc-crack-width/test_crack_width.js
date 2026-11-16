@@ -85,6 +85,7 @@ const E2 = { h: 200, H: 3, L: 15, phi: 12, spacing: 250, cover: 30, fck_class: 3
   truth('C766 Table 4.6: α_c (upper end of each range)', Object.entries(t46).every(([a, v]) => calc({ ...E1, agg: a }).ac === v));
   const t33 = { steel: { 500: 28, 700: 35, 1000: 43, 2000: 54 }, plywood: { 300: 28, 500: 36, 700: 42, 1000: 47, 2000: 55 } };
   truth('C766 Table 3.3: T1 for C30/37, CEM I, summer', Object.entries(t33).every(([fw, m]) => Object.entries(m).every(([h, v]) => calc({ ...E1, T1_mode: 'table', fck_class: 30, cement: 'CEMI', season: 'summer', formwork: fw, h }).T1 === v)));
+truth('C766 Table 3.3: a winter pour on a row of the table (500, 700, 1000 mm plywood, C30) takes that row\'s adjustment', [[500, 36 - 6], [700, 42 - 5], [1000, 47 - 5]].every(([h, v]) => calc({ ...E1, T1_mode: 'table', fck_class: 30, cement: 'CEMI', season: 'winter', formwork: 'plywood', h }).T1 === v));
 }
 // ---- the page itself: run, results, report pane ----
 {
