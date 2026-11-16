@@ -942,7 +942,7 @@ const Pad = (() => {
         const theta = Hh > 0 ? Math.atan2(Math.abs(E.Lp >= E.Bp ? U.Hy : U.Hx), Math.abs(E.Lp >= E.Bp ? U.Hx : U.Hy)) : 0;
         let R = null, util;
         if (soil.mode === 'allowable') util = 0;
-        else { R = bearingResistance({ soil, set, Lp: E.Lp, Bp: E.Bp, V: U.N, H: Hh, thetaH: theta, q0, gamma: gs, strip }); util = E.q / R.q; }
+        else { R = bearingResistance({ soil, set, Lp: E.Lp, Bp: E.Bp, V: U.N, H: Hh, thetaH: theta, q0, gamma: gs, strip }); util = R.q > 0 ? E.q / R.q : Infinity; }   // q_Rd not above 0 (a strongly inclined load, i_c < 0): fails
         // sliding: the permanent load favourable at 1.0, the horizontal load as in the combination
         const Vfav = (F.G.N + Wb) * 1.0, Rs = soil.mode === 'undrained' ? E.A * soil.cu / set.gcu : Math.max(0, Vfav) * Math.tan(Math.atan(Math.tan(rad(soil.phi)) / set.gphi));
         geoRows.push({ key, set, U, E, R, H: Hh, util, slide: Hh > 0 ? (Rs > 0 ? Hh / Rs : Infinity) : 0, Rs });
@@ -1795,7 +1795,8 @@ const PadScript = (() => {
       C.calc('i_c', 'i_q - (1 - i_q)/(N_c*tanphi_d) [#]', B.ic, '', 'inclination factor', 'D.4');
       C.calc('q_Rd', 'c_d*N_c*s_c*i_c + q_0*N_q*s_q*i_q + 0.5*gamma_soil*B_s*N_g*s_g*i_g', B.q, 'kPa', 'bearing resistance (γ_R,v = 1.0)', 'D.4, UK NA');
     }
-    C.check('U_b', 'q_Ed/q_Rd', g.util, 'bearing', '6.5.2');
+    if (B.q > 0) C.check('U_b', 'q_Ed/q_Rd', g.util, 'bearing', '6.5.2');
+    else C.note('The load is so inclined that the bearing resistance is not above zero: the check is not satisfied.');
     return { key: `bear${key}`, title: C.meta.title, sum: `${g.U.name}: q_Ed ${f1(g.E.q)} / q_Rd ${f1(B.q)} kPa`, util: g.util, C };
   }
   // ---------- sliding ----------

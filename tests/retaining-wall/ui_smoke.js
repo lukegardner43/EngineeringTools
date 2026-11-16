@@ -19,6 +19,10 @@ function page(store) {
   $('calc').click();
   truth('check: sliding, bearing, EQU, stem, toe, heel', /PASS/.test(res()) && ['Sliding, DA1-1', 'Bearing, DA1-2', 'Overturning about the toe', 'Stem, back face', 'Toe, bottom face', 'Heel, top face', 'crack control'].every(t => res().includes(t)));
   truth('the ground table lists the combinations', d.querySelectorAll('.ctab tbody tr').length === 7);
+  const zones = () => [...$('results').querySelectorAll('details.zone summary')].map(s => s.textContent);
+  truth('the full calculation: sliding, bearing in each combination, overturning, the stem, toe and heel, with the CalcPad buttons and one project download', /^Sliding, DA1-1/.test(zones()[0]) && zones().filter(z => /^Bearing, /.test(z)).length === 4 && zones().some(z => /^Overturning about the toe/.test(z))
+    && zones().some(z => /^Stem: back face/.test(z)) && zones().some(z => /^Toe: bottom face/.test(z)) && zones().some(z => /^Heel: top face/.test(z)) && $('results').querySelectorAll('details.zone [data-cp="copy"]').length === zones().length && $('results').querySelectorAll('[data-cp="proj"]').length === 1);
+  { const t = [...$('results').querySelectorAll('details.zone')].find(z => /^Bearing, DA1-2 \(/.test(z.querySelector('summary').textContent) || /^Bearing, DA1-2/.test(z.querySelector('summary').textContent)).textContent.replace(/\s/g, ''); truth('a bearing check: the thrust, the combination, B′ and Annex D', /K_?a/.test(t) && /M_?dst/.test(t) && /B′/.test(t) && /N_?q/.test(t) && /i_?q/.test(t)); }
   set('beta', '20'); set('hw', '1200'); set('lineQ', '20'); $('calc').click();
   truth('slope, water and a line load: a result', /PASS|FAIL/.test(res()) && /Water 1200 mm/.test(res()) && /K /.test(draw()));
   set('bearing', 'undrained'); truth('undrained hides φ′ and shows c_u', $('phif').closest('.form-group').hidden && !$('cuf').closest('.form-group').hidden);
@@ -30,7 +34,7 @@ function page(store) {
   set('B', '300'); $('calc').click(); truth('a base short of the stem is reported', !!$('results').querySelector('.err') && /reach the back of the stem/.test(res()));
   set('B', '3000'); pick('cantilever'); await wait(260); $('calc').click(); $('printBtn').click();
   const rep = $('report').textContent;
-  truth('print: the A4 sheet with the ground, the structure and the drawings', w.printed && /Cantilever retaining wall to BS EN 1997-1/.test(rep) && /Ground \(GEO, EQU\)/.test(rep) && /Structure/.test(rep) && $('report').querySelectorAll('svg.dk').length === 2);
+  truth('print: the A4 sheet with the ground, the structure and the drawings', w.printed && /Cantilever retaining wall to BS EN 1997-1/.test(rep) && /Ground \(GEO, EQU\)/.test(rep) && /Structure/.test(rep) && /5 Full calculation/.test(rep) && /q_Rd|qRd/.test(rep) && $('report').querySelectorAll('svg.dk').length === 2);
   const saved = w.localStorage.getItem('et-retaining-wall-v1');
   const w2 = page(saved); await wait(300);
   truth('type and inputs restored', w2.document.querySelector('#types .on').dataset.t === 'cantilever' && w2.document.getElementById('B').value === '3000');

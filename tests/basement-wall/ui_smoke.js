@@ -18,6 +18,10 @@ function page(store) {
   $('calc').click();
   truth('check: bearing, the wall both faces, toe, heel, restraint, prop and slab', /PASS/.test(res()) && ['Bearing, DA1-1', 'Stem, back face at the base', 'Stem, front face in the span', 'Toe, bottom face', 'Heel, top face', 'early-age restraint', 'Prop force', 'Reaction into the slab'].every(t => res().includes(t)));
   truth('no sliding or overturning check (slab and prop)', !/Sliding, DA1/.test(res()) && !/Overturning/.test(res()));
+  const zones = () => [...$('results').querySelectorAll('details.zone summary')].map(s => s.textContent);
+  truth('the full calculation: bearing in each combination, the wall both faces, toe, heel and restraint, with the CalcPad buttons', zones().filter(z => /^Bearing, /.test(z)).length === 4 && zones().some(z => /^Stem: back face/.test(z)) && zones().some(z => /^Stem: front face in the span/.test(z))
+    && zones().some(z => /^Heel: top face/.test(z)) && zones().some(z => /^Horizontal bars: early-age restraint/.test(z)) && $('results').querySelectorAll('details.zone [data-cp="copy"]').length === zones().length && $('results').querySelectorAll('[data-cp="proj"]').length === 1);
+  { const t = [...$('results').querySelectorAll('details.zone')].find(z => /^Stem: back face/.test(z.querySelector('summary').textContent)).textContent.replace(/\s/g, ''); truth('the stem: the prop force and the slab reaction stated, then the strip', /Propforce/.test(t) && /Reactionintotheslab/.test(t) && /A_?s,?req/.test(t)); }
   set('fixBase', 'pinned'); $('calc').click();
   truth('pinned at the slab: a result and the diagram says so', /PASS|FAIL/.test(res()) && /base pinned/.test(draw()));
   set('fixBase', 'fixed'); set('baseHeld', ''); $('baseHeld').checked = false; $('baseHeld').dispatchEvent(new w.Event('change', { bubbles: true })); $('calc').click();
@@ -25,7 +29,7 @@ function page(store) {
   $('baseHeld').checked = true; set('ts', '0'); $('calc').click(); truth('a zero wall thickness is reported', !!$('results').querySelector('.err'));
   set('ts', '300'); $('calc').click(); $('printBtn').click();
   const rep = $('report').textContent;
-  truth('print: the A4 sheet', w.printed && /Basement wall to BS EN 1997-1/.test(rep) && /Flotation of the whole basement is not checked/.test(rep) && $('report').querySelectorAll('svg.dk').length === 2);
+  truth('print: the A4 sheet', w.printed && /Basement wall to BS EN 1997-1/.test(rep) && /Flotation of the whole basement is not checked/.test(rep) && /5 Full calculation/.test(rep) && $('report').querySelectorAll('svg.dk').length === 2);
   const saved = w.localStorage.getItem('et-basement-wall-v1');
   const w2 = page(saved); await wait(300);
   truth('inputs restored', w2.document.getElementById('ts').value === '300' && w2.document.getElementById('fixBase').value === 'fixed' && w2.document.getElementById('baseHeld').checked);
