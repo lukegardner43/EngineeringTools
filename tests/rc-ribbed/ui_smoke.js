@@ -16,6 +16,10 @@ truth('drawings on load, before Calculate: elevation, envelopes, the typical rib
 $('calc').click();
 truth('one-way: the defaults pass, with the drawings, checks, tables and zones', /PASS/.test(res()) && !!$('drawings').querySelector('svg.elev') && /Where the ribs start/.test(res()) && /Self-weight/.test(res()) && d.querySelectorAll('#results details.zone').length >= 6 && !$('results').querySelector('.err'));
 truth('the governing check is named', /Governs: /.test(res()));
+const zones = () => [...$('results').querySelectorAll('details.zone summary')].map(s => s.textContent);
+truth('one-way: the full calculation, check by check, with the CalcPad buttons and one project download', /^The ribs, loads and analysis/.test(zones()[0]) && zones().some(z => /^Support 2, span 1 side: hogging/.test(z)) && zones().some(z => /^Span 2: sagging/.test(z))
+  && zones().some(z => /^Span 1, right end: shear where the ribs start/.test(z)) && zones().some(z => /^Topping and ribs/.test(z)) && $('results').querySelectorAll('details.zone [data-cp="copy"]').length === zones().length && $('results').querySelectorAll('[data-cp="proj"]').length === 1);
+{ const t = [...$('results').querySelectorAll('details.zone')].find(z => /^Span 2: sagging/.test(z.querySelector('summary').textContent)).textContent.replace(/\s/g, ''); truth('a span: the effective flange and the moment per rib from the moment per metre', /b_?eff/.test(t) && /m_?Ed/.test(t) && /K=M_Ed|K=MEd/.test(t)); }
 truth('spans without transverse ribs are noted (5.3.1(6))', /Transverse ribs \(5\.3\.1\(6\)/.test(res()));
 // the solid zone inputs reach the engine: the ribs start where it ends
 truth('ribs start 750 mm from the interior supports', /ribs from 750 mm/.test($('drawings').textContent) && /ribs from 300 mm/.test($('drawings').textContent));
@@ -39,13 +43,14 @@ d.querySelector('#modes button[data-m="two"]').click();
 truth('waffle pane shown, one-way options hidden', !$('pane-two').classList.contains('hidden') && $('pane-one').classList.contains('hidden') && d.querySelector('.one').classList.contains('hidden'));
 truth('waffle bar rows: both ways + 2 continuous edges', rows('tbarRows').length === 4);
 $('calc').click(); truth('waffle: case 4, plan, sections, edge shears per rib', /PASS|FAIL/.test(res()) && /Two adjacent edges discontinuous/.test(res()) && /Plan of the panel/.test(res()) && /Long edge 1 \(continuous\)/.test(res()) && /per rib at the margin/.test(res()) && !$('results').querySelector('.err'));
+truth('waffle: the full calculation, the cells and coefficients, each zone and edge, the ribs where they start and the shear at each edge', /^Cells, loads and moment coefficients/.test(zones()[0]) && zones().some(z => /^Short span ribs/.test(z)) && zones().some(z => /^Long edge 1: hogging on the rib where it starts/.test(z)) && zones().some(z => /^Long edge 1 \(continuous\): shear in the ribs/.test(z)));
 $('eL2').checked = true; change($('eL2')); truth('making long edge 2 continuous adds its bar row', rows('tbarRows').length === 5);
 $('method').value = 'simple'; change($('method')); truth('simply supported: edges hidden, only the bottom bars', d.querySelector('.tw-edges').classList.contains('hidden') && rows('tbarRows').length === 2);
 $('calc').click(); truth('simply supported panel calculates with its coefficients', /Simply supported, corners free to lift/.test(res()) && !$('results').querySelector('.err'));
 $('method').value = 'restrained'; change($('method'));
 $('tsuggest').click(); truth('waffle suggestion passes', /PASS/.test(res()) && /One short edge discontinuous/.test(res()));
 $('ly').value = '6'; $('calc').click(); truth('l_x longer than l_y rejected', /shorter span/.test(res()));
-$('ly').value = '8.1'; $('calc').click(); $('printBtn').click(); truth('waffle print: plan, typical and design sections, shear at the margins', $('report').querySelectorAll('svg').length === 3 && /Shear in the ribs at the solid margins/.test($('report').textContent));
+$('ly').value = '8.1'; $('calc').click(); $('printBtn').click(); truth('waffle print: plan, typical and design sections, and the full calculation (drawings once)', $('report').querySelectorAll('svg').length === 3 && /Full calculation/.test($('report').textContent) && /shear in the ribs/.test($('report').textContent) && /K = M_Ed|K = MEd/.test($('report').textContent));
 const w2 = page(w.localStorage.getItem('et-rc-ribbed-v1')), $2 = id => w2.document.getElementById(id);
 truth('inputs restored, waffle mode', !$2('pane-two').classList.contains('hidden') && $2('eL2').checked && $2('ly').value === '8.1' && w2.document.querySelectorAll('#spanRows .row').length === 4 && w2.document.querySelectorAll('#spanRows .row')[0].querySelector('.solR').value === '600');
 // the drawings follow the inputs

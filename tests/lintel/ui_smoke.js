@@ -18,7 +18,7 @@ function page(store) {
   $('calc').click();
   truth('check: verdict, governing check, loads and values', /PASS|FAIL/.test(res()) && /Governs/.test(res()) && /Masonry in the load triangle/.test(res()) && /Floor 1: G at 1200/.test(res()) && !!$('results').querySelector('.kv'));
   truth('check: bending, shear links, span/depth, lateral stability', /Bending/.test(res()) && /Shear links/.test(res()) && /span\/depth/i.test(res()) && /Lateral stability/.test(res()));
-  truth('no masonry strength: the bearing is not checked and a note says so', !/Bearing on the masonry/.test(res()) && /Give the masonry f/.test(res()));
+  truth('no masonry strength: the bearing is not checked and a note says so', !/Bearing on the masonry/.test($('results').querySelector('.checks').textContent) && /Give the masonry f/.test(res()));
   set('fk', '4'); $('calc').click(); truth('masonry f_k given: bearing checked', /Bearing on the masonry/.test(res()));
   $('addPoint').click(); await wait(260); truth('a point load row redraws with P1', /P1:/.test(draw()) && d.querySelectorAll('#pointRows .row').length === 1);
   set('mode', 'full'); await wait(260); truth('no arching: all the masonry above', /all the masonry above is carried/.test(draw()));
@@ -27,7 +27,11 @@ function page(store) {
   set('L', '2400'); $('calc').click(); truth('no links over 2 m: FAIL', /FAIL/.test(res()));
   set('L', '0'); $('calc').click(); truth('a zero span is reported', !!$('results').querySelector('.err') && /Clear span/.test(res()));
   set('L', '1800'); set('phil', '6'); $('calc').click();
-  $('printBtn').click(); truth('print: the A4 sheet with the drawings, section design and checks', w.printed && $('report').querySelectorAll('svg.dk').length === 5 && /3 Section design/.test($('report').textContent) && /4 Checks/.test($('report').textContent));
+  const zones = () => [...$('results').querySelectorAll('details.zone summary')].map(s => s.textContent);
+  truth('the full calculation: the take-down, the section and the lintel checks, with the CalcPad buttons and one project download', zones().length === 3 && /^Loads on the lintel: the take-down/.test(zones()[0]) && /^The section: bending/.test(zones()[1]) && /^Links, lateral stability and bearing/.test(zones()[2])
+    && $('results').querySelectorAll('details.zone [data-cp="copy"]').length === 3 && $('results').querySelectorAll('[data-cp="proj"]').length === 1);
+  { const t = $('results').querySelectorAll('details.zone')[1].textContent; truth('the section: M_Ed from the permanent and imposed parts, the shear at d, bending and span/depth', /M_?Ed/.test(t.replace(/\s/g, '')) && /γ_?G/.test(t.replace(/\s/g, '')) && /K = M_Ed|K = MEd/.test(t) && /span\/depth/i.test(t)); }
+  $('printBtn').click(); truth('print: the A4 sheet with the drawings, the checks and the full calculation (drawings once)', w.printed && $('report').querySelectorAll('svg.dk').length === 5 && /3 Checks/.test($('report').textContent) && /4 Full calculation/.test($('report').textContent) && /K = M_Ed|K = MEd/.test($('report').textContent));
   // ---- check a Naylor lintel against the brochure ----
   truth('opens on the RC design: the Naylor card hidden', $('cardNaylor').hidden && !$('cardRC').hidden && $('tool').value === 'ec2');
   d.querySelector('#tools [data-t=naylor]').click(); await wait(260);
@@ -36,6 +40,7 @@ function page(store) {
   truth('Naylor: drawings on change: elevation, load against the allowable, section', d.querySelectorAll('#drawings svg.dk').length === 3 && /allowable, Naylor table/.test(draw()) && /Naylor R8/.test(draw()));
   set('L', '1800'); $('calc').click();
   truth('Naylor check: verdict, table check, end bearing and fire', /PASS|FAIL/.test(res()) && /Allowable load, Naylor table: R8/.test(res()) && /End bearing/.test(res()) && /Fire resistance/.test(res()));
+  truth('Naylor: the full calculation, the take-down, the table and the bearing and fire', zones().length === 3 && /^Naylor R8: against the brochure/.test(zones()[1]) && /^End bearing, fire resistance/.test(zones()[2]) && /w_?eq/.test($('results').querySelectorAll('details.zone')[1].textContent.replace(/\s/g, '')));
   truth('Naylor check: the table row with the span used, the source, the lighter options', !!$('results').querySelector('td.use') && /31\.18/.test($('results').querySelector('td.use').textContent) && /LintelsBrochureXFS4March2025/.test(res()) && /lightest first/.test(res()));
   set('nl', 'HS-R6'); set('L', '3000'); set('t1', '200'); set('t2', '200'); $('calc').click();
   truth('Naylor: R6 at a 3000 mm opening with the default loads', /R6/.test(res()) && /stock length/.test(res()));
@@ -44,7 +49,7 @@ function page(store) {
   set('fire', '30'); set('L', '1800'); set('t1', '150'); set('t2', '150'); set('nl', 'HS-R8'); $('calc').click();
   $('printBtn').click();
   truth('Naylor print: the A4 sheet names the brochure and shows the table check', /Naylor lintel against the brochure load tables/.test($('report').textContent) && /LintelsBrochureXFS4March2025/.test($('report').textContent)
-    && /lintelsbrochurexfs4march2025_1\.pdf/.test($('report').textContent) && /3 Against Naylor/.test($('report').textContent) && $('report').querySelectorAll('svg.dk').length === 3);
+    && /lintelsbrochurexfs4march2025_1\.pdf/.test($('report').textContent) && /3 Against Naylor/.test($('report').textContent) && /5 Full calculation/.test($('report').textContent) && $('report').querySelectorAll('svg.dk').length === 3);
   const savedN = w.localStorage.getItem('et-rc-lintel-v1');
   const wN = page(savedN); await wait(300);
   truth('Naylor: the mode and the lintel restored', wN.document.getElementById('tool').value === 'naylor' && wN.document.getElementById('nl').value === 'HS-R8' && !wN.document.getElementById('cardNaylor').hidden && wN.document.querySelectorAll('#drawings svg.dk').length === 3);
