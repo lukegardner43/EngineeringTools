@@ -577,21 +577,28 @@ const CalcScript = (() => {
   // a tool with several zones (Z: [{ key, title, sum, util, C }]): the project button, then each zone as a <details> with its
   // own buttons and its full calculation; wire() answers the buttons (once per page, on a container that stays)
   const uf = u => (Number.isFinite(u) ? u.toFixed(3) : '>99');
-  // o.noProj: no project button (a page that shows its zones in several places, with one project button of its own)
+  // o.noProj: no project button (a page that shows its zones in several places, with one project button of its own).
+  // A calculation of one part downloads as one CalcPad check (.perega), never a project; a calculation of several parts
+  // offers each part as a check of its own and, above them, all of them together as a project (.peregaproj), because the
+  // parts reuse names (M_Ed, d, ...) that one check cannot hold twice.
   function zonesHTML(Z, o = {}) {
-    return (o.noProj ? '' : `<div class="cs-tools"><button class="btn2" type="button" data-cp="proj">Download CalcPad project (.peregaproj)</button><span class="aux" data-cpmsg="proj"></span></div>`)
-      + Z.map(zn => `<details class="zone"><summary><span>${esc(zn.title)}${zn.sum ? `<small> · ${esc(zn.sum)}</small>` : ''}</span>${zn.util != null ? `<span class="u ${zn.util > 1 ? 'over' : ''}">${uf(zn.util)}</span>` : ''}</summary>`
-        + `<div class="zfull"><div class="cs-tools"><button class="btn2" type="button" data-cp="copy" data-zone="${esc(zn.key)}">Copy for CalcPad</button><button class="btn2" type="button" data-cp="save" data-zone="${esc(zn.key)}">Download .perega</button><span class="aux" data-cpmsg="${esc(zn.key)}"></span></div>${zn.C.html({ noImg: true })}</div></details>`).join('');
+    const one = Z.length === 1, k1 = one ? esc(Z[0].key) : '';
+    const top = o.noProj ? '' : one
+      ? `<div class="cs-tools"><button class="btn2" type="button" data-cp="save" data-zone="${k1}">Download CalcPad check (.perega)</button><button class="btn2" type="button" data-cp="copy" data-zone="${k1}">Copy for CalcPad</button><span class="aux" data-cpmsg="${k1}"></span></div>`
+      : `<div class="cs-tools"><button class="btn2" type="button" data-cp="proj">Download all ${Z.length} checks as one CalcPad project (.peregaproj)</button><span class="aux" data-cpmsg="proj">Or open a part below to download it as a single check (.perega).</span></div>`;
+    return top + Z.map(zn => `<details class="zone"><summary><span>${esc(zn.title)}${zn.sum ? `<small> · ${esc(zn.sum)}</small>` : ''}</span>${zn.util != null ? `<span class="u ${zn.util > 1 ? 'over' : ''}">${uf(zn.util)}</span>` : ''}</summary>`
+        + `<div class="zfull"><div class="cs-tools"><button class="btn2" type="button" data-cp="save" data-zone="${esc(zn.key)}">Download this check (.perega)</button><button class="btn2" type="button" data-cp="copy" data-zone="${esc(zn.key)}">Copy for CalcPad</button><span class="aux" data-cpmsg="${esc(zn.key)}"></span></div>${zn.C.html({ noImg: true })}</div></details>`).join('');
   }
   // getZ() → the zones shown; meta(title) → the project details; name(title) → a file name; proj: the project's title
   function wire(root, getZ, meta, name, proj) {
     root.addEventListener('click', async e => {
       const b = e.target.closest('[data-cp]'), Z = getZ(); if (!b || !Z) return;
-      const msg = k => root.querySelector(`[data-cpmsg="${k}"]`) || { textContent: '' };
-      if (b.dataset.cp === 'proj') { await downloadProject(Z.map(zn => ({ C: zn.C, title: zn.title })), meta(proj), name(proj)); msg('proj').textContent = 'Downloaded: open it in CalcPad (File ▸ Open project). Each zone is a check of its own.'; return; }
+      // the message goes beside the button pressed
+      const msg = k => (b.closest('.cs-tools') && b.closest('.cs-tools').querySelector('[data-cpmsg]')) || root.querySelector(`[data-cpmsg="${k}"]`) || { textContent: '' };
+      if (b.dataset.cp === 'proj') { await downloadProject(Z.map(zn => ({ C: zn.C, title: zn.title })), meta(proj), name(proj)); msg('proj').textContent = 'Downloaded the project: open it in CalcPad with File ▸ Open project. Each part is a check of its own. For one part as a single check, open it below and use Download this check.'; return; }
       const zn = Z.find(z => z.key === b.dataset.zone); if (!zn) return;
-      if (b.dataset.cp === 'copy') { const ok = await copy(zn.C, meta(zn.title)); msg(zn.key).textContent = ok ? 'Copied: paste it into a CalcPad sheet.' : 'Could not copy: use Download .perega.'; }
-      else { await download(zn.C, meta(zn.title), name(zn.title)); msg(zn.key).textContent = 'Downloaded: open it in CalcPad (File ▸ Open).'; }
+      if (b.dataset.cp === 'copy') { const ok = await copy(zn.C, meta(zn.title)); msg(zn.key).textContent = ok ? 'Copied: paste it into a CalcPad sheet.' : 'Could not copy: use Download this check.'; }
+      else { await download(zn.C, meta(zn.title), name(zn.title)); msg(zn.key).textContent = 'Downloaded the check (.perega): open it in CalcPad with File ▸ Open.'; }
     });
   }
   // the zones on the A4 sheet: every zone in full, the materials set out once and "as above" after
@@ -1211,12 +1218,12 @@ function render() {
   if (R.notes.length) h += R.notes.map(n => `<div class="note">${sub(n)}</div>`).join('');
   h += `<div class="dlabel">Values</div><div class="kv">${values(R)}</div>`;
   h += `<div class="help">Strut-and-tie by 6.5 as laid out in CCIP-057: node 2 at the support face takes F<sub>Ed</sub> at k₁ν′f<sub>cd</sub> (a<sub>x2</sub>) and is hydrostatic, so a<sub>y2</sub> = a<sub>x2</sub>·a/z₀ with a = a<sub>c</sub> + a<sub>x2</sub>/2 and z₀ = d − a<sub>y2</sub>/2. F<sub>td</sub> = F<sub>Ed</sub>/tan θ + H<sub>Ed</sub>(1 + a<sub>H</sub>/z₀), with tan θ not taken above 2.5. f<sub>cd</sub> uses α<sub>cc</sub> = 0.85.</div>`;
-  h += `<div class="dlabel">Full calculation</div><div class="cs-tools"><button class="btn2" id="cpCopy" type="button">Copy for CalcPad</button><button class="btn2" id="cpSave" type="button">Download .perega</button><span class="aux" id="cpMsg"></span></div>${last.C.html({ noImg: true })}`;
+  h += `<div class="dlabel">Full calculation</div><div class="cs-tools"><button class="btn2" id="cpCopy" type="button">Copy for CalcPad</button><button class="btn2" id="cpSave" type="button">Download CalcPad check (.perega)</button><span class="aux" id="cpMsg"></span></div>${last.C.html({ noImg: true })}`;
   h += `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
   $('results').innerHTML = h;
   $('printBtn').onclick = () => { $('report').innerHTML = report(); window.print(); };
   const C = last.C, title = C.meta.title;
-  $('cpCopy').onclick = async () => { const ok = await CalcScript.copy(C, cpMeta(title)); $('cpMsg').textContent = ok ? 'Copied: paste it into a CalcPad sheet.' : 'Could not copy: use Download .perega.'; };
+  $('cpCopy').onclick = async () => { const ok = await CalcScript.copy(C, cpMeta(title)); $('cpMsg').textContent = ok ? 'Copied: paste it into a CalcPad sheet.' : 'Could not copy: use Download CalcPad check.'; };
   $('cpSave').onclick = () => { CalcScript.download(C, cpMeta(title), title); $('cpMsg').textContent = 'Downloaded: open it in CalcPad (File ▸ Open).'; };
 }
 function run() {

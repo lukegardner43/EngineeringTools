@@ -265,6 +265,8 @@ Build order and the planned CalcPad round trip / EngineeringSuite repo: see [doc
 
 **Concrete Tie Force** is the twenty-second, the same way (`tieforce/sync_calc.py`, `tieforce/script.js`). The building's class from Approved Document A Table 11, then the forces its class needs from the UK NA to 9.10.2: F_t, the peripheral tie, the internal ties each way and grouped at the beams, the ties to the columns and walls (the lesser of 2F_t and l_s F_t/2.5, at least 3 % of N_Ed), and for Class 2B and 3 the vertical ties. Forces, not checks, so the part has no utilisation. `tests/concrete-tie-force/test_calcpad.js`: Mosley, Bungey and Hulse example 6.7, every class, F_t at its cap, internal ties held at F_t, each column rule governing, and 40 random buildings (1,117 values). With this every concrete tool writes out its full calculation and opens in CalcPad.
 
+**Downloads: a check first.** A calculation of one part (Precast Connections, RC Crack Width, Concrete Tie Force, the section, corbel and punching pages) downloads as one CalcPad check (.perega), with no project button. A calculation of several parts says what each button gives: every part has "Download this check (.perega)", and the button above them is "Download all N checks as one CalcPad project (.peregaproj)", a project because the parts reuse names (M_Ed, d, ...) that one check cannot hold twice. The message after a download names the file type and how to open it.
+
 | Tedds entry | Module | Status |
 |---|---|---|
 | RC Column Design | RC Column Design | Done (checked and reworked November 2026) |
