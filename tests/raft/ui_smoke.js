@@ -15,6 +15,10 @@ truth('defaults: nine columns, no walls, two plans drawn', d.querySelectorAll('#
 $('calc').click();
 truth('checked: PASS 0.878, punching governs', /PASS/.test(res()) && /0\.878/.test(res()) && /Governs: punching at the columns/.test(res()) && !err());
 truth('checks, the punching table (9 columns) and the calculation', $('results').querySelectorAll('.ck').length === 10 && $('results').querySelectorAll('table.ctab tbody tr').length === 9 && /Wood–Armer/.test(res()) && /Bed/.test(res()));
+{ const zones = [...$('results').querySelectorAll('details.zone')], zt = k => zones[k] ? zones[k].textContent.replace(/\s/g, '') : '';
+  truth('the full calculation: the raft, the ground, four layers, shear and nine columns, each with CalcPad buttons', zones.length === 16 && /^The raft, its loads and the bed/.test(zones[0].querySelector('summary').textContent) && zones.every(z => !!z.querySelector('[data-cp="copy"]')));
+  truth('full calculation: the totals by formula, k_s w, Wood–Armer, the net ground pressure under a column', /G_?tot=/.test(zt(0)) && /p_?max=k_?s/.test(zt(1)) && /Wood–Armer/.test(zones[2].textContent) && /p_?Ed−n_?U/.test(zt(15)) && /Column 9: punching/.test(zones[15].textContent));
+  truth('the CalcPad files carry the pressure plan and each layer\'s moments', !!w.eval('last.Z[1].C.items[0].svg') && [2, 3, 4, 5].every(k => /Wood–Armer design moment/.test(w.eval(`last.Z[${k}].C.items[0].svg`)))); }
 set('h', '300'); $('calc').click(); truth('300 mm: punching fails without links, with a note', /FAIL/.test(res()) && /shear links/.test(res()));
 set('h', '350');
 $('addWall').click(); $('calc').click(); truth('a wall added: checked', d.querySelectorAll('#wallRows .row').length === 1 && !err() && /1 wall/.test(res()));
@@ -25,7 +29,7 @@ cx.value = '0.5'; cx.dispatchEvent(new w.Event('input', { bubbles: true }));
 set('ks', '5000'); $('calc').click(); truth('softer ground: more settlement', /settlement [0-9.]+ mm/.test(res()) && !err());
 set('ks', '15000');
 $('calc').click(); $('printBtn').click();
-truth('print: two plans, the checks and the punching table', w.printed && $('report').querySelectorAll('svg').length === 2 && $('report').querySelectorAll('table.rt').length === 1 && /Punching at the columns/.test($('report').textContent));
+truth('print: two plans, the checks and the punching table', w.printed && $('report').querySelectorAll('svg').length === 2 && $('report').querySelectorAll('table.rt').length === 1 && /Punching at the columns/.test($('report').textContent) && /Full calculation/.test($('report').textContent) && /Wood–Armer/.test($('report').textContent));
 const w2 = page(w.localStorage.getItem('et-raft-v1'));
 truth('inputs restored', w2.document.querySelectorAll('#colRows .row').length === 9 && w2.document.getElementById('ks').value === '15000' && w2.document.getElementById('h').value === '350');
 const w3 = page(), ev = (el, tp) => el.dispatchEvent(new w3.Event(tp, { bubbles: true }));

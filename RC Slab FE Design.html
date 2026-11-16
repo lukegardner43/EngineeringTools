@@ -2423,7 +2423,9 @@ const PunchScript = (() => {
     // ---------- beta ----------
     C.head('Eccentricity of the load, β');
     const B = P.B, Bm = inp.beta || {}, VEdk = P.VEd / 1e3;
-    if (o.V) C.given('V_Ed', VEdk, 'kN', 'design punching load at the column', o.V.how, o.V.ref || '');
+    // o.V.expr: V_Ed by formula from names the caller's o.V.pre(C) defines
+    if (o.V && o.V.expr) { if (o.V.pre) o.V.pre(C); C.calc('V_Ed', o.V.expr, VEdk, 'kN', o.V.desc || 'design punching load at the column', o.V.ref || ''); }
+    else if (o.V) C.given('V_Ed', VEdk, 'kN', 'design punching load at the column', o.V.how, o.V.ref || '');
     else C.input('V_Ed', VEdk, 'kN', 'design punching load at the column (ULS)', '');
     if (Bm.method !== 'calc') C.input('beta', B.beta, '', `UK NA approximate value for an ${type === 'internal' ? 'internal' : type === 'edge' ? 'edge' : 'corner'} column (braced, spans within 25 %)`, '6.4.3(6), UK NA Figure 6.21N', { sym: 'β' });
     else if (!(P.VEd > 0)) C.input('beta', 1, '', 'no load', '6.4.3', { sym: 'β' });
@@ -2469,14 +2471,15 @@ const PunchScript = (() => {
     // ---------- load inside each perimeter ----------
     let V0 = 'V_Ed', V1 = 'V_Ed';
     if (P.q > 0) {
-      C.head('Load inside the perimeters');
-      C.input('q', inp.q, 'kN/m2', 'load inside the control perimeters that may be taken off V_Ed', '6.4.3(4), 6.4.4(2)');
+      C.head(o.q ? o.q.head : 'Load inside the perimeters');
+      // o.q.def(C, true): the caller defines q (kN/m2) by formula
+      if (o.q) o.q.def(C, true); else C.input('q', inp.q, 'kN/m2', 'load inside the control perimeters that may be taken off V_Ed', '6.4.3(4), 6.4.4(2)');
       C.calc('A_0', areaExpr(G, null), Punching.areaIn(G, 0), 'mm2', 'slab area within u_0 (the column)', '');
       C.calc('A_1', areaExpr(G, 'r_1'), Punching.areaIn(G, 2 * d), 'mm2', 'slab area within u_1', '');
       C.calc('V_Ed0', 'MAX(V_Ed - q*A_0, 0*V_Ed)', P.Vred0 / 1e3, 'kN', 'net load at the column face', '6.4.3(4)', { sym: 'V_Ed,red,0' });
       C.calc('V_Ed1', 'MAX(V_Ed - q*A_1, 0*V_Ed)', P.Vred1 / 1e3, 'kN', 'net load at u_1', '6.4.3(4)', { sym: 'V_Ed,red,1' });
       V0 = 'V_Ed0'; V1 = 'V_Ed1';
-    }
+    } else if (o.q) { C.head(o.q.head); o.q.def(C, false); }
     // ---------- checks ----------
     C.head('Column face');
     C.calc('v_Ed0', `beta*${V0}/(u_0*d)`, P.vEd0, 'N/mm2', 'punching stress at the column face', '6.4.3(2), 6.4.5(3)', { sym: 'v_Ed,0' });
