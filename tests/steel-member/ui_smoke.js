@@ -22,7 +22,10 @@ const block = (h, id) => h.match(new RegExp(`<script id="${id}">([\\s\\S]*?)</sc
     truth('member page: column default', $('section').value === '254×254×89 UKC');
     await calc(w); const r = $('results').textContent;
     truth('member page: verdict with flexural buckling and interaction', /Flexural|flexural/.test(r) && /6\.6[12]|interaction/i.test(r) && !$('results').querySelector('.err'));
-    $('printBtn').click(); truth('member page: A4 sheet names the tool', w.printed && /Steel Member Design/.test($('report').textContent));
+    { const z = [...$('results').querySelectorAll('details.zone')];
+      truth('member page: the full calculation, part by part, with CalcPad buttons', z.length >= 5 && /^Section, steel and class/.test(z[0].querySelector('summary').textContent) && z.every(q => !!q.querySelector('[data-cp="save"]')) && $('results').querySelectorAll('[data-cp="all"]').length === 1);
+      truth('member page: classification, the cross-section, buckling and the interaction written out', /c\/t/.test(z[0].textContent) && z.some(q => /Cross-section at x/.test(q.textContent) && /V_?pl,?Rd|Vpl,Rd/.test(q.textContent.replace(/\s/g, ''))) && z.some(q => /χ/.test(q.textContent) && /N_?b,?Rd|Nb,Rd/.test(q.textContent.replace(/\s/g, ''))) && z.some(q => /\(6\.62\)/.test(q.textContent))); }
+    $('printBtn').click(); truth('member page: A4 sheet names the tool', w.printed && /Steel Member Design/.test($('report').textContent) && /Full calculation/.test($('report').textContent));
     truth('member page: inputs saved under its own key', !!w.localStorage.getItem('et-steel-member-v1') && !w.localStorage.getItem('et-steel-beam-v1'));
     // buckling lengths in metres
     const set = (id, v) => { $(id).value = v; $(id).dispatchEvent(new w.Event('input', { bubbles: true })); };

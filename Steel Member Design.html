@@ -2592,6 +2592,1043 @@ const Design = (() => {
 })();
 if (typeof module !== 'undefined') module.exports = { Design };
 
+/* ===== CALCULATION SCRIPT (EngineeringTools) =====
+   One record of a tool's calculation, written step by step, from which the tool shows its full calculation (on the page
+   and the A4 sheet) and writes it for CalcPad (text to paste, or a .perega file to open), so that the two cannot differ.
+   Every number the calculation reports is one of:
+   - an input, with its unit;
+   - a formula in CalcPad's syntax (names, + − * / ^, SQRT MIN MAX ABS IF LOG EXP ROUND PI(), x[#unit] for a value as a
+     plain number in a given unit, as the empirical Eurocode formulas need), shown as the symbols, then the numbers put
+     in, then the result, with its clause; CalcPad recalculates these itself;
+   - a value the formula language cannot reach (an iteration, a table read, an analysis), stated as such with how it
+     was found and, where it can be, an equation that confirms it;
+   - a utilisation, with its limit.
+   API: const C = CalcScript.create({ title, tool, standard });
+        C.head(text), C.note(text),
+        C.input(name, value, unit, desc, ref, { sym }), C.calc(name, expr, value, unit, desc, ref, { sym }),
+        C.given(name, value, unit, desc, how, ref, { sym }), C.check(name, expr, value, desc, ref, { limit, sym }),
+        C.img(svg, caption);
+        C.html() — the full calculation; C.calcpad() — CalcPad text; C.perega(meta) — a .perega document (object).
+        CalcScript.project([{ C, title }], meta, name) — a .peregaproj (one CalcPad check per script, for a tool with several
+        zones or members whose names repeat); copy(C, meta), download(C, meta, file), downloadProject(list, meta, file) for the buttons.
+   Units are CalcPad's: mm cm m km, N kN MN, Pa kPa MPa GPa (N/mm2 for stresses), kg g t, s, deg rad, combined with * / ^
+   or run together (kNm, kNm/m, mm2/m). Values are given in the unit stated.
+   Source: scratchpad/common/calcscript.js. */
+const CalcScript = (() => {
+  'use strict';
+  // CalcPad's unit table: the SI factor and the SI symbol of each unit
+  const CONV = { mm: 1e-3, cm: 1e-2, m: 1, km: 1e3, N: 1, kN: 1e3, MN: 1e6, g: 1e-3, kg: 1, t: 1e3, Pa: 1, kPa: 1e3, MPa: 1e6, GPa: 1e9, s: 1, ms: 1e-3, min: 60, hr: 3600, deg: Math.PI / 180, rad: 1 };
+  const SIB = { mm: 'm', cm: 'm', m: 'm', km: 'm', N: 'N', kN: 'N', MN: 'N', g: 'kg', kg: 'kg', t: 'kg', Pa: 'Pa', kPa: 'Pa', MPa: 'Pa', GPa: 'Pa', s: 's', ms: 's', min: 's', hr: 's', deg: 'rad', rad: 'rad' };
+  const ORDER = { N: 0, kN: 0, MN: 0, Pa: 1, kPa: 1, MPa: 1, GPa: 1, J: 2, W: 2, Hz: 2, kg: 4, g: 4, t: 4, m: 5, mm: 5, cm: 5, km: 5, s: 6, ms: 6, min: 6, hr: 6, rad: 7, deg: 7 };
+  // "kNm" → kN, m (longest known symbol first, as CalcPad reads run-together units)
+  function split(tok) {
+    if (CONV[tok] !== undefined) return [tok];
+    const go = s => { if (!s) return []; for (let n = Math.min(3, s.length); n >= 1; n--) { if (CONV[s.slice(0, n)] === undefined) continue; const r = go(s.slice(n)); if (r) return [s.slice(0, n), ...r]; } return null; };
+    return go(tok);
+  }
+  function terms(u) {
+    const s = String(u || '').replace(/²/g, '^2').replace(/³/g, '^3').replace(/⁴/g, '^4').replace(/·/g, '*'), out = [];
+    const add = (str, sign) => str.split('*').forEach(p => { const t = p.trim(); if (!t) return; const m = t.match(/^([a-zA-Z]+)(?:\^?(-?\d+))?$/); if (!m) throw new Error(`CalcScript: unit "${u}"`); const e = m[2] ? +m[2] : 1, sy = split(m[1]); if (!sy) throw new Error(`CalcScript: unknown unit "${m[1]}"`); sy.forEach((x, i) => out.push([x, sign * (i === sy.length - 1 ? e : 1)])); });
+    const parts = s.split('/'); add(parts[0], 1); for (let i = 1; i < parts.length; i++) add(parts[i], -1);
+    return out;
+  }
+  const factor = u => terms(u).reduce((f, [s, e]) => f * CONV[s] ** e, 1);
+  const toSI = (v, u) => (u ? v * factor(u) : v);
+  function siUnit(u) {   // the SI unit string CalcPad stores with a literal (as unitObjToStr(toSIUnitObj(...)))
+    const o = {}; for (const [s, e] of terms(u)) { const b = SIB[s]; o[b] = (o[b] || 0) + e; if (!o[b]) delete o[b]; }
+    const rank = s => (ORDER[s] !== undefined ? ORDER[s] : 3), cmp = ([a], [b]) => rank(a) - rank(b) || a.localeCompare(b);
+    const f = ([s, e]) => (Math.abs(e) === 1 ? s : s + '^' + Math.abs(e));
+    const pos = Object.entries(o).filter(([, e]) => e > 0).sort(cmp), neg = Object.entries(o).filter(([, e]) => e < 0).sort(cmp);
+    return pos.map(f).join('·') + (neg.length ? '/' + neg.map(f).join('·') : '');
+  }
+  // ---------- display ----------
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const GREEK = { alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', zeta: 'ζ', eta: 'η', theta: 'θ', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', rho: 'ρ', sigma: 'σ', tau: 'τ', phi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω', Delta: 'Δ', Sigma: 'Σ', Phi: 'Φ' };
+  // a name as a symbol: the part before the first _ as the base (Greek where it is a Greek letter's name), the rest subscript;
+  // sym overrides the text ("A_s,req")
+  function symHTML(name, sym) {
+    const s = sym || name, i = s.indexOf('_'), base = i < 0 ? s : s.slice(0, i), sub = i < 0 ? '' : s.slice(i + 1);
+    const g = x => GREEK[x] || x;
+    return `<i>${esc(g(base))}</i>${sub ? `<sub>${esc(sub.split(',').map(g).join(','))}</sub>` : ''}`;
+  }
+  const UNIT_SHOW = { 'N/mm2': 'N/mm²', MPa: 'N/mm²', mm2: 'mm²', mm3: 'mm³', mm4: 'mm⁴', 'mm2/m': 'mm²/m', kNm: 'kNm', 'kN*m': 'kNm', 'kNm/m': 'kNm/m', 'kN*m/m': 'kNm/m', 'kN/m2': 'kN/m²', 'kN/m3': 'kN/m³', m2: 'm²', m3: 'm³', m4: 'm⁴' };
+  const unitHTML = u => (u ? esc(UNIT_SHOW[u] || String(u).replace(/\^-(\d)(?![0-9])/g, (_, k) => '⁻' + '⁰¹²³⁴⁵⁶⁷⁸⁹'[k]).replace(/\^?2(?![0-9])/g, '²').replace(/\^?3(?![0-9])/g, '³').replace(/\*/g, '·')) : '');
+  // a number to about four significant figures, no exponent for the sizes met in design
+  function num(v) {
+    if (v === Infinity) return '∞'; if (v === -Infinity) return '−∞'; if (!Number.isFinite(v)) return '–';
+    if (v === 0) return '0';
+    const a = Math.abs(v);
+    let s = a >= 1e4 ? Math.round(v).toLocaleString('en-GB') : a >= 1000 ? Math.round(v).toString() : a >= 100 ? (Math.round(v * 10) / 10).toString() : a >= 1e-4 ? (+v.toPrecision(4)).toString() : v.toExponential(3);
+    return s.replace(/^-/, '−');
+  }
+  // CalcPad expression → tokens
+  function tokens(expr) {
+    const out = []; let i = 0; const s = String(expr);
+    while (i < s.length) {
+      const ch = s[i];
+      if (/\s/.test(ch)) { i++; continue; }
+      if (/\d/.test(ch) || (ch === '.' && /\d/.test(s[i + 1] || ''))) { let n = ''; while (i < s.length && /[\d.]/.test(s[i])) n += s[i++]; if (/[eE]/.test(s[i] || '') && /[-+\d]/.test(s[i + 1] || '')) { n += s[i++]; if (/[-+]/.test(s[i])) n += s[i++]; while (/\d/.test(s[i] || '')) n += s[i++]; } out.push({ t: 'n', v: n }); continue; }
+      if (/[A-Za-z]/.test(ch)) {
+        let n = ''; while (i < s.length && /[A-Za-z0-9_]/.test(s[i])) n += s[i++];
+        let unit = ''; if (s[i] === '[') { const j = s.indexOf(']', i); unit = s.slice(i + 1, j); i = j + 1; }
+        let k = i; while (/\s/.test(s[k] || '')) k++;
+        out.push(s[k] === '(' && /^[A-Z][A-Z0-9]*$/.test(n) ? { t: 'f', v: n } : { t: 'id', v: n, unit }); continue;
+      }
+      const two = s.slice(i, i + 2);
+      if (['<=', '>=', '==', '!=', '<>'].includes(two)) { out.push({ t: 'op', v: two }); i += 2; continue; }
+      out.push({ t: 'op', v: ch }); i++;
+    }
+    return out;
+  }
+  const FN = { SQRT: '√', ABS: 'abs', MIN: 'min', MAX: 'max', IF: 'if', LOG: 'log', EXP: 'exp', ROUND: 'round', SIN: 'sin', COS: 'cos', TAN: 'tan', ATAN: 'atan', ASIN: 'asin', ACOS: 'acos', PI: 'π' };
+  const OPS = { '*': '·', '<=': '≤', '>=': '≥', '!=': '≠', '<>': '≠', '==': '=', '-': '−' };
+  // the expression as HTML: symbols (sub = null) or with each name's value put in (sub = name → { v, unit })
+  function exprHTML(expr, syms, sub) {
+    const tk = tokens(expr); let h = '';
+    for (let i = 0; i < tk.length; i++) {
+      const t = tk[i], nx = tk[i + 1];
+      if (t.t === 'n') h += esc(t.v.replace(/^(\d+)\.?0*$/, '$1'));
+      else if (t.t === 'f') { if (t.v === 'PI') { h += 'π'; i += 2; continue; } h += FN[t.v] || t.v.toLowerCase(); }
+      else if (t.t === 'id') {
+        // a value put in: bracketed where it is negative, or carries a unit and is raised to a power
+        if (sub && sub[t.v]) { const q = sub[t.v], u = t.unit ? '' : unitHTML(q.unit), br = q.v < 0 || (u && nx && nx.v === '^'); h += `${br ? '(' : ''}${num(q.v)}${u ? '&#8239;' + u : ''}${br ? ')' : ''}`; }
+        else h += symHTML(t.v, syms[t.v]);
+      } else if (t.v === '^') {
+        // a power: the next token (or bracket group) raised
+        let j = i + 1, depth = 0, grp = '';
+        do { const q = tk[j]; grp += q.t === 'op' ? q.v : (q.unit ? `${q.v}[${q.unit}]` : q.v); if (q.v === '(') depth++; if (q.v === ')') depth--; j++; } while (depth > 0 && j < tk.length);
+        const inner = grp.replace(/^\((.*)\)$/, '$1');
+        h += `<sup>${exprHTML(inner, syms, null)}</sup>`; i = j - 1;
+      } else if (t.v === '*') h += sub ? ' × ' : '·';
+      else if (t.v === '/') h += ' / ';
+      else if (t.v === '-' && (i === 0 || (tk[i - 1].t === 'op' && ['(', ',', '+', '-', '*', '/', '^', '<', '>', '<=', '>='].includes(tk[i - 1].v)))) h += '−';   // unary minus
+      else if (['+', '-', '<=', '>=', '<', '>', '==', '!=', '<>'].includes(t.v)) h += ` ${OPS[t.v] || esc(t.v)} `;
+      else if (t.v === ',') h += ', ';
+      else h += esc(t.v);
+      void nx;
+    }
+    return h.replace(/\s+/g, ' ').trim();
+  }
+  // ---------- the script ----------
+  function create(meta = {}) {
+    const items = [], vals = {}, syms = {}, units = {}, names = new Set();
+    const name0 = (n, kind) => {
+      if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(n)) throw new Error(`CalcScript: "${n}" is not a CalcPad name`);
+      if (names.has(n)) throw new Error(`CalcScript: "${n}" is defined twice`);
+      names.add(n); void kind;
+    };
+    const keep = (name, v, unit, o) => { vals[name] = v; units[name] = unit || ''; if (o && o.sym) syms[name] = o.sym; };
+    // a formula and the unit CalcPad shows it in: [unit], [#unit] (an empirical formula's result) or [#] (a plain number)
+    const split = (expr, unit) => { const m = String(expr).match(/^(.*?)\s*\[([^\]]+)\]\s*$/); return m ? { core: m[1].trim(), spec: m[2].trim() } : { core: String(expr).trim(), spec: unit || '#' }; };
+    const C = {
+      meta, items,
+      head(text) { items.push({ t: 'h', text }); return C; },
+      note(text) { items.push({ t: 'p', text }); return C; },
+      input(name, v, unit, desc, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'in', name, v, unit: unit || '', desc, ref }); return v; },
+      calc(name, expr, v, unit, desc, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'calc', name, expr, ...split(expr, unit), v, unit: unit || '', desc, ref }); return v; },
+      given(name, v, unit, desc, how, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'val', name, v, unit: unit || '', desc, how, ref }); return v; },
+      check(name, expr, v, desc, ref, o = {}) { name0(name); keep(name, v, '', o); items.push({ t: 'chk', name, expr, ...split(expr, ''), v, desc, ref, limit: o.limit ?? 1 }); return v; },
+      img(svg, caption) { items.push({ t: 'img', svg, caption }); return C; },
+      // a CalcPad plot line (PLOT(...) or SECTION(...)): drawn live by CalcPad from the values; not on the page, which has its own drawings
+      plot(src) { items.push({ t: 'plot', src }); return C; },
+      value: n => vals[n], has: n => names.has(n), sym: n => syms[n],
+      // an item as it is (merge() renames items and puts them in a check of their own)
+      raw(it, sym) { if (it.name) { name0(it.name); keep(it.name, it.v, it.t === 'chk' ? '' : it.unit, sym ? { sym } : null); } items.push(it); return C; },
+      // ----- the full calculation, for the page and the A4 sheet -----
+      html(opts = {}) {
+        const sub = Object.fromEntries(Object.keys(vals).map(n => [n, { v: vals[n], unit: units[n] }]));
+        // opts.skip: headings whose sections are left out (the same materials in every zone of a sheet), said in a line
+        let h = `<div class="cs${opts.sheet ? ' cs-sheet' : ''}">`, skipping = false;
+        for (const it of items) {
+          if (it.t === 'h') { skipping = !!(opts.skip && opts.skip.includes(it.text)); h += skipping ? `<div class="cs-p">${esc(it.text)}: as above.</div>` : `<div class="cs-h">${esc(it.text)}</div>`; continue; }
+          if (skipping) continue;
+          if (it.t === 'p') { h += `<div class="cs-p">${esc(it.text)}</div>`; continue; }
+          if (it.t === 'plot') continue;
+          if (it.t === 'img') { if (!opts.noImg) h += `<div class="cs-img">${it.svg}${it.caption ? `<div class="cs-cap">${esc(it.caption)}</div>` : ''}</div>`; continue; }
+          const S = symHTML(it.name, syms[it.name]), res = `${num(it.v)}${it.unit ? '&#8239;' + unitHTML(it.unit) : ''}`;
+          let eq;
+          if (it.t === 'in') eq = `${S} = ${res}`;
+          else if (it.t === 'val') eq = `${S} = ${res}`;
+          else {
+            const sy = exprHTML(it.core, syms, null), nu = exprHTML(it.core, syms, sub);
+            eq = `${S} = ${sy}${nu !== sy ? ` = ${nu}` : ''} = <b>${res}</b>`;
+            if (it.t === 'chk') eq += ` ${it.v <= it.limit + 1e-9 ? `≤ ${num(it.limit)} <span class="cs-ok">OK</span>` : `> ${num(it.limit)} <span class="cs-ng">NOT OK</span>`}`;
+          }
+          const d = [it.desc, it.how].filter(Boolean).map(esc).join('; ');
+          h += `<div class="cs-r cs-${it.t}"><div class="cs-eq">${eq}${d ? `<div class="cs-d">${d}</div>` : ''}</div><div class="cs-ref">${esc(it.ref || '')}</div></div>`;
+        }
+        return h + '</div>';
+      },
+      // ----- CalcPad text: paste into a sheet and every line becomes a live chip -----
+      lines() {
+        const out = [];
+        // an "=" in the words would start a definition in CalcPad: "a = b" is written "a is b"
+        const clean = s => String(s || '').replace(/\s*=\s*/g, ' is ').replace(/\s+/g, ' ').trim();
+        const pre = it => { const d = clean([it.desc, it.t === 'val' && it.how ? `(${it.how})` : ''].filter(Boolean).join(' ')), r = clean(it.ref); return `${d}${r ? `${d ? ', ' : ''}${r}` : ''}${d || r ? ': ' : ''}`; };
+        for (const it of items) {
+          if (it.t === 'h') { out.push({ it, text: '' }, { it, text: clean(it.text) }); continue; }
+          if (it.t === 'p') { out.push({ it, text: clean(it.text) }); continue; }
+          if (it.t === 'img') continue;
+          if (it.t === 'plot') { out.push({ it, text: it.src }); continue; }
+          if (it.t === 'in' || it.t === 'val') out.push({ it, text: `${pre(it)}${it.name} = ${lit(it.v)}${it.unit ? ' ' + it.unit : ''}` });
+          else out.push({ it, text: `${pre(it)}${it.name} = ${it.core} [${it.spec}]` });
+        }
+        return out;
+      },
+      calcpad() { const L = C.lines().map(l => l.text); while (L.length && !L[0]) L.shift(); return L.join('\n'); },
+      // ----- a .perega document: the same lines as CalcPad's own chips, with the drawings as images -----
+      perega(m = {}, images = {}) {
+        let html = '';
+        const chip = it => {
+          if (it.t === 'in' || it.t === 'val') {
+            const si = toSI(it.v, it.unit), su = it.unit ? siUnit(it.unit) : '';
+            const a = { 'data-var-name': it.name, 'data-var-val': String(si), 'data-bare': '1' };   // data-bare: CalcPad draws it on opening
+            if (it.unit) { a['data-var-unit'] = it.unit; if (su && su !== it.unit) a['data-var-si-unit'] = su; if (lit(it.v) !== String(si)) a['data-var-orig-num'] = lit(it.v); }
+            return `<span contenteditable="false" class="var-def-chip" ${Object.entries(a).map(([k, v]) => `${k}="${esc(v)}"`).join(' ')}><span class="vdc-name">${esc(it.name)} = </span><span class="vdc-val">${esc(lit(it.v))}${it.unit ? ' ' + esc(it.unit) : ''}</span></span>`;
+          }
+          const a = { 'data-var-name': it.name, 'data-var-val': String(toSI(it.v, it.unit)), 'data-var-expr': it.core, 'data-var-display-unit': it.spec, 'data-bare': '1' };
+          return `<span contenteditable="false" class="var-def-chip" ${Object.entries(a).map(([k, v]) => `${k}="${esc(v)}"`).join(' ')}><span class="vdc-name">${esc(it.name)} = ${esc(it.core)}</span></span>`;
+        };
+        let first = true;
+        for (const it of items) {
+          const br = first ? '' : '<br>'; first = false;
+          if (it.t === 'h') { html += `${br}<br><b>${esc(it.text)}</b>`; continue; }
+          if (it.t === 'p') { html += `${br}${esc(it.text)}`; continue; }
+          if (it.t === 'plot') { html += `${br}<span contenteditable="false" class="plot-chip" data-plot="${esc(it.src)}"></span> `; continue; }
+          if (it.t === 'img') { const src = images[items.indexOf(it)]; if (src) html += `${br}<span contenteditable="false" class="calc-img-wrap"><img src="${src}" draggable="false" style="width:${Math.round(Math.min(images.width || 500, (images.nat && images.nat[items.indexOf(it)]) || Infinity))}px;height:auto"><span class="img-resize-handle"></span><span class="img-size-label"></span></span>${it.caption ? `<br><i>${esc(it.caption)}</i>` : ''}`; else first = !html; continue; }
+          const L = C.lines().find(l => l.it === it), text = L.text, k = text.lastIndexOf(`${it.name} = `);
+          html += `${br}${esc(text.slice(0, k))}${chip(it)} `;
+        }
+        const today = new Date().toISOString().slice(0, 10);
+        return { version: 2, meta: { 'm-project': m.project || '', 'm-projno': m.job || '', 'm-date': m.date || today, 'm-desc': m.title || meta.title || '', 'm-sheet': m.sheet || '', 'm-orig': m.by || '', 'm-deliv': '', 'm-checked': '', 'm-suit': '', 'm-rev': '' },
+          pages: [html], preferredUnits: {}, et: { tool: meta.tool || '', standard: meta.standard || '' } };
+      },
+    };
+    return C;
+  }
+  // a number as CalcPad reads it: full precision, no grouping
+  const lit = v => (Number.isFinite(v) ? String(+v.toPrecision(12)) : '0');
+  // the drawings as PNG data URLs (CalcPad's Word export takes PNG): resolves to { index: dataURL, width }
+  async function rasterise(C, width = 520) {
+    const out = { width, nat: {} };   // nat: each drawing's own width, so a small one is not blown up
+    const jobs = C.items.map((it, i) => it.t !== 'img' ? null : new Promise(res => {
+      try {
+        const doc = new DOMParser().parseFromString(it.svg, 'image/svg+xml'), sv = doc.documentElement;
+        if (!sv || sv.nodeName !== 'svg') return res();
+        if (!sv.getAttribute('xmlns')) sv.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        const vb = (sv.getAttribute('viewBox') || '').split(/[ ,]+/).map(Number), w = vb[2] || +sv.getAttribute('width') || 600, h = vb[3] || +sv.getAttribute('height') || 400;
+        sv.setAttribute('width', w); sv.setAttribute('height', h); out.nat[i] = w;
+        // the page's colours and fonts as the drawing uses them
+        const st = doc.createElementNS('http://www.w3.org/2000/svg', 'style'); st.textContent = 'text{font-family:Arial,Helvetica,sans-serif}'; sv.insertBefore(st, sv.firstChild);
+        const img = new Image(), url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(sv));
+        img.onload = () => { const k = 2, cv = document.createElement('canvas'); cv.width = w * k; cv.height = h * k; const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, cv.width, cv.height); out[i] = cv.toDataURL('image/png'); res(); };
+        img.onerror = () => res(); img.src = url;
+      } catch (e) { res(); }
+    }));
+    await Promise.all(jobs.filter(Boolean));
+    return out;
+  }
+  // the buttons' work: copy the CalcPad text (with the chips as HTML for a paste straight into CalcPad), download a .perega
+  async function copy(C, m) {
+    const text = C.calcpad();
+    try {
+      if (navigator.clipboard && window.ClipboardItem) {
+        const doc = C.perega(m), html = doc.pages[0];
+        await navigator.clipboard.write([new ClipboardItem({ 'text/plain': new Blob([text], { type: 'text/plain' }), 'text/html': new Blob([html], { type: 'text/html' }) })]);
+        return true;
+      }
+      await navigator.clipboard.writeText(text); return true;
+    } catch (e) {
+      const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+      let ok = false; try { ok = document.execCommand('copy'); } catch (e2) { ok = false; } ta.remove(); return ok;
+    }
+  }
+  const fileSafe = s => String(s || 'Calculation').replace(/×/g, 'x').replace(/\//g, '-').replace(/[^A-Za-z0-9 ._()-]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Calculation';
+  function save(text, fileName, ext) {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = fileSafe(fileName) + ext;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+  async function download(C, m, fileName) {
+    let images = {}; try { images = await rasterise(C); } catch (e) { images = {}; }
+    save(JSON.stringify({ ...C.perega(m, images), savedAt: new Date().toISOString() }, null, 2), fileName, '.perega');
+  }
+  // a CalcPad project (.peregaproj): one check per script, in order, each a whole document of its own (CalcPad keeps each
+  // check's names apart, so the zones of a beam can all use M_Ed, d, ...). list: [{ C, title }]
+  // Values several checks define alike (the same name, definition, unit, description and source: the materials, a section
+  // several zones share, ...) go once into a first check of shared values, which CalcPad (a pack's shared check, from CalcPad dd29f6a) gives
+  // to every other check of the pack; each check says, where they were, which of its values come from there. A value stays
+  // in a check unless everything it uses there is shared too, so a check with a different f_ck keeps its own f_cd.
+  // Returns the list with the shared check first ({ C, title, shared: true }), or the list as it was if nothing repeats.
+  const IDENT = /[A-Za-z][A-Za-z0-9_]*/g;
+  function shareOut(list) {
+    const defs = it => it.t === 'in' || it.t === 'val' || it.t === 'calc';
+    const key = it => JSON.stringify([it.t, it.name, it.t === 'calc' ? `${it.core} [${it.spec}]` : `${lit(it.v)} ${it.unit}`, it.desc || '', it.ref || '', it.how || '']);
+    const count = new Map();
+    list.forEach(({ C }) => { const seen = new Set(); C.items.forEach(it => { if (!defs(it)) return; const k = key(it); if (!seen.has(k)) { seen.add(k); count.set(k, (count.get(k) || 0) + 1); } }); });
+    const best = new Map();   // name → the definition most checks share (one per name)
+    for (const [k, c] of count) { if (c < 2) continue; const nm = JSON.parse(k)[1], b = best.get(nm); if (!b || c > count.get(b)) best.set(nm, k); }
+    if (!best.size) return list;
+    const shared = [], sharedKeys = new Set();
+    const out = list.map(({ C, title, ...rest }) => {
+      const local = new Set(C.items.filter(defs).map(it => it.name)), gone = new Set();
+      C.items.forEach(it => {
+        if (!defs(it) || best.get(it.name) !== key(it)) return;
+        const uses = it.t === 'calc' ? (it.core.match(IDENT) || []).filter(n => n !== it.name && local.has(n)) : [];
+        if (uses.every(n => gone.has(n))) gone.add(it.name);
+      });
+      if (!gone.size) return { C, title, ...rest };
+      const C2 = create({ ...C.meta }); let head = null, run = [];
+      const flush = () => { if (run.length) { C2.items.push({ t: 'p', text: `From the shared values: ${run.join(', ')}.` }); run = []; } };
+      for (const it of C.items) {
+        if (it.t === 'h') { flush(); head = it.text; C2.items.push(it); continue; }
+        if (defs(it) && gone.has(it.name)) { run.push(it.name); const k = key(it); if (!sharedKeys.has(k)) { sharedKeys.add(k); shared.push({ head, it }); } continue; }
+        flush(); C2.items.push(it);
+      }
+      flush();
+      return { C: C2, title, ...rest };
+    });
+    if (!shared.length) return list;
+    const S = create({ title: 'Shared values', tool: list[0].C.meta.tool, standard: list[0].C.meta.standard });
+    S.items.push({ t: 'p', text: 'The values several checks of this project use, defined once: CalcPad gives them to every other check. A check that needs a different value defines its own.' });
+    let h = null;
+    for (const { head, it } of shared) { if (head !== h) { h = head; if (head) S.items.push({ t: 'h', text: head }); } S.items.push(it); }
+    return [{ C: S, title: 'Shared values', shared: true }, ...out];
+  }
+  async function project(list, m = {}, name = 'Calculation', o = {}) {
+    const checks = [];
+    if (o.share !== false && list.length > 1) list = shareOut(list);
+    for (let k = 0; k < list.length; k++) {
+      const { C, title, shared } = list[k]; let images = {};
+      try { images = typeof document !== 'undefined' ? await rasterise(C) : {}; } catch (e) { images = {}; }
+      checks.push({ id: 'c' + (k + 1), name: title, doc: C.perega({ ...m, title }, images), ...(shared ? { shared: true } : {}) });
+    }
+    return { kind: 'calcpad-project', version: 1, name: fileSafe(name), activeId: checks.length ? checks[0].id : null, checks, savedAt: new Date().toISOString() };
+  }
+  // every part of a calculation as one CalcPad check (one .perega), each part under its own heading, in order. A value a
+  // later part defines just as an earlier part did (the same name and the same value, or the same formula of the same
+  // values: the materials, the section, a load) is written once, where it first comes, and the later part says so; a name
+  // a later part defines differently takes the part's number (M_Ed → M_Ed_3), in that part's formulas too, so every value
+  // is still the tool's. list: [{ C, title }]
+  // a unit in brackets, or a name (one followed by a colon is an option of a PLOT or SECTION line, not a name)
+  const TOK = /(\[[^\]]*\])|([A-Za-z][A-Za-z0-9_]*)(\s*:)?/g;
+  function merge(list, meta = {}) {
+    const M = create({ ...(list[0] ? list[0].C.meta : {}), ...meta }), byKey = new Map();
+    list.forEach(({ C, title }, zi) => {
+      const k = zi + 1, ren = new Map(), re = s => String(s).replace(TOK, (t, u, n, colon) => u || colon ? t : (ren.get(n) || n));
+      if (list.length > 1) M.items.push({ t: 'h', text: `Part ${k}: ${title}` });
+      let hIdx = -1, same = [];
+      const flush = () => {
+        if (hIdx < 0) return;
+        if (M.items.length === hIdx + 1 && !same.length) M.items.splice(hIdx, 1);
+        else if (same.length) M.items.splice(hIdx + 1, 0, { t: 'p', text: `As in an earlier part: ${same.join(', ')}.` });
+        hIdx = -1; same = [];
+      };
+      for (const it of C.items) {
+        if (it.t === 'h') { flush(); hIdx = M.items.length; M.items.push(it); continue; }
+        if (!it.name) { M.items.push(it.t === 'plot' ? { ...it, src: re(it.src) } : it); continue; }
+        const core = it.core != null ? re(it.core) : null;
+        const key = JSON.stringify([it.t === 'chk' ? 'chk' : 'def', it.name, core != null ? `${core} [${it.spec}]` : `${lit(it.v)} ${it.unit}`]);
+        if (byKey.has(key)) { ren.set(it.name, byKey.get(key)); same.push(byKey.get(key)); continue; }
+        let nm = it.name;
+        if (M.has(nm)) { nm = `${it.name}_${k}`; for (let j = 2; M.has(nm); j++) nm = `${it.name}_${k}_${j}`; }
+        ren.set(it.name, nm); byKey.set(key, nm);
+        M.raw(core != null ? { ...it, name: nm, core, expr: `${core} [${it.spec}]` } : { ...it, name: nm }, C.sym(it.name));
+      }
+      flush();
+    });
+    return M;
+  }
+  async function downloadProject(list, m, fileName) { save(JSON.stringify(await project(list, m, fileName), null, 2), fileName, '.peregaproj'); }
+  // a tool with several zones (Z: [{ key, title, sum, util, C }]): the project button, then each zone as a <details> with its
+  // own buttons and its full calculation; wire() answers the buttons (once per page, on a container that stays)
+  const uf = u => (Number.isFinite(u) ? u.toFixed(3) : '>99');
+  // The whole calculation downloads as one CalcPad check (.perega): its parts merged in order (merge()). Each part also
+  // downloads on its own. o.noProj: no buttons for the whole (a page that shows its parts in several places and has its
+  // own buttons for the whole, data-cp="all" and "copyall").
+  const allTools = (n, msg = '') => `<div class="cs-tools"><button class="btn2" type="button" data-cp="all">Download CalcPad check (.perega)</button><button class="btn2" type="button" data-cp="copyall">Copy for CalcPad</button><span class="aux" data-cpmsg="all">${msg || (n > 1 ? `The whole calculation as one check, its ${n} parts in order. Each part below also downloads on its own.` : '')}</span></div>`;
+  function zonesHTML(Z, o = {}) {
+    const many = Z.length > 1;
+    return (o.noProj ? '' : allTools(Z.length))
+      + Z.map(zn => `<details class="zone"><summary><span>${esc(zn.title)}${zn.sum ? `<small> · ${esc(zn.sum)}</small>` : ''}</span>${zn.util != null ? `<span class="u ${zn.util > 1 ? 'over' : ''}">${uf(zn.util)}</span>` : ''}</summary>`
+        + `<div class="zfull"><div class="cs-tools"><button class="btn2" type="button" data-cp="save" data-zone="${esc(zn.key)}">${many ? 'Download this part (.perega)' : 'Download CalcPad check (.perega)'}</button><button class="btn2" type="button" data-cp="copy" data-zone="${esc(zn.key)}">${many ? 'Copy this part' : 'Copy for CalcPad'}</button><span class="aux" data-cpmsg="${esc(zn.key)}"></span></div>${zn.C.html({ noImg: true })}</div></details>`).join('');
+  }
+  // getZ() → the zones shown; meta(title) → the project details; name(title) → a file name; proj: the project's title
+  function wire(root, getZ, meta, name, proj) {
+    root.addEventListener('click', async e => {
+      const b = e.target.closest('[data-cp]'), Z = getZ(); if (!b || !Z) return;
+      // the message goes beside the button pressed
+      const msg = k => (b.closest('.cs-tools') && b.closest('.cs-tools').querySelector('[data-cpmsg]')) || root.querySelector(`[data-cpmsg="${k}"]`) || { textContent: '' };
+      const all = () => Z.length === 1 ? Z[0].C : merge(Z.map(zn => ({ C: zn.C, title: zn.title })), { title: proj });
+      if (b.dataset.cp === 'all') { await download(all(), meta(proj), name(proj)); msg('all').textContent = 'Downloaded the check (.perega): open it in CalcPad with File ▸ Open.'; return; }
+      if (b.dataset.cp === 'copyall') { const ok = await copy(all(), meta(proj)); msg('all').textContent = ok ? 'Copied: paste it into a CalcPad sheet.' : 'Could not copy: use Download CalcPad check.'; return; }
+      if (b.dataset.cp === 'proj') { await downloadProject(Z.map(zn => ({ C: zn.C, title: zn.title })), meta(proj), name(proj)); msg('proj').textContent = 'Downloaded the project: open it in CalcPad with File ▸ Open project.'; return; }
+      const zn = Z.find(z => z.key === b.dataset.zone); if (!zn) return;
+      if (b.dataset.cp === 'copy') { const ok = await copy(zn.C, meta(zn.title)); msg(zn.key).textContent = ok ? 'Copied: paste it into a CalcPad sheet.' : 'Could not copy: use Download this check.'; }
+      else { await download(zn.C, meta(zn.title), name(zn.title)); msg(zn.key).textContent = 'Downloaded the check (.perega): open it in CalcPad with File ▸ Open.'; }
+    });
+  }
+  // the zones on the A4 sheet: every zone in full, the materials set out once and "as above" after
+  function sheetHTML(Z, h2 = t => `<h2>${t}</h2>`) {
+    let mat = false;
+    return Z.map(zn => { const s = `<div class="rs">${h2(`${esc(zn.title)}${zn.sum ? ` <span style="font-weight:400;color:#555">· ${esc(zn.sum)}</span>` : ''}`)}${zn.C.html({ sheet: true, noImg: true, skip: mat ? ['Materials'] : [] })}</div>`; if (zn.C.items.some(it => it.t === 'h' && it.text === 'Materials')) mat = true; return s; }).join('');
+  }
+  // the style of the full calculation (each tool's page and sheet include it)
+  const CSS = `.cs{font-size:13px;line-height:1.45}.cs-h{font-weight:600;font-size:14px;margin:14px 0 4px;padding-bottom:3px;border-bottom:1px solid var(--bdr,#e6e6e6)}
+.cs-p{color:var(--mut,#5f6368);margin:4px 0}.cs-r{display:grid;grid-template-columns:1fr 110px;gap:10px;padding:4px 0;border-bottom:1px solid #f0f0f0}
+.cs-eq{overflow-wrap:anywhere}.cs-eq i{font-style:italic}.cs-eq sub,.cs-eq sup{font-size:75%}.cs-d{color:var(--mut,#5f6368);font-size:12px}
+.cs-ref{color:var(--faint,#6b6b6b);font-size:12px;text-align:right}.cs-ok{color:var(--pass,#247b50);font-weight:600}.cs-ng{color:var(--fail,#c4242a);font-weight:600}
+.cs-val .cs-eq{color:#333}.cs-img{margin:8px 0}.cs-cap{font-size:12px;color:var(--mut,#5f6368)}
+.cs-sheet{font-size:9pt}.cs-sheet .cs-r{grid-template-columns:1fr 70pt;padding:1pt 0;break-inside:avoid}.cs-sheet .cs-h{font-size:10pt;margin:6pt 0 2pt}.cs-sheet .cs-d,.cs-sheet .cs-ref{font-size:8pt}.cs-sheet .cs-d{display:inline;margin-left:8pt}.cs-sheet .cs-p{margin:2pt 0}
+.zone .zfull{padding:0 10px 8px}.zone summary small{color:var(--faint,#6b6b6b);font-size:12px}.cs-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.cs-tools .btn2{width:auto;flex:0 0 auto;margin:0;padding:0 16px}
+@media print{.cs-tools{display:none}}`;
+  return { create, toSI, siUnit, factor, num, exprHTML, symHTML, unitHTML, tokens, rasterise, copy, download, merge, project, downloadProject, zonesHTML, allTools, wire, sheetHTML, CSS };
+})();
+if (typeof module !== 'undefined') module.exports = { CalcScript };
+
+/* ===== EC3 CALCULATION BLOCKS (EngineeringTools) =====
+   The steps of BS EN 1993-1-1 (+ UK NA) and BS EN 1993-1-5 as CalcScript blocks, for the full calculation of every steel
+   tool: the section and its steel, classification (Table 5.2), the cross-section at a station (6.2: tension or compression,
+   shear with shear buckling, bending with shear and axial force, biaxial bending, EN 1993-1-5 7.1), flexural, torsional and
+   torsional-flexural buckling (6.3.1), lateral-torsional buckling (6.3.2 with the UK NA) and the interaction of 6.3.3 by
+   Annex B or Annex A. Each block writes what the EC3 engine works out, in the same order, so CalcPad reproduces the
+   engine's numbers. Where the engine branches (a class, a shape, an Annex B row), the block writes the branch taken and
+   says why. Engine units N and mm; the calculation shows kN, kNm, mm and cm.
+   Source: scratchpad/steel/ec3script.js. Needs CalcScript and EC3. */
+const EC3Script = (() => {
+  'use strict';
+  const f1 = v => (+v).toFixed(1), f2 = v => (+v).toFixed(2), f3 = v => (+v).toFixed(3);
+  const hollow = s => s.shape === 'RHS' || s.shape === 'CHS';
+  const SHAPE = { I: 'I or H section', PFC: 'parallel flange channel', RHS: 'rectangular or square hollow section', CHS: 'circular hollow section' };
+
+  // ---------- the section ----------
+  function section(C, s, o = {}) {
+    if (C.has('A')) return;
+    C.head(o.head || 'Section');
+    const src = s.hist ? `BCSA historical tables${s.hist.series ? `, ${s.hist.series}` : ''}` : s.productStd === 'BS EN 10025-2 (plate)' || s.rolled === false && s.shape === 'I' ? 'from the plate sizes (SCI P363 formulae)' : 'section tables (British Steel, BS EN 10365)';
+    C.note(`${s.name}: ${SHAPE[s.shape] || s.shape}${s.cold ? ', cold-formed' : s.shape === 'RHS' || s.shape === 'CHS' ? ', hot-finished' : s.rolled ? ', rolled' : ', welded'}. Properties: ${src}.`);
+    if (s.shape === 'CHS') { C.input('d', s.d, 'mm', 'outside diameter', ''); C.input('t', s.t, 'mm', 'wall thickness', ''); }
+    else if (s.shape === 'RHS') { C.input('h', s.h, 'mm', 'depth', ''); C.input('b', s.b, 'mm', 'width', ''); C.input('t', s.t, 'mm', 'wall thickness', ''); }
+    else {
+      C.input('h', s.h, 'mm', 'depth', ''); C.input('b', s.b, 'mm', 'flange width', '');
+      C.input('t_w', s.tw, 'mm', 'web thickness', ''); C.input('t_f', s.tf, 'mm', 'flange thickness', ''); C.input('r', s.r, 'mm', 'root radius', '');
+    }
+    C.input('A', s.A / 100, 'cm2', 'area', '');
+    C.input('I_y', s.Iy / 1e4, 'cm4', 'second moment of area, major axis', ''); C.input('I_z', s.Iz / 1e4, 'cm4', 'second moment of area, minor axis', '');
+    C.input('W_ely', s.Wely / 1e3, 'cm3', 'elastic modulus, major axis', '', { sym: 'W_el,y' }); C.input('W_elz', s.Welz / 1e3, 'cm3', 'elastic modulus, minor axis', '', { sym: 'W_el,z' });
+    C.input('W_ply', s.Wply / 1e3, 'cm3', 'plastic modulus, major axis', '', { sym: 'W_pl,y' }); C.input('W_plz', s.Wplz / 1e3, 'cm3', 'plastic modulus, minor axis', '', { sym: 'W_pl,z' });
+    C.input('I_t', s.It / 1e4, 'cm4', 'torsion constant', '');
+    if (s.shape === 'RHS') C.input('I_w', 0, 'cm6', 'warping constant: negligible for a closed section', '');
+    else if (s.shape !== 'CHS') C.input('I_w', s.Iw / 1e6, 'cm6', 'warping constant', '');
+  }
+
+  // ---------- the steel ----------
+  function steel(C, s, grade, fy) {
+    if (C.has('f_y')) return;
+    const G = EC3.GRADES[grade] || {};
+    C.head('Steel');
+    if (G.given) C.input('f_y', fy, 'N/mm2', 'yield strength, given by the engineer (tests or an assessed value)', '');
+    else {
+      if (s.shape === 'CHS' || s.shape === 'RHS') C.calc('t_max', 't', s.t, 'mm', 'the thickest element', '');
+      else C.calc('t_max', 'MAX(t_f, t_w)', Math.max(s.tf, s.tw), 'mm', 'the thickest element', '');
+      const row = (G.fy || []).find(([lim]) => Math.max(s.tf, s.tw) <= lim), prev = (G.fy || [])[(G.fy || []).indexOf(row) - 1];
+      C.input('f_y', fy, 'N/mm2', `yield strength of ${G.label || grade} for ${prev ? `${prev[0]} < ` : ''}t ≤ ${row && isFinite(row[0]) ? row[0] : '–'} mm: ${G.std || ''}${G.hist ? '' : ' (UK NA NA.2.4: R_eH from the product standard)'}`, G.hist ? 'BCSA Historical Steelwork Handbook 2.5' : '3.2.1, UK NA');
+    }
+    C.input('E', EC3.E, 'N/mm2', 'modulus of elasticity', '3.2.6(1)');
+    C.input('G', EC3.G, 'N/mm2', 'shear modulus', '3.2.6(1)');
+    C.input('gamma_M0', EC3.GM0, '', 'partial factor, cross-sections', '6.1(1), UK NA', { sym: 'γ_M0' });
+    C.input('gamma_M1', EC3.GM1, '', 'partial factor, members (buckling)', '6.1(1), UK NA', { sym: 'γ_M1' });
+    C.calc('eps', 'SQRT(235/f_y[#N/mm2])', Math.sqrt(235 / fy), '', 'ε = √(235/f_y)', 'Table 5.2', { sym: 'ε' });
+  }
+
+  // ---------- classification, Table 5.2 ----------
+  // N in N (+ compression), the name of the axial force already defined (or null: no axial force); sfx keeps two
+  // classifications apart in one calculation
+  function classify(C, s, fy, N, bending, biax, nName, sfx = '', title) {
+    const cl = EC3.classify(s, fy, N, bending, biax), x = sfx;
+    C.head(title || 'Classification, Table 5.2');
+    const clsExpr = (r, l1, l2, l3) => `IF(${r} <= ${l1}, 1, IF(${r} <= ${l2}, 2, IF(${r} <= ${l3}, 3, 4)))`;
+    if (s.shape === 'CHS') {
+      C.calc(`dt${x}`, 'd/t', cl.tube.ratio, '', 'd/t', 'Table 5.2 sheet 3', { sym: 'd/t' });
+      C.calc(`cls${x}`, clsExpr(`dt${x}`, '50*eps^2', '70*eps^2', '90*eps^2'), cl.cls, '', 'class: d/t against 50ε², 70ε², 90ε²', 'Table 5.2 sheet 3', { sym: 'Class' });
+      return cl;
+    }
+    const tf = s.shape === 'RHS' ? 't' : 't_f', tw = s.shape === 'RHS' ? 't' : 't_w';
+    // flange
+    if (s.shape === 'RHS') C.calc(`c_f${x}`, 'b - 3*t', cl.flange.c, 'mm', 'flange, internal part (b − 3t for hollow sections)', 'Table 5.2 note');
+    else if (s.shape === 'PFC') C.calc(`c_f${x}`, 'b - t_w - r', cl.flange.c, 'mm', 'flange outstand', 'Table 5.2 sheet 2');
+    else C.calc(`c_f${x}`, '(b - t_w - 2*r)/2', cl.flange.c, 'mm', 'flange outstand', 'Table 5.2 sheet 2');
+    C.calc(`rf${x}`, `c_f${x}/${tf}`, cl.flange.ratio, '', 'c/t of the flange', 'Table 5.2', { sym: 'c/t_f' });
+    const fFree = s.shape === 'RHS' && !bending && !(N > 0) && !biax;
+    if (fFree) C.input(`cls_f${x}`, 1, '', 'flange in tension: Class 1', 'Table 5.2', { sym: 'Class_f' });
+    else if (s.shape === 'RHS') C.calc(`cls_f${x}`, clsExpr(`rf${x}`, '33*eps', '38*eps', '42*eps'), cl.flange.cls, '', 'flange in compression: c/t against 33ε, 38ε, 42ε', 'Table 5.2 sheet 1', { sym: 'Class_f' });
+    else C.calc(`cls_f${x}`, clsExpr(`rf${x}`, '9*eps', '10*eps', '14*eps'), cl.flange.cls, '', 'flange outstand in compression: c/t against 9ε, 10ε, 14ε', 'Table 5.2 sheet 2', { sym: 'Class_f' });
+    // web
+    if (s.shape === 'RHS') C.calc(`c_w${x}`, 'h - 3*t', cl.web.c, 'mm', 'web, internal part (h − 3t)', 'Table 5.2 note');
+    else C.calc(`c_w${x}`, 'h - 2*t_f - 2*r', cl.web.c, 'mm', 'web between the root radii', 'Table 5.2 sheet 1');
+    C.calc(`rw${x}`, `c_w${x}/${tw}`, cl.web.ratio, '', 'c/t of the web', 'Table 5.2', { sym: 'c/t_w' });
+    const w = cl.web;
+    const bendingWeb = s.shape === 'RHS' ? bending && !biax : bending;
+    if (bendingWeb && nName) {
+      const tw2 = s.shape === 'RHS' ? '2*t' : 't_w';
+      C.calc(`alpha${x}`, `MIN(1, 0.5 + ${nName}/(2*${tw2}*f_y*c_w${x}))`, w.alpha, '', 'the compressed part of the web: plastic neutral axis with N_Ed', 'Table 5.2 sheet 1', { sym: 'α' });
+      C.calc(`psi${x}`, `MAX(-3, MIN(1, 2*${nName}/(A*f_y) - 1))`, w.psi, '', 'stress ratio of the web, elastic', 'Table 5.2 sheet 1', { sym: 'ψ' });
+    } else if (bendingWeb) {
+      C.input(`alpha${x}`, w.alpha, '', 'bending alone: half the web in compression', 'Table 5.2 sheet 1', { sym: 'α' });
+      C.input(`psi${x}`, w.psi, '', 'bending alone', 'Table 5.2 sheet 1', { sym: 'ψ' });
+    } else {
+      C.input(`alpha${x}`, w.alpha, '', biax ? 'biaxial bending: the walls taken in compression' : N > 0 ? 'compression: the whole web' : 'tension: no web in compression', 'Table 5.2 sheet 1', { sym: 'α' });
+      C.input(`psi${x}`, w.psi, '', '', 'Table 5.2 sheet 1', { sym: 'ψ' });
+    }
+    if (w.alpha <= 0) { C.input(`cls_w${x}`, 1, '', 'web wholly in tension: Class 1', 'Table 5.2', { sym: 'Class_w' }); }
+    else {
+      const big = w.alpha > 0.5;
+      C.calc(`lw1${x}`, big ? `396*eps/(13*alpha${x} - 1)` : `36*eps/alpha${x}`, w.lim[0], '', `Class 1 limit (α ${big ? '> 0.5' : '≤ 0.5'})`, 'Table 5.2 sheet 1', { sym: 'c/t lim,1' });
+      C.calc(`lw2${x}`, big ? `456*eps/(13*alpha${x} - 1)` : `41.5*eps/alpha${x}`, w.lim[1], '', 'Class 2 limit', 'Table 5.2 sheet 1', { sym: 'c/t lim,2' });
+      C.calc(`lw3${x}`, w.psi > -1 ? `42*eps/(0.67 + 0.33*psi${x})` : `62*eps*(1 - psi${x})*SQRT(ABS(psi${x}))`, w.lim[2], '', `Class 3 limit (ψ ${w.psi > -1 ? '> −1' : '≤ −1'})`, 'Table 5.2 sheet 1', { sym: 'c/t lim,3' });
+      C.calc(`cls_w${x}`, clsExpr(`rw${x}`, `lw1${x}`, `lw2${x}`, `lw3${x}`), w.cls, '', 'web class', 'Table 5.2', { sym: 'Class_w' });
+    }
+    C.calc(`cls${x}`, `MAX(cls_f${x}, cls_w${x})`, cl.cls, '', 'class of the section: the worse of its parts', '5.5.2(6)', { sym: 'Class' });
+    return cl;
+  }
+
+  // ---------- the cross-section at one station, 6.2 ----------
+  // act: { N, My, V, Mz, Vz } in N and N mm (V parallel to the web, Vz parallel to the flanges), their names already
+  // defined: n = { N, My, V, Mz, Vz } (a name may be null when that action is zero and undefined)
+  function cross(C, s, fy, act, n) {
+    const sc = EC3.sectionCheck(s, fy, act.N, act.My, act.V, act.Mz, act.Vz), sh = sc.shear, shz = sc.shearZ, u = [];
+    const bending = Math.abs(act.My) > 1e-6 || Math.abs(act.Mz) > 1e-6, biax = Math.abs(act.Mz) > 1e-6;
+    classify(C, s, fy, act.N, bending, biax, n.N, '_s', 'Classification at this station, Table 5.2');
+    const cls = sc.cls.cls, I = !hollow(s), tw = I ? 't_w' : 't', tf = I ? 't_f' : 't';
+    // shear
+    C.head('Shear, 6.2.6');
+    C.input('eta', EC3.ETA, '', 'shear area factor (UK NA to BS EN 1993-1-5)', 'EN 1993-1-5 5.1(2), UK NA', { sym: 'η' });
+    if (s.shape !== 'CHS') C.calc('h_w', `h - 2*${tf}`, sh.hw, 'mm', 'depth of the web', '');
+    if (s.shape === 'CHS') C.calc('A_v', '2*A/PI()', sh.Av, 'mm2', 'shear area of a circular hollow section', '6.2.6(3)(g)');
+    else if (s.shape === 'RHS') C.calc('A_v', 'A*h/(b + h)', sh.Av, 'mm2', 'shear area, load parallel to the depth', '6.2.6(3)(f)');
+    else if (s.shape === 'PFC') C.calc('A_v', 'MAX(A - 2*b*t_f + (t_w + r)*t_f, eta*h_w*t_w)', sh.Av, 'mm2', 'shear area of a rolled channel', '6.2.6(3)(b)');
+    else if (s.rolled) C.calc('A_v', 'MAX(A - 2*b*t_f + (t_w + 2*r)*t_f, eta*h_w*t_w)', sh.Av, 'mm2', 'shear area of a rolled I or H section', '6.2.6(3)(a)');
+    else C.calc('A_v', 'eta*h_w*t_w', sh.Av, 'mm2', 'shear area of a welded I section', '6.2.6(3)(d)');
+    C.calc('V_plRd', 'A_v*f_y/(SQRT(3)*gamma_M0)', sh.Vpl / 1e3, 'kN', 'plastic shear resistance', '6.2.6(2)', { sym: 'V_pl,Rd' });
+    let VR = 'V_plRd';
+    if (s.shape !== 'CHS') {
+      C.calc('r_hw', `h_w/${tw}`, sh.hw / s.tw, '', `h_w/t_w against 72ε/η = ${f1(72 * Math.sqrt(235 / fy) / EC3.ETA)}: ${sh.slender ? 'the web can buckle in shear' : 'no shear buckling'}`, '6.2.6(6)', { sym: 'h_w/t_w' });
+      if (sh.slender) {
+        C.calc('lambda_w', `h_w/(86.4*${tw}*eps)`, sh.lw, '', 'web slenderness, stiffeners at the supports only', 'EN 1993-1-5 5.3(3)', { sym: 'λ_w' });
+        C.calc('chi_w', sh.lw < 0.83 / EC3.ETA ? 'eta' : '0.83/lambda_w', sh.chiw, '', 'non-rigid end post', 'EN 1993-1-5 Table 5.1', { sym: 'χ_w' });
+        C.input('n_w', s.nw, '', 'number of webs', '');
+        C.calc('V_bRd', `n_w*MIN(chi_w*f_y*h_w*${tw}/(SQRT(3)*gamma_M1), eta*f_y*h_w*${tw}/(SQRT(3)*gamma_M1))`, sh.Vb / 1e3, 'kN', 'shear buckling resistance, the flanges ignored', 'EN 1993-1-5 5.2', { sym: 'V_b,Rd' });
+        C.calc('V_Rd', 'MIN(V_plRd, V_bRd)', sh.VRd / 1e3, 'kN', 'shear resistance', '6.2.6');
+        VR = 'V_Rd';
+      }
+    }
+    if (n.V) { C.check('U_Vz', `ABS(${n.V})/${VR}`, Math.abs(act.V) / sh.VRd, 'shear parallel to the web', '6.2.6'); u.push(Math.abs(act.V) / sh.VRd); }
+    if (n.Vz && Math.abs(act.Vz) > 0) {
+      if (s.shape === 'CHS') C.calc('A_vy', 'A_v', shz.Av, 'mm2', 'the same shear area across', '6.2.6(3)(g)', { sym: 'A_v,y' });
+      else if (s.shape === 'RHS') C.calc('A_vy', 'A*b/(b + h)', shz.Av, 'mm2', 'shear area, load parallel to the width', '6.2.6(3)(f)', { sym: 'A_v,y' });
+      else C.calc('A_vy', 'A - (h - 2*t_f)*t_w', shz.Av, 'mm2', 'shear area, load parallel to the flanges', '6.2.6(3)(e)', { sym: 'A_v,y' });
+      C.calc('V_plyRd', 'A_vy*f_y/(SQRT(3)*gamma_M0)', shz.Vpl / 1e3, 'kN', 'plastic shear resistance parallel to the flanges', '6.2.6(2)', { sym: 'V_pl,y,Rd' });
+      C.check('U_Vy', `ABS(${n.Vz})/V_plyRd`, Math.abs(act.Vz) / shz.VRd, 'shear parallel to the flanges', '6.2.6');
+      u.push(Math.abs(act.Vz) / shz.VRd);
+    }
+    // the reduction for shear, 6.2.8
+    const Vres = s.shape === 'CHS' ? Math.hypot(act.V, act.Vz) : Math.abs(act.V);
+    if (s.shape === 'CHS' && n.Vz && Math.abs(act.Vz) > 0) C.calc('V_res', `SQRT(${n.V}^2 + ${n.Vz}^2)`, Vres / 1e3, 'kN', 'resultant shear on the tube', '');
+    const Vn = s.shape === 'CHS' && n.Vz && Math.abs(act.Vz) > 0 ? 'V_res' : n.V ? `ABS(${n.V})` : null;
+    if (sh.slender) C.input('rho', 0, '', 'a web that can buckle in shear: EN 1993-1-5 7.1 instead (below)', '6.2.8', { sym: 'ρ' });
+    else if (Vn && Vres > 0.5 * sh.VRd) C.calc('rho', `(2*${Vn}/${VR} - 1)^2`, sc.rho, '', 'V_Ed is more than half V_pl,Rd: reduced yield strength on the shear area', '6.2.8(3)', { sym: 'ρ' });
+    else C.input('rho', 0, '', 'V_Ed is not more than half V_pl,Rd: no reduction', '6.2.8(2)', { sym: 'ρ' });
+    if (s.shape !== 'CHS' && n.Vz && Math.abs(act.Vz) > 0.5 * shz.VRd) C.calc('rho_z', `(2*ABS(${n.Vz})/V_plyRd - 1)^2`, sc.rhoZ, '', 'reduction for the shear parallel to the flanges', '6.2.8(3)', { sym: 'ρ_z' });
+    else C.input('rho_z', 0, '', 'shear parallel to the flanges not more than half its resistance', '6.2.8(2)', { sym: 'ρ_z' });
+    // axial force
+    const comp = EC3.aeffCompression(s, fy);
+    C.head(act.N > 0 ? 'Compression, 6.2.4' : act.N < 0 ? 'Tension, 6.2.3' : 'Axial resistance, 6.2.3 and 6.2.4');
+    if (act.N > 0 && comp.cls === 4) { C.given('A_eff', comp.Aeff / 100, 'cm2', 'effective area in uniform compression', 'Class 4 parts reduced by ρ (EN 1993-1-5 4.4, Tables 4.1 and 4.2)', 'EN 1993-1-5 4.4', { sym: 'A_eff' }); C.calc('N_Rd', 'A_eff*f_y/gamma_M0', sc.NRd / 1e3, 'kN', 'compression resistance, Class 4', '6.2.4(2)', { sym: 'N_c,Rd' }); }
+    else C.calc('N_Rd', 'A*f_y/gamma_M0', sc.NRd / 1e3, 'kN', act.N < 0 ? 'tension resistance, gross section (holes not considered)' : 'resistance of the gross section', act.N < 0 ? '6.2.3(2)' : '6.2.4(2)', { sym: act.N < 0 ? 'N_pl,Rd' : 'N_c,Rd' });
+    if (n.N) { C.check('U_N', `ABS(${n.N})/N_Rd`, sc.uN, act.N < 0 ? 'tension' : 'compression', act.N < 0 ? '6.2.3' : '6.2.4'); u.push(sc.uN); }
+    // bending
+    const My = n.My ? `ABS(${n.My})` : null, Mz = n.Mz && Math.abs(act.Mz) > 1e-6 ? `ABS(${n.Mz})` : null, NN = n.N ? `ABS(${n.N})` : '0*A*f_y';
+    if (sc.method === 'plastic') {
+      C.head(`Bending${n.N && act.N ? ' with axial force' : ''}${Mz ? ', both axes' : ''}: Class ${cls}, plastic, 6.2.5 to 6.2.9`);
+      if (s.shape === 'CHS') {
+        C.calc('f_yr', '(1 - rho)*f_y/gamma_M0', (1 - sc.rho) * fy, 'N/mm2', 'yield strength reduced for shear', '6.2.8(3)', { sym: 'f_y,red' });
+        C.calc('M_plRd', 'W_ply*f_yr', sc.Mply / 1e6, 'kNm', 'plastic moment of the tube', '6.2.5(2)', { sym: 'M_pl,Rd' });
+        C.calc('n', `${NN}/(A*f_yr)`, sc.n, '', 'axial force over the plastic resistance', '6.2.9.1');
+        C.given('M_NRd', sc.MNy / 1e6, 'kNm', 'plastic moment of the tube with N_Ed', 'exact: the stress blocks either side of a straight neutral axis, solved for N_Ed', '6.2.9.1(2)', { sym: 'M_N,Rd' });
+        const Mres = Mz ? `SQRT(${n.My || '0*A*f_y*h'}^2 + ${n.Mz}^2)` : My;
+        if (Mz) C.calc('M_res', Mres, Math.hypot(act.My, act.Mz) / 1e6, 'kNm', 'resultant moment on the tube', '');
+        const M = Mz ? 'M_res' : My;
+        if (M && Math.hypot(act.My, act.Mz) > 1e-6) C.check('U_NM', `${M}/M_NRd`, sc.uNM, 'bending with axial force', '6.2.9.1');
+        C.check('U_M', Math.hypot(act.My, act.Mz) > 1e-6 ? 'MAX(U_NM, n)' : 'n', Math.max(sc.uNM, sc.n), 'cross-section: bending and axial force', '6.2.5, 6.2.9');
+        u.push(Math.max(sc.uNM, sc.n));
+      } else {
+        C.calc('A_w', s.shape === 'RHS' ? `2*h_w*t` : 'h_w*t_w', s.nw * sc.shear.hw * s.tw, 'mm2', 'area of the web' + (s.shape === 'RHS' ? 's' : ''), '6.2.8(3)');
+        C.calc('A_r', 'A - rho*A_w', s.A - sc.rho * s.nw * sc.shear.hw * s.tw, 'mm2', 'area with the web reduced for shear', '6.2.10');
+        C.calc('N_plRd', 'A_r*f_y/gamma_M0', (s.A - sc.rho * s.nw * sc.shear.hw * s.tw) * fy / 1e3, 'kN', 'plastic axial resistance', '6.2.9.1', { sym: 'N_pl,Rd' });
+        C.calc('n', `${NN}/N_plRd`, sc.n, '', 'n = N_Ed/N_pl,Rd', '6.2.9.1(5)');
+        const nw = s.shape === 'RHS' ? 2 : 1;
+        C.calc('M_plyRd', `MIN(W_ply, W_ply - rho*A_w^2/(4*${nw}*${tw}))*f_y/gamma_M0`, sc.Mply / 1e6, 'kNm', 'plastic moment, major axis, the web reduced for shear', '6.2.5(2), 6.2.8(5)', { sym: 'M_pl,y,Rd' });
+        C.calc('M_plzRd', '(1 - rho_z)*W_plz*f_y/gamma_M0', sc.Mplz / 1e6, 'kNm', 'plastic moment, minor axis', '6.2.5(2), 6.2.8', { sym: 'M_pl,z,Rd' });
+        if (s.shape === 'RHS') {
+          C.calc('a_w', 'MIN(0.5, (A - 2*b*t)/A)', Math.min(0.5, (s.A - 2 * s.b * s.t) / s.A), '', '', '6.2.9.1(5)', { sym: 'a_w' });
+          C.calc('a_f', 'MIN(0.5, (A - 2*h*t)/A)', Math.min(0.5, (s.A - 2 * s.h * s.t) / s.A), '', '', '6.2.9.1(5)', { sym: 'a_f' });
+          C.calc('M_NyRd', 'MAX(0*M_plyRd, MIN(M_plyRd, M_plyRd*(1 - n)/(1 - 0.5*a_w)))', sc.MNy / 1e6, 'kNm', 'reduced for axial force', '6.2.9.1(5) (6.39)', { sym: 'M_N,y,Rd' });
+          C.calc('M_NzRd', 'MAX(0*M_plzRd, MIN(M_plzRd, M_plzRd*(1 - n)/(1 - 0.5*a_f)))', sc.MNz / 1e6, 'kNm', 'reduced for axial force', '6.2.9.1(5) (6.40)', { sym: 'M_N,z,Rd' });
+          if (Mz) { C.calc('a_y', 'MIN(6, 1.66/(1 - 1.13*n^2))', sc.ay, '', 'exponent for biaxial bending', '6.2.9.1(6)', { sym: 'α' }); C.calc('b_z', 'a_y', sc.bz, '', '', '6.2.9.1(6)', { sym: 'β' }); }
+        } else if (s.shape === 'PFC') {
+          const twr = s.tw * (1 - sc.rho), Nw = (sc.shear.hw - 2 * s.r) * twr * fy;
+          C.calc('t_wr', 't_w*(1 - rho)', twr, 'mm', 'web thickness reduced for shear', '6.2.8');
+          C.calc('N_w', '(h_w - 2*r)*t_wr*f_y/gamma_M0', Nw / 1e3, 'kN', 'axial resistance of the web between the root radii', '');
+          if (Math.abs(act.N) <= Nw) C.calc('M_NyRd', `M_plyRd - ${NN}^2/(4*t_wr*f_y/gamma_M0)`, sc.MNy / 1e6, 'kNm', 'N_Ed within the web: the web stress block about the plastic neutral axis', '6.2.9.1(1)', { sym: 'M_N,y,Rd' });
+          else {
+            C.calc('M_w', 'MAX(0*M_plyRd, M_plyRd - N_w^2/(4*t_wr*f_y/gamma_M0))', Math.max(0, sc.Mply - Nw * Nw / (4 * twr * fy)) / 1e6, 'kNm', 'with the whole web in compression', '');
+            C.calc('M_NyRd', `MAX(0*M_plyRd, M_w*(1 - (${NN} - N_w)/(N_plRd - N_w)))`, sc.MNy / 1e6, 'kNm', 'N_Ed beyond the web: linear to the squash load', '6.2.9.1(1)', { sym: 'M_N,y,Rd' });
+          }
+          C.calc('M_NzRd', 'MAX(0*M_plzRd, M_plzRd*(1 - n))', sc.MNz / 1e6, 'kNm', 'minor axis: linear (conservative)', '6.2.1(7)', { sym: 'M_N,z,Rd' });
+          if (Mz) { C.input('a_y', 1, '', 'channels: unity exponents (6.2.1(7))', '6.2.9.1(6)', { sym: 'α' }); C.input('b_z', 1, '', '', '6.2.9.1(6)', { sym: 'β' }); }
+        } else {
+          C.calc('a', 'MIN(0.5, (A_r - 2*b*t_f)/A_r)', sc.a, '', 'a = (A − 2bt_f)/A, not more than 0.5', '6.2.9.1(5)');
+          const NplW = 0.5 * sc.shear.hw * s.tw * (1 - sc.rho) * fy;
+          if (sc.allowY) C.calc('M_NyRd', 'M_plyRd', sc.MNy / 1e6, 'kNm', `N_Ed ≤ 0.25 N_pl,Rd and ≤ 0.5 h_w t_w f_y/γ_M0 (${f1(NplW / 1e3)} kN): no allowance for the axial force about the major axis`, '6.2.9.1(4) (6.33), (6.34)', { sym: 'M_N,y,Rd' });
+          else C.calc('M_NyRd', 'MAX(0*M_plyRd, MIN(M_plyRd, M_plyRd*(1 - n)/(1 - 0.5*a)))', sc.MNy / 1e6, 'kNm', 'reduced for axial force', '6.2.9.1(5) (6.36)', { sym: 'M_N,y,Rd' });
+          if (sc.n <= sc.a) C.calc('M_NzRd', 'M_plzRd', sc.MNz / 1e6, 'kNm', 'n ≤ a: no reduction about the minor axis', '6.2.9.1(5) (6.37)', { sym: 'M_N,z,Rd' });
+          else if (sc.n >= 1) C.calc('M_NzRd', '0*M_plzRd', 0, 'kNm', 'n ≥ 1: the axial force uses the whole section', '6.2.9.1(5)', { sym: 'M_N,z,Rd' });
+          else C.calc('M_NzRd', 'M_plzRd*(1 - ((n - a)/(1 - a))^2)', sc.MNz / 1e6, 'kNm', 'n > a', '6.2.9.1(5) (6.38)', { sym: 'M_N,z,Rd' });
+          if (Mz) { C.input('a_y', 2, '', 'I and H sections', '6.2.9.1(6)', { sym: 'α' }); C.calc('b_z', 'MAX(1, 5*n)', sc.bz, '', '', '6.2.9.1(6)', { sym: 'β' }); }
+        }
+        const uMy = Math.abs(act.My) <= 1e-6 ? 0 : sc.MNy <= 0 ? Infinity : Math.abs(act.My) / sc.MNy, uMz = Math.abs(act.Mz) <= 1e-6 ? 0 : sc.MNz <= 0 ? Infinity : Math.abs(act.Mz) / sc.MNz;
+        if (Mz) {
+          if (My && Math.abs(act.My) > 1e-6) C.calc('r_y', `${My}/M_NyRd`, uMy, '', 'M_y,Ed/M_N,y,Rd', '6.2.9.1(6)', { sym: 'M_y/M_N,y' }); else C.input('r_y', 0, '', 'no major-axis moment', '');
+          C.calc('r_z', `${Mz}/M_NzRd`, uMz, '', 'M_z,Ed/M_N,z,Rd', '6.2.9.1(6)', { sym: 'M_z/M_N,z' });
+          C.check('U_NM', 'r_y^a_y + r_z^b_z', sc.uNM, 'biaxial bending with axial force', '6.2.9.1(6) (6.41)');
+        } else if (My && Math.abs(act.My) > 1e-6) C.check('U_NM', `${My}/M_NyRd`, sc.uNM, 'bending with axial force', '6.2.9.1');
+        C.check('U_M', Math.abs(act.My) > 1e-6 || Mz ? 'MAX(U_NM, n)' : 'n', Math.max(sc.uNM, sc.n), 'cross-section: bending and axial force', '6.2.5, 6.2.9');
+        u.push(Math.max(sc.uNM, sc.n));
+      }
+    } else {
+      C.head(`Bending${n.N && act.N ? ' with axial force' : ''}: Class ${cls}, ${cls === 4 ? 'effective section' : 'elastic'}, 6.2.9.2${cls === 4 ? ', 6.2.9.3' : ''}`);
+      if (cls === 4) { const wb = EC3.weffBending(s, fy); C.given('W_0', wb.Weff / 1e3, 'cm3', 'effective modulus, major axis', `EN 1993-1-5 4.4: the web ${wb.rho != null ? `ρ = ${f3(wb.rho)}` : ''}${wb.flange ? ', the flange reduced' : ''}`, 'EN 1993-1-5 4.4', { sym: 'W_eff,y' }); }
+      else C.calc('W_0', 'W_ely', s.Wely / 1e3, 'cm3', 'elastic modulus', '6.2.5(2)', { sym: 'W_el,y' });
+      if (s.shape === 'CHS') C.calc('W_y', '(1 - rho)*W_0', sc.Wy / 1e3, 'cm3', 'reduced for shear', '6.2.8');
+      else C.calc('W_y', `W_0 - rho*${s.nw}*${tw}*h_w^3/(6*h)`, sc.Wy / 1e3, 'cm3', 'the web reduced for shear', '6.2.8(5)');
+      C.calc('W_z', s.shape === 'CHS' ? '(1 - MAX(rho_z, rho))*W_elz' : '(1 - rho_z)*W_elz', sc.Wz / 1e3, 'cm3', 'minor axis', '6.2.8');
+      if (act.N > 0 && comp.Aeff < s.A) C.calc('A_N', 'A_eff', sc.Aeff / 100, 'cm2', 'effective area for the axial force (Class 4 in compression)', '6.2.9.3', { sym: 'A_eff' });
+      else C.calc('A_N', 'A', sc.Aeff / 100, 'cm2', 'area for the axial force', '6.2.9.2', { sym: 'A' });
+      const sig = s.shape === 'CHS' ? `${NN}/A_N + SQRT(${n.My || '0*A*f_y*h'}^2 + ${n.Mz || '0*A*f_y*h'}^2)/W_y` : `${NN}/A_N + ${My || '0*f_y'}${My ? '/W_y' : ''}${Mz ? ` + ${Mz}/W_z` : ''}`;
+      C.calc('sigma_x', sig, sc.uNM * fy, 'N/mm2', 'longitudinal stress at the worst fibre', '6.2.9.2 (6.42)', { sym: 'σ_x,Ed' });
+      C.check('U_M', 'sigma_x/(f_y/gamma_M0)', sc.uNM, 'cross-section: bending and axial force, elastic', '6.2.1(7), 6.2.9.2');
+      u.push(sc.uNM);
+    }
+    if (sc.en71) {
+      const e = sc.en71;
+      C.head('Bending, shear and axial force: a web that can buckle in shear, EN 1993-1-5 7.1');
+      C.calc('eta_3', `ABS(${n.V})/V_bRd`, e.eta3, '', 'η₃ = V_Ed/V_bw,Rd: more than 0.5, so 7.1 applies', 'EN 1993-1-5 7.1(1)', { sym: 'η₃' });
+      C.calc('A_f', '2*b*t_f', 2 * s.b * s.tf, 'mm2', 'area of the flanges', '');
+      C.calc('n_1', `${NN}/(A*f_y/gamma_M0)`, Math.abs(act.N) / (s.A * fy), '', '', '6.2.9.1');
+      C.calc('a_1', 'MIN(0.5, (A - A_f)/A)', Math.min(0.5, (s.A - 2 * s.b * s.tf) / s.A), '', '', '6.2.9.1(5)');
+      C.calc('M_plR', 'W_ply*f_y/gamma_M0', s.Wply * fy / 1e6, 'kNm', 'plastic moment whatever the class', 'EN 1993-1-5 7.1(1)', { sym: 'M_pl,Rd' });
+      const red = s.shape === 'RHS' || Math.abs(act.N) / (s.A * fy) > Math.min(0.25, 0.5 * s.nw * sc.shear.hw * s.tw / s.A);
+      C.calc('M_plN', red ? 'MAX(0*M_plR, MIN(M_plR, M_plR*(1 - n_1)/(1 - 0.5*a_1)))' : 'M_plR', e.Mpl / 1e6, 'kNm', red ? 'reduced for the axial force' : 'small axial force: not reduced', '6.2.9.1', { sym: 'M_N,Rd' });
+      C.calc('M_fRd', 'MAX(0*M_plR, b*t_f*(h - t_f)*f_y/gamma_M0*(1 - ' + NN + '/(A_f*f_y/gamma_M0)))', e.Mf / 1e6, 'kNm', 'moment of the flanges alone, reduced for axial force', 'EN 1993-1-5 5.4(2)', { sym: 'M_f,Rd' });
+      C.calc('M_v', 'M_plN - (M_plN - M_fRd)*(2*MIN(1, eta_3) - 1)^2', e.Mv / 1e6, 'kNm', 'moment resistance with the shear', 'EN 1993-1-5 (7.1)', { sym: 'M_V,Rd' });
+      if (Math.abs(act.My) > 1e-6) { C.check('U_71', `${My}/M_v`, e.u, 'bending, shear and axial force', 'EN 1993-1-5 7.1'); u.push(e.u); }
+    }
+    return { sc, util: Math.max(0, ...u) };
+  }
+
+  // ---------- flexural, torsional and torsional-flexural buckling, 6.3.1 ----------
+  // ab: Design.axialBuckling's result; the compression N_Ed and the buckling lengths L_cry, L_crz, L_T already defined
+  function flexural(C, s, fy, grade, ab, nName) {
+    C.head('Buckling resistance, 6.3.1');
+    if (ab.comp.cls === 4) { C.given('A_eff', ab.A / 100, 'cm2', 'effective area in uniform compression', 'EN 1993-1-5 4.4', 'EN 1993-1-5 4.4', { sym: 'A_eff' }); C.calc('N_Rk', 'A_eff*f_y', ab.NRk / 1e3, 'kN', 'Class 4: the effective area', '6.3.1.1(3)', { sym: 'N_Rk' }); }
+    else C.calc('N_Rk', 'A*f_y', ab.NRk / 1e3, 'kN', 'characteristic resistance', '6.3.1.1(3)', { sym: 'N_Rk' });
+    const cv = ab.curves, hi = grade === 'S460';
+    const why = hollow(s) ? `${s.cold ? 'cold-formed' : 'hot-finished'} hollow section${hi ? ', S460' : ''}` : s.shape === 'PFC' ? 'U section' : !s.rolled ? `welded I, t_f ${s.tf <= 40 ? '≤' : '>'} 40 mm` : `rolled I, h/b = ${f2(s.h / s.b)}${s.h / s.b > 1.2 ? ' > 1.2' : ' ≤ 1.2'}, t_f = ${s.tf} mm${hi ? ', S460' : ''}`;
+    C.input('alpha_y', EC3.ALPHA[cv.y], '', `imperfection factor, curve ${cv.y} about y-y (${why})`, 'Tables 6.1, 6.2', { sym: 'α_y' });
+    C.input('alpha_z', EC3.ALPHA[cv.z], '', `imperfection factor, curve ${cv.z} about z-z`, 'Tables 6.1, 6.2', { sym: 'α_z' });
+    const mode = (k, I, L, Ncr, lam, c, a, title) => {
+      C.calc(`N_cr${k}`, `PI()^2*E*${I}/${L}^2`, Ncr / 1e3, 'kN', `elastic critical force, ${title}`, '6.3.1.2', { sym: `N_cr,${k}` });
+      C.calc(`lam_${k}`, `SQRT(N_Rk/N_cr${k})`, lam, '', 'non-dimensional slenderness', '6.3.1.2 (6.49)', { sym: `λ̄_${k}` });
+      C.calc(`Phi_${k}`, `0.5*(1 + ${a}*(lam_${k} - 0.2) + lam_${k}^2)`, c.phi, '', '', '6.3.1.2 (6.49)', { sym: `Φ_${k}` });
+      C.calc(`chi_${k}`, `IF(lam_${k} <= 0.2, 1, MIN(1, 1/(Phi_${k} + SQRT(Phi_${k}^2 - lam_${k}^2))))`, c.chi, '', 'reduction factor (1 when λ̄ ≤ 0.2)', '6.3.1.2 (6.49), 6.3.1.2(4)', { sym: `χ_${k}` });
+    };
+    mode('y', 'I_y', 'L_cry', ab.Ncry, ab.lamY, ab.y, 'alpha_y', 'flexural, major axis');
+    mode('z', 'I_z', 'L_crz', ab.Ncrz, ab.lamZ, ab.z, 'alpha_z', 'flexural, minor axis');
+    let chi = 'MIN(chi_y, chi_z)';
+    if (ab.torsionalMode !== 'none') {
+      const y0 = s.shape === 'PFC' ? s.y0 : 0;
+      if (y0) C.input('y_0', y0, 'mm', 'distance of the shear centre from the centroid (thin-walled, e = 3b′²t_f/(6b′t_f + h′t_w) from the web)', '', { sym: 'y_0' });
+      C.calc('i_0sq', y0 ? '(I_y + I_z)/A + y_0^2' : '(I_y + I_z)/A', ab.i02, 'mm2', 'polar radius of gyration squared about the shear centre', '6.3.1.4, EN 1993-1-3 6.2.3', { sym: 'i_0²' });
+      C.calc('N_crTp', '(G*I_t + PI()^2*E*I_w/L_T^2)/i_0sq', ab.NcrTpure / 1e3, 'kN', 'elastic critical force, torsional', 'EN 1993-1-3 (6.33b)', { sym: 'N_cr,T' });
+      let NT = 'N_crTp';
+      if (ab.NcrTF) {
+        C.calc('k_TF', 'y_0^2/i_0sq', y0 * y0 / ab.i02, '', '', 'EN 1993-1-3 6.2.3', { sym: '(y_0/i_0)²' });
+        C.calc('beta_TF', '1 - k_TF', 1 - y0 * y0 / ab.i02, '', '', 'EN 1993-1-3 (6.35)', { sym: 'β' });
+        C.calc('r_TF', 'N_crTp/N_crz', ab.NcrTpure / ab.Ncrz, '', '', '');
+        C.calc('N_crTF', 'N_crz/(2*beta_TF)*(1 + r_TF - SQRT((1 - r_TF)^2 + 4*k_TF*r_TF))', ab.NcrTF / 1e3, 'kN', 'elastic critical force, torsional-flexural (the channel: shear centre off the centroid)', 'EN 1993-1-3 (6.35)', { sym: 'N_cr,TF' });
+        NT = 'N_crTF';
+      }
+      C.calc('lam_T', `SQRT(N_Rk/${NT})`, ab.lamT, '', 'slenderness, torsional', '6.3.1.4 (6.52)', { sym: 'λ̄_T' });
+      C.calc('Phi_T', '0.5*(1 + alpha_z*(lam_T - 0.2) + lam_T^2)', ab.T.phi, '', 'curve of the minor axis', '6.3.1.4(2)', { sym: 'Φ_T' });
+      C.calc('chi_T', 'IF(lam_T <= 0.2, 1, MIN(1, 1/(Phi_T + SQRT(Phi_T^2 - lam_T^2))))', ab.T.chi, '', '', '6.3.1.4', { sym: 'χ_T' });
+      chi = 'MIN(chi_y, chi_z, chi_T)';
+    } else C.note('A closed hollow section: not susceptible to torsional buckling.');
+    C.calc('chi_min', chi, Math.min(ab.y.chi, ab.z.chi, ab.T.chi), '', 'the least', '6.3.1.1', { sym: 'χ' });
+    C.calc('N_bRd', 'chi_min*N_Rk/gamma_M1', ab.NbRd / 1e3, 'kN', 'buckling resistance', '6.3.1.1 (6.47)', { sym: 'N_b,Rd' });
+    if (nName) C.check('U_b', `${nName}/N_bRd`, ab.util, 'flexural and torsional buckling', '6.3.1.1 (6.46)');
+    return ab.util;
+  }
+
+  // ---------- lateral-torsional buckling, 6.3.2 ----------
+  // lt: Design.ltb's result (Mcr, C1, kc, lamLT, method, lam0, beta, curve, chi, f, chiMod, Wy, MbRd, Mmax); the segment
+  // length L_LT and the moment M_Ed (largest in the segment) already defined; o.McrHow: how M_cr was found
+  function ltb(C, s, fy, cls, lt, o = {}) {
+    const M = o.M || 'M_Ed';
+    C.head('Lateral-torsional buckling, 6.3.2');
+    if (lt.none || lt.method === 'none') {
+      C.note('A circular hollow section is not susceptible to lateral-torsional buckling.');
+      C.calc('W_yLT', cls <= 2 ? 'W_ply' : 'W_ely', lt.Wy / 1e3, 'cm3', `Class ${cls}`, '6.3.2.2(1)', { sym: 'W_y' });
+      C.input('chi_LTm', 1, '', 'no reduction', '', { sym: 'χ_LT' });
+      C.calc('M_bRd', 'chi_LTm*W_yLT*f_y/gamma_M1', lt.MbRd / 1e6, 'kNm', 'bending resistance', '6.2.5', { sym: 'M_b,Rd' });
+      C.check('U_LT', `${M}/M_bRd`, lt.util, 'bending of the member', '6.3.2.1');
+      return lt.util;
+    }
+    C.calc('M_cr0', 'PI()/L_LT*SQRT(E*I_z*G*I_t*(1 + PI()^2*E*I_w/(L_LT^2*G*I_t)))', EC3.mcrUniform(s, o.Lseg) / 1e6, 'kNm', 'elastic critical moment for uniform moment between forks', 'SN003, NCCI', { sym: 'M_cr,0' });
+    if (o.over) {
+      C.given('C_1', lt.C1, '', 'from the moment diagram of the member: M_cr by finite elements over its length over M_cr,0 of the same length', 'finite elements', '', { sym: 'C_1' });
+      C.calc('M_cr', 'C_1*M_cr0', lt.Mcr / 1e6, 'kNm', 'elastic critical moment over L_LT', '', { sym: 'M_cr' });
+    } else {
+      C.given('M_cr', lt.Mcr / 1e6, 'kNm', 'elastic critical moment of the segment', o.McrHow || 'finite elements (beam elements with warping: forks at the restraints, the moment diagram of the segment, loads at the shear centre)', '6.3.2.2(2)', { sym: 'M_cr' });
+      if (lt.C1 != null) C.calc('C_1', 'M_cr/M_cr0', lt.C1, '', 'equivalent uniform moment factor implied', '', { sym: 'C_1' });
+    }
+    const Wn = cls <= 2 ? 'W_ply' : cls === 3 ? 'W_ely' : null;
+    if (Wn) C.calc('W_yLT', Wn, lt.Wy / 1e3, 'cm3', `Class ${cls}: ${cls <= 2 ? 'plastic' : 'elastic'} modulus`, '6.3.2.2(1)', { sym: 'W_y' });
+    else C.given('W_yLT', lt.Wy / 1e3, 'cm3', 'Class 4: effective modulus', 'EN 1993-1-5 4.4', '6.3.2.2(1)', { sym: 'W_eff,y' });
+    C.calc('lam_LT', 'SQRT(W_yLT*f_y/M_cr)', lt.lamLT, '', 'non-dimensional slenderness', '6.3.2.2(1)', { sym: 'λ̄_LT' });
+    const rolled = lt.method === '6.3.2.3';
+    const why = s.shape === 'RHS' ? `${s.cold ? 'cold-formed' : 'hot-finished'} hollow section, h/b = ${f2(s.h / s.b)}` : s.shape === 'PFC' ? 'a hot-rolled channel' : `${s.rolled ? 'rolled' : 'welded'} I, h/b = ${f2(s.h / s.b)}`;
+    C.note(`${rolled ? '6.3.2.3 with the UK NA (NA.2.17)' : '6.3.2.2'}: ${why}, buckling curve ${lt.curve}.`);
+    C.input('lam_LT0', lt.lam0, '', 'plateau length', rolled ? '6.3.2.3, UK NA' : '6.3.2.2', { sym: 'λ̄_LT,0' });
+    C.input('beta_LT', lt.beta, '', '', rolled ? '6.3.2.3, UK NA' : '6.3.2.2', { sym: 'β' });
+    C.input('alpha_LT', lt.alpha, '', `imperfection factor, curve ${lt.curve}`, 'Table 6.3, UK NA', { sym: 'α_LT' });
+    if (lt.ignored) {
+      C.calc('r_Mcr', `${M}/M_cr`, lt.Mmax / lt.Mcr, '', `λ̄_LT ≤ λ̄_LT,0 or M_Ed/M_cr ≤ λ̄_LT,0² (= ${f3(lt.lam0 ** 2)}): buckling may be ignored`, '6.3.2.2(4), 6.3.2.3', { sym: 'M_Ed/M_cr' });
+      C.input('chi_LTm', 1, '', 'no reduction', '6.3.2.2(4)', { sym: 'χ_LT,mod' });
+    } else {
+      C.calc('Phi_LT', '0.5*(1 + alpha_LT*(lam_LT - lam_LT0) + beta_LT*lam_LT^2)', lt.phi, '', '', rolled ? '6.3.2.3(1)' : '6.3.2.2(1)', { sym: 'Φ_LT' });
+      C.calc('chi_LT', 'MIN(1, 1/lam_LT^2, 1/(Phi_LT + SQRT(Phi_LT^2 - beta_LT*lam_LT^2)))', lt.chi, '', '', rolled ? '6.3.2.3 (6.57)' : '6.3.2.2 (6.56)', { sym: 'χ_LT' });
+      if (rolled) {
+        if (lt.C1 && lt.C1 > 1) C.calc('k_c', 'MAX(0.6, MIN(1, 1/SQRT(C_1)))', lt.kc, '', 'correction factor k_c = 1/√C₁, not less than 0.6', '6.3.2.3(2), Table 6.6', { sym: 'k_c' });
+        else C.input('k_c', lt.kc, '', 'uniform moment (C₁ = 1)', 'Table 6.6', { sym: 'k_c' });
+        C.calc('f_LT', 'MIN(1, 1 - 0.5*(1 - k_c)*(1 - 2*(lam_LT - 0.8)^2))', lt.f, '', '', '6.3.2.3(2) (6.58)', { sym: 'f' });
+        C.calc('chi_LTm', 'MIN(1, 1/lam_LT^2, chi_LT/f_LT)', lt.chiMod, '', 'modified for the moment distribution', '6.3.2.3(2) (6.58)', { sym: 'χ_LT,mod' });
+      } else C.calc('chi_LTm', 'chi_LT', lt.chiMod, '', 'no modification under 6.3.2.2', '6.3.2.2', { sym: 'χ_LT' });
+    }
+    C.calc('M_bRd', 'chi_LTm*W_yLT*f_y/gamma_M1', lt.MbRd / 1e6, 'kNm', 'buckling resistance moment', '6.3.2.1 (6.55)', { sym: 'M_b,Rd' });
+    C.check('U_LT', `${M}/M_bRd`, lt.util, 'lateral-torsional buckling', '6.3.2.1 (6.54)');
+    return lt.util;
+  }
+
+  // ---------- Table B.3: C_m from the moment diagram ----------
+  // cm: EC3.cmFactor's result; the moments M_h, M_o (and M_s) written as inputs with the names given
+  function cmFactor(C, name, cm, how, sym) {
+    if (cm.sway) { C.input(name, 0.9, '', `${how}: a sway buckling mode (L_cr longer than the member)`, 'Table B.3 note', { sym }); return; }
+    if (cm.row === 'zero') { C.input(name, 1, '', `${how}: no moment`, 'Table B.3', { sym }); return; }
+    const p = name.replace(/^C_m/, '');
+    C.input(`psi_${p}`, cm.psi, '', `${how}: ψ, the smaller end moment over the larger`, 'Table B.3', { sym: `ψ_${p}` });
+    if (cm.row === 'linear') { C.calc(name, `MAX(0.4, 0.6 + 0.4*psi_${p})`, cm.Cm, '', `${how}: linear moment`, 'Table B.3', { sym }); return; }
+    if (cm.row === 'alpha_s') { C.input(`as_${p}`, cm.alphaS, '', 'α_s = M_s/M_h: the moment in the span over the larger end moment', 'Table B.3', { sym: `α_s,${p}` }); C.given(name, cm.Cm, '', `${how}: Table B.3, the row for α_s (uniform load${cm.Cm === 0.4 ? ', not less than 0.4' : ''})`, 'Table B.3', 'Table B.3', { sym }); return; }
+    C.input(`ah_${p}`, cm.alphaH, '', 'α_h = M_h/M_s', 'Table B.3', { sym: `α_h,${p}` });
+    C.given(name, cm.Cm, '', `${how}: Table B.3, the row for α_h`, 'Table B.3', 'Table B.3', { sym });
+  }
+
+  // ---------- interaction, 6.3.3 ----------
+  // ir: Design.interaction's result; the names N_Ed (compression), M_yEd (the segment's largest), M_zEd (or null),
+  // chi_y, chi_z(, chi_T), N_Rk, lam_y, lam_z and chi_LTm already defined (chi_LTm = 1 when there is no LTB)
+  function interaction(C, s, fy, cls, ab, ir, o = {}) {
+    const NE = o.N || 'N_Ed';
+    C.head(`Members in bending and axial compression, 6.3.3, Annex ${ir.method}`);
+    const Mz = o.Mz && Math.abs(o.MzV) > 0;
+    const MyR = cls <= 2 ? 'W_ply' : cls === 3 ? 'W_ely' : null;
+    if (MyR) C.calc('M_yRk', `${MyR}*f_y`, ir.MyRk / 1e6, 'kNm', 'characteristic moment, major axis', 'Table 6.7', { sym: 'M_y,Rk' });
+    else C.given('M_yRk', ir.MyRk / 1e6, 'kNm', 'Class 4: W_eff,y f_y', 'EN 1993-1-5 4.4', 'Table 6.7', { sym: 'M_y,Rk' });
+    C.calc('M_zRk', `${cls <= 2 ? 'W_plz' : 'W_elz'}*f_y`, ir.MzRk / 1e6, 'kNm', 'characteristic moment, minor axis', 'Table 6.7', { sym: 'M_z,Rk' });
+    C.calc('chi_zT', ab.torsionalMode === 'none' ? 'chi_z' : 'MIN(chi_z, chi_T)', ab.chiZT, '', 'about the minor axis: the lesser of flexural and torsional', '6.3.3(4)', { sym: 'χ_z' });
+    C.calc('n_y', `${NE}/(chi_y*N_Rk/gamma_M1)`, ir.nY, '', '', 'Annex B, Table B.1', { sym: 'n_y' });
+    C.calc('n_z', `${NE}/(chi_zT*N_Rk/gamma_M1)`, ir.nZ, '', '', 'Annex B, Table B.1', { sym: 'n_z' });
+    if (ir.method === 'B') {
+      cmFactor(C, 'C_my', o.cmy, 'C_my over the member about y-y', 'C_my');
+      cmFactor(C, 'C_mz', o.cmz, 'C_mz over the member about z-z', 'C_mz');
+      cmFactor(C, 'C_mLT', o.cmLT, 'C_mLT over the segment between lateral restraints', 'C_mLT');
+      const torsional = !hollow(s), tbl = hollow(s) ? 'Table B.1' : 'Table B.2';
+      C.note(`${tbl}: ${hollow(s) ? 'a closed section, not susceptible to torsional deformations' : 'an open section, susceptible to torsional deformations'}; Class ${cls}${cls <= 2 ? ' (plastic)' : ' (elastic)'}.`);
+      if (cls <= 2) {
+        C.calc('k_yy', 'C_my*MIN(1 + (lam_y - 0.2)*n_y, 1 + 0.8*n_y)', ir.kyy, '', '', tbl, { sym: 'k_yy' });
+        C.calc('k_zz', hollow(s) ? 'C_mz*MIN(1 + (lam_z - 0.2)*n_z, 1 + 0.8*n_z)' : 'C_mz*MIN(1 + (2*lam_z - 0.6)*n_z, 1 + 1.4*n_z)', ir.kzz, '', hollow(s) ? 'the RHS row of Table B.1' : 'I sections', tbl, { sym: 'k_zz' });
+        C.calc('k_yz', '0.6*k_zz', ir.kyz, '', '', tbl, { sym: 'k_yz' });
+        if (!torsional) C.calc('k_zy', '0.6*k_yy', ir.kzy, '', '', 'Table B.1', { sym: 'k_zy' });
+        else if (ab.lamZ < 0.4) C.calc('k_zy', 'MIN(0.6 + lam_z, 1 - 0.1*lam_z*n_z/(C_mLT - 0.25))', ir.kzy, '', 'λ̄_z < 0.4', 'Table B.2', { sym: 'k_zy' });
+        else C.calc('k_zy', 'MAX(1 - 0.1*lam_z*n_z/(C_mLT - 0.25), 1 - 0.1*n_z/(C_mLT - 0.25))', ir.kzy, '', '', 'Table B.2', { sym: 'k_zy' });
+      } else {
+        C.calc('k_yy', 'C_my*MIN(1 + 0.6*lam_y*n_y, 1 + 0.6*n_y)', ir.kyy, '', '', tbl, { sym: 'k_yy' });
+        C.calc('k_zz', 'C_mz*MIN(1 + 0.6*lam_z*n_z, 1 + 0.6*n_z)', ir.kzz, '', '', tbl, { sym: 'k_zz' });
+        C.calc('k_yz', 'k_zz', ir.kyz, '', '', tbl, { sym: 'k_yz' });
+        if (!torsional) C.calc('k_zy', '0.8*k_yy', ir.kzy, '', '', 'Table B.1', { sym: 'k_zy' });
+        else C.calc('k_zy', 'MAX(1 - 0.05*lam_z*n_z/(C_mLT - 0.25), 1 - 0.05*n_z/(C_mLT - 0.25))', ir.kzy, '', '', 'Table B.2', { sym: 'k_zy' });
+      }
+    } else annexA(C, s, fy, cls, ab, ir, o);
+    const mz = Mz ? ' + k_yz*M_zEd/(M_zRk/gamma_M1)' : '', mz2 = Mz ? ' + k_zz*M_zEd/(M_zRk/gamma_M1)' : '';
+    C.check('U_661', `n_y + k_yy*M_yEd/(chi_LTm*M_yRk/gamma_M1)${mz}`, ir.u61, 'interaction about the major axis', '6.3.3(4) (6.61)');
+    C.check('U_662', `n_z + k_zy*M_yEd/(chi_LTm*M_yRk/gamma_M1)${mz2}`, ir.u62, 'interaction about the minor axis', '6.3.3(4) (6.62)');
+    return ir.util;
+  }
+
+  // Annex A (Method 1): the quantities of Tables A.1 and A.2
+  function annexA(C, s, fy, cls, ab, ir, o) {
+    const NE = o.N || 'N_Ed';
+    const torsional = !hollow(s), k = ir;
+    C.calc('mu_y', `(1 - ${NE}/N_cry)/(1 - chi_y*${NE}/N_cry)`, k.muY, '', '', 'Table A.1', { sym: 'μ_y' });
+    C.calc('mu_z', `(1 - ${NE}/N_crz)/(1 - chi_z*${NE}/N_crz)`, k.muZ, '', '', 'Table A.1', { sym: 'μ_z' });
+    C.input('C_my0', k.Cmy0, '', o.cm0y || `Table A.2, end moments: 0.79 + 0.21ψ_y + 0.36(ψ_y − 0.33)${NE}/N_cr,y`, 'Table A.2', { sym: 'C_my,0' });
+    C.input('C_mz0', k.Cmz0, '', o.cm0z || 'Table A.2 about z-z', 'Table A.2', { sym: 'C_mz,0' });
+    if (torsional) {
+      C.calc('a_LT', 'MAX(0, 1 - I_t/I_y)', k.aLT, '', '', 'Table A.1', { sym: 'a_LT' });
+      C.input('C_1A', k.C1 || 1, '', 'C₁ of the segment (1 for uniform moment)', 'Table A.2', { sym: 'C_1' });
+    }
+    if (s.shape === 'CHS') C.input('lam_0', k.lam0, '', 'a circular hollow section: λ̄₀ = 0', 'Table A.2', { sym: 'λ̄₀' });
+    else {
+      if (!C.has('W_yLT')) { const W = cls <= 2 ? 'W_ply' : cls === 3 ? 'W_ely' : null; if (W) C.calc('W_yLT', W, (cls <= 2 ? s.Wply : s.Wely) / 1e3, 'cm3', `Class ${cls}`, '6.3.2.2(1)', { sym: 'W_y' }); else C.given('W_yLT', EC3.wyByClass(s, fy, cls) / 1e3, 'cm3', 'Class 4: effective modulus', 'EN 1993-1-5 4.4', '', { sym: 'W_eff,y' }); }
+      if (!C.has('M_cr0')) C.calc('M_cr0', 'PI()/L_LT*SQRT(E*I_z*G*I_t*(1 + PI()^2*E*I_w/(L_LT^2*G*I_t)))', o.Mcr0 / 1e6, 'kNm', 'elastic critical moment for uniform moment between forks', 'SN003, NCCI', { sym: 'M_cr,0' });
+      C.calc('lam_0', 'SQRT(W_yLT*f_y/M_cr0)', k.lam0, '', 'λ̄₀: the slenderness for lateral-torsional buckling under uniform moment', 'Table A.2', { sym: 'λ̄₀' });
+    }
+    const NT = Number.isFinite(ab.NcrTF ?? ab.NcrTpure) ? (ab.NcrTF ? 'N_crTF' : 'N_crTp') : null;
+    if (torsional) C.calc('lim_0', `0.2*SQRT(C_1A)*MAX(0, (1 - ${NE}/N_crz)*(1 - ${NT ? `${NE}/${NT}` : '0'}))^0.25`, k.lim0, '', `0.2√C₁ ⁴√((1 − ${NE}/N_cr,z)(1 − ${NE}/N_cr,TF)): λ̄₀ ${k.smallLam0 ? '≤' : '>'} it`, 'Table A.2', { sym: 'λ̄₀,lim' });
+    if (k.smallLam0 || !torsional) {
+      C.calc('C_my', 'C_my0', k.Cmy, '', torsional ? 'λ̄₀ is small: no lateral-torsional effect' : 'a closed section', 'Table A.2', { sym: 'C_my' });
+      C.calc('C_mz', 'C_mz0', k.Cmz, '', '', 'Table A.2', { sym: 'C_mz' });
+      C.input('C_mLT', 1, '', '', 'Table A.2', { sym: 'C_mLT' });
+    } else {
+      if (!Number.isFinite(o.epsY)) C.calc('C_my', '1 + 0*C_my0', k.Cmy, '', 'no axial force: ε_y is unbounded and C_my → 1', 'Table A.2', { sym: 'C_my' });
+      else {
+        if (cls < 4) C.calc('eps_y', `M_yEd/${NE}*${ab.comp.cls === 4 ? 'A_eff' : 'A'}/W_ely`, o.epsY, '', `ε_y = (M_y,Ed/${NE})(${ab.comp.cls === 4 ? 'A_eff' : 'A'}/W_el,y)`, 'Table A.2', { sym: 'ε_y' });
+        else C.given('eps_y', o.epsY, '', `ε_y = (M_y,Ed/${NE})(A_eff/W_eff,y), Class 4`, '', 'Table A.2', { sym: 'ε_y' });
+        C.calc('C_my', 'C_my0 + (1 - C_my0)*SQRT(eps_y)*a_LT/(1 + SQRT(eps_y)*a_LT)', k.Cmy, '', '', 'Table A.2', { sym: 'C_my' });
+      }
+      C.calc('C_mz', 'C_mz0', k.Cmz, '', '', 'Table A.2', { sym: 'C_mz' });
+      C.calc('C_mLT', `MAX(1, C_my^2*a_LT/SQRT(MAX(1E-12, (1 - ${NE}/N_crz)*(1 - ${NT && ab.NcrTpure !== Infinity ? `${NE}/N_crTp` : '0'}))))`, k.CmLT, '', '', 'Table A.2', { sym: 'C_mLT' });
+    }
+    const chiLT = torsional ? 'chi_LTm' : '1';
+    if (cls <= 2) {
+      const c = k.C;
+      C.calc('w_y', 'MIN(1.5, W_ply/W_ely)', c.wy, '', '', 'Table A.1', { sym: 'w_y' }); C.calc('w_z', 'MIN(1.5, W_plz/W_elz)', c.wz, '', '', 'Table A.1', { sym: 'w_z' });
+      C.calc('n_pl', `${NE}/(N_Rk/gamma_M1)`, c.npl, '', '', 'Table A.1', { sym: 'n_pl' });
+      C.calc('lam_max', 'MAX(lam_y, lam_z)', c.lmax, '', '', 'Table A.1', { sym: 'λ̄_max' });
+      C.calc('M_plyRdA', 'W_ply*f_y/gamma_M1', s.Wply * fy / 1e6, 'kNm', '', 'Table A.1', { sym: 'M_pl,y,Rd' });
+      C.calc('M_plzRdA', 'W_plz*f_y/gamma_M1', s.Wplz * fy / 1e6, 'kNm', '', 'Table A.1', { sym: 'M_pl,z,Rd' });
+      const aL = torsional ? 'a_LT' : '0', Mzz = o.Mz ? 'M_zEd' : '0*M_plzRdA';
+      C.calc('b_LT', `0.5*${aL}*lam_0^2*(M_yEd/(${chiLT}*M_plyRdA))*(${Mzz}/M_plzRdA)`, c.bLT, '', '', 'Table A.1', { sym: 'b_LT' });
+      C.calc('c_LT', `10*${aL}*lam_0^2/(5 + lam_z^4)*M_yEd/(C_my*${chiLT}*M_plyRdA)`, c.cLT, '', '', 'Table A.1', { sym: 'c_LT' });
+      C.calc('d_LT', `2*${aL}*lam_0/(0.1 + lam_z^4)*M_yEd/(C_my*${chiLT}*M_plyRdA)*${Mzz}/(C_mz*M_plzRdA)`, c.dLT, '', '', 'Table A.1', { sym: 'd_LT' });
+      C.calc('e_LT', `1.7*${aL}*lam_0/(0.1 + lam_z^4)*M_yEd/(C_my*${chiLT}*M_plyRdA)`, c.eLT, '', '', 'Table A.1', { sym: 'e_LT' });
+      C.calc('C_yy', 'MAX(W_ely/W_ply, 1 + (w_y - 1)*((2 - 1.6/w_y*C_my^2*lam_max - 1.6/w_y*C_my^2*lam_max^2)*n_pl - b_LT))', c.Cyy, '', '', 'Table A.1', { sym: 'C_yy' });
+      C.calc('C_yz', 'MAX(0.6*SQRT(w_z/w_y)*W_elz/W_plz, 1 + (w_z - 1)*((2 - 14*C_mz^2*lam_max^2/w_z^5)*n_pl - c_LT))', c.Cyz, '', '', 'Table A.1', { sym: 'C_yz' });
+      C.calc('C_zy', 'MAX(0.6*SQRT(w_y/w_z)*W_ely/W_ply, 1 + (w_y - 1)*((2 - 14*C_my^2*lam_max^2/w_y^5)*n_pl - d_LT))', c.Czy, '', '', 'Table A.1', { sym: 'C_zy' });
+      C.calc('C_zz', 'MAX(W_elz/W_plz, 1 + (w_z - 1)*(2 - 1.6/w_z*C_mz^2*lam_max - 1.6/w_z*C_mz^2*lam_max^2 - e_LT)*n_pl)', c.Czz, '', 'as corrected by AC:2009', 'Table A.1', { sym: 'C_zz' });
+      C.calc('k_yy', `C_my*C_mLT*mu_y/(1 - ${NE}/N_cry)/C_yy`, k.kyy, '', '', 'Table A.1', { sym: 'k_yy' });
+      C.calc('k_yz', `C_mz*mu_y/(1 - ${NE}/N_crz)/C_yz*0.6*SQRT(w_z/w_y)`, k.kyz, '', '', 'Table A.1', { sym: 'k_yz' });
+      C.calc('k_zy', `C_my*C_mLT*mu_z/(1 - ${NE}/N_cry)/C_zy*0.6*SQRT(w_y/w_z)`, k.kzy, '', '', 'Table A.1', { sym: 'k_zy' });
+      C.calc('k_zz', `C_mz*mu_z/(1 - ${NE}/N_crz)/C_zz`, k.kzz, '', '', 'Table A.1', { sym: 'k_zz' });
+    } else {
+      C.calc('k_yy', `C_my*C_mLT*mu_y/(1 - ${NE}/N_cry)`, k.kyy, '', 'Class 3 and 4', 'Table A.1', { sym: 'k_yy' });
+      C.calc('k_yz', `C_mz*mu_y/(1 - ${NE}/N_crz)`, k.kyz, '', '', 'Table A.1', { sym: 'k_yz' });
+      C.calc('k_zy', `C_my*C_mLT*mu_z/(1 - ${NE}/N_cry)`, k.kzy, '', '', 'Table A.1', { sym: 'k_zy' });
+      C.calc('k_zz', `C_mz*mu_z/(1 - ${NE}/N_crz)`, k.kzz, '', '', 'Table A.1', { sym: 'k_zz' });
+    }
+  }
+
+  return { section, steel, classify, cross, flexural, ltb, cmFactor, interaction, hollow };
+})();
+if (typeof module !== 'undefined') module.exports = { EC3Script };
+
+/* ===== STEEL MEMBER: FULL CALCULATION (EngineeringTools) =====
+   Design.designMember written out step by step for the page, the A4 sheet and CalcPad, in parts: the section, its steel
+   and class; the cross-section at each station where a check governs (the actions there from the end moments, then 6.2);
+   flexural and torsional buckling; lateral-torsional buckling of the governing segment; and the interaction of 6.3.3 for
+   the governing segment. Every part carries what it needs, so each opens in CalcPad on its own; the whole merges into one
+   check. The values are the engine's own. Source: scratchpad/steel/memberscript.js. Needs CalcScript, EC3, Design,
+   EC3Script. */
+const SteelMemberScript = (() => {
+  'use strict';
+  const TOOL = 'Steel Member Design', STD = 'BS EN 1993-1-1 + UK NA; BS EN 1993-1-5';
+  const create = title => CalcScript.create({ title, tool: TOOL, standard: STD });
+  const f2 = v => (+v).toFixed(2), f1 = v => (+v).toFixed(1), kN = v => (v / 1e3).toFixed(1), kNm = v => (v / 1e6).toFixed(1);
+
+  // the member, its actions and the lengths: inputs, so every part starts from the same place
+  function actions(C, R, inp, o = {}) {
+    C.head('The member and its actions');
+    C.input('L', inp.L, 'mm', 'length of the member', '');
+    if (o.N !== false) C.input('N_Ed', inp.N / 1e3, 'kN', 'axial force (compression positive)', '');
+    if (o.My !== false && !inp.Myf) {
+      C.input('M_yB', inp.MyB / 1e6, 'kNm', 'major-axis moment at the bottom (x = 0), sagging positive', '');
+      C.input('M_yT', inp.MyT / 1e6, 'kNm', 'major-axis moment at the top (x = L)', '');
+    }
+    if (o.Mz !== false && (Math.abs(inp.MzB) + Math.abs(inp.MzT) > 0)) {
+      C.input('M_zB', inp.MzB / 1e6, 'kNm', 'minor-axis moment at the bottom', '');
+      C.input('M_zT', inp.MzT / 1e6, 'kNm', 'minor-axis moment at the top', '');
+    }
+  }
+  function lengths(C, R, inp, o = {}) {
+    C.head('Buckling lengths');
+    if (R.Lcr.given) {
+      C.input('L_cry', R.Lcr.y, 'mm', 'buckling length about y-y, given', '6.3.1.3', { sym: 'L_cr,y' });
+      C.input('L_crz', R.Lcr.z, 'mm', 'buckling length about z-z, given', '6.3.1.3', { sym: 'L_cr,z' });
+      if (o.T !== false) C.input('L_T', R.Lcr.LT, 'mm', 'torsional buckling length: the lateral-torsional length given', '6.3.1.4', { sym: 'L_T' });
+    } else {
+      C.input('k_y', inp.ky, '', 'effective length factor about y-y', '6.3.1.3'); C.input('k_z', inp.kz, '', 'effective length factor about z-z', '6.3.1.3');
+      C.calc('L_cry', 'k_y*L', R.Lcr.y, 'mm', 'buckling length about y-y', '6.3.1.3', { sym: 'L_cr,y' });
+      C.calc('L_crz', 'k_z*L', R.Lcr.z, 'mm', 'buckling length about z-z', '6.3.1.3', { sym: 'L_cr,z' });
+      if (o.T !== false) { C.input('n_LT', Math.max(1, Math.round(inp.nLT || 1)), '', 'equal segments between lateral and torsional restraints', '', { sym: 'n_LT' }); C.calc('L_T', 'L/n_LT', R.Lcr.LT, 'mm', 'torsional buckling length: the segment between restraints', '6.3.1.4', { sym: 'L_T' }); }
+    }
+  }
+  const memberClass = (C, R, inp) => {
+    const hasM = Math.abs(inp.MyB) + Math.abs(inp.MyT) > 0 || inp.Myf, hasMz = Math.abs(inp.MzB) + Math.abs(inp.MzT) > 0;
+    return EC3Script.classify(C, R.sec, R.fy, inp.N || 0, !!(hasM || hasMz), hasMz, 'N_Ed', '', 'Class of the member, Table 5.2 (for buckling)');
+  };
+
+  // ---------- the section, its steel and class ----------
+  function sectionZone(R, inp) {
+    const C = create('Section, steel and class');
+    EC3Script.section(C, R.sec); EC3Script.steel(C, R.sec, inp.grade, R.fy);
+    actions(C, R, inp);
+    memberClass(C, R, inp);
+    return { key: 'section', title: C.meta.title, sum: `${R.sec.name}, f_y ${R.fy} N/mm², Class ${R.cls}`, util: null, C };
+  }
+
+  // ---------- the cross-section at a station ----------
+  function crossZone(R, inp, x, checks, k) {
+    const nm = { bending: 'bending', shear: 'shear', axial: 'axial force' };
+    const C = create(`Cross-section at x = ${f2(x / 1000)} m (${checks.map(c => nm[c]).join(', ')})`);
+    EC3Script.section(C, R.sec); EC3Script.steel(C, R.sec, inp.grade, R.fy);
+    actions(C, R, inp);
+    C.head('Actions at the station');
+    C.input('x', x, 'mm', 'position along the member from the bottom', '');
+    const L = inp.L, My = inp.Myf ? inp.Myf(x) : inp.MyB + (inp.MyT - inp.MyB) * x / L, V = inp.Vzf ? inp.Vzf(x) : (inp.MyT - inp.MyB) / L;
+    const Mz = inp.MzB + (inp.MzT - inp.MzB) * x / L, Vz = (inp.MzT - inp.MzB) / L, hasMz = Math.abs(inp.MzB) + Math.abs(inp.MzT) > 0;
+    if (inp.Myf) { C.given('M_yEd', My / 1e6, 'kNm', 'major-axis moment', 'from the analysis of the frame', ''); C.given('V_zEd', V / 1e3, 'kN', 'shear parallel to the web', 'from the analysis of the frame', ''); }
+    else {
+      C.calc('M_yEd', 'M_yB + (M_yT - M_yB)*x/L', My / 1e6, 'kNm', 'major-axis moment: linear between the ends', '', { sym: 'M_y,Ed' });
+      C.calc('V_zEd', '(M_yT - M_yB)/L', V / 1e3, 'kN', 'shear parallel to the web: the slope of the moment', '', { sym: 'V_z,Ed' });
+    }
+    if (hasMz) {
+      C.calc('M_zEd', 'M_zB + (M_zT - M_zB)*x/L', Mz / 1e6, 'kNm', 'minor-axis moment', '', { sym: 'M_z,Ed' });
+      C.calc('V_yEd', '(M_zT - M_zB)/L', Vz / 1e3, 'kN', 'shear parallel to the flanges', '', { sym: 'V_y,Ed' });
+    }
+    const r = EC3Script.cross(C, R.sec, R.fy, { N: inp.N || 0, My, V, Mz: hasMz ? Mz : 0, Vz: hasMz ? Vz : 0 }, { N: 'N_Ed', My: 'M_yEd', V: 'V_zEd', Mz: hasMz ? 'M_zEd' : null, Vz: hasMz ? 'V_yEd' : null });
+    return { key: `cs${k}`, title: C.meta.title, sum: `M_y ${kNm(My)} kNm, V ${kN(V)} kN${inp.N ? `, N ${kN(inp.N)} kN` : ''}`, util: r.util, C, checks };
+  }
+
+  // ---------- flexural and torsional buckling ----------
+  function flexuralZone(R, inp) {
+    const C = create('Flexural and torsional buckling');
+    EC3Script.section(C, R.sec); EC3Script.steel(C, R.sec, inp.grade, R.fy);
+    actions(C, R, inp, { My: false, Mz: false });
+    lengths(C, R, inp);
+    const u = EC3Script.flexural(C, R.sec, R.fy, inp.grade, R.ab, 'N_Ed');
+    return { key: 'flexural', title: C.meta.title, sum: `N_b,Rd ${kN(R.ab.NbRd)} kN (χ ${R.ab.y.chi < R.ab.chiZT ? 'y' : 'z'} ${Math.min(R.ab.y.chi, R.ab.chiZT).toFixed(3)})`, util: u, C };
+  }
+
+  // the segment's LTB as the engine works it out (the governing segment, or the one behind the interaction)
+  function segLTB(R, inp, xa, Lseg, over) {
+    const My = inp.Myf || (x => inp.MyB + (inp.MyT - inp.MyB) * x / inp.L);
+    const sxs = Array.from({ length: 11 }, (_, k) => Lseg * k / 10), Mmax = Math.max(...sxs.map(x => Math.abs(My(xa + x))));
+    if (!(Mmax > 1)) return null;
+    let lt = Design.ltb(R.sec, R.fy, R.cls, { L: Lseg, M: x => My(xa + x), Mref: Mmax, Mmax, restraints: [{ x: 0, type: 'fork' }, { x: Lseg, type: 'fork' }], forkFork: true }, { destab: false });
+    if (over) lt = ltbOver(R, lt, over, Mmax);
+    return { ...lt, xa, Lseg, over };
+  }
+  function ltbOver(R, lt, over, Mmax) {
+    const C1 = lt.C1 || 1, Mcr = C1 * EC3.mcrUniform(R.sec, over);
+    const Wy = EC3.wyByClass(R.sec, R.fy, R.cls), p = EC3.ltbParams(R.sec), kc = lt.C1 && lt.C1 > 1 ? Math.max(0.6, Math.min(1, 1 / Math.sqrt(lt.C1))) : 1;
+    const lamLT = Math.sqrt(Wy * R.fy / Mcr), c = EC3.chiLT(lamLT, Mmax / Mcr, p, kc), MbRd = c.chiMod * Wy * R.fy / EC3.GM1;
+    return { Mcr, C1: lt.C1, kc, lamLT, ...p, ...c, Wy, MbRd, util: Mmax / MbRd, Mmax };
+  }
+  // the segment, its moments and M_Ed
+  function segment(C, R, inp, g, o = {}) {
+    C.head(o.title || 'The segment');
+    const L = inp.L, My = inp.Myf || (x => inp.MyB + (inp.MyT - inp.MyB) * x / L);
+    if (R.Lcr.given) {
+      if (g.over) { C.input('L_LT', g.over, 'mm', 'lateral-torsional length given, longer than the member: C₁ from the member', '', { sym: 'L_LT' }); C.input('x_a', 0, 'mm', 'the member from x = 0', ''); C.calc('x_b', 'x_a + L', g.xa + inp.L, 'mm', 'to the top', ''); }
+      else { C.input('L_LT', g.Lseg, 'mm', 'lateral-torsional length given', '6.3.2', { sym: 'L_LT' }); C.input('x_a', g.xa, 'mm', R.windows > 1 ? `the position along the member where it governs (the worst of ${R.windows} positions)` : 'start', ''); C.calc('x_b', 'x_a + L_LT', g.xa + g.Lseg, 'mm', 'end', ''); }
+    } else {
+      if (!C.has('n_LT')) C.input('n_LT', Math.max(1, Math.round(inp.nLT || 1)), '', 'equal segments between lateral and torsional restraints', '', { sym: 'n_LT' });
+      C.calc('L_LT', 'L/n_LT', g.Lseg, 'mm', 'length of the segment between forks', '', { sym: 'L_LT' });
+      C.input('i_seg', g.seg + 1, '', `segment ${g.seg + 1} of ${Math.max(1, Math.round(inp.nLT || 1))}: where it governs`, '', { sym: 'segment' });
+      C.calc('x_a', '(i_seg - 1)*L_LT', g.xa, 'mm', 'its start', ''); C.calc('x_b', 'x_a + L_LT', g.xa + g.Lseg, 'mm', 'its end', '');
+    }
+    if (inp.Myf) { C.given(o.M || 'M_Ed', g.Mmax / 1e6, 'kNm', 'the largest major-axis moment in the segment', 'from the analysis', '', { sym: 'M_y,Ed' }); return; }
+    C.calc('M_ya', 'M_yB + (M_yT - M_yB)*x_a/L', My(g.xa) / 1e6, 'kNm', 'moment at the start', '', { sym: 'M_y(x_a)' });
+    C.calc('M_yb', 'M_yB + (M_yT - M_yB)*x_b/L', My(g.xa + (g.over ? L : g.Lseg)) / 1e6, 'kNm', 'moment at the end', '', { sym: 'M_y(x_b)' });
+    C.calc(o.M || 'M_Ed', 'MAX(ABS(M_ya), ABS(M_yb))', g.Mmax / 1e6, 'kNm', 'the largest moment in the segment (linear)', '', { sym: 'M_y,Ed' });
+  }
+
+  // ---------- lateral-torsional buckling ----------
+  function ltbZone(R, inp) {
+    const g = R.gov.ltb, C = create('Lateral-torsional buckling');
+    EC3Script.section(C, R.sec); EC3Script.steel(C, R.sec, inp.grade, R.fy);
+    actions(C, R, inp, { Mz: false });
+    memberClass(C, R, inp);
+    const over = g.Lseg > inp.L * (1 + 1e-9) ? g.Lseg : null;
+    segment(C, R, inp, { ...g, over, Lseg: over ? inp.L : g.Lseg });
+    EC3Script.ltb(C, R.sec, R.fy, R.cls, g, { Lseg: over || g.Lseg, over, M: 'M_Ed' });
+    return { key: 'ltb', title: C.meta.title, sum: `M_cr ${kNm(g.Mcr)} kNm, χ_LT,mod ${g.chiMod.toFixed(3)}, M_b,Rd ${kNm(g.MbRd)} kNm`, util: g.util, C };
+  }
+
+  // ---------- interaction ----------
+  function interactionZone(R, inp) {
+    const g = R.gov.interaction, ir = g.ir, C = create(`Bending and axial compression, 6.3.3 (Annex ${ir.method})`), sec = R.sec;
+    EC3Script.section(C, sec); EC3Script.steel(C, sec, inp.grade, R.fy);
+    actions(C, R, inp);
+    memberClass(C, R, inp);
+    lengths(C, R, inp);
+    const NC = inp.N < 0 ? 'N_c' : 'N_Ed';
+    if (inp.N < 0) C.calc('N_c', 'MAX(N_Ed, 0*N_Ed)', 0, 'kN', 'compression for buckling: the member is in tension, which is ignored (it would help)', '6.3.3');
+    EC3Script.flexural(C, sec, R.fy, inp.grade, R.ab, NC);
+    const L = inp.L, over = g.Lseg > L * (1 + 1e-9) ? g.Lseg : null, segL = over ? L : g.Lseg;
+    const lt = segLTB(R, inp, g.xa, segL, over);
+    segment(C, R, inp, { ...(lt || { Mmax: 0 }), seg: g.seg, xa: g.xa, Lseg: segL, over }, { M: 'M_yEd', title: 'The segment between lateral restraints' });
+    if (lt) EC3Script.ltb(C, sec, R.fy, R.cls, lt, { Lseg: over || segL, over, M: 'M_yEd' });
+    else C.input('chi_LTm', 1, '', 'no major-axis moment in the segment: no lateral-torsional buckling', '', { sym: 'χ_LT' });
+    const hasMz = Math.abs(inp.MzB) + Math.abs(inp.MzT) > 0, Mz = x => inp.MzB + (inp.MzT - inp.MzB) * x / L;
+    if (hasMz) {
+      C.calc('M_za', 'M_zB + (M_zT - M_zB)*x_a/L', Mz(g.xa) / 1e6, 'kNm', 'minor-axis moment at the start', '', { sym: 'M_z(x_a)' });
+      C.calc('M_zb', 'M_zB + (M_zT - M_zB)*x_b/L', Mz(g.xa + segL) / 1e6, 'kNm', 'at the end', '', { sym: 'M_z(x_b)' });
+      C.calc('M_zEd', 'MAX(ABS(M_za), ABS(M_zb))', Math.max(Math.abs(Mz(g.xa)), Math.abs(Mz(g.xa + segL))) / 1e6, 'kNm', 'the larger', '', { sym: 'M_z,Ed' });
+    }
+    // C_m factors from the moment diagrams
+    const My = inp.Myf || (x => inp.MyB + (inp.MyT - inp.MyB) * x / L), xs = Array.from({ length: 21 }, (_, k) => L * k / 20), sxs = Array.from({ length: 11 }, (_, k) => segL * k / 10);
+    const cmy = R.swayY ? { sway: true, Cm: 0.9 } : EC3.cmFactor(xs, xs.map(My), !!inp.hasUdl, false), cmz = R.swayZ ? { sway: true, Cm: 0.9 } : EC3.cmFactor(xs, xs.map(Mz), false, false);
+    const cmLT = EC3.cmFactor(sxs, sxs.map(x => My(g.xa + x)), !!inp.hasUdl, false);
+    let epsY = null, Mcr0 = null;
+    if (ir.method === 'A') { const Wel = R.cls === 4 ? EC3.weffBending(sec, R.fy).Weff : sec.Wely, Mm = Math.max(...sxs.map(x => Math.abs(My(g.xa + x)))); epsY = inp.N > 0 ? Mm / inp.N * R.ab.A / Wel : Infinity; Mcr0 = EC3.mcrUniform(sec, over || segL); }
+    const psiOf = (a, b) => { const big = Math.abs(a) >= Math.abs(b) ? a : b, sm = big === a ? b : a; return big ? sm / big : 1; };
+    const u = EC3Script.interaction(C, sec, R.fy, R.cls, R.ab, ir, { N: NC, Mz: hasMz, MzV: hasMz ? 1 : 0, cmy, cmz, cmLT, epsY, Mcr0,
+      cm0y: R.swayY ? 'a sway mode: 1.0 taken (outside Table A.2)' : `Table A.2, end moments: 0.79 + 0.21ψ + 0.36(ψ − 0.33)N_Ed/N_cr,y with ψ = ${psiOf(inp.MyB, inp.MyT).toFixed(3)}`,
+      cm0z: R.swayZ ? 'a sway mode: 1.0 taken' : `Table A.2, end moments, ψ = ${psiOf(inp.MzB, inp.MzT).toFixed(3)}` });
+    return { key: 'interaction', title: C.meta.title, sum: `(6.61) ${ir.u61.toFixed(3)}, (6.62) ${ir.u62.toFixed(3)}`, util: Math.max(u, ...C.items.filter(it => it.t === 'chk').map(it => it.v)), C };
+  }
+
+  function zones(R, inp) {
+    const Z = [sectionZone(R, inp)], g = R.gov, st = new Map();
+    for (const k of ['bending', 'shear', 'axial']) if (g[k]) { const x = +g[k].x.toFixed(6); if (!st.has(x)) st.set(x, []); st.get(x).push(k); }
+    [...st.entries()].sort((a, b) => a[0] - b[0]).forEach(([x, ch], k) => Z.push(crossZone(R, inp, x, ch, k)));
+    if (g.flexural) Z.push(flexuralZone(R, inp));
+    if (g.ltb) Z.push(ltbZone(R, inp));
+    if (g.interaction) Z.push(interactionZone(R, inp));
+    return Z;
+  }
+  return { zones, segLTB };
+})();
+if (typeof module !== 'undefined') module.exports = { SteelMemberScript };
+
 </script>
 <script id="drawing-code">
 /* ===== CONNECTION DIAGRAMS (EngineeringTools ConnectionCheck) =====
@@ -3320,6 +4357,7 @@ function renderB(R, inp, ms) {
     R.segResults.map(r => `<tr><td>${R.Lcr.given ? (R.windows > 1 ? `x = ${(r.xa / 1000).toFixed(2)}&ndash;${((r.xa + r.Lseg) / 1000).toFixed(2)} m` : 'whole member') : r.seg + 1}</td><td>${fmt(kNm(r.Mmax))}</td><td>${r.C1 ? r.C1.toFixed(2) : '&ndash;'}</td><td>${fmt(kNm(r.Mcr), 0)}</td><td>${r.lamLT.toFixed(3)}</td><td>${r.chiMod.toFixed(3)}</td><td>${fmt(kNm(r.MbRd))}</td><td>${ufmt(r.util)}</td></tr>`).join('') + `</table>`;
   if (R.gov.interaction) { const ir = R.gov.interaction.ir; h += `<div class="dlabel">Interaction, Annex ${ir.method || 'B'}</div><table class="t"><tr><th>C<sub>my</sub></th><th>C<sub>mz</sub></th><th>C<sub>mLT</sub></th><th>k<sub>yy</sub></th><th>k<sub>yz</sub></th><th>k<sub>zy</sub></th><th>k<sub>zz</sub></th><th>(6.61)</th><th>(6.62)</th></tr><tr><td>${ir.Cmy.toFixed(3)}</td><td>${ir.Cmz.toFixed(3)}</td><td>${ir.CmLT.toFixed(3)}</td><td>${ir.kyy.toFixed(3)}</td><td>${ir.kyz.toFixed(3)}</td><td>${ir.kzy.toFixed(3)}</td><td>${ir.kzz.toFixed(3)}</td><td>${ir.u61.toFixed(3)}</td><td>${ir.u62.toFixed(3)}</td></tr></table>`; }
   h += notesHTML(R, inp);
+  if (lastZ) h += `<div class="dlabel">Full calculation (open a part)</div>${CalcScript.zonesHTML(lastZ)}`;
   h += `<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
   $('runInfo').textContent = `${ms} ms`;
   return h;
@@ -3488,12 +4526,18 @@ function reportHTML(R, inp, s) {
     CHECKS.filter(([k]) => R.gov[k]).map(([k, nm, c]) => `<tr><td>${nm}</td><td>${k === 'interaction' && R.gov.interaction.ir && R.gov.interaction.ir.method === 'A' ? '6.3.3, Annex A' : c}</td><td>${okng(R.gov[k].util)}</td></tr>`).join('') +
     `<tr><th>Overall</th><th></th><th>${okng(R.utilMax)}</th></tr></table>` +
     `<p class="rp" style="font-size:.92em">${notesHTML(R, inp).replace(/<\/?div[^>]*>/g, '')}<br><span style="color:#555">Generated by EngineeringTools &mdash; Steel Member Design.</span></p></div>`;
+  if (lastZ) b += `<div class="rs"><h2>${mode === 'A' ? 9 : 8} Full calculation</h2></div>` + CalcScript.sheetHTML(lastZ);
   return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
 }
 
 // ---------- run ----------
+// the full calculation (CalcScript): on the page with its CalcPad buttons, and on the A4 sheet
+let lastZ = null;
+document.head.insertAdjacentHTML('beforeend', `<style>${CalcScript.CSS}</style>`);
+const cpMeta = title => { const s = collect(); return { project: s.proj.name, job: s.proj.job, by: s.proj.by, sheet: s.proj.ref, title }; };
+const cpName = t => { const s = collect(); return [s.proj.job, s.proj.ref, t].filter(Boolean).join(' '); };
 function run() {
-  const s = collect(); save();
+  const s = collect(); save(); lastZ = null;
   $('results').classList.add('busy');
   setTimeout(() => {
     const t0 = performance.now();
@@ -3507,6 +4551,7 @@ function run() {
       } else {
         inp = memberInput(s, sec);
         R = Design.designMember(inp);
+        lastZ = SteelMemberScript.zones(R, inp);
         html = renderB(R, inp, Math.round(performance.now() - t0));
       }
       lastRun = { R, inp, s };
@@ -3552,6 +4597,7 @@ $('addSpan').onclick = () => { if (document.querySelectorAll('#spanRows .row').l
 $('endL').onchange = () => { autoSupport('endL'); refreshMembers(); }; $('endR').onchange = () => { autoSupport('endR'); refreshMembers(); };
 $('addLoad').onclick = () => loadRow({ case: 'Q', member: 0, type: 'udl', w: 5 });
 $('calc').onclick = run;
+CalcScript.wire($('results'), () => lastZ, cpMeta, cpName, mode === 'A' ? 'Steel beam calculations' : 'Steel member calculations');
 if (!applyState(load())) {
   $('series').value = 'UKC'; fillSections();
   $('section').value = '254×254×89 UKC'; secInfo();
