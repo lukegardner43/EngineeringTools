@@ -13,6 +13,9 @@ truth('page loads without script errors', w.errs.length === 0);
 truth('UKC list with the default column; three default cases', $('section').value === '254×254×73 UKC' && $('cases').rows.length === 3);
 truth('drawings before a Check (base view and mechanism)', d.querySelectorAll('#drawings svg').length >= 2);
 calc();
+{ const z = [...$('results').querySelectorAll('details.zone')], sm = q => q.querySelector('summary').textContent;
+  truth('the full calculation: one part for each set of actions that governs, with f_jd, the T-stub, Table 6.7 and the anchors, the CalcPad buttons and one download of the whole as a single check',
+    z.length >= 1 && z.some(q => /f_?jd|fjd/.test(q.textContent.replace(/[\s,]/g, '')) && /Table 6\.7/.test(q.textContent) && /7\.2\.1\.4/.test(q.textContent)) && z.every(q => !!q.querySelector('[data-cp="save"]')) && $('results').querySelectorAll('[data-cp="all"]').length === 1); }
 truth('verdict and base checks with their governing case', /PASS|FAIL/.test(res()) && /Axial Compression \(Effective Area\)/.test(res()) && /Concrete Cone/.test(res()) && /Maximum compression/.test(res()) && !$('results').querySelector('.err'));
 truth('cases table with each case\'s governing check', d.querySelectorAll('#results table.t tr').length === 4);
 $('addCase').click(); truth('a case added', $('cases').rows.length === 4);
@@ -21,7 +24,7 @@ truth('the new case is checked', /Case 4/.test(res()) && d.querySelectorAll('#re
 $('cases').rows[3].querySelector('button.rm').click(); truth('a case removed', $('cases').rows.length === 3);
 $('series').value = 'UKB'; $('series').onchange(); calc(); truth('UKB on a 450 plate: anchor geometry error', /anchor bolts/.test(res()));
 $('D').value = '560'; calc(); truth('UKB with a deeper plate calculates', /UKB/.test(res()) && !$('results').querySelector('.err'));
-$('printBtn').click(); truth('print: A4 sheet with drawings and the summary', w.printed && /Column base plate/.test($('report').textContent) && /Summary/.test($('report').textContent) && $('report').querySelectorAll('svg').length >= 2);
+$('printBtn').click(); truth('print: A4 sheet with drawings, the summary and the full calculation', w.printed && /Column base plate/.test($('report').textContent) && /Summary/.test($('report').textContent) && $('report').querySelectorAll('svg').length >= 2 && /Full calculation/.test($('report').textContent));
 const st = w.localStorage.getItem('et-base-plate-v1'), w2 = page(st), $2 = id => w2.document.getElementById(id);
 truth('inputs and cases restored', $2('series').value === 'UKB' && $2('D').value === '560' && $2('cases').rows.length === 3);
 // hand-over from Steel Column Design: its combinations become the cases, with a note
