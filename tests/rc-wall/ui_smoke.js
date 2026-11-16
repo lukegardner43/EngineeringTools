@@ -14,6 +14,8 @@ truth('page loads without script errors', w.errs.length === 0);
 truth('wall panel first: reinforced inputs shown, plain hidden', shown($('pane-panel')) && !shown($('pane-core')) && shown(d.querySelector('#pane-panel .card.rc')) && !shown(d.querySelector('#pane-panel .plain')));
 $('calc').click();
 truth('panel: verdict, strip, N–M diagram, checks, values', /PASS|FAIL/.test(res()) && !!$('results').querySelector('svg.strip') && !!$('results').querySelector('svg.mn') && /9\.6\.2/.test(res()) && /λlim/.test(res()) && !$('results').querySelector('.err'));
+const zones = () => [...$('results').querySelectorAll('details.zone summary')].map(s => s.textContent);
+truth('panel: the full calculation, bending and the 9.6 rules, each with its CalcPad buttons, one project download', zones().length === 2 && /^Wall panel: axial load and bending/.test(zones()[0]) && /^Wall panel: reinforcement rules/.test(zones()[1]) && $('results').querySelectorAll('details.zone [data-cp="copy"]').length === 2 && $('results').querySelectorAll('[data-cp="proj"]').length === 1);
 $('wl').value = '6000'; $('wN').value = '600'; $('calc').click();
 truth('panel: a slender wall shows Kr, Kφ and M2', /\(slender\)/.test(res()) && /Kr/.test(res()) && /M₂/.test(res()));
 $('wbr').value = 'unbraced'; $('calc').click(); truth('panel: unbraced', /unbraced wall/.test(res()) && /M02 \+ M2|e0 NEd/.test(res()));
@@ -26,6 +28,7 @@ truth('plain: reinforcement and creep hidden, Table 12.1 shown', !shown(d.queryS
 $('wsides').value = '4'; change($('wsides')); truth('four sides held shows b', shown(d.querySelector('.sideb')));
 $('wl').value = '3500'; $('wN').value = '400'; $('calc').click();
 truth('plain: 12.6.5 resistance and λ ≤ 86', /12\.6\.5\.2/.test(res()) && /86/.test(res()) && /Φ/.test(res()) && !$('results').querySelector('svg.mn'));
+truth('plain: one check in the full calculation', zones().length === 1 && /^Plain wall panel/.test(zones()[0]));
 $('wtype').value = 'rc'; change($('wtype')); $('wsides').value = '2'; change($('wsides'));
 $('wh').value = '90'; $('calc').click(); truth('bad input reported', !!$('results').querySelector('.err') && /100 mm/.test(res())); $('wh').value = '200';
 // core walls
@@ -34,6 +37,7 @@ truth('core walls pane', shown($('pane-core')) && !shown($('pane-panel')) && d.q
 $('calc').click();
 truth('core: verdict, building plan, core plan, shares, stresses and bars', /PASS|FAIL/.test(res()) && d.querySelectorAll('#results svg.plan').length === 2 && /NS share/.test(res()) && /Bars each face/.test(res()) && /H\d+ @ \d+/.test(res()) && !$('results').querySelector('.err'));
 truth('core: one row per location with a panel link', d.querySelectorAll('#results button.lnk').length === 7);
+truth('core: the core and each location written out', zones().length === 8 && /^Core 1: section and the wind/.test(zones()[0]) && /^Core 1, location 7/.test(zones()[7]));
 $('csel').value = '1'; change($('csel'));
 truth('choosing core 2 edits its openings, loads and locations', $('opCore').textContent === 'core 2' && d.querySelectorAll('#opRows .row').length === 1 && d.querySelectorAll('#loadRows .row').length === 0);
 $('addLoc').click(); $('calc').click(); truth('core 2 designs with one location', /Core 2:/.test(res()) && d.querySelectorAll('#results button.lnk').length === 1);
@@ -50,6 +54,7 @@ truth('location to panel: mode, thickness and NEd handed over', shown($('pane-pa
 $('printBtn').click(); truth('print: panel sheet with the elevation', w.printed && /Slenderness \(5\.8\)/.test($('report').textContent) && $('report').querySelectorAll('svg').length === 3 && /Wall in elevation/.test($('report').textContent));
 d.querySelector('#modes button[data-m=core]').click(); $('calc').click(); w.printed = false; $('printBtn').click();
 truth('print: core sheet', w.printed && /Building and wind/.test($('report').textContent) && /Stresses and vertical steel/.test($('report').textContent) && $('report').querySelectorAll('svg').length === 2);
+truth('print: the core’s full calculation', $('report').querySelectorAll('.cs-sheet').length === 8);
 const w2 = page(w.localStorage.getItem('et-rc-wall-v1')), $2 = id => w2.document.getElementById(id);
 truth('inputs restored, mode and cores included', $2('cdir').value === 'tog' && !w2.document.getElementById('pane-core').classList.contains('hidden') && w2.document.querySelectorAll('#coreRows .row').length === 2 && $2('wh').value === '250');
 // wind moments handed over from Wind Loading (#in=), with and without a saved session
