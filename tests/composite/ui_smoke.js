@@ -14,10 +14,14 @@ truth('page loads without script errors', w.errs.length === 0);
 truth('UKB list filled, default 457×191×67', $('section').options.length > 50 && $('section').value === '457×191×67 UKB');
 calc(); truth('perpendicular decking: verdict and checks', /PASS|FAIL/.test(res()) && /Composite bending/.test(res()) && /Natural frequency/.test(res()) && !$('results').querySelector('.err'));
 truth('perpendicular decking: no construction LTB', /decking restrains the beam/.test(res()));
+{ const z = [...$('results').querySelectorAll('details.zone')], sm = q => q.querySelector('summary').textContent;
+  truth('the full calculation: the beam and loads, the construction stage, the shear connection, bending by stress blocks, the slab shear and the deflections, with the CalcPad buttons and one download of the whole as a single check',
+    z.length === 6 && /^Beam, slab, effective width and loads/.test(sm(z[0])) && /^Construction stage/.test(sm(z[1])) && /^Shear connection/.test(sm(z[2])) && /η/.test(z[2].textContent) && /^Composite stage: bending/.test(sm(z[3])) && /x_?c|xc/.test(z[3].textContent.replace(/[\s,]/g, ''))
+    && /^Longitudinal shear/.test(sm(z[4])) && /^Deflections and natural frequency/.test(sm(z[5])) && z.every(q => !!q.querySelector('[data-cp="save"]')) && $('results').querySelectorAll('[data-cp="all"]').length === 1); }
 $('deck').value = 'para'; calc(); truth('parallel decking: construction LTB checked', /with LTB/.test(res()));
 $('deck').value = 'none'; calc(); truth('solid slab: calculates', /Composite bending/.test(res()) && !$('results').querySelector('.err'));
 $('propped').checked = true; calc(); truth('propped: construction checks omitted', !/Construction: bending/.test(res()) && /propped/.test(res()));
-$('printBtn').click(); truth('print: calculation sheet built and printed', w.printed && /Composite beam/.test($('report').textContent) && /Checks/.test($('report').textContent));
+$('printBtn').click(); truth('print: calculation sheet built and printed, with the full calculation', w.printed && /Composite beam/.test($('report').textContent) && /Checks/.test($('report').textContent) && /Full calculation/.test($('report').textContent));
 const saved = w.localStorage.getItem('et-composite-beam-v1'); truth('inputs saved', saved && JSON.parse(saved).deck === 'none');
 const w2 = page(saved); truth('inputs restored on reload', w2.document.getElementById('deck').value === 'none' && w2.document.getElementById('propped').checked);
 $('propped').checked = false; $('deck').value = 'perp'; $('hp').value = '140'; calc(); truth('rib deeper than the slab rejected', /Rib height/.test(res()));
