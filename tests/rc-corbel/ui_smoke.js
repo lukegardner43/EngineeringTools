@@ -14,6 +14,7 @@ truth('page loads without script errors', w.errs.length === 0);
 truth('corbel first: width and bar count shown, nib fields hidden', shown(d.querySelector('.form-group.corbel')) && !shown(d.querySelector('.form-group.nib')) && !shown(d.querySelector('.hval')));
 $('calc').click();
 truth('corbel: verdict, elevation, checks, values', /PASS|FAIL/.test(res()) && !!$('results').querySelector('svg.elev') && d.querySelectorAll('#results .ck').length >= 9 && /B\.4\.2/.test(res()) && /ax2/.test(res()));
+truth('corbel: the full calculation with its CalcPad buttons', !!$('results').querySelector('.cs .cs-chk') && !!$('cpCopy') && !!$('cpSave') && /F<\/i><sub>td/.test($("results").querySelector(".cs").innerHTML));
 truth('default corbel fails on the front bend and says so', /FAIL/.test(res()) && /Governs: tie anchored at the front/.test(res()) && /welded/.test(res()));
 sel('frontAnch', 'welded'); truth('welded bar shows its diameter', shown(d.querySelector('.weld')));
 $('calc').click(); truth('welded cross bar: passes', /PASS/.test(res()) && /welded bar and bend/.test(res()));
