@@ -12,11 +12,15 @@ const w = page(), d = w.document, $ = id => d.getElementById(id), calc = () => $
 truth('page loads without script errors', w.errs.length === 0);
 truth('section lists filled', $('sec').options.length > 50 && $('prim').value === '610×229×113 UKB');
 calc(); truth('verdict with frequency and response factor', /R = /.test(res()) && /Floor frequency/.test(res()) && /primary beam/.test(res()) && !$('results').querySelector('.err'));
+{ const z = [...$('results').querySelectorAll('details.zone')];
+  truth('the full calculation: mass, stiffness, frequencies, modal mass and response, with the CalcPad buttons and one download of the whole as a single check',
+    z.length === 1 && /^Floor vibration:/.test(z[0].querySelector('summary').textContent) && /18\/√δ/.test(z[0].textContent) && /L_?eff|Leff/.test(z[0].textContent.replace(/[\s,]/g, '')) && /W_?b|Wb/.test(z[0].textContent.replace(/[\s,]/g, ''))
+    && !!z[0].querySelector('[data-cp="save"]') && $('results').querySelectorAll('[data-cp="all"]').length === 1); }
 truth('no VDV note without a walking path', !/Vibration dose/.test(res()));
 $('Lp').value = '10'; calc(); truth('walking path: ρ < 1 and VDV note', /Vibration dose/.test(res()));
 $('use').value = '4'; $('use').onchange(); truth('use sets the response factor limit', $('Rlim').value === '4');
 $('primComp').checked = false; calc(); truth('non-composite primary calculates', !$('results').querySelector('.err'));
-$('printBtn').click(); truth('print: sheet built', w.printed && /Floor vibration/.test($('report').textContent));
+$('printBtn').click(); truth('print: sheet built, with the full calculation', w.printed && /Floor vibration/.test($('report').textContent) && /Full calculation/.test($('report').textContent));
 const saved = w.localStorage.getItem('et-floor-vibration-v1'); const w2 = page(saved); truth('inputs restored', w2.document.getElementById('Lp').value === '10' && !w2.document.getElementById('primComp').checked);
 $('fp').value = '3'; calc(); truth('pace frequency outside 1.7-2.4 Hz rejected', /Pace frequency/.test(res()));
 truth('no script errors', w.errs.length === 0);
