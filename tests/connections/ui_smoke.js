@@ -19,6 +19,8 @@ const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`);
     const err = eb && eb.style.display !== 'none' ? eb.textContent : '';
     const txt = res ? res.textContent : '';
     truth(`${id}: calculates without error${err ? ' (' + err + ')' : ''}`, !err && res && res.style.display !== 'none');
+    { const z = res ? [...res.querySelectorAll('details.zone')] : [];
+      truth(`${id}: the full calculation with the CalcPad buttons and one download of the whole joint${id === 'base' ? ', the base formula by formula' : ''}`, z.length === 1 && !!z[0].querySelector('[data-cp="save"]') && res.querySelectorAll('[data-cp="all"]').length === 1 && (id !== 'base' || /f_?jd|fjd/.test(z[0].textContent.replace(/[\s,]/g, '')) && /Table 6\.7/.test(z[0].textContent))); }
     if (['fin', 'pdep', 'fdep'].includes(id)) truth(`${id}: tying checks reported`, /Tying/.test(txt));
     if (id === 'fin') truth('fin: P358 detailing checks reported', /Ductility/.test(txt) && /Torsional Restraint/.test(txt));
     if (id === 'base') truth('base: EN 1993-1-8 / EN 1992-4 checks reported', /Effective Area/.test(txt) && /Table 6.7/.test(txt) && /Concrete Cone/.test(txt));

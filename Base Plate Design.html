@@ -2255,6 +2255,7 @@ const BasePlateScript = (() => {
   const FUB = { '4.6': 400, '8.8': 800, '10.9': 1000 }, FYB = { '4.6': 240, '8.8': 640, '10.9': 900 };
   const GR = { S275: { fy: [[16, 275], [40, 265], [63, 255], [80, 245], [100, 235]], fu: 410, bw: 0.85 }, S355: { fy: [[16, 355], [40, 345], [63, 335], [80, 325], [100, 315]], fu: 470, bw: 0.90 } };
   const kN = v => (v / 1e3).toFixed(1), kNm = v => (v / 1e6).toFixed(1);
+  const utilOf = k => typeof BasePlate !== 'undefined' ? BasePlate.utilOf(k) : (k.cap > 0 ? k.dem / k.cap : (k.dem > 0 ? Infinity : 0));
 
   // the whole calculation for one set of actions r = { c: { name, N, M, V }, bp }
   function zone(R, inp, r, keys) {
@@ -2283,7 +2284,7 @@ const BasePlateScript = (() => {
     if (overlap) { C.note('The flange zones overlap: one rectangle.'); C.calc('A_eff', 'b_f*MIN(h + 2*e_xt, D_p)', bp.Aeff / 100, 'cm2', 'effective area', '6.2.5'); }
     else { C.calc('h_wb', 'h - 2*t_f - 2*c_b', webH, 'mm', 'web zone between the flange zones', ''); C.calc('A_eff', '2*b_f*d_fl + h_wb*MIN(t_w + 2*c_b, B_p)', bp.Aeff / 100, 'cm2', 'two flanges and the web', '6.2.5'); }
     C.calc('N_jRd', 'A_eff*f_jd', bp.NjRd / 1e3, 'kN', 'compression resistance', '6.2.8.2', { sym: 'N_j,Rd' });
-    const U = (id, n, expr, d, ref) => { const k = bp.checks.find(q => q.id === id); if (!k) return; const u = BasePlate.utilOf(k); if (Number.isFinite(u)) C.check(n, expr, u, d, ref); else C.note(`${d}: no resistance — not satisfied.`); };
+    const U = (id, n, expr, d, ref) => { const k = bp.checks.find(q => q.id === id); if (!k) return; const u = utilOf(k); if (Number.isFinite(u)) C.check(n, expr, u, d, ref); else C.note(`${d}: no resistance — not satisfied.`); };
     U('B1', 'U_B1', 'MAX(N_Ed, 0*N_Ed)/N_jRd', 'axial compression', '6.2.8.2');
     C.head('Anchor bolts');
     const [d, d0, As] = BOLT[B.size];
@@ -2373,7 +2374,7 @@ const BasePlateScript = (() => {
       C.calc('F_ww', 'a_w*L_w*f_up/(SQRT(3)*beta_w*gamma_M2)', b.awW / Math.SQRT2 * 2 * (s.h - 2 * s.tf - 2 * s.r) * g.fu / (Math.sqrt(3) * g.bw * 1.25) / 1e3, 'kN', 'longitudinal', '4.5.3.3', { sym: 'F_w,Rd' });
       U('B9', 'U_B9', 'V_Ed/F_ww', 'web welds', '4.5.3.3');
     }
-    const us = bp.checks.map(k => BasePlate.utilOf(k));
+    const us = bp.checks.map(k => utilOf(k));
     return { key: `case-${R.res.indexOf(r)}`, title: C.meta.title, sum: `governs ${[...keys].join(', ')}`, util: Math.max(...us), C };
   }
 
@@ -2383,7 +2384,7 @@ const BasePlateScript = (() => {
     if (!by.has(R.governing)) by.set(R.governing, new Set());
     return R.res.filter(r => by.has(r)).map(r => zone(R, inp, r, by.get(r)));
   }
-  return { zones };
+  return { zones, zone };
 })();
 if (typeof module !== 'undefined') module.exports = { BasePlateScript };
 
