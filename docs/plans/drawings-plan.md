@@ -25,3 +25,34 @@ Done when each tool's drawing answers what governs and why, the sweeps pass, and
 
 All ten are done (November 2026). Notes on what was built: the windpost section has no cavity or leaf thickness (the tool has no input for them), and the
 stair shows the main bars only (the tool has no input for distribution bars).
+
+## Steel sections in CalcPad (planned, November 2026)
+
+The steel tools' full calculations (all thirteen, November 2026) carry no drawing into CalcPad: the section, its
+dimensions and the governing parts are only in the tool. Concrete sections already draw themselves live in CalcPad
+from their own names (`SECTION(...)`, CalcPad ecee29e); steel should do the same. Two stages, the first now and the
+second later.
+
+**Stage 1: a live steel section (next).**
+
+| Part | What it does |
+|------|--------------|
+| `STEEL(...)` in CalcPad (lukegardner43/calcpad) | A new plot line beside `SECTION` and `PUNCH`, redrawn from the values at every recalculation, saved, printed and sent to Word as a picture. Shapes: I and H (UKB, UKC, UBP, joists), PFC, RHS and SHS (hot-finished and cold-formed, with their corner radii), CHS, ASB and Slimflor (the plate below), and the Tee of a web opening. Drawn to scale with h, b, t_w, t_f and r dimensioned from the values; the y and z axes marked |
+| Options | `axis:` the axis of bending, with the load's direction; `x:` the plastic or elastic neutral axis under the axial force; `class:` each compression part shaded with its c/t against the limit, the part that sets the class in red; `eff:` for Class 4, the ineffective parts of the web and flanges left out (from b_eff and ρ); `sc:` the shear centre and the warping stresses at the flange tips (Steel Beam Torsion, Hollowcore Support Beam) |
+| The steel scripts | `steel/ec3script.js` writes the line from the calculation's own names once the section is classified (as the concrete scripts write `SECTION` after x_u), so every steel tool gets it; editing h, b or a thickness in CalcPad redraws the section |
+| Graphs that are formulas | `PLOT` lines where the calculation already has the formula: the moment along the member in Steel Member Design (the end moments and the UDL, M_y,Ed(x)), the standard fire curve θ_g(t) to the period in Steel Member Fire Design, and the buckling curve χ(λ̄) with the member's λ̄ marked. Results of an analysis (the frame's and the beam's moment and shear diagrams, the steel temperature history) stay pictures, as the concrete tools do |
+| Tests | Each steel `test_calcpad.js` checks every section it runs draws without an error, for every shape and option; the merged one-check `.perega` still opens |
+
+Stage 1 changes no value: the section's properties (A, I_y, W_pl,y and the rest) are still the table's, so editing h
+in CalcPad redraws the section but does not change A. CalcPad says so under the drawing.
+
+**Stage 2: changing the section in CalcPad (later, not yet).**
+
+| Part | What it does |
+|------|--------------|
+| `STEEL(457×191×67 UKB)` | The designation alone: the line looks the section up in the same tables the tools use and defines every dimension and property from it (h, b, t_w, t_f, r, A, I_y, I_z, W_el, W_pl, i, I_t, I_w, the mass), so changing the designation updates every value and redraws the section |
+| Branches as formulas | What depends on the section becomes an IF formula rather than a fixed line: f_y by thickness, the class of each part, the buckling curve (h/b and t_f), the shear area of the shape, the λ̄_LT method and its β, the self-weight in the loads |
+| Values from an analysis | M_cr from finite elements, the frame's moments and α_cr, the fire temperature from the time-stepping, the Tee areas of a web opening and the bimoment from the torsion analysis cannot follow a new section: CalcPad marks them stale ("worked for 457×191×67 UKB") when the designation changes, and the tool is where to run them again |
+
+Done when every steel calculation draws its section live in CalcPad, the tests pass, and the ROADMAP records it.
+Stage 2 waits until Luke asks for it.
