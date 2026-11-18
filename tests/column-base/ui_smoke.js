@@ -3,6 +3,8 @@ const { JSDOM } = require('jsdom');
 const fs = require('fs'), path = require('path');
 const html = fs.readFileSync(path.join(__dirname, '..', '..', 'Steel Column Design.html'), 'utf8');
 let n = 0, fails = 0;
+// the drawings each part of the calculation carries (as pictures for CalcPad; the page shows them above, not in the parts)
+const capsIn = (w, re) => (w.eval('lastZ') || []).filter(z => re.test(z.title)).flatMap(z => z.C.items.filter(it => it.t === 'img').map(it => it.caption));
 const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`); if (!c) fails++; };
 function page(store, key = 'et-steel-column-v1') {
   const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.org/', beforeParse(w) { w.print = () => { w.printed = true; }; if (store) w.localStorage.setItem(key, store); } });
@@ -19,6 +21,7 @@ truth('verdict and column checks, no base checks', /PASS|FAIL/.test(res()) && /F
 truth('15 ULS combinations listed (6.10, wind both ways)', /15 ULS combinations/.test(res()));
 truth('elevation with moments and the cap plan drawn', d.querySelectorAll('#drawings svg.dk').length === 2 && /M<tspan[^>]*>y,nom<\/tspan>/.test($('drawings').innerHTML));
 truth('SN048 breakdown shown', /SN048b:/.test(res()));
+truth('column: the drawings in the full calculation, pictures for CalcPad: the column with the actions, the cap with the design actions', capsIn(w, /^Actions and combinations/)[0] === 'Column, loads and moments (governing combination)' && capsIn(w, /the design actions$/).includes('Beam reactions at the cap and the nominal moments'));
 { const z = [...$('results').querySelectorAll('details.zone')], s = q => q.querySelector('summary').textContent;
   truth('the full calculation: the actions, then each governing combination with its member checks and SN048b, with the CalcPad buttons and one download of the whole as a single check',
     z.length >= 5 && /^Actions and combinations/.test(s(z[0])) && z.some(q => /: the design actions/.test(s(q)) && /e_?y|ey/.test(q.textContent.replace(/[\s,]/g, ''))) && z.some(q => /Flexural and torsional buckling/.test(s(q))) && z.some(q => /SN048b/.test(s(q)))

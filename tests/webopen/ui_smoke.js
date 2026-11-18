@@ -4,6 +4,8 @@ const { JSDOM } = require('jsdom');
 const fs = require('fs'), path = require('path');
 const html = fs.readFileSync(path.join(__dirname, '..', '..', 'Beam Web Openings.html'), 'utf8');
 let n = 0, fails = 0;
+// the drawings each part of the calculation carries (as pictures for CalcPad; the page shows them above, not in the parts)
+const capsIn = (w, re) => (w.eval('lastZ') || []).filter(z => re.test(z.title)).flatMap(z => z.C.items.filter(it => it.t === 'img').map(it => it.caption));
 const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`); if (!c) fails++; };
 function page(store) {
   const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.org/', beforeParse(w) { w.print = () => { w.printed = true; }; if (store) w.localStorage.setItem('et-web-openings-v1', store); } });
@@ -13,6 +15,7 @@ const w = page(), d = w.document, $ = id => d.getElementById(id), calc = () => $
 truth('page loads without script errors', w.errs.length === 0);
 truth('three default openings, steel mode', $('ops').children.length === 3 && !$('gk').closest('.card').classList.contains('hidden') && $('hs').closest('.card').classList.contains('hidden'));
 calc(); truth('steel: verdict, opening and web-post checks', /PASS|FAIL/.test(res()) && /Vierendeel bending/.test(res()) && /Web-post 1–2/.test(res()) && !err());
+truth('the drawings in the full calculation, pictures for CalcPad: the span with the beam, the governing opening with its part', capsIn(w, /^Beam: bending and shear/)[0] === 'Span, openings and ULS forces' && capsIn(w, /^(Opening|Web-post)/).some(x => /^Governing (opening|web-post), true scale$/.test(x)));
 { const z = [...$('results').querySelectorAll('details.zone')], sm = q => q.querySelector('summary').textContent;
   truth('steel: the full calculation, the beam, every opening with its Tees and Vierendeel bending, the web-posts and the deflections, with the CalcPad buttons and one download of the whole as a single check',
     /^Beam: bending and shear/.test(sm(z[0])) && z.some(q => /^Opening 1:/.test(sm(q)) && /Vierendeel/.test(q.textContent)) && z.some(q => /^Web-post 1–2/.test(sm(q)) && /ℓ_?w/.test(q.textContent)) && /^Deflections with the openings/.test(sm(z[z.length - 1]))

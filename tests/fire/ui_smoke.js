@@ -3,12 +3,15 @@ const { JSDOM } = require('jsdom');
 const fs = require('fs'), path = require('path');
 const html = fs.readFileSync(path.join(__dirname, '..', '..', 'Steel Member Fire Design.html'), 'utf8');
 let n = 0, fails = 0;
+// the drawings each part of the calculation carries (as pictures for CalcPad; the page shows them above, not in the parts)
+const capsIn = (w, re) => (w.eval('lastZ') || []).filter(z => re.test(z.title)).flatMap(z => z.C.items.filter(it => it.t === 'img').map(it => it.caption));
 const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`); if (!c) fails++; };
 const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.org/', beforeParse(w) { w.print = () => { w.printed = true; }; } });
 const w = dom.window, d = w.document, $ = id => d.getElementById(id); w.errs = []; w.addEventListener('error', e => w.errs.push(e.message));
 truth('page loads without script errors', w.errs.length === 0);
 $('calc').click();
 truth('verdict for the period', /PASS|FAIL/.test($('results').textContent) && /R\d+/.test($('results').querySelector('.verdict').textContent) && !$('results').querySelector('.err'));
+truth('the drawings in the full calculation, pictures for CalcPad: the section and the heating with the heating, the strength with the resistance in fire', JSON.stringify(capsIn(w, /^Exposure/)) === JSON.stringify(['Section, exposure and protection', 'Temperature against time']) && capsIn(w, /^Resistance in fire/)[0] === 'Strength and stiffness against temperature');
 const z = [...$('results').querySelectorAll('details.zone')], s = q => q.querySelector('summary').textContent;
 truth('the full calculation: the heating, the resistance at the period and at 20 °C, with the CalcPad buttons and one download of the whole as a single check',
   z.length === 3 && /^Exposure and the steel temperature/.test(s(z[0])) && /A_?m\/V|Am\/V/.test(z[0].textContent.replace(/\s/g, '')) && /^Resistance in fire at R\d+/.test(s(z[1])) && /k_?y,θ|ky,θ/.test(z[1].textContent.replace(/\s/g, '')) && /^At 20 °C/.test(s(z[2])) && /\(4\.22\)/.test(z[2].textContent)

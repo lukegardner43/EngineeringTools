@@ -3,6 +3,8 @@ const { JSDOM } = require('jsdom');
 const fs = require('fs'), path = require('path');
 const html = fs.readFileSync(path.join(__dirname, '..', '..', 'Floor Vibration.html'), 'utf8');
 let n = 0, fails = 0;
+// the drawings each part of the calculation carries (as pictures for CalcPad; the page shows them above, not in the parts)
+const capsIn = (w, re) => (w.eval('lastZ') || []).filter(z => re.test(z.title)).flatMap(z => z.C.items.filter(it => it.t === 'img').map(it => it.caption));
 const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`); if (!c) fails++; };
 function page(store) {
   const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.org/', beforeParse(w) { w.print = () => { w.printed = true; }; if (store) w.localStorage.setItem('et-floor-vibration-v1', store); } });
@@ -12,6 +14,7 @@ const w = page(), d = w.document, $ = id => d.getElementById(id), calc = () => $
 truth('page loads without script errors', w.errs.length === 0);
 truth('section lists filled', $('sec').options.length > 50 && $('prim').value === '610×229×113 UKB');
 calc(); truth('verdict with frequency and response factor', /R = /.test(res()) && /Floor frequency/.test(res()) && /primary beam/.test(res()) && !$('results').querySelector('.err'));
+truth('the drawings in the full calculation, pictures for CalcPad', JSON.stringify(capsIn(w, /^Floor vibration/)) === JSON.stringify(['Floor plan and effective floor area', 'Modes and beam section']));
 { const z = [...$('results').querySelectorAll('details.zone')];
   truth('the full calculation: mass, stiffness, frequencies, modal mass and response, with the CalcPad buttons and one download of the whole as a single check',
     z.length === 1 && /^Floor vibration:/.test(z[0].querySelector('summary').textContent) && /18\/√δ/.test(z[0].textContent) && /L_?eff|Leff/.test(z[0].textContent.replace(/[\s,]/g, '')) && /W_?b|Wb/.test(z[0].textContent.replace(/[\s,]/g, ''))

@@ -3,6 +3,8 @@ const { JSDOM } = require('jsdom');
 const fs = require('fs'), path = require('path');
 const html = fs.readFileSync(path.join(__dirname, '..', '..', 'Steel Frame Design.html'), 'utf8');
 let n = 0, fails = 0;
+// the drawings each part of the calculation carries (as pictures for CalcPad; the page shows them above, not in the parts)
+const capsIn = (w, re) => (w.eval('lastZ') || []).filter(z => re.test(z.title)).flatMap(z => z.C.items.filter(it => it.t === 'img').map(it => it.caption));
 const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`); if (!c) fails++; };
 const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.org/', beforeParse(w) { w.print = () => { w.printed = true; }; } });
 const w = dom.window, d = w.document, $ = id => d.getElementById(id); w.errs = []; w.addEventListener('error', e => w.errs.push(e.message));
@@ -11,6 +13,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   truth('page loads without script errors', w.errs.length === 0);
   $('calc').click(); for (let i = 0; i < 400 && !/PASS|FAIL|err/.test($('results').innerHTML); i++) await wait(25);
   truth('verdict with the members and the serviceability checks', /PASS|FAIL/.test($('results').textContent) && /drift|deflection/.test($('results').textContent) && !$('results').querySelector('.err'));
+  { const c = capsIn(w, /^Frame stability/); truth('the drawings in the full calculation, pictures for CalcPad: the frame and its bending moments', c[0] === 'Frame, loads and member utilisation' && /^Bending moments, .*\(kNm\)$/.test(c[1])); }
   const z = [...$('results').querySelectorAll('details.zone')], s = q => q.querySelector('summary').textContent;
   truth('the full calculation: the frame’s stability, every member under its governing combination, the serviceability, with the CalcPad buttons and one download of the whole as a single check',
     z.length >= 8 && /^Frame stability and imperfections/.test(s(z[0])) && /φ/.test(z[0].textContent) && z.some(q => /^Member 1 \(column\)/.test(s(q)) && /Section, steel and class/.test(s(q))) && z.some(q => /^Member 3 \(beam\)/.test(s(q)))

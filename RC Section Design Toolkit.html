@@ -1160,7 +1160,39 @@ const CalcScript = (() => {
 .cs-sheet{font-size:9pt}.cs-sheet .cs-r{grid-template-columns:1fr 70pt;padding:1pt 0;break-inside:avoid}.cs-sheet .cs-h{font-size:10pt;margin:6pt 0 2pt}.cs-sheet .cs-d,.cs-sheet .cs-ref{font-size:8pt}.cs-sheet .cs-d{display:inline;margin-left:8pt}.cs-sheet .cs-p{margin:2pt 0}
 .zone .zfull{padding:0 10px 8px}.zone summary small{color:var(--faint,#6b6b6b);font-size:12px}.cs-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.cs-tools .btn2{width:auto;flex:0 0 auto;margin:0;padding:0 16px}
 @media print{.cs-tools{display:none}}`;
-  return { create, toSI, siUnit, factor, num, exprHTML, symHTML, unitHTML, tokens, rasterise, copy, download, merge, project, downloadProject, zonesHTML, allTools, wire, sheetHTML, CSS };
+  // The tool's drawings in its calculation, as pictures for CalcPad (and the page's full calculation). sheet: the drawing
+  // module's A4-sheet HTML (DK.sheet: a heading and the drawing for each), or a list of [title, svg]; where(title, i): the
+  // key of the zone a drawing goes in (the first zone when it names none; false leaves the drawing out). Each goes at the
+  // head of its zone, in the sheet's order, captioned with its heading. Returns Z.
+  const ENT = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', minus: '\u2212', ndash: '\u2013', mdash: '\u2014', times: '\u00d7', middot: '\u00b7', deg: '\u00b0', le: '\u2264', ge: '\u2265', radic: '\u221a', sup2: '\u00b2', sup3: '\u00b3', larr: '\u2190', rarr: '\u2192', alpha: '\u03b1', beta: '\u03b2', gamma: '\u03b3', delta: '\u03b4', Delta: '\u0394', epsilon: '\u03b5', zeta: '\u03b6', eta: '\u03b7', theta: '\u03b8', kappa: '\u03ba', lambda: '\u03bb', mu: '\u03bc', nu: '\u03bd', xi: '\u03be', pi: '\u03c0', rho: '\u03c1', sigma: '\u03c3', tau: '\u03c4', phi: '\u03c6', Phi: '\u03a6', chi: '\u03c7', psi: '\u03c8', omega: '\u03c9' };
+  const plainText = s => String(s).replace(/<[^>]*>/g, '').replace(/&#(x?)([0-9a-f]+);/gi, (m, x, n) => String.fromCodePoint(parseInt(n, x ? 16 : 10)))
+    .replace(/&([a-z]+[0-9]?);/gi, (m, n) => ENT[n] ?? m).replace(/\s+/g, ' ').trim();
+  // the outermost <svg> elements of a piece of HTML, whole (a drawing may hold another)
+  function svgsIn(html) {
+    const out = [], re = /<svg\b|<\/svg>/g; let depth = 0, start = -1, m;
+    while ((m = re.exec(html))) {
+      if (m[0] !== '</svg>') { if (depth++ === 0) start = m.index; }
+      else if (depth > 0 && --depth === 0) out.push(html.slice(start, m.index + 6));
+    }
+    return out;
+  }
+  function pictures(Z, sheet, where) {
+    if (!Z || !Z.length || !sheet) return Z;
+    const blocks = Array.isArray(sheet) ? sheet.map(([t, s]) => [plainText(t), svgsIn(String(s))])
+      : String(sheet).split('<div class="rfig"').slice(1).map(ch => { const t = ch.match(/<h3>([\s\S]*?)<\/h3>/); return [t ? plainText(t[1]) : '', svgsIn(ch)]; });
+    const at = new Map();
+    blocks.forEach(([title, svgs], i) => {
+      if (!svgs.length) return;
+      const key = where ? where(title, i) : undefined;
+      if (key === false) return;
+      const zn = Z.find(z => z.key === key) || Z[0];
+      if (!at.has(zn)) at.set(zn, []);
+      svgs.forEach((svg, j) => at.get(zn).push({ t: 'img', svg, caption: j === svgs.length - 1 ? title : '' }));
+    });
+    for (const [zn, list] of at) zn.C.items.unshift(...list);
+    return Z;
+  }
+  return { create, toSI, siUnit, factor, num, exprHTML, symHTML, unitHTML, tokens, rasterise, copy, download, merge, project, downloadProject, zonesHTML, allTools, wire, sheetHTML, pictures, CSS };
 })();
 if (typeof module !== 'undefined') module.exports = { CalcScript };
 

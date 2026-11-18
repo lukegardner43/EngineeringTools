@@ -4,6 +4,8 @@ const { JSDOM } = require('jsdom');
 const fs = require('fs'), path = require('path');
 const html = fs.readFileSync(path.join(__dirname, '..', '..', 'Composite Beam Design.html'), 'utf8');
 let n = 0, fails = 0;
+// the drawings each part of the calculation carries (as pictures for CalcPad; the page shows them above, not in the parts)
+const capsIn = (w, re) => (w.eval('lastZ') || []).filter(z => re.test(z.title)).flatMap(z => z.C.items.filter(it => it.t === 'img').map(it => it.caption));
 const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`); if (!c) fails++; };
 function page(store) {
   const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.org/', beforeParse(w) { w.print = () => { w.printed = true; }; if (store) w.localStorage.setItem('et-composite-beam-v1', store); } });
@@ -14,6 +16,7 @@ truth('page loads without script errors', w.errs.length === 0);
 truth('UKB list filled, default 457×191×67', $('section').options.length > 50 && $('section').value === '457×191×67 UKB');
 calc(); truth('perpendicular decking: verdict and checks', /PASS|FAIL/.test(res()) && /Composite bending/.test(res()) && /Natural frequency/.test(res()) && !$('results').querySelector('.err'));
 truth('perpendicular decking: no construction LTB', /decking restrains the beam/.test(res()));
+truth('the drawings in the full calculation, pictures for CalcPad: the elevation with the beam and slab, the stress blocks with the composite bending', capsIn(w, /^Beam, slab, effective width/)[0] === 'Elevation, studs and effective width' && /^Section at mid-span: plastic stress blocks/.test(capsIn(w, /^Composite stage: bending/)[0]));
 { const z = [...$('results').querySelectorAll('details.zone')], sm = q => q.querySelector('summary').textContent;
   truth('the full calculation: the beam and loads, the construction stage, the shear connection, bending by stress blocks, the slab shear and the deflections, with the CalcPad buttons and one download of the whole as a single check',
     z.length === 6 && /^Beam, slab, effective width and loads/.test(sm(z[0])) && /^Construction stage/.test(sm(z[1])) && /^Shear connection/.test(sm(z[2])) && /η/.test(z[2].textContent) && /^Composite stage: bending/.test(sm(z[3])) && /x_?c|xc/.test(z[3].textContent.replace(/[\s,]/g, ''))

@@ -8,6 +8,8 @@ const w = dom.window, errors = [];
 w.addEventListener('error', e => errors.push(e.message));
 const wait = ms => new Promise(r => setTimeout(r, ms));
 let n = 0, fails = 0, near_;
+// the drawings each part of the calculation carries (as pictures for CalcPad; the page shows them above, not in the parts)
+const capsIn = (w, re) => (w.eval('lastZ') || []).filter(z => re.test(z.title)).flatMap(z => z.C.items.filter(it => it.t === 'img').map(it => it.caption));
 const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`); if (!c) fails++; };
 (async () => {
   await wait(100);
@@ -19,6 +21,7 @@ const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`);
     const err = eb && eb.style.display !== 'none' ? eb.textContent : '';
     const txt = res ? res.textContent : '';
     truth(`${id}: calculates without error${err ? ' (' + err + ')' : ''}`, !err && res && res.style.display !== 'none');
+    truth(`${id}: the joint drawing in the full calculation, a picture for CalcPad`, /: the joint$/.test(capsIn(w, /./)[0] || ''));
     { const z = res ? [...res.querySelectorAll('details.zone')] : [];
       truth(`${id}: the full calculation with the CalcPad buttons and one download of the whole joint${id === 'base' ? ', the base formula by formula' : ''}`, z.length === 1 && !!z[0].querySelector('[data-cp="save"]') && res.querySelectorAll('[data-cp="all"]').length === 1 && (id !== 'base' || /f_?jd|fjd/.test(z[0].textContent.replace(/[\s,]/g, '')) && /Table 6\.7/.test(z[0].textContent))); }
     if (['fin', 'pdep', 'fdep'].includes(id)) truth(`${id}: tying checks reported`, /Tying/.test(txt));

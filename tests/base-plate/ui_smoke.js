@@ -3,6 +3,8 @@ const { JSDOM } = require('jsdom');
 const fs = require('fs'), path = require('path');
 const html = fs.readFileSync(path.join(__dirname, '..', '..', 'Base Plate Design.html'), 'utf8');
 let n = 0, fails = 0;
+// the drawings each part of the calculation carries (as pictures for CalcPad; the page shows them above, not in the parts)
+const capsIn = (w, re) => (w.eval('lastZ') || []).filter(z => re.test(z.title)).flatMap(z => z.C.items.filter(it => it.t === 'img').map(it => it.caption));
 const truth = (name, c) => { n++; console.log(`${c ? 'ok  ' : 'FAIL'} ${name}`); if (!c) fails++; };
 function page(store, key = 'et-base-plate-v1') {
   const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.org/', beforeParse(w) { w.print = () => { w.printed = true; }; if (store) w.localStorage.setItem(key, store); } });
@@ -13,6 +15,7 @@ truth('page loads without script errors', w.errs.length === 0);
 truth('UKC list with the default column; three default cases', $('section').value === '254×254×73 UKC' && $('cases').rows.length === 3);
 truth('drawings before a Check (base view and mechanism)', d.querySelectorAll('#drawings svg').length >= 2);
 calc();
+truth('the drawings in the full calculation, pictures for CalcPad: the plate and anchors with the governing actions, how the base works with the first', capsIn(w, /./).includes('How the base works') && capsIn(w, /./).some(x => /^Base plate and anchors \(/.test(x)));
 { const z = [...$('results').querySelectorAll('details.zone')], sm = q => q.querySelector('summary').textContent;
   truth('the full calculation: one part for each set of actions that governs, with f_jd, the T-stub, Table 6.7 and the anchors, the CalcPad buttons and one download of the whole as a single check',
     z.length >= 1 && z.some(q => /f_?jd|fjd/.test(q.textContent.replace(/[\s,]/g, '')) && /Table 6\.7/.test(q.textContent) && /7\.2\.1\.4/.test(q.textContent)) && z.every(q => !!q.querySelector('[data-cp="save"]')) && $('results').querySelectorAll('[data-cp="all"]').length === 1); }

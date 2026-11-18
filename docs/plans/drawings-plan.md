@@ -28,8 +28,9 @@ stair shows the main bars only (the tool has no input for distribution bars).
 
 ## Steel sections in CalcPad (planned, November 2026)
 
-The steel tools' full calculations (all thirteen, November 2026) carry no drawing into CalcPad: the section, its
-dimensions and the governing parts are only in the tool. Concrete sections already draw themselves live in CalcPad
+The steel tools' full calculations (all thirteen, November 2026) carry the tools' drawings into CalcPad as pictures
+(`CalcScript.pictures`, 18 November 2026), right only for the values they were made with: edit the section in CalcPad and
+the picture stays as it was. Concrete sections already draw themselves live in CalcPad
 from their own names (`SECTION(...)`, CalcPad ecee29e); steel should do the same. Two stages, the first now and the
 second later.
 
