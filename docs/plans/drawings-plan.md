@@ -46,13 +46,23 @@ second later.
 Stage 1 changes no value: the section's properties (A, I_y, W_pl,y and the rest) are still the table's, so editing h
 in CalcPad redraws the section but does not change A. CalcPad says so under the drawing.
 
-**Stage 2: changing the section in CalcPad (later, not yet).**
+**Stage 2: changing the section, and anything else the tool has to decide (later).**
+
+Not done in CalcPad's own formulas. A new section can change which combination, station or segment governs, the class
+(Class 4 adds a whole part) and which checks apply (a CHS has no lateral-torsional buckling), and it changes values only
+the tool works out (M_cr from finite elements, the frame analysis and α_cr, the fire temperature, the torsion bimoment,
+the Tees of a web opening). CalcPad recalculating the old lines with new properties would look complete and could be
+wrong. So it goes back through the tool: the CalcPad round trip of [concrete-suite-plan.txt](concrete-suite-plan.txt)
+section 3, with these changes, because an issued calculation picks up comments and added text:
 
 | Part | What it does |
 |------|--------------|
-| `STEEL(457×191×67 UKB)` | The designation alone: the line looks the section up in the same tables the tools use and defines every dimension and property from it (h, b, t_w, t_f, r, A, I_y, I_z, W_el, W_pl, i, I_t, I_w, the mass), so changing the designation updates every value and redraws the section |
-| Branches as formulas | What depends on the section becomes an IF formula rather than a fixed line: f_y by thickness, the class of each part, the buckling curve (h/b and t_f), the shear area of the shape, the λ̄_LT method and its β, the self-weight in the loads |
-| Values from an analysis | M_cr from finite elements, the frame's moments and α_cr, the fire temperature from the time-stepping, the Tee areas of a web opening and the bimoment from the torsion analysis cannot follow a new section: CalcPad marks them stale ("worked for 457×191×67 UKB") when the designation changes, and the tool is where to run them again |
+| Edits that only feed formulas | Recalculate in CalcPad as now, with everyone's text left alone. CalcPad flags an edit to an input the tool's analysis or its decisions depend on (the section, a span, a load that moves the governing case): "re-run in the tool" |
+| Open in the tool | Sends the current inputs (the section designation among them) back to the tool, which reopens with them and recalculates |
+| The next revision, never over the top | The tool's new run comes back into CalcPad as the next revision (the title block's Revision), and the revision it came from stays as it was, with its comments, as the record of what was checked |
+| Added text carried across | Every line the tool writes carries an id (the locked names, extended to headings and notes), so CalcPad knows what a person added and which tool line it sits under. Each added paragraph goes into the new revision under the same line |
+| Notes that cannot be placed | When a note's line has gone (the class changed, another combination governs), the note is listed at the top of the new revision for the engineer to place or delete, never dropped or guessed at |
+| What changed | A short list in the new revision: values changed, checks added or removed, utilisations before and after, so the checker reviews only the differences |
 
-Done when every steel calculation draws its section live in CalcPad, the tests pass, and the ROADMAP records it.
-Stage 2 waits until Luke asks for it.
+Done when a section can be changed from CalcPad through the tool, the new revision keeps every added note (placed or
+listed), and a test round-trips a calculation with notes added under its lines and under a line that goes.
