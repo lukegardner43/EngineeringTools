@@ -21,7 +21,9 @@ const truth = (name, ok) => { n++; if (!ok) bad++; console.log(`${ok ? 'ok  ' : 
     const p = await ctx.newPage(), errs = []; p.on('pageerror', e => errs.push(e.message));
     await p.goto('file://' + path.join(ROOT, tool)); await p.waitForTimeout(800);
     if (!(await p.$('[data-cp="all"]:visible'))) { const c = await p.$('button.btn-calc:visible, #calc'); if (c) await c.click(); await p.waitForTimeout(2500); }
-    const want = await p.evaluate(() => lastZ.reduce((k, z) => k + z.C.items.filter(it => it.t === 'img').length, 0));
+    // the calculation's parts as the page keeps them (lastZ on most pages, last.Z on some)
+    const want = await p.evaluate(() => { const Z = typeof lastZ !== 'undefined' && lastZ ? lastZ : typeof last !== 'undefined' && last && last.Z ? last.Z : null;
+      return Z ? Z.reduce((k, z) => k + z.C.items.filter(it => it.t === 'img').length, 0) : -1; });
     let f = null;
     try { const [dl] = await Promise.all([p.waitForEvent('download', { timeout: 30000 }), p.click('[data-cp="all"]')]); f = path.join(dir, path.basename(tool, '.html') + '.perega'); await dl.saveAs(f); } catch (e) { /* reported below */ }
     await p.close();
