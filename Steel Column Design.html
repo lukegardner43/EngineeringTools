@@ -793,7 +793,7 @@ const EC3 = (() => {
       Wply: b * tf * (h - tf) + tw * hw * hw / 4 + 4 * As * yf, Wplz: tf * b * b / 2 + hw * tw * tw / 4 + 4 * As * zf,
       It, Iw: Iz * (h - tf) ** 2 / 4, rolled, productStd: rolled ? 'BS EN 10025-2' : 'BS EN 10025-2 (plate)' };
   }
-  // ---------- Tees cut from rolled I sections (split at mid-depth), from the parent's dimensions ----------
+  // ---------- Tees split at mid-depth from rolled I sections, from the parent's dimensions ----------
   // The tee is taken with its flange at the top: depth d from the outer face of the flange, z upward from the centroid.
   // The two root fillets are included. A fillet's width at u below the underside of the flange is w(u) = r − √(r² − (r − u)²);
   // its area and first moment (about the underside of the flange) from u = 0 to U in closed form.
@@ -838,11 +838,20 @@ const EC3 = (() => {
     }
     return I;
   }
-  // A tee cut from a rolled I section (a row of the section tables): flange b × t_f, stem t_w to the depth h/2 of the parent,
+  // A tee split from a rolled I section (a row of the section tables): flange b × t_f, stem t_w to the depth h/2 of the parent,
   // the parent's root radius. Elastic moduli to the flange (W_el,y,f) and to the toe of the stem (W_el,y,t); W_el,y their
   // lesser. I_t: half the parent's (SCI P363) less 0.105 t_w⁴ for the cut end of the stem; I_w = b³t_f³/144 + t_w³(h − t_f/2)³/36.
   // Shear centre at the flange–stem junction, z_0 = c − t_f/2 above the centroid. z_j = z_0 − ∫z(y² + z²)dA/(2I_y): positive,
   // stabilising, when the flange is in compression (sagging with the flange at the top).
+  // The Blue Book designation of a tee split from a UKB or UKC, serial width × depth × mass: the parent's serial width; half
+  // its serial depth taken from the inch size it stands for (305 = 12 in → 152, 457 = 18 in → 229, 533 = 21 in → 267); half
+  // its serial mass, rounded half up (67 → 34, 125 → 63). 457×191×67 UKB → 191×229×34. Null for a name not of that form.
+  function teeDesignation(parent) {
+    const m = /^(\d+)×(\d+)×(\d+(?:\.\d+)?)/.exec(String(parent || ''));
+    if (!m) return null;
+    const D = +m[1], B = +m[2], M = +m[3];
+    return `${B}×${Math.round(Math.round(D / 25.4) * 25.4 / 2)}×${Math.floor(M / 2 + 0.5)}`;
+  }
   function tee(p, { name } = {}) {
     const { b, tw, tf, r } = p, h = p.h / 2;
     const { As, e, Ic } = spandrel(r);
@@ -863,7 +872,7 @@ const EC3 = (() => {
     const Iw = b ** 3 * tf ** 3 / 144 + tw ** 3 * (h - tf / 2) ** 3 / 36;
     const z0 = c - tf / 2, zj = z0 - teeWagner(g, c) / (2 * Iy);
     const WelyF = Iy / c, WelyT = Iy / (h - c);
-    return { shape: 'T', nw: 1, name: name || `Tee from ${p.name}`, parent: p.name, mass: (p.mass || 0) / 2, h, b, tw, tf, r, A, c, Iy, Iz,
+    return { shape: 'T', nw: 1, name: name || (teeDesignation(p.name) ? `${teeDesignation(p.name)} T` : `Tee split from ${p.name}`), parent: p.name, mass: (p.mass || 0) / 2, h, b, tw, tf, r, A, c, Iy, Iz,
       WelyF, WelyT, Wely: Math.min(WelyF, WelyT), Welz: Iz / (b / 2), Wply, Wplz, zp, It, Iw, z0, zj,
       rolled: true, productStd: p.productStd || 'BS EN 10025-2' };
   }
@@ -1680,7 +1689,7 @@ const EC3 = (() => {
   function cm0Linear(psi, N, Ncr) { return 0.79 + 0.21 * psi + 0.36 * (psi - 0.33) * N / Ncr; }
   function cm0Transverse(EI, L, delta, Mmax, N, Ncr) { return Mmax > 0 ? 1 + (Math.PI ** 2 * EI * Math.abs(delta) / (L * L * Math.abs(Mmax)) - 1) * N / Ncr : 1; }
 
-  return { E, G, GM0, GM1, ETA, GRADES, ALPHA, yieldStrength, fromRow, fromRowPFC, fromHist, customI, tee, teeAbove, teeDepthOf, filletPart, rhs, chs, hollowRadii, isHollow, spandrel, classify, webBearing, internalLimits, kSigmaInternal, rhoInternal, rhoOutstand, aeffCompression, weffBending, weffTee, wyByClass, ncrFE, shear, shearZ, chsMN, teePlasticM, kSigmaTipComp, kSigmaTipTens,
+  return { E, G, GM0, GM1, ETA, GRADES, ALPHA, yieldStrength, fromRow, fromRowPFC, fromHist, customI, tee, teeDesignation, teeAbove, teeDepthOf, filletPart, rhs, chs, hollowRadii, isHollow, spandrel, classify, webBearing, internalLimits, kSigmaInternal, rhoInternal, rhoOutstand, aeffCompression, weffBending, weffTee, wyByClass, ncrFE, shear, shearZ, chsMN, teePlasticM, kSigmaTipComp, kSigmaTipTens,
     sectionCheck, fbCurves, chiFlex, ltbParams, chiLT, ltbModel, mcrFE, mcrUniform, cmFactor, annexB, annexA, cm0Linear, cm0Transverse, symEigenvalues };
 })();
 if (typeof module !== 'undefined') module.exports = { EC3 };
@@ -3388,7 +3397,7 @@ const EC3Script = (() => {
   // The flange at the top; the two root fillets (spandrels) included; c_T the centroid below the top of the flange. W_pl,y
   // about the plastic neutral axis (solved) and z_j (integrated) are given; the rest are formulas (SCI P363 for I_t and I_w).
   function sectionTee(C, s) {
-    C.note(`${s.name}: a tee split at mid-depth from the ${s.parent}, rolled, its flange at the top. Properties from the parent's dimensions with the root fillets; I_t and I_w by the SCI P363 tee formulae.`);
+    C.note(`${s.name} (Blue Book designation: serial width × depth × mass): a tee split at mid-depth from the ${s.parent}, rolled, its flange at the top. Properties from the parent's dimensions with the root fillets; I_t and I_w by the SCI P363 tee formulae.`);
     C.input('h_p', s.h * 2, 'mm', `depth of the ${s.parent}`, '');
     C.calc('h', 'h_p/2', s.h, 'mm', 'depth of the tee: half the parent', '');
     C.input('b', s.b, 'mm', 'flange width', ''); C.input('t_w', s.tw, 'mm', 'stem thickness', ''); C.input('t_f', s.tf, 'mm', 'flange thickness', ''); C.input('r', s.r, 'mm', 'root radius', '');

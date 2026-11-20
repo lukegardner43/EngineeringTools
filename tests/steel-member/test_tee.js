@@ -1,4 +1,4 @@
-// Tees cut from UKB and UKC against the independent reference reference/ref_tee.py -> ref_tee.json (strip integration,
+// Tees split from UKB and UKC against the independent reference reference/ref_tee.py -> ref_tee.json (strip integration,
 // Table 5.2 and EN 1993-1-5 Table 4.2 from the text, stress blocks, the torsional-flexural quadratic, a Galerkin M_cr with
 // the Wagner term), and against published tee data (centroid, I about both axes: structural tees cut from UBs).
 const { EC3, Design, SECTION_DATA } = require('./load.js');
@@ -17,6 +17,23 @@ const mk = p => EC3.tee({ ...p, productStd: 'BS EN 10025-2' });
 // dimensions of some parents and a depth 0.05 to 0.1 mm under half the parent's: agreement to 1.5 %.
 const PUB = [['914×305×253 UKB', 12.0, 32700, 6650], ['762×267×134 UKB', 10.3, 12100, 2390], ['686×254×125 UKB', 8.85, 8980, 2190], ['610×305×149 UKB', 6.45, 7410, 4650],
   ['533×210×82 UKB', 6.75, 3530, 1000], ['457×191×67 UKB', 5.46, 2030, 726], ['457×152×52 UKB', 6.04, 1670, 322], ['254×102×22 UKB', 3.45, 223, 59.7]];
+// Blue Book designations (serial width × depth × mass): the tees of BS 4-1 split from UBs whose parent is still rolled, and
+// the tees named in the SCI P363 tables
+const BS4 = ('102x127x11 102x127x13 102x127x14 102x152x13 102x152x14 102x152x17 127x152x19 127x152x21 127x152x24 133x102x13 133x102x15 140x203x20 ' +
+  '140x203x23 146x127x16 146x127x19 146x127x22 152x229x26 152x229x30 152x229x34 152x229x37 152x229x41 165x152x20 165x152x23 165x152x27 171x178x23 ' +
+  '171x178x26 171x178x29 171x178x34 178x203x27 178x203x30 178x203x34 178x203x37 191x229x34 191x229x37 191x229x41 191x229x45 191x229x49 210x267x41 ' +
+  '210x267x46 210x267x51 210x267x55 210x267x61 229x305x51 229x305x57 229x305x63 229x305x70 254x343x63 254x343x70 254x343x76 254x343x85 267x381x74 ' +
+  '267x381x87 267x381x99 292x419x113 292x419x88 292x419x97 305x305x119 305x305x75 305x305x90 305x457x101 305x457x112 305x457x127').split(' ').map(d => d.replace(/x/g, '×'));
+const ukbT = new Set(SECTION_DATA.filter(r => r[0].endsWith('UKB')).map(r => EC3.teeDesignation(r[0])));
+for (const d of BS4) near(`BS 4 tee ${d} split from a UKB in the table`, +ukbT.has(d), 1, 0);
+for (const [p, d] of [['914×305×253 UKB', '305×457×127'], ['686×254×125 UKB', '254×343×63'], ['457×191×67 UKB', '191×229×34'], ['305×165×54 UKB', '165×152×27'],
+  ['203×133×30 UKB', '133×102×15'], ['610×305×149 UKB', '305×305×75'], ['914×419×388 UKB', '419×457×194'], ['533×210×101 UKB', '210×267×51']]) {
+  n++; const got = EC3.tee(EC3.fromRow(SECTION_DATA.find(x => x[0] === p))).name; if (got !== `${d} T`) { fails++; bad.push(`FAIL designation ${p}: got ${got} expected ${d} T`); }
+}
+const allT = SECTION_DATA.filter(r => /UK[BC]$/.test(r[0])).map(r => EC3.teeDesignation(r[0]));
+near('every UKB and UKC tee has its own designation', new Set(allT).size, allT.length, 0);
+console.log(`designations: ${BS4.length} BS 4 tees found, 8 named, ${allT.length} unique`);
+
 let worst = 0;
 for (const [p, c, Iy, Iz] of PUB) {
   const r = SECTION_DATA.find(x => x[0] === p), t = EC3.tee(EC3.fromRow(r));

@@ -45,11 +45,14 @@ const block = (h, id) => h.match(new RegExp(`<script id="${id}">([\\s\\S]*?)</sc
     set('bLz', '0'); await calc(w); truth('member page: a zero length refused', /give a buckling length greater than zero/.test($('results').querySelector('.err').textContent)); set('bLz', '3.1');
     const w3 = page(MEM, { 'et-steel-member-v1': w.localStorage.getItem('et-steel-member-v1') }), $3 = id => w3.document.getElementById(id);
     truth('member page: the lengths restored', $3('bLmode').value === 'L' && !$3('bLbox').classList.contains('hidden') && $3('bLy').value === '7.2' && $3('bLLT').value === '2.5');
-    // tees cut from UKB: the series, the section, the class by the sign of the moment, the drawing, the full calculation
-    const opts = [...$('series').options].map(o => o.value);
-    truth('member page: tees cut from UKB and UKC offered', opts.includes('T-UKB') && opts.includes('T-UKC'));
-    set('series', 'T-UKB'); $('series').dispatchEvent(new w.Event('change')); set('section', 'Tee from 457×191×67 UKB'); $('section').dispatchEvent(new w.Event('change'));
-    truth('member page: a tee named by its parent, with its centroid', /Tee from 457×191×67 UKB/.test($('section').value) && /centroid 54\.\d mm below the top of the flange/.test($('secInfo').textContent));
+    // tees split from UKB: the series, the section, the class by the sign of the moment, the drawing, the full calculation
+    const opts = [...$('series').options], txt = v => (opts.find(o => o.value === v) || {}).textContent;
+    truth('member page: tees split from UB and UC offered by their Blue Book names', txt('T-UKB') === 'Tees (T) split from UB' && txt('T-UKC') === 'Tees (T) split from UC');
+    set('series', 'T-UKB'); $('series').dispatchEvent(new w.Event('change')); set('section', '191×229×34 T'); $('section').dispatchEvent(new w.Event('change'));
+    truth('member page: a tee by its Blue Book designation, its parent in the list and the summary, with its centroid', $('section').value === '191×229×34 T' && /from 457×191×67 UKB/.test($('section').selectedOptions[0].textContent)
+      && /split from 457×191×67 UKB/.test($('secInfo').textContent) && /centroid 54\.\d mm below the top of the flange/.test($('secInfo').textContent));
+    { const ws = page(MEM, { 'et-steel-member-v1': JSON.stringify({ ...JSON.parse(w.localStorage.getItem('et-steel-member-v1')), series: 'T-UKB', section: 'Tee from 610×305×149 UKB' }) });
+      truth('member page: a tee saved under its old name opens as its Blue Book designation', ws.document.getElementById('section').value === '305×305×75 T'); }
     set('bLmode', 'k'); $('bLmode').dispatchEvent(new w.Event('change')); set('bN', '30'); set('bMyB', '15'); set('bMyT', '-12'); set('bMzB', '0'); set('bMzT', '0');
     await calc(w); const rt = $('results').textContent;
     truth('member page: a tee in double curvature: the class by sign, Annex A, no error', /Class 1 sagging, Class 4 hogging/.test($('results').querySelector('.verdict').textContent) && /Annex A/.test(rt) && !$('results').querySelector('.err'));

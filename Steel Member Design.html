@@ -186,7 +186,7 @@ sub,sup{font-size:max(11px,.75em);line-height:0;}
         <div class="section-title">Section &amp; material</div>
         <div class="grid2">
           <div class="form-group"><label>Series</label>
-            <select id="series"><option value="UKB">UKB</option><option value="UKC">UKC</option><option value="PFC">PFC (channel)</option><option value="T-UKB">Tee cut from UKB</option><option value="T-UKC">Tee cut from UKC</option>
+            <select id="series"><option value="UKB">UKB</option><option value="UKC">UKC</option><option value="PFC">PFC (channel)</option><option value="T-UKB">Tees (T) split from UB</option><option value="T-UKC">Tees (T) split from UC</option>
               <option value="SHS-H">SHS hot-finished</option><option value="RHS-H">RHS hot-finished</option><option value="CHS-H">CHS hot-finished</option>
               <option value="SHS-C">SHS cold-formed</option><option value="RHS-C">RHS cold-formed</option><option value="CHS-C">CHS cold-formed</option>
               <option value="CUSTOM">Custom I-section</option></select></div>
@@ -1439,7 +1439,7 @@ const EC3 = (() => {
       Wply: b * tf * (h - tf) + tw * hw * hw / 4 + 4 * As * yf, Wplz: tf * b * b / 2 + hw * tw * tw / 4 + 4 * As * zf,
       It, Iw: Iz * (h - tf) ** 2 / 4, rolled, productStd: rolled ? 'BS EN 10025-2' : 'BS EN 10025-2 (plate)' };
   }
-  // ---------- Tees cut from rolled I sections (split at mid-depth), from the parent's dimensions ----------
+  // ---------- Tees split at mid-depth from rolled I sections, from the parent's dimensions ----------
   // The tee is taken with its flange at the top: depth d from the outer face of the flange, z upward from the centroid.
   // The two root fillets are included. A fillet's width at u below the underside of the flange is w(u) = r − √(r² − (r − u)²);
   // its area and first moment (about the underside of the flange) from u = 0 to U in closed form.
@@ -1484,11 +1484,20 @@ const EC3 = (() => {
     }
     return I;
   }
-  // A tee cut from a rolled I section (a row of the section tables): flange b × t_f, stem t_w to the depth h/2 of the parent,
+  // A tee split from a rolled I section (a row of the section tables): flange b × t_f, stem t_w to the depth h/2 of the parent,
   // the parent's root radius. Elastic moduli to the flange (W_el,y,f) and to the toe of the stem (W_el,y,t); W_el,y their
   // lesser. I_t: half the parent's (SCI P363) less 0.105 t_w⁴ for the cut end of the stem; I_w = b³t_f³/144 + t_w³(h − t_f/2)³/36.
   // Shear centre at the flange–stem junction, z_0 = c − t_f/2 above the centroid. z_j = z_0 − ∫z(y² + z²)dA/(2I_y): positive,
   // stabilising, when the flange is in compression (sagging with the flange at the top).
+  // The Blue Book designation of a tee split from a UKB or UKC, serial width × depth × mass: the parent's serial width; half
+  // its serial depth taken from the inch size it stands for (305 = 12 in → 152, 457 = 18 in → 229, 533 = 21 in → 267); half
+  // its serial mass, rounded half up (67 → 34, 125 → 63). 457×191×67 UKB → 191×229×34. Null for a name not of that form.
+  function teeDesignation(parent) {
+    const m = /^(\d+)×(\d+)×(\d+(?:\.\d+)?)/.exec(String(parent || ''));
+    if (!m) return null;
+    const D = +m[1], B = +m[2], M = +m[3];
+    return `${B}×${Math.round(Math.round(D / 25.4) * 25.4 / 2)}×${Math.floor(M / 2 + 0.5)}`;
+  }
   function tee(p, { name } = {}) {
     const { b, tw, tf, r } = p, h = p.h / 2;
     const { As, e, Ic } = spandrel(r);
@@ -1509,7 +1518,7 @@ const EC3 = (() => {
     const Iw = b ** 3 * tf ** 3 / 144 + tw ** 3 * (h - tf / 2) ** 3 / 36;
     const z0 = c - tf / 2, zj = z0 - teeWagner(g, c) / (2 * Iy);
     const WelyF = Iy / c, WelyT = Iy / (h - c);
-    return { shape: 'T', nw: 1, name: name || `Tee from ${p.name}`, parent: p.name, mass: (p.mass || 0) / 2, h, b, tw, tf, r, A, c, Iy, Iz,
+    return { shape: 'T', nw: 1, name: name || (teeDesignation(p.name) ? `${teeDesignation(p.name)} T` : `Tee split from ${p.name}`), parent: p.name, mass: (p.mass || 0) / 2, h, b, tw, tf, r, A, c, Iy, Iz,
       WelyF, WelyT, Wely: Math.min(WelyF, WelyT), Welz: Iz / (b / 2), Wply, Wplz, zp, It, Iw, z0, zj,
       rolled: true, productStd: p.productStd || 'BS EN 10025-2' };
   }
@@ -2326,7 +2335,7 @@ const EC3 = (() => {
   function cm0Linear(psi, N, Ncr) { return 0.79 + 0.21 * psi + 0.36 * (psi - 0.33) * N / Ncr; }
   function cm0Transverse(EI, L, delta, Mmax, N, Ncr) { return Mmax > 0 ? 1 + (Math.PI ** 2 * EI * Math.abs(delta) / (L * L * Math.abs(Mmax)) - 1) * N / Ncr : 1; }
 
-  return { E, G, GM0, GM1, ETA, GRADES, ALPHA, yieldStrength, fromRow, fromRowPFC, fromHist, customI, tee, teeAbove, teeDepthOf, filletPart, rhs, chs, hollowRadii, isHollow, spandrel, classify, webBearing, internalLimits, kSigmaInternal, rhoInternal, rhoOutstand, aeffCompression, weffBending, weffTee, wyByClass, ncrFE, shear, shearZ, chsMN, teePlasticM, kSigmaTipComp, kSigmaTipTens,
+  return { E, G, GM0, GM1, ETA, GRADES, ALPHA, yieldStrength, fromRow, fromRowPFC, fromHist, customI, tee, teeDesignation, teeAbove, teeDepthOf, filletPart, rhs, chs, hollowRadii, isHollow, spandrel, classify, webBearing, internalLimits, kSigmaInternal, rhoInternal, rhoOutstand, aeffCompression, weffBending, weffTee, wyByClass, ncrFE, shear, shearZ, chsMN, teePlasticM, kSigmaTipComp, kSigmaTipTens,
     sectionCheck, fbCurves, chiFlex, ltbParams, chiLT, ltbModel, mcrFE, mcrUniform, cmFactor, annexB, annexA, cm0Linear, cm0Transverse, symEigenvalues };
 })();
 if (typeof module !== 'undefined') module.exports = { EC3 };
@@ -3314,7 +3323,7 @@ const EC3Script = (() => {
   // The flange at the top; the two root fillets (spandrels) included; c_T the centroid below the top of the flange. W_pl,y
   // about the plastic neutral axis (solved) and z_j (integrated) are given; the rest are formulas (SCI P363 for I_t and I_w).
   function sectionTee(C, s) {
-    C.note(`${s.name}: a tee split at mid-depth from the ${s.parent}, rolled, its flange at the top. Properties from the parent's dimensions with the root fillets; I_t and I_w by the SCI P363 tee formulae.`);
+    C.note(`${s.name} (Blue Book designation: serial width × depth × mass): a tee split at mid-depth from the ${s.parent}, rolled, its flange at the top. Properties from the parent's dimensions with the root fillets; I_t and I_w by the SCI P363 tee formulae.`);
     C.input('h_p', s.h * 2, 'mm', `depth of the ${s.parent}`, '');
     C.calc('h', 'h_p/2', s.h, 'mm', 'depth of the tee: half the parent', '');
     C.input('b', s.b, 'mm', 'flange width', ''); C.input('t_w', s.tw, 'mm', 'stem thickness', ''); C.input('t_f', s.tf, 'mm', 'flange thickness', ''); C.input('r', s.r, 'mm', 'root radius', '');
@@ -4839,12 +4848,14 @@ function fillSections() {
   if (ser === 'CUSTOM') { secInfo(); return; }
   const cur = $('section').value;
   const H = histOf(ser);
-  const tee = ser.startsWith('T-');      // tees cut from the UKB or UKC of the table, named by their parent
-  const names = H ? H.rows.map(r => r[0]) : ser === 'PFC' ? PFC_DATA.map(r => r[0]) : tee ? SECTION_DATA.filter(r => r[0].endsWith(ser.slice(2))).map(r => `Tee from ${r[0]}`) : ser.includes('-') ? hollowList(ser) : SECTION_DATA.filter(r => r[0].endsWith(ser)).map(r => r[0]);
-  $('section').innerHTML = names.map(n => `<option${n === cur ? ' selected' : ''}>${n}</option>`).join('');
+  const tee = ser.startsWith('T-');      // tees split from the UKB or UKC of the table, by their Blue Book designation
+  const parents = tee ? SECTION_DATA.filter(r => r[0].endsWith(ser.slice(2))).map(r => r[0]) : null;
+  const names = H ? H.rows.map(r => r[0]) : ser === 'PFC' ? PFC_DATA.map(r => r[0]) : tee ? parents.map(teeName) : ser.includes('-') ? hollowList(ser) : SECTION_DATA.filter(r => r[0].endsWith(ser)).map(r => r[0]);
+  $('section').innerHTML = names.map((n, i) => `<option${tee ? ` value="${n}"` : ''}${n === cur ? ' selected' : ''}>${tee ? `${n} &nbsp;(from ${parents[i]})` : n}</option>`).join('');
   if (!names.includes(cur)) $('section').selectedIndex = Math.min(H ? Math.floor(names.length / 2) : ser === 'PFC' ? 6 : ser.includes('-') ? Math.floor(names.length / 3) : 30, names.length - 1);
   secInfo();
 }
+function teeName(parent) { return `${EC3.teeDesignation(parent)} T`; }    // 457×191×67 UKB → 191×229×34 T
 function currentSection() {
   const ser = $('series').value;
   if (ser === 'CUSTOM') {
@@ -4852,7 +4863,7 @@ function currentSection() {
       h: +$('cH').value, b: +$('cB').value, tw: +$('cTw').value, tf: +$('cTf').value, r: +$('cR').value, rolled: $('cRolled').value === '1' });
   }
   if (ser === 'PFC') return EC3.fromRowPFC(PFC_DATA.find(r => r[0] === $('section').value));
-  if (ser.startsWith('T-')) return EC3.tee(EC3.fromRow(SECTION_DATA.find(r => r[0] === $('section').value.replace(/^Tee from /, '')) || SECTION_DATA.find(r => r[0].endsWith(ser.slice(2)))));
+  if (ser.startsWith('T-')) return EC3.tee(EC3.fromRow(SECTION_DATA.find(r => r[0].endsWith(ser.slice(2)) && teeName(r[0]) === $('section').value) || SECTION_DATA.find(r => r[0].endsWith(ser.slice(2)))));
   const H = histOf(ser);
   if (H) return EC3.fromHist(H.rows.find(r => r[0] === $('section').value) || H.rows[0], H.kind, H);
   if (ser.includes('-')) {
@@ -4876,7 +4887,7 @@ function secInfo() {
     $('secInfo').innerHTML = `${s.mass.toFixed(1)} kg/m &nbsp;·&nbsp; ${s.shape === 'CHS' ? 'd/t = ' + (s.d / s.t).toFixed(1) : 'h/b = ' + (s.h / s.b).toFixed(2)} &nbsp;·&nbsp; W<sub>pl,y</sub> ${(s.Wply / 1e3).toFixed(0)} cm³ &nbsp;·&nbsp; I<sub>y</sub> ${(s.Iy / 1e4).toFixed(0)} cm⁴` +
       (EC3.isHollow(s) ? ' &nbsp;·&nbsp; nominal geometry, ' + (s.cold ? 'BS EN 10219-2' : 'BS EN 10210-2') : s.hist ? ` &nbsp;·&nbsp; ${s.hist.std}; W<sub>pl</sub>, I<sub>t</sub>, I<sub>w</sub> derived${s.hist.note ? ' &nbsp;·&nbsp; ' + s.hist.note : ''}` : s.rolled && $('series').value !== 'CUSTOM' ? ' &nbsp;·&nbsp; British Steel datasheet (Jul 2026)' : '') +
       (s.shape === 'PFC' ? ` &nbsp;·&nbsp; shear centre ${s.eSC.toFixed(1)} mm behind the web centreline` : '') +
-      (s.shape === 'T' ? ` &nbsp;·&nbsp; depth ${s.h.toFixed(1)} mm, centroid ${s.c.toFixed(1)} mm below the top of the flange &nbsp;·&nbsp; flange at the top: positive M<sub>y</sub> puts it in compression` : '');
+      (s.shape === 'T' ? ` &nbsp;·&nbsp; split from ${s.parent} &nbsp;·&nbsp; depth ${s.h.toFixed(1)} mm, centroid ${s.c.toFixed(1)} mm below the top of the flange &nbsp;·&nbsp; flange at the top: positive M<sub>y</sub> puts it in compression` : '');
   } catch (e) { $('secInfo').textContent = ''; }
 }
 
@@ -4979,7 +4990,8 @@ function collect() {
 }
 function applyState(s) {
   if (!s || s.v !== 1) return false;
-  $('series').value = s.series; if (!$('series').value) $('series').value = 'UKB'; fillSections(); if (s.section) $('section').value = s.section; $('annex').value = s.annex || 'B'; $('grade').value = s.grade; if (!$('grade').value) $('grade').value = 'S355'; $('fyG').value = s.fy ?? ''; gradeVis(); secInfo();
+  // a tee saved before the Blue Book designations ("Tee from 457×191×67 UKB") opens as its designation ("191×229×34 T")
+  $('series').value = s.series; if (!$('series').value) $('series').value = 'UKB'; fillSections(); if (s.section) $('section').value = /^Tee from /.test(s.section) ? teeName(s.section.slice(9)) : s.section; $('annex').value = s.annex || 'B'; $('grade').value = s.grade; if (!$('grade').value) $('grade').value = 'S355'; $('fyG').value = s.fy ?? ''; gradeVis(); secInfo();
   Object.entries({ cH: 'h', cB: 'b', cTw: 'tw', cTf: 'tf', cR: 'r', cRolled: 'rolled' }).forEach(([id, k]) => $(id).value = s.custom[k]);
   $('pName').value = s.proj.name || ''; $('pJob').value = s.proj.job || ''; $('pRef').value = s.proj.ref || ''; $('pBy').value = s.proj.by || '';
   const mems = s.mems || [...(s.cantL > 0 ? [s.cantL] : []), ...s.spans, ...(s.cantR > 0 ? [s.cantR] : [])];   // states saved before the free-end option: cantilever lengths
