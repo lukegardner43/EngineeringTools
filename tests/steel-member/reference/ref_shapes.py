@@ -4,7 +4,9 @@
   (BS EN 1993-1-5 4.4, Tables 4.1/4.2).
 - Plastic N-M of CHS by numerical stress blocks; RHS by (6.39)/(6.40)/(6.41); channel by web stress block.
 - Flexural buckling (Table 6.2) and torsional-flexural buckling of channels from the coupled equation
-  i0^2 (N - Ncr,z)(N - Ncr,T) - y0^2 N^2 = 0 (smallest root).
+  i0^2 (N - Ncr,y)(N - Ncr,T) - y0^2 N^2 = 0 (smallest root): the shear centre lies on the y-y axis of symmetry, so torsion
+  couples with flexure about y-y (BS EN 1993-1-3 6.2.3(7)). (Before November 2026 this reference, like the engine, coupled
+  it with N_cr,z.)
 Writes ../ref_shapes.json."""
 import math, json, random, pathlib, csv
 import numpy as np
@@ -208,8 +210,8 @@ def pfc_buckling(s, grade, L, Aeff):
     Ncrz = math.pi ** 2 * E * s['Iz'] / L ** 2; Ncry = math.pi ** 2 * E * s['Iy'] / L ** 2
     i02 = (s['Iy'] + s['Iz']) / s['A'] + s['y0'] ** 2
     NcrT = (G * s['It'] + math.pi ** 2 * E * s['Iw'] / L ** 2) / i02
-    # smallest root of i02 (N - Ncrz)(N - NcrT) - y0^2 N^2 = 0
-    a = i02 - s['y0'] ** 2; bq = -i02 * (Ncrz + NcrT); c = i02 * Ncrz * NcrT
+    # smallest root of i02 (N - Ncry)(N - NcrT) - y0^2 N^2 = 0
+    a = i02 - s['y0'] ** 2; bq = -i02 * (Ncry + NcrT); c = i02 * Ncry * NcrT
     NcrTF = (-bq - math.sqrt(bq * bq - 4 * a * c)) / (2 * a)
     cy_, cz_, cT_ = chi(math.sqrt(NRk / Ncry), IMP['c']), chi(math.sqrt(NRk / Ncrz), IMP['c']), chi(math.sqrt(NRk / NcrTF), IMP['c'])
     return dict(NcrTF=NcrTF, NbRd=min(cy_, cz_, cT_) * NRk)

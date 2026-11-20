@@ -73,6 +73,32 @@ member('historic channel, f_y given', { sec: hist('H-BSC1932', 20), grade: 'GIVE
 member('axial only, UKC tie', { sec: uc, grade: 'S355', L: 5000, N: -1500e3, MyB: 0, MyT: 0, MzB: 0, MzT: 0, ky: 1, kz: 1, nLT: 1 });
 member('axial only, UKC strut', { sec: uc, grade: 'S355', L: 7000, N: 1500e3, MyB: 0, MyT: 0, MzB: 0, MzT: 0, ky: 1, kz: 1, nLT: 1 });
 member('minor-axis bending only', { sec: uc, grade: 'S275', L: 4000, N: 0, MyB: 0, MyT: 0, MzB: 30e6, MzT: -20e6, ky: 1, kz: 1, nLT: 1 });
+// ---------- tees cut from UKB and UKC ----------
+const T = nm => EC3.tee(EC3.fromRow(row(nm)));
+const tb = T('457×191×67 UKB'), tc = T('254×254×89 UKC'), tdeep = T('914×305×253 UKB');
+member('tee: sagging, the flange in compression (Class 1)', { sec: tb, grade: 'S355', L: 5000, N: 0, MyB: 40e6, MyT: 40e6, MzB: 0, MzT: 0, ky: 1, kz: 1, nLT: 1 });
+member('tee: hogging, the toe in compression (Class 4, W_eff)', { sec: tb, grade: 'S355', L: 5000, N: 0, MyB: -15e6, MyT: -15e6, MzB: 0, MzT: 0, ky: 1, kz: 1, nLT: 1 });
+member('tee: reversal along the member', { sec: tb, grade: 'S275', L: 4000, N: 0, MyB: 20e6, MyT: -20e6, MzB: 0, MzT: 0, ky: 1, kz: 1, nLT: 2 });
+member('tee strut: Class 4, torsional-flexural, ΔM = e_N N', { sec: tb, grade: 'S355', L: 5000, N: 200e3, MyB: 0, MyT: 0, MzB: 0, MzT: 0, ky: 1, kz: 1, nLT: 1 });
+member('tee: compression and hogging', { sec: tb, grade: 'S355', L: 5000, N: 120e3, MyB: -8e6, MyT: -8e6, MzB: 0, MzT: 0, ky: 1, kz: 1, nLT: 1 });
+member('tee: compression and sagging', { sec: tdeep, grade: 'S275', L: 6000, N: 800e3, MyB: 150e6, MyT: 60e6, MzB: 0, MzT: 0, ky: 1, kz: 0.5, nLT: 2 });
+member('tee: tension and sagging', { sec: tb, grade: 'S355', L: 5000, N: -250e3, MyB: 30e6, MyT: 30e6, MzB: 0, MzT: 0, ky: 1, kz: 1, nLT: 1 });
+member('tee from a UKC: biaxial with compression', { sec: tc, grade: 'S355', L: 3000, N: 150e3, MyB: 15e6, MyT: 25e6, MzB: 4e6, MzT: 4e6, ky: 1, kz: 1, nLT: 1 });
+member('tee from a UKC: short, high shear', { sec: tc, grade: 'S355', L: 300, N: 0, MyB: 0, MyT: 60e6, MzB: 0, MzT: 0, ky: 1, kz: 1, nLT: 1 });
+member('tee: given lengths, positions along the member', { sec: tb, grade: 'S355', L: 6000, N: 60e3, MyB: 30e6, MyT: -10e6, MzB: 0, MzT: 0, Lcr: { y: 6000, z: 3000, LT: 2500 } });
+member('tee: L_LT longer than the member', { sec: tb, grade: 'S355', L: 4000, N: 50e3, MyB: 40e6, MyT: 10e6, MzB: 0, MzT: 0, Lcr: { y: 4000, z: 4000, LT: 6000 } });
+member('tee: minor-axis bending only', { sec: tc, grade: 'S275', L: 4000, N: 0, MyB: 0, MyT: 0, MzB: 20e6, MzT: -10e6, ky: 1, kz: 1, nLT: 1 });
+member('tee tie', { sec: tb, grade: 'S355', L: 5000, N: -600e3, MyB: 0, MyT: 0, MzB: 0, MzT: 0, ky: 1, kz: 1, nLT: 1 });
+for (let t = 0; t < 40; t++) {
+  let s2 = 7000 + t * 37; const r2 = () => (s2 = s2 * 16807 % 2147483647) / 2147483647, p2 = a => a[Math.floor(r2() * a.length)], b2 = (a, b) => a + (b - a) * r2();
+  const sec = EC3.tee(EC3.fromRow(p2(SECTION_DATA.filter(r => /UK[BC]$/.test(r[0]))))), L = p2([1000, 2500, 4000, 6000]), fy = 275;
+  const Mel = sec.Wely * fy, Nsz = sec.A * fy, given = r2() < 0.3;
+  const inp = { sec, grade: p2(['S275', 'S355']), L, N: p2([0, 0, -0.3, 0.1, 0.3]) * Nsz, MyB: b2(-0.6, 0.8) * Mel, MyT: p2([0, 0.3, 0.6, -0.4]) * Mel, MzB: r2() < 0.25 ? b2(-0.15, 0.15) * sec.Wplz * fy : 0, MzT: 0,
+    ky: p2([0.7, 1, 1]), kz: p2([0.5, 1]), nLT: p2([1, 1, 2]) };
+  if (inp.MzB) inp.MzT = b2(-0.15, 0.15) * sec.Wplz * fy;
+  if (given) inp.Lcr = { y: L * p2([0.7, 1, 2]), z: L * p2([0.5, 1]), LT: L * p2([0.3, 0.5, 1, 1.5]) };
+  member(`random tee ${t} ${sec.name}`, inp);
+}
 // ---------- random members ----------
 let seed = 1993; const rnd = () => (seed = seed * 16807 % 2147483647) / 2147483647, pick = a => a[Math.floor(rnd() * a.length)], between = (a, b) => a + (b - a) * rnd();
 for (let t = 0; t < 70; t++) {

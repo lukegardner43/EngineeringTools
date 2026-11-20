@@ -45,6 +45,17 @@ const block = (h, id) => h.match(new RegExp(`<script id="${id}">([\\s\\S]*?)</sc
     set('bLz', '0'); await calc(w); truth('member page: a zero length refused', /give a buckling length greater than zero/.test($('results').querySelector('.err').textContent)); set('bLz', '3.1');
     const w3 = page(MEM, { 'et-steel-member-v1': w.localStorage.getItem('et-steel-member-v1') }), $3 = id => w3.document.getElementById(id);
     truth('member page: the lengths restored', $3('bLmode').value === 'L' && !$3('bLbox').classList.contains('hidden') && $3('bLy').value === '7.2' && $3('bLLT').value === '2.5');
+    // tees cut from UKB: the series, the section, the class by the sign of the moment, the drawing, the full calculation
+    const opts = [...$('series').options].map(o => o.value);
+    truth('member page: tees cut from UKB and UKC offered', opts.includes('T-UKB') && opts.includes('T-UKC'));
+    set('series', 'T-UKB'); $('series').dispatchEvent(new w.Event('change')); set('section', 'Tee from 457×191×67 UKB'); $('section').dispatchEvent(new w.Event('change'));
+    truth('member page: a tee named by its parent, with its centroid', /Tee from 457×191×67 UKB/.test($('section').value) && /centroid 54\.\d mm below the top of the flange/.test($('secInfo').textContent));
+    set('bLmode', 'k'); $('bLmode').dispatchEvent(new w.Event('change')); set('bN', '30'); set('bMyB', '15'); set('bMyT', '-12'); set('bMzB', '0'); set('bMzT', '0');
+    await calc(w); const rt = $('results').textContent;
+    truth('member page: a tee in double curvature: the class by sign, Annex A, no error', /Class 1 sagging, Class 4 hogging/.test($('results').querySelector('.verdict').textContent) && /Annex A/.test(rt) && !$('results').querySelector('.err'));
+    truth('member page: the tee drawn with its shear centre', /SC/.test($('drawings').textContent) && !!$('drawings').querySelector('svg path'));
+    { const Z = w.eval('lastZ'); truth('member page: the tee in the full calculation: z_j, the stem as an outstand, N_cr,TF about z-z', Z.some(z => z.C.items.some(it => it.name === 'z_j')) && Z.some(z => z.C.items.some(it => it.name === 'c_w' && /outstand/.test(it.desc || it.text || ''))) && Z.some(z => z.C.items.some(it => it.name === 'N_crTF' && /z-z/.test(it.desc || '')))); }
+    $('printBtn').click(); truth('member page: the A4 sheet of a tee: the stem and its k_σ', /Stem \(an outstand\)/.test($('report').textContent) && /kσ/.test($('report').textContent.replace(/\s/g, '')));
     truth('member page: no script errors', w.errs.length === 0 && w3.errs.length === 0); }
   // beam analysis and design: spans and loads only
   { const w = page(BEAM), d = w.document, $ = id => d.getElementById(id);

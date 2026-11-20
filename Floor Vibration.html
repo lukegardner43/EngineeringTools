@@ -570,6 +570,81 @@ const EC3 = (() => {
       Wply: b * tf * (h - tf) + tw * hw * hw / 4 + 4 * As * yf, Wplz: tf * b * b / 2 + hw * tw * tw / 4 + 4 * As * zf,
       It, Iw: Iz * (h - tf) ** 2 / 4, rolled, productStd: rolled ? 'BS EN 10025-2' : 'BS EN 10025-2 (plate)' };
   }
+  // ---------- Tees cut from rolled I sections (split at mid-depth), from the parent's dimensions ----------
+  // The tee is taken with its flange at the top: depth d from the outer face of the flange, z upward from the centroid.
+  // The two root fillets are included. A fillet's width at u below the underside of the flange is w(u) = r − √(r² − (r − u)²);
+  // its area and first moment (about the underside of the flange) from u = 0 to U in closed form.
+  function filletPart(r, U) {
+    if (!(r > 0) || !(U > 0)) return { A: 0, S: 0 };
+    U = Math.min(U, r);
+    const F = v => (v * Math.sqrt(Math.max(0, r * r - v * v)) + r * r * Math.asin(Math.max(-1, Math.min(1, v / r)))) / 2;   // ∫√(r² − v²)dv
+    const Gq = v => -Math.pow(Math.max(0, r * r - v * v), 1.5) / 3;                                                         // ∫v√(r² − v²)dv
+    const v0 = r - U;
+    return { A: r * U - (F(r) - F(v0)), S: r * (r * r / 2 - (r * v0 - v0 * v0 / 2)) - r * (F(r) - F(v0)) + (Gq(r) - Gq(v0)) };
+  }
+  // Area and first moment (about the outer face of the flange) of the part of a tee above depth d; k multiplies the stem
+  // and its fillets (a yield strength reduced for shear on the stem)
+  function teeAbove(s, d, k = 1) {
+    const { b, tf, tw, r, h } = s;
+    d = Math.max(0, Math.min(h, d));
+    if (d <= tf) return { A: b * d, S: b * d * d / 2 };
+    const fp = filletPart(r, d - tf);
+    return { A: b * tf + k * (tw * (d - tf) + 2 * fp.A), S: b * tf * tf / 2 + k * (tw * (d * d - tf * tf) / 2 + 2 * (tf * fp.A + fp.S)) };
+  }
+  // the depth below the top of a tee with the area (k-weighted) a above it
+  function teeDepthOf(s, a, k = 1) {
+    let lo = 0, hi = s.h;
+    for (let i = 0; i < 100; i++) { const m = (lo + hi) / 2; if (teeAbove(s, m, k).A < a) lo = m; else hi = m; }
+    return (lo + hi) / 2;
+  }
+  // ∫ z(y² + z²) dA of a tee about its centroid (z upward), for the monosymmetry constant z_j: the flange and stem exactly,
+  // the fillets by Simpson's rule in θ (u = r(1 − cos θ), w = r(1 − sin θ))
+  function teeWagner(s, c) {
+    const { b, tf, tw, r, h } = s;
+    const P = (zl, zh, a, q) => a * (zh * zh - zl * zl) / 2 + q * (zh ** 4 - zl ** 4) / 4;      // ∫ z (a + q z²) dz
+    let I = P(c - tf, c, b ** 3 / 12, b) + P(c - h, c - tf, tw ** 3 / 12, tw);
+    if (r > 0) {
+      const n = 400, hT = Math.PI / 2 / n;
+      let sum = 0;
+      for (let i = 0; i <= n; i++) {
+        const th = i * hT, u = r * (1 - Math.cos(th)), w = r * (1 - Math.sin(th)), z = c - tf - u, y0 = tw / 2;
+        const f = z * (2 * ((y0 + w) ** 3 - y0 ** 3) / 3 + 2 * w * z * z) * r * Math.sin(th);
+        sum += f * (i === 0 || i === n ? 1 : i % 2 ? 4 : 2);
+      }
+      I += sum * hT / 3;
+    }
+    return I;
+  }
+  // A tee cut from a rolled I section (a row of the section tables): flange b × t_f, stem t_w to the depth h/2 of the parent,
+  // the parent's root radius. Elastic moduli to the flange (W_el,y,f) and to the toe of the stem (W_el,y,t); W_el,y their
+  // lesser. I_t: half the parent's (SCI P363) less 0.105 t_w⁴ for the cut end of the stem; I_w = b³t_f³/144 + t_w³(h − t_f/2)³/36.
+  // Shear centre at the flange–stem junction, z_0 = c − t_f/2 above the centroid. z_j = z_0 − ∫z(y² + z²)dA/(2I_y): positive,
+  // stabilising, when the flange is in compression (sagging with the flange at the top).
+  function tee(p, { name } = {}) {
+    const { b, tw, tf, r } = p, h = p.h / 2;
+    const { As, e, Ic } = spandrel(r);
+    const A = b * tf + (h - tf) * tw + 2 * As;
+    const c = (b * tf * tf / 2 + (h - tf) * tw * (tf + h) / 2 + 2 * As * (tf + e)) / A;                       // centroid below the top
+    const Iy = b * tf ** 3 / 12 + b * tf * (c - tf / 2) ** 2 + tw * (h - tf) ** 3 / 12 + tw * (h - tf) * ((tf + h) / 2 - c) ** 2 + 2 * (Ic + As * (tf + e - c) ** 2);
+    const Iz = tf * b ** 3 / 12 + (h - tf) * tw ** 3 / 12 + 2 * (Ic + As * (tw / 2 + e) ** 2);
+    const g = { b, tf, tw, r, h };
+    const zp = teeDepthOf(g, A / 2), Stot = teeAbove(g, h).S;
+    const Wply = Stot - 2 * teeAbove(g, zp).S;
+    const Wplz = tf * b * b / 4 + (h - tf) * tw * tw / 4 + 2 * As * (tw / 2 + e);
+    let It;
+    if (r > 0) {
+      const a1 = -0.042 + 0.2204 * tw / tf + 0.1355 * r / tf - 0.0865 * r * tw / tf ** 2 - 0.0725 * tw ** 2 / tf ** 2;
+      const D1 = ((tf + r) ** 2 + tw * (r + tw / 4)) / (2 * r + tf);
+      It = b * tf ** 3 / 3 + (h - tf) * tw ** 3 / 3 + a1 * D1 ** 4 - 0.21 * tf ** 4 - 0.105 * tw ** 4;
+    } else It = (b * tf ** 3 + (h - tf / 2) * tw ** 3) / 3;
+    const Iw = b ** 3 * tf ** 3 / 144 + tw ** 3 * (h - tf / 2) ** 3 / 36;
+    const z0 = c - tf / 2, zj = z0 - teeWagner(g, c) / (2 * Iy);
+    const WelyF = Iy / c, WelyT = Iy / (h - c);
+    return { shape: 'T', nw: 1, name: name || `Tee from ${p.name}`, parent: p.name, mass: (p.mass || 0) / 2, h, b, tw, tf, r, A, c, Iy, Iz,
+      WelyF, WelyT, Wely: Math.min(WelyF, WelyT), Welz: Iz / (b / 2), Wply, Wplz, zp, It, Iw, z0, zj,
+      rolled: true, productStd: p.productStd || 'BS EN 10025-2' };
+  }
+
   // Hollow sections from nominal dimensions. Corner radii: hot-finished BS EN 10210-2 ro = 1.5t, ri = t;
   // cold-formed BS EN 10219-2 ro = 2t (t <= 6), 2.5t (t <= 10), 3t (t > 10), ri = ro - t. It, Wt per those standards.
   function hollowRadii(t, cold) {
@@ -609,8 +684,71 @@ const EC3 = (() => {
       psi > -1 ? 42 * eps / (0.67 + 0.33 * psi) : 62 * eps * (1 - psi) * Math.sqrt(-psi)];
   }
   const clsOf = (ratio, lim) => ratio <= lim[0] ? 1 : ratio <= lim[1] ? 2 : ratio <= lim[2] ? 3 : 4;
-  // bending: major-axis bending present; biax: minor-axis bending present as well (walls then taken in compression)
-  function classify(s, fy, N, bending, biax = false) {
+  // Tee stems, EN 1993-1-5 Table 4.2: k_σ of an outstand with its free edge in compression (σ1 at the free edge, ψ = σ at the
+  // supported edge / σ1, 1 ≥ ψ ≥ −3) or in tension (σ1 at the supported edge, ψ = σ at the free edge / σ1; below −1 the
+  // value at −1, the least, is taken)
+  const kSigmaTipComp = psi => { const p = Math.max(-3, Math.min(1, psi)); return 0.57 - 0.21 * p + 0.07 * p * p; };
+  function kSigmaTipTens(psi) {
+    const p = Math.min(1, psi);
+    if (Math.abs(p - 1) < 1e-12) return 0.43;
+    if (p > 0) return 0.578 / (p + 0.34);
+    if (p > -1) return 1.7 - 5 * p + 17.1 * p * p;
+    return 23.8;
+  }
+  // Classification of a tee, Table 5.2 sheet 2. The flange: two outstands, c = (b − t_w − 2r)/2, in compression unless the
+  // stem's toe is the compressed side with no axial compression. The stem: an outstand from the root of the fillet,
+  // c = h − t_f − r (h the depth of the tee). sgn: the sign of M_y (> 0 the flange in compression and the toe of the stem in
+  // tension; < 0 the toe in compression; 0 with bending: both, the worse). α from the plastic stress blocks with N_Ed;
+  // ψ elastic with the extreme compression fibre at f_y; Class 3 limit 21ε√k_σ (14ε in uniform compression).
+  function classifyTee(s, fy, N, bending, biax, sgn) {
+    if (bending && !sgn) {
+      const p = classifyTee(s, fy, N, true, biax, 1), m = classifyTee(s, fy, N, true, biax, -1);
+      return m.cls > p.cls ? m : p;
+    }
+    const eps = Math.sqrt(235 / fy), A = s.A, h = s.h;
+    const cf = (s.b - s.tw - 2 * s.r) / 2, rf = cf / s.tf, cw = h - s.tf - s.r, rw = cw / s.tw, d0 = s.tf + s.r;
+    const sg = bending ? (sgn < 0 ? -1 : 1) : 0;
+    let alpha, psi, ks = null, tip = null, wl, how;
+    const Ac = (A + N / fy) / 2;                                        // area in compression, fully plastic
+    if (!bending) {
+      if (N > 0) { alpha = 1; psi = 1; ks = 0.43; tip = 'compression'; wl = [9 * eps, 10 * eps, 14 * eps]; how = 'uniform compression'; }
+      else { alpha = 0; psi = -1; wl = [Infinity, Infinity, Infinity]; how = 'tension'; }
+    } else if (Ac >= A) { alpha = 1; psi = 1; ks = 0.43; tip = 'compression'; wl = [9 * eps, 10 * eps, 14 * eps]; how = 'the whole section in compression'; }
+    else if (Ac <= 0) { alpha = 0; psi = -1; wl = [Infinity, Infinity, Infinity]; how = 'the whole section in tension'; }
+    else {
+      const sN = N / A;
+      if (sg > 0) {                                                     // the flange compressed: compression from the top
+        const dp = teeDepthOf(s, Ac);
+        alpha = Math.max(0, Math.min(1, (dp - d0) / cw));
+        const k = (fy - sN) / s.c, sr = sN + k * (s.c - d0), st = sN + k * (s.c - h);
+        tip = 'tension';
+        if (alpha <= 0 && sr <= 0) { psi = -1; wl = [Infinity, Infinity, Infinity]; how = 'the stem in tension'; }
+        else {
+          psi = sr > 0 ? Math.max(-3, st / sr) : -1; ks = kSigmaTipTens(psi);
+          const aa = Math.max(alpha, 1e-9);
+          wl = [9 * eps / (aa * Math.sqrt(aa)), 10 * eps / (aa * Math.sqrt(aa)), 21 * eps * Math.sqrt(ks)];
+          how = 'the toe of the stem in tension';
+        }
+      } else {                                                          // the toe compressed: compression from the bottom
+        const dp = teeDepthOf(s, A - Ac);
+        alpha = Math.max(0, Math.min(1, (h - Math.max(dp, d0)) / cw));
+        const k = -(fy - sN) / (h - s.c), sr = sN + k * (s.c - d0);
+        psi = Math.max(-3, Math.min(1, sr / fy)); ks = kSigmaTipComp(psi); tip = 'compression';
+        const aa = Math.max(alpha, 1e-9);
+        wl = [9 * eps / aa, 10 * eps / aa, 21 * eps * Math.sqrt(ks)];
+        how = 'the toe of the stem in compression';
+      }
+    }
+    const wcls = clsOf(rw, wl);
+    const fComp = biax || N > 0 || sg > 0;
+    const fl = [9 * eps, 10 * eps, 14 * eps], fcls = fComp ? clsOf(rf, fl) : 1;
+    return { eps, sgn: sg, flange: { c: cf, ratio: rf, lim: fComp ? fl : [Infinity, Infinity, Infinity], cls: fcls, kind: 'outstand', comp: fComp },
+      web: { c: cw, ratio: rw, alpha, psi, ks, tip, how, lim: wl, cls: wcls, kind: 'stem' }, cls: Math.max(fcls, wcls) };
+  }
+  // bending: major-axis bending present; biax: minor-axis bending present as well (walls then taken in compression);
+  // sgn: the sign of M_y, for a tee (whose stem classifies differently in sagging and hogging)
+  function classify(s, fy, N, bending, biax = false, sgn = 0) {
+    if (s.shape === 'T') return classifyTee(s, fy, N, bending, biax, sgn);
     const eps = Math.sqrt(235 / fy);
     if (s.shape === 'CHS') {                      // Table 5.2 sheet 3
       const ratio = s.d / s.t, lim = [50 * eps * eps, 70 * eps * eps, 90 * eps * eps], c = clsOf(ratio, lim);
@@ -664,6 +802,7 @@ const EC3 = (() => {
       if (k.cls === 4) throw new Error('Class 4 CHS (BS EN 1993-1-6) is outside the scope of this tool');
       return { Aeff: s.A, rhoW: 1, rhoF: 1, cls: k.cls };
     }
+    if (s.shape === 'T') return aeffTee(s, k);
     let Aeff = s.A, rhoW = 1, rhoF = 1;
     if (s.shape === 'RHS') {
       if (k.web.cls === 4) { rhoW = rhoInternal(k.web.c, s.t, eps, 1).rho; Aeff -= 2 * (1 - rhoW) * k.web.c * s.t; }
@@ -673,6 +812,16 @@ const EC3 = (() => {
     if (k.web.cls === 4) { rhoW = rhoInternal(k.web.c, s.tw, eps, 1).rho; Aeff -= (1 - rhoW) * k.web.c * s.tw; }
     if (k.flange.cls === 4) { rhoF = rhoOutstand(k.flange.c, s.tf, eps).rho; Aeff -= (s.shape === 'PFC' ? 2 : 4) * (1 - rhoF) * k.flange.c * s.tf; }
     return { Aeff, rhoW, rhoF, cls: k.cls };
+  }
+  // A tee in uniform compression: the stem's ineffective part at its toe, (1 − ρ)c with k_σ = 0.43 (EN 1993-1-5 Table 4.2);
+  // a Class 4 flange reduced at its tips. e_N: the effective centroid above the gross one (6.2.2.5(4))
+  function aeffTee(s, k) {
+    const eps = k.eps, holes = [];
+    let rhoW = 1, rhoF = 1, holeW = 0;
+    if (k.web.cls === 4) { rhoW = rhoOutstand(k.web.c, s.tw, eps).rho; holeW = (1 - rhoW) * k.web.c; holes.push({ A: holeW * s.tw, z: s.c - (s.h - holeW / 2) }); }
+    if (k.flange.cls === 4) { rhoF = rhoOutstand(k.flange.c, s.tf, eps).rho; holes.push({ A: 2 * (1 - rhoF) * k.flange.c * s.tf, z: s.c - s.tf / 2 }); }
+    const Aeff = s.A - holes.reduce((a, h) => a + h.A, 0), eN = -holes.reduce((a, h) => a + h.A * h.z, 0) / Aeff;
+    return { Aeff, rhoW, rhoF, cls: k.cls, eN, holeW };
   }
   // Holes (ineffective strips) removed from the gross section: [{A, z, I}], z from the gross centroid (+ = compression side)
   function withHoles(s, holes) {
@@ -690,9 +839,29 @@ const EC3 = (() => {
     else { bc = c; beff = r.rho * c; be1 = 2 * beff / (5 - psi); }
     return { ...r, psi, bc, beff, be1, be2: beff - be1, hole: bc - beff };
   }
+  // Effective modulus of a tee in bending by the sign of M_y (EN 1993-1-5 4.4), the stem's ψ from the gross section (4.4(3),
+  // an outstand), ρ from k_σ of Table 4.2. The toe in compression (sgn < 0): the ineffective part at the toe, b_c − ρb_c
+  // (b_c = c/(1 − ψ) for ψ < 0, else c). The toe in tension (sgn > 0): from ρb_c to b_c below the root of the fillet.
+  // W_eff = I_eff over the farther extreme fibre of the effective section (W_eff,min). A Class 4 flange: outside the scope.
+  function weffTee(s, fy, sgn) {
+    const sg = sgn < 0 ? -1 : 1, k = classifyTee(s, fy, 0, true, false, sg), eps = k.eps;
+    if (k.cls < 4) return { Weff: s.Wely, Ieff: s.Iy, Aeff: s.A, rho: 1, lp: null, shift: 0, hole: 0, reduced: false, sgn: sg };
+    if (k.flange.cls === 4) throw new Error('Class 4 flange of a tee: outside the scope of this tool');
+    const w = k.web, c = w.c, t = s.tw, d0 = s.tf + s.r;
+    const lp = (c / t) / (28.4 * eps * Math.sqrt(w.ks)), rho = lp <= 0.748 ? 1 : Math.min(1, (lp - 0.188) / (lp * lp));
+    const bc = w.psi < 0 ? c / (1 - w.psi) : c, beff = rho * bc, hole = bc - beff;
+    const d1 = sg < 0 ? s.h - hole : d0 + beff, d2 = sg < 0 ? s.h : d0 + bc;      // the hole, depths below the top
+    const zh = s.c - (d1 + d2) / 2, Ah = hole * t, Aeff = s.A - Ah;
+    const shift = -Ah * zh / Aeff;                                                   // the effective centroid above the gross
+    const Ieff = s.Iy - (t * hole ** 3 / 12 + Ah * zh * zh) - Aeff * shift * shift;
+    const ce = s.c - shift, top = ce, bot = (sg < 0 ? s.h - hole : s.h) - ce;
+    const Weff = Ieff / Math.max(top, bot);
+    return { Weff, Ieff, Aeff, shift, rho, lp, ks: w.ks, psi: w.psi, bc, beff, hole, d1, d2, top, bot, reduced: Weff < s.Wely - 1e-6, sgn: sg };
+  }
   // Effective section modulus for major-axis bending (EN 1993-1-5 4.4). Stress ratio of the web from the effective
-  // compression flange and gross web (4.4(3)).
-  function weffBending(s, fy) {
+  // compression flange and gross web (4.4(3)). sgn: the sign of the moment, for a tee.
+  function weffBending(s, fy, sgn = 1) {
+    if (s.shape === 'T') return weffTee(s, fy, sgn);
     const k = classify(s, fy, 0, true), eps = k.eps;
     if (k.cls < 4) return { Weff: s.Wely, Ieff: s.Iy, rho: 1, lp: null, shift: 0, reduced: false };
     if (s.shape === 'CHS') throw new Error('Class 4 CHS (BS EN 1993-1-6) is outside the scope of this tool');
@@ -712,13 +881,16 @@ const EC3 = (() => {
     return { ...r, rho: w.rho, lp: w.lp, ks: w.ks, psi, beff: w.beff, be1: w.be1, be2: w.be2, hole: w.hole, flange: fl, reduced: r.Weff < s.Wely - 1e-6 };
   }
   // Section modulus for bending resistance by class (6.2.5(2))
-  function wyByClass(s, fy, cls) { return cls <= 2 ? s.Wply : cls === 3 ? s.Wely : weffBending(s, fy).Weff; }
+  function wyByClass(s, fy, cls, sgn = 1) { return cls <= 2 ? s.Wply : cls === 3 ? s.Wely : weffBending(s, fy, sgn).Weff; }
 
   // ---------- Shear, 6.2.6 and EN 1993-1-5 5 ----------
   // Load parallel to the web (z direction)
   function shear(s, fy) {
     const eps = Math.sqrt(235 / fy);
     if (s.shape === 'CHS') { const Av = 2 * s.A / Math.PI, Vpl = Av * fy / Math.sqrt(3) / GM0; return { Av, Vpl, hw: s.d, slender: false, Vb: Infinity, VRd: Vpl }; }
+    // a rolled tee, load parallel to the stem (6.2.6(3)(c)); the stem is an outstand, not a web between flanges, so the
+    // shear buckling of 6.2.6(6) and EN 1993-1-5 section 5 does not apply
+    if (s.shape === 'T') { const Av = s.A - s.b * s.tf + (s.tw + 2 * s.r) * s.tf / 2, Vpl = Av * fy / Math.sqrt(3) / GM0; return { Av, Vpl, hw: s.h - s.tf, slender: false, Vb: Infinity, VRd: Vpl, stem: true }; }
     const hw = s.h - 2 * s.tf, tw = s.tw, nw = s.nw;
     let Av;
     if (s.shape === 'RHS') Av = s.A * s.h / (s.b + s.h);                                     // 6.2.6(3)(f)
@@ -739,6 +911,7 @@ const EC3 = (() => {
     let Av;
     if (s.shape === 'CHS') Av = 2 * s.A / Math.PI;
     else if (s.shape === 'RHS') Av = s.A * s.b / (s.b + s.h);
+    else if (s.shape === 'T') Av = s.A - (s.h - s.tf) * s.tw;           // the flange (and fillets): the stem left out
     else Av = s.A - (s.h - 2 * s.tf) * s.tw;
     const Vpl = Av * fy / Math.sqrt(3) / GM0;
     return { Av, Vpl, VRd: Vpl };
@@ -759,7 +932,52 @@ const EC3 = (() => {
 
   // ---------- Cross-section resistance at one station, 6.2 ----------
   // N (+ compression), My (major), V (parallel to web), Mz (minor), Vz (parallel to flanges)
+  // The plastic moment of a tee about y with the axial force N (+ compression) at the gross centroid: the stress blocks either
+  // side of the neutral axis (f_y in compression on the side of the sign, in tension on the other), the stem and fillets at
+  // k f_y (k = 1 − ρ for shear). Returns the magnitude M, the depth dp of the neutral axis and the squash load F.
+  function teePlasticM(s, fyd, N, sgn, k = 1) {
+    const Qt = teeAbove(s, s.h, k), F = Qt.A * fyd, C = (F + N) / 2;
+    if (C <= 0 || C >= F) return { M: 0, dp: null, F };
+    const dp = teeDepthOf(s, sgn >= 0 ? C / fyd : Qt.A - C / fyd, k), q = teeAbove(s, dp, k);
+    return { M: fyd * (2 * (s.c * q.A - q.S) - (s.c * Qt.A - Qt.S)), dp, F };
+  }
+  // A tee at one station (6.2), the flange at the top. Shear parallel to the stem on A_v of 6.2.6(3)(c), across on the flange.
+  // Class 1 and 2: the stress blocks with N_Ed (6.2.9.1(1)), the stem's yield strength reduced for shear (6.2.8(3)); M_N,z
+  // linear (6.2.1(7)); both axes with unity exponents. Class 3: the elastic stresses at the tips of the flange and the toe of
+  // the stem (6.2.9.2). Class 4: A_eff and its shift e_N (the moment N_Ed e_N) with W_eff by the sign of the moment (6.2.9.3).
+  function sectionCheckTee(s, fy, N, My, V, Mz, Vz) {
+    const sgn = My > 1e-6 ? 1 : My < -1e-6 ? -1 : 0, biax = Math.abs(Mz) > 1e-6;
+    const cl = classifyTee(s, fy, N, sgn !== 0, biax, sgn);
+    if (cl.flange.cls === 4) throw new Error('Class 4 flange of a tee: outside the scope of this tool');
+    const sh = shear(s, fy), shz = shearZ(s, fy), comp = aeffCompression(s, fy), fyd = fy / GM0;
+    const uV = Math.max(Math.abs(V) / sh.VRd, Math.abs(Vz) / shz.VRd);
+    const rho = Math.abs(V) > 0.5 * sh.VRd ? (2 * Math.abs(V) / sh.VRd - 1) ** 2 : 0;
+    const rhoZ = Math.abs(Vz) > 0.5 * shz.VRd ? (2 * Math.abs(Vz) / shz.VRd - 1) ** 2 : 0;
+    const NRd = (N > 0 && comp.cls === 4 ? comp.Aeff : s.A) * fyd;
+    const out = { cls: cl, shear: sh, shearZ: shz, rho, rhoZ, uV, NRd, uN: Math.abs(N) / NRd, sgn };
+    const sd = (m, r) => m <= 1e-6 ? 0 : r <= 0 ? Infinity : m / r;
+    if (cl.cls <= 2) {
+      const P = teePlasticM(s, fyd, N, sgn || 1, 1 - rho), P0 = teePlasticM(s, fyd, 0, sgn || 1, 1 - rho);
+      const n = Math.abs(N) / P.F, Mplz = (1 - rhoZ) * s.Wplz * fyd, MNz = Math.max(0, Mplz * (1 - n));
+      const uMy = sd(Math.abs(My), P.M), uMz = sd(Math.abs(Mz), MNz), uNM = uMy + uMz;
+      Object.assign(out, { method: 'plastic', Mply: P0.M, Mplz, MNy: P.M, MNz, n, Npl: P.F, dpN: P.dp, dp0: P0.dp, ay: 1, bz: 1,
+        rule: 'tee: stress blocks about y-y, linear about z-z, unity exponents', uMy: Math.abs(My) / P0.M, uNM, uM: Math.max(uNM, n) });
+    } else if (cl.cls === 3) {
+      const sN = N / s.A, sTop = sN + My / s.WelyF, sToe = sN - My / s.WelyT, sz = Math.abs(Mz) / s.Welz, szToe = Math.abs(Mz) * s.tw / 2 / s.Iz;
+      const uTop = (Math.abs(sTop) + sz) / ((1 - rhoZ) * fyd), uToe = (Math.abs(sToe) + szToe) / ((1 - rho) * fyd);
+      Object.assign(out, { method: 'elastic', sTop, sToe, sz, szToe, uTop, uToe, uNM: Math.max(uTop, uToe), uMy: Math.abs(My) / (s.Wely * fyd) });
+      out.uM = out.uNM;
+    } else {
+      const Aeff = N > 0 ? comp.Aeff : s.A, eN = N > 0 ? comp.eN : 0, M1 = My - (N > 0 ? N * eN : 0);
+      const wb = weffTee(s, fy, M1 >= 0 ? 1 : -1), sig = Math.abs(N) / Aeff + Math.abs(M1) / wb.Weff + Math.abs(Mz) / s.Welz;
+      Object.assign(out, { method: 'effective', Aeff, eN, M1, wb, sig, uNM: sig / ((1 - Math.max(rho, rhoZ)) * fyd), uMy: Math.abs(My) / (weffTee(s, fy, sgn || 1).Weff * fyd) });
+      out.uM = out.uNM;
+    }
+    out.util = Math.max(out.uV, out.uM, out.uN);
+    return out;
+  }
   function sectionCheck(s, fy, N, My, V, Mz = 0, Vz = 0) {
+    if (s.shape === 'T') return sectionCheckTee(s, fy, N, My, V, Mz, Vz);
     const bending = Math.abs(My) > 1e-6 || Math.abs(Mz) > 1e-6, biax = Math.abs(Mz) > 1e-6;
     const cl = classify(s, fy, N, bending, biax);
     if (!isHollow(s) && cl.flange.cls === 4) throw new Error('Class 4 flange: outside the scope of this tool');
@@ -868,7 +1086,7 @@ const EC3 = (() => {
   function fbCurves(s, grade) {               // Table 6.2
     const hi = grade === 'S460';
     if (isHollow(s)) { const c = s.cold ? 'c' : hi ? 'a0' : 'a'; return { y: c, z: c }; }
-    if (s.shape === 'PFC') return { y: 'c', z: 'c' };            // U-sections
+    if (s.shape === 'PFC' || s.shape === 'T') return { y: 'c', z: 'c' };            // U-, T- sections
     const hb = s.h / s.b, t = s.tf;
     if (!s.rolled) return t <= 40 ? { y: 'b', z: 'c' } : { y: 'c', z: 'd' };
     if (hb > 1.2) return t <= 40 ? (hi ? { y: 'a0', z: 'a0' } : { y: 'a', z: 'b' }) : (hi ? { y: 'a', z: 'a' } : { y: 'b', z: 'c' });
@@ -889,6 +1107,7 @@ const EC3 = (() => {
       return { method: '6.3.2.3', lam0: 0.4, beta: 0.75, curve: hb <= 2 ? 'c' : 'd' };
     }
     if (s.shape === 'PFC') return { method: '6.3.2.3', lam0: 0.4, beta: 0.75, curve: 'd' };   // all other hot-rolled sections
+    if (s.shape === 'T') return { method: '6.3.2.2', lam0: 0.2, beta: 1.0, curve: 'd' };      // the general case, other sections
     if (s.rolled) return { method: '6.3.2.3', lam0: 0.4, beta: 0.75, curve: hb <= 2 ? 'b' : hb <= 3.1 ? 'c' : 'd' };
     if (hb <= 3.1) return { method: '6.3.2.3', lam0: 0.2, beta: 1.0, curve: hb <= 2 ? 'c' : 'd' };
     return { method: '6.3.2.2', lam0: 0.2, beta: 1.0, curve: 'd' };
@@ -1127,7 +1346,10 @@ const EC3 = (() => {
   }
 
   // Closed-form Mcr for uniform moment between forks (used for reporting C1)
-  function mcrUniform(s, L) {
+  // a monosymmetric section (z_j, a tee): (π²EI_z/L²)[√(I_w/I_z + L²GI_t/(π²EI_z) + z_j²) + z_j] with z_j signed by the moment
+  // (sgn > 0: sagging, the flange of a tee in compression)
+  function mcrUniform(s, L, sgn = 1) {
+    if (s.zj) { const z = (sgn < 0 ? -1 : 1) * s.zj, P = Math.PI ** 2 * E * s.Iz / (L * L); return P * (Math.sqrt(s.Iw / s.Iz + L * L * G * s.It / (Math.PI ** 2 * E * s.Iz) + z * z) + z); }
     return Math.PI / L * Math.sqrt(E * s.Iz * G * s.It * (1 + Math.PI ** 2 * E * s.Iw / (L * L * G * s.It)));
   }
 
@@ -1232,7 +1454,7 @@ const EC3 = (() => {
   function cm0Linear(psi, N, Ncr) { return 0.79 + 0.21 * psi + 0.36 * (psi - 0.33) * N / Ncr; }
   function cm0Transverse(EI, L, delta, Mmax, N, Ncr) { return Mmax > 0 ? 1 + (Math.PI ** 2 * EI * Math.abs(delta) / (L * L * Math.abs(Mmax)) - 1) * N / Ncr : 1; }
 
-  return { E, G, GM0, GM1, ETA, GRADES, ALPHA, yieldStrength, fromRow, fromRowPFC, fromHist, customI, rhs, chs, hollowRadii, isHollow, spandrel, classify, webBearing, internalLimits, kSigmaInternal, rhoInternal, rhoOutstand, aeffCompression, weffBending, wyByClass, ncrFE, shear, shearZ, chsMN,
+  return { E, G, GM0, GM1, ETA, GRADES, ALPHA, yieldStrength, fromRow, fromRowPFC, fromHist, customI, tee, teeAbove, teeDepthOf, filletPart, rhs, chs, hollowRadii, isHollow, spandrel, classify, webBearing, internalLimits, kSigmaInternal, rhoInternal, rhoOutstand, aeffCompression, weffBending, weffTee, wyByClass, ncrFE, shear, shearZ, chsMN, teePlasticM, kSigmaTipComp, kSigmaTipTens,
     sectionCheck, fbCurves, chiFlex, ltbParams, chiLT, ltbModel, mcrFE, mcrUniform, cmFactor, annexB, annexA, cm0Linear, cm0Transverse, symEigenvalues };
 })();
 if (typeof module !== 'undefined') module.exports = { EC3 };
@@ -2160,6 +2382,12 @@ const DK = (() => {
       const w = s.b * k, h = s.h * k, t = Math.max(s.t * k, 1.2), ro = Math.min((s.ro || 1.5 * s.t) * k, w / 2), ri = Math.max(0, ro - t);
       const rr = (x, y, W, H, r) => `M${f1(x + r)} ${f1(y)} H${f1(x + W - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W)} ${f1(y + r)} V${f1(y + H - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W - r)} ${f1(y + H)} H${f1(x + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x)} ${f1(y + H - r)} V${f1(y + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + r)} ${f1(y)} Z`;
       return `<path d="${rr(cx - w / 2, cy - h / 2, w, h, ro)} ${rr(cx - w / 2 + t, cy - h / 2 + t, w - 2 * t, h - 2 * t, ri)}" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'T') {     // tee, the flange at the top, its centroid at cy, the root fillets drawn
+      const b = s.b * k, tf = Math.max(s.tf * k, 1.2), tw = Math.max(s.tw * k, 1.2), h = s.h * k, r = Math.max(0, (s.r || 0) * k), y0 = cy - (s.c ?? s.h / 2) * k, x0 = cx - b / 2;
+      const d = `M${f1(x0)} ${f1(y0)} H${f1(x0 + b)} V${f1(y0 + tf)} H${f1(cx + tw / 2 + r)}` + (r ? ` A${f1(r)} ${f1(r)} 0 0 0 ${f1(cx + tw / 2)} ${f1(y0 + tf + r)}` : '')
+        + ` V${f1(y0 + h)} H${f1(cx - tw / 2)} V${f1(y0 + tf + r)}` + (r ? ` A${f1(r)} ${f1(r)} 0 0 0 ${f1(cx - tw / 2 - r)} ${f1(y0 + tf)}` : '') + ` H${f1(x0)} Z`;
+      return `<path d="${d}" fill="${fill}" stroke="${edge}" stroke-width="1.1"/>`;
     }
     if (s.shape === 'PFC') {   // channel, toes to the right, web on the left
       const b = s.b * k, h = s.h * k, tf = Math.max(s.tf * k, 1.2), tw = Math.max(s.tw * k, 1.2), x0 = cx - b / 2, y0 = cy - h / 2;

@@ -793,6 +793,81 @@ const EC3 = (() => {
       Wply: b * tf * (h - tf) + tw * hw * hw / 4 + 4 * As * yf, Wplz: tf * b * b / 2 + hw * tw * tw / 4 + 4 * As * zf,
       It, Iw: Iz * (h - tf) ** 2 / 4, rolled, productStd: rolled ? 'BS EN 10025-2' : 'BS EN 10025-2 (plate)' };
   }
+  // ---------- Tees cut from rolled I sections (split at mid-depth), from the parent's dimensions ----------
+  // The tee is taken with its flange at the top: depth d from the outer face of the flange, z upward from the centroid.
+  // The two root fillets are included. A fillet's width at u below the underside of the flange is w(u) = r − √(r² − (r − u)²);
+  // its area and first moment (about the underside of the flange) from u = 0 to U in closed form.
+  function filletPart(r, U) {
+    if (!(r > 0) || !(U > 0)) return { A: 0, S: 0 };
+    U = Math.min(U, r);
+    const F = v => (v * Math.sqrt(Math.max(0, r * r - v * v)) + r * r * Math.asin(Math.max(-1, Math.min(1, v / r)))) / 2;   // ∫√(r² − v²)dv
+    const Gq = v => -Math.pow(Math.max(0, r * r - v * v), 1.5) / 3;                                                         // ∫v√(r² − v²)dv
+    const v0 = r - U;
+    return { A: r * U - (F(r) - F(v0)), S: r * (r * r / 2 - (r * v0 - v0 * v0 / 2)) - r * (F(r) - F(v0)) + (Gq(r) - Gq(v0)) };
+  }
+  // Area and first moment (about the outer face of the flange) of the part of a tee above depth d; k multiplies the stem
+  // and its fillets (a yield strength reduced for shear on the stem)
+  function teeAbove(s, d, k = 1) {
+    const { b, tf, tw, r, h } = s;
+    d = Math.max(0, Math.min(h, d));
+    if (d <= tf) return { A: b * d, S: b * d * d / 2 };
+    const fp = filletPart(r, d - tf);
+    return { A: b * tf + k * (tw * (d - tf) + 2 * fp.A), S: b * tf * tf / 2 + k * (tw * (d * d - tf * tf) / 2 + 2 * (tf * fp.A + fp.S)) };
+  }
+  // the depth below the top of a tee with the area (k-weighted) a above it
+  function teeDepthOf(s, a, k = 1) {
+    let lo = 0, hi = s.h;
+    for (let i = 0; i < 100; i++) { const m = (lo + hi) / 2; if (teeAbove(s, m, k).A < a) lo = m; else hi = m; }
+    return (lo + hi) / 2;
+  }
+  // ∫ z(y² + z²) dA of a tee about its centroid (z upward), for the monosymmetry constant z_j: the flange and stem exactly,
+  // the fillets by Simpson's rule in θ (u = r(1 − cos θ), w = r(1 − sin θ))
+  function teeWagner(s, c) {
+    const { b, tf, tw, r, h } = s;
+    const P = (zl, zh, a, q) => a * (zh * zh - zl * zl) / 2 + q * (zh ** 4 - zl ** 4) / 4;      // ∫ z (a + q z²) dz
+    let I = P(c - tf, c, b ** 3 / 12, b) + P(c - h, c - tf, tw ** 3 / 12, tw);
+    if (r > 0) {
+      const n = 400, hT = Math.PI / 2 / n;
+      let sum = 0;
+      for (let i = 0; i <= n; i++) {
+        const th = i * hT, u = r * (1 - Math.cos(th)), w = r * (1 - Math.sin(th)), z = c - tf - u, y0 = tw / 2;
+        const f = z * (2 * ((y0 + w) ** 3 - y0 ** 3) / 3 + 2 * w * z * z) * r * Math.sin(th);
+        sum += f * (i === 0 || i === n ? 1 : i % 2 ? 4 : 2);
+      }
+      I += sum * hT / 3;
+    }
+    return I;
+  }
+  // A tee cut from a rolled I section (a row of the section tables): flange b × t_f, stem t_w to the depth h/2 of the parent,
+  // the parent's root radius. Elastic moduli to the flange (W_el,y,f) and to the toe of the stem (W_el,y,t); W_el,y their
+  // lesser. I_t: half the parent's (SCI P363) less 0.105 t_w⁴ for the cut end of the stem; I_w = b³t_f³/144 + t_w³(h − t_f/2)³/36.
+  // Shear centre at the flange–stem junction, z_0 = c − t_f/2 above the centroid. z_j = z_0 − ∫z(y² + z²)dA/(2I_y): positive,
+  // stabilising, when the flange is in compression (sagging with the flange at the top).
+  function tee(p, { name } = {}) {
+    const { b, tw, tf, r } = p, h = p.h / 2;
+    const { As, e, Ic } = spandrel(r);
+    const A = b * tf + (h - tf) * tw + 2 * As;
+    const c = (b * tf * tf / 2 + (h - tf) * tw * (tf + h) / 2 + 2 * As * (tf + e)) / A;                       // centroid below the top
+    const Iy = b * tf ** 3 / 12 + b * tf * (c - tf / 2) ** 2 + tw * (h - tf) ** 3 / 12 + tw * (h - tf) * ((tf + h) / 2 - c) ** 2 + 2 * (Ic + As * (tf + e - c) ** 2);
+    const Iz = tf * b ** 3 / 12 + (h - tf) * tw ** 3 / 12 + 2 * (Ic + As * (tw / 2 + e) ** 2);
+    const g = { b, tf, tw, r, h };
+    const zp = teeDepthOf(g, A / 2), Stot = teeAbove(g, h).S;
+    const Wply = Stot - 2 * teeAbove(g, zp).S;
+    const Wplz = tf * b * b / 4 + (h - tf) * tw * tw / 4 + 2 * As * (tw / 2 + e);
+    let It;
+    if (r > 0) {
+      const a1 = -0.042 + 0.2204 * tw / tf + 0.1355 * r / tf - 0.0865 * r * tw / tf ** 2 - 0.0725 * tw ** 2 / tf ** 2;
+      const D1 = ((tf + r) ** 2 + tw * (r + tw / 4)) / (2 * r + tf);
+      It = b * tf ** 3 / 3 + (h - tf) * tw ** 3 / 3 + a1 * D1 ** 4 - 0.21 * tf ** 4 - 0.105 * tw ** 4;
+    } else It = (b * tf ** 3 + (h - tf / 2) * tw ** 3) / 3;
+    const Iw = b ** 3 * tf ** 3 / 144 + tw ** 3 * (h - tf / 2) ** 3 / 36;
+    const z0 = c - tf / 2, zj = z0 - teeWagner(g, c) / (2 * Iy);
+    const WelyF = Iy / c, WelyT = Iy / (h - c);
+    return { shape: 'T', nw: 1, name: name || `Tee from ${p.name}`, parent: p.name, mass: (p.mass || 0) / 2, h, b, tw, tf, r, A, c, Iy, Iz,
+      WelyF, WelyT, Wely: Math.min(WelyF, WelyT), Welz: Iz / (b / 2), Wply, Wplz, zp, It, Iw, z0, zj,
+      rolled: true, productStd: p.productStd || 'BS EN 10025-2' };
+  }
+
   // Hollow sections from nominal dimensions. Corner radii: hot-finished BS EN 10210-2 ro = 1.5t, ri = t;
   // cold-formed BS EN 10219-2 ro = 2t (t <= 6), 2.5t (t <= 10), 3t (t > 10), ri = ro - t. It, Wt per those standards.
   function hollowRadii(t, cold) {
@@ -832,8 +907,71 @@ const EC3 = (() => {
       psi > -1 ? 42 * eps / (0.67 + 0.33 * psi) : 62 * eps * (1 - psi) * Math.sqrt(-psi)];
   }
   const clsOf = (ratio, lim) => ratio <= lim[0] ? 1 : ratio <= lim[1] ? 2 : ratio <= lim[2] ? 3 : 4;
-  // bending: major-axis bending present; biax: minor-axis bending present as well (walls then taken in compression)
-  function classify(s, fy, N, bending, biax = false) {
+  // Tee stems, EN 1993-1-5 Table 4.2: k_σ of an outstand with its free edge in compression (σ1 at the free edge, ψ = σ at the
+  // supported edge / σ1, 1 ≥ ψ ≥ −3) or in tension (σ1 at the supported edge, ψ = σ at the free edge / σ1; below −1 the
+  // value at −1, the least, is taken)
+  const kSigmaTipComp = psi => { const p = Math.max(-3, Math.min(1, psi)); return 0.57 - 0.21 * p + 0.07 * p * p; };
+  function kSigmaTipTens(psi) {
+    const p = Math.min(1, psi);
+    if (Math.abs(p - 1) < 1e-12) return 0.43;
+    if (p > 0) return 0.578 / (p + 0.34);
+    if (p > -1) return 1.7 - 5 * p + 17.1 * p * p;
+    return 23.8;
+  }
+  // Classification of a tee, Table 5.2 sheet 2. The flange: two outstands, c = (b − t_w − 2r)/2, in compression unless the
+  // stem's toe is the compressed side with no axial compression. The stem: an outstand from the root of the fillet,
+  // c = h − t_f − r (h the depth of the tee). sgn: the sign of M_y (> 0 the flange in compression and the toe of the stem in
+  // tension; < 0 the toe in compression; 0 with bending: both, the worse). α from the plastic stress blocks with N_Ed;
+  // ψ elastic with the extreme compression fibre at f_y; Class 3 limit 21ε√k_σ (14ε in uniform compression).
+  function classifyTee(s, fy, N, bending, biax, sgn) {
+    if (bending && !sgn) {
+      const p = classifyTee(s, fy, N, true, biax, 1), m = classifyTee(s, fy, N, true, biax, -1);
+      return m.cls > p.cls ? m : p;
+    }
+    const eps = Math.sqrt(235 / fy), A = s.A, h = s.h;
+    const cf = (s.b - s.tw - 2 * s.r) / 2, rf = cf / s.tf, cw = h - s.tf - s.r, rw = cw / s.tw, d0 = s.tf + s.r;
+    const sg = bending ? (sgn < 0 ? -1 : 1) : 0;
+    let alpha, psi, ks = null, tip = null, wl, how;
+    const Ac = (A + N / fy) / 2;                                        // area in compression, fully plastic
+    if (!bending) {
+      if (N > 0) { alpha = 1; psi = 1; ks = 0.43; tip = 'compression'; wl = [9 * eps, 10 * eps, 14 * eps]; how = 'uniform compression'; }
+      else { alpha = 0; psi = -1; wl = [Infinity, Infinity, Infinity]; how = 'tension'; }
+    } else if (Ac >= A) { alpha = 1; psi = 1; ks = 0.43; tip = 'compression'; wl = [9 * eps, 10 * eps, 14 * eps]; how = 'the whole section in compression'; }
+    else if (Ac <= 0) { alpha = 0; psi = -1; wl = [Infinity, Infinity, Infinity]; how = 'the whole section in tension'; }
+    else {
+      const sN = N / A;
+      if (sg > 0) {                                                     // the flange compressed: compression from the top
+        const dp = teeDepthOf(s, Ac);
+        alpha = Math.max(0, Math.min(1, (dp - d0) / cw));
+        const k = (fy - sN) / s.c, sr = sN + k * (s.c - d0), st = sN + k * (s.c - h);
+        tip = 'tension';
+        if (alpha <= 0 && sr <= 0) { psi = -1; wl = [Infinity, Infinity, Infinity]; how = 'the stem in tension'; }
+        else {
+          psi = sr > 0 ? Math.max(-3, st / sr) : -1; ks = kSigmaTipTens(psi);
+          const aa = Math.max(alpha, 1e-9);
+          wl = [9 * eps / (aa * Math.sqrt(aa)), 10 * eps / (aa * Math.sqrt(aa)), 21 * eps * Math.sqrt(ks)];
+          how = 'the toe of the stem in tension';
+        }
+      } else {                                                          // the toe compressed: compression from the bottom
+        const dp = teeDepthOf(s, A - Ac);
+        alpha = Math.max(0, Math.min(1, (h - Math.max(dp, d0)) / cw));
+        const k = -(fy - sN) / (h - s.c), sr = sN + k * (s.c - d0);
+        psi = Math.max(-3, Math.min(1, sr / fy)); ks = kSigmaTipComp(psi); tip = 'compression';
+        const aa = Math.max(alpha, 1e-9);
+        wl = [9 * eps / aa, 10 * eps / aa, 21 * eps * Math.sqrt(ks)];
+        how = 'the toe of the stem in compression';
+      }
+    }
+    const wcls = clsOf(rw, wl);
+    const fComp = biax || N > 0 || sg > 0;
+    const fl = [9 * eps, 10 * eps, 14 * eps], fcls = fComp ? clsOf(rf, fl) : 1;
+    return { eps, sgn: sg, flange: { c: cf, ratio: rf, lim: fComp ? fl : [Infinity, Infinity, Infinity], cls: fcls, kind: 'outstand', comp: fComp },
+      web: { c: cw, ratio: rw, alpha, psi, ks, tip, how, lim: wl, cls: wcls, kind: 'stem' }, cls: Math.max(fcls, wcls) };
+  }
+  // bending: major-axis bending present; biax: minor-axis bending present as well (walls then taken in compression);
+  // sgn: the sign of M_y, for a tee (whose stem classifies differently in sagging and hogging)
+  function classify(s, fy, N, bending, biax = false, sgn = 0) {
+    if (s.shape === 'T') return classifyTee(s, fy, N, bending, biax, sgn);
     const eps = Math.sqrt(235 / fy);
     if (s.shape === 'CHS') {                      // Table 5.2 sheet 3
       const ratio = s.d / s.t, lim = [50 * eps * eps, 70 * eps * eps, 90 * eps * eps], c = clsOf(ratio, lim);
@@ -887,6 +1025,7 @@ const EC3 = (() => {
       if (k.cls === 4) throw new Error('Class 4 CHS (BS EN 1993-1-6) is outside the scope of this tool');
       return { Aeff: s.A, rhoW: 1, rhoF: 1, cls: k.cls };
     }
+    if (s.shape === 'T') return aeffTee(s, k);
     let Aeff = s.A, rhoW = 1, rhoF = 1;
     if (s.shape === 'RHS') {
       if (k.web.cls === 4) { rhoW = rhoInternal(k.web.c, s.t, eps, 1).rho; Aeff -= 2 * (1 - rhoW) * k.web.c * s.t; }
@@ -896,6 +1035,16 @@ const EC3 = (() => {
     if (k.web.cls === 4) { rhoW = rhoInternal(k.web.c, s.tw, eps, 1).rho; Aeff -= (1 - rhoW) * k.web.c * s.tw; }
     if (k.flange.cls === 4) { rhoF = rhoOutstand(k.flange.c, s.tf, eps).rho; Aeff -= (s.shape === 'PFC' ? 2 : 4) * (1 - rhoF) * k.flange.c * s.tf; }
     return { Aeff, rhoW, rhoF, cls: k.cls };
+  }
+  // A tee in uniform compression: the stem's ineffective part at its toe, (1 − ρ)c with k_σ = 0.43 (EN 1993-1-5 Table 4.2);
+  // a Class 4 flange reduced at its tips. e_N: the effective centroid above the gross one (6.2.2.5(4))
+  function aeffTee(s, k) {
+    const eps = k.eps, holes = [];
+    let rhoW = 1, rhoF = 1, holeW = 0;
+    if (k.web.cls === 4) { rhoW = rhoOutstand(k.web.c, s.tw, eps).rho; holeW = (1 - rhoW) * k.web.c; holes.push({ A: holeW * s.tw, z: s.c - (s.h - holeW / 2) }); }
+    if (k.flange.cls === 4) { rhoF = rhoOutstand(k.flange.c, s.tf, eps).rho; holes.push({ A: 2 * (1 - rhoF) * k.flange.c * s.tf, z: s.c - s.tf / 2 }); }
+    const Aeff = s.A - holes.reduce((a, h) => a + h.A, 0), eN = -holes.reduce((a, h) => a + h.A * h.z, 0) / Aeff;
+    return { Aeff, rhoW, rhoF, cls: k.cls, eN, holeW };
   }
   // Holes (ineffective strips) removed from the gross section: [{A, z, I}], z from the gross centroid (+ = compression side)
   function withHoles(s, holes) {
@@ -913,9 +1062,29 @@ const EC3 = (() => {
     else { bc = c; beff = r.rho * c; be1 = 2 * beff / (5 - psi); }
     return { ...r, psi, bc, beff, be1, be2: beff - be1, hole: bc - beff };
   }
+  // Effective modulus of a tee in bending by the sign of M_y (EN 1993-1-5 4.4), the stem's ψ from the gross section (4.4(3),
+  // an outstand), ρ from k_σ of Table 4.2. The toe in compression (sgn < 0): the ineffective part at the toe, b_c − ρb_c
+  // (b_c = c/(1 − ψ) for ψ < 0, else c). The toe in tension (sgn > 0): from ρb_c to b_c below the root of the fillet.
+  // W_eff = I_eff over the farther extreme fibre of the effective section (W_eff,min). A Class 4 flange: outside the scope.
+  function weffTee(s, fy, sgn) {
+    const sg = sgn < 0 ? -1 : 1, k = classifyTee(s, fy, 0, true, false, sg), eps = k.eps;
+    if (k.cls < 4) return { Weff: s.Wely, Ieff: s.Iy, Aeff: s.A, rho: 1, lp: null, shift: 0, hole: 0, reduced: false, sgn: sg };
+    if (k.flange.cls === 4) throw new Error('Class 4 flange of a tee: outside the scope of this tool');
+    const w = k.web, c = w.c, t = s.tw, d0 = s.tf + s.r;
+    const lp = (c / t) / (28.4 * eps * Math.sqrt(w.ks)), rho = lp <= 0.748 ? 1 : Math.min(1, (lp - 0.188) / (lp * lp));
+    const bc = w.psi < 0 ? c / (1 - w.psi) : c, beff = rho * bc, hole = bc - beff;
+    const d1 = sg < 0 ? s.h - hole : d0 + beff, d2 = sg < 0 ? s.h : d0 + bc;      // the hole, depths below the top
+    const zh = s.c - (d1 + d2) / 2, Ah = hole * t, Aeff = s.A - Ah;
+    const shift = -Ah * zh / Aeff;                                                   // the effective centroid above the gross
+    const Ieff = s.Iy - (t * hole ** 3 / 12 + Ah * zh * zh) - Aeff * shift * shift;
+    const ce = s.c - shift, top = ce, bot = (sg < 0 ? s.h - hole : s.h) - ce;
+    const Weff = Ieff / Math.max(top, bot);
+    return { Weff, Ieff, Aeff, shift, rho, lp, ks: w.ks, psi: w.psi, bc, beff, hole, d1, d2, top, bot, reduced: Weff < s.Wely - 1e-6, sgn: sg };
+  }
   // Effective section modulus for major-axis bending (EN 1993-1-5 4.4). Stress ratio of the web from the effective
-  // compression flange and gross web (4.4(3)).
-  function weffBending(s, fy) {
+  // compression flange and gross web (4.4(3)). sgn: the sign of the moment, for a tee.
+  function weffBending(s, fy, sgn = 1) {
+    if (s.shape === 'T') return weffTee(s, fy, sgn);
     const k = classify(s, fy, 0, true), eps = k.eps;
     if (k.cls < 4) return { Weff: s.Wely, Ieff: s.Iy, rho: 1, lp: null, shift: 0, reduced: false };
     if (s.shape === 'CHS') throw new Error('Class 4 CHS (BS EN 1993-1-6) is outside the scope of this tool');
@@ -935,13 +1104,16 @@ const EC3 = (() => {
     return { ...r, rho: w.rho, lp: w.lp, ks: w.ks, psi, beff: w.beff, be1: w.be1, be2: w.be2, hole: w.hole, flange: fl, reduced: r.Weff < s.Wely - 1e-6 };
   }
   // Section modulus for bending resistance by class (6.2.5(2))
-  function wyByClass(s, fy, cls) { return cls <= 2 ? s.Wply : cls === 3 ? s.Wely : weffBending(s, fy).Weff; }
+  function wyByClass(s, fy, cls, sgn = 1) { return cls <= 2 ? s.Wply : cls === 3 ? s.Wely : weffBending(s, fy, sgn).Weff; }
 
   // ---------- Shear, 6.2.6 and EN 1993-1-5 5 ----------
   // Load parallel to the web (z direction)
   function shear(s, fy) {
     const eps = Math.sqrt(235 / fy);
     if (s.shape === 'CHS') { const Av = 2 * s.A / Math.PI, Vpl = Av * fy / Math.sqrt(3) / GM0; return { Av, Vpl, hw: s.d, slender: false, Vb: Infinity, VRd: Vpl }; }
+    // a rolled tee, load parallel to the stem (6.2.6(3)(c)); the stem is an outstand, not a web between flanges, so the
+    // shear buckling of 6.2.6(6) and EN 1993-1-5 section 5 does not apply
+    if (s.shape === 'T') { const Av = s.A - s.b * s.tf + (s.tw + 2 * s.r) * s.tf / 2, Vpl = Av * fy / Math.sqrt(3) / GM0; return { Av, Vpl, hw: s.h - s.tf, slender: false, Vb: Infinity, VRd: Vpl, stem: true }; }
     const hw = s.h - 2 * s.tf, tw = s.tw, nw = s.nw;
     let Av;
     if (s.shape === 'RHS') Av = s.A * s.h / (s.b + s.h);                                     // 6.2.6(3)(f)
@@ -962,6 +1134,7 @@ const EC3 = (() => {
     let Av;
     if (s.shape === 'CHS') Av = 2 * s.A / Math.PI;
     else if (s.shape === 'RHS') Av = s.A * s.b / (s.b + s.h);
+    else if (s.shape === 'T') Av = s.A - (s.h - s.tf) * s.tw;           // the flange (and fillets): the stem left out
     else Av = s.A - (s.h - 2 * s.tf) * s.tw;
     const Vpl = Av * fy / Math.sqrt(3) / GM0;
     return { Av, Vpl, VRd: Vpl };
@@ -982,7 +1155,52 @@ const EC3 = (() => {
 
   // ---------- Cross-section resistance at one station, 6.2 ----------
   // N (+ compression), My (major), V (parallel to web), Mz (minor), Vz (parallel to flanges)
+  // The plastic moment of a tee about y with the axial force N (+ compression) at the gross centroid: the stress blocks either
+  // side of the neutral axis (f_y in compression on the side of the sign, in tension on the other), the stem and fillets at
+  // k f_y (k = 1 − ρ for shear). Returns the magnitude M, the depth dp of the neutral axis and the squash load F.
+  function teePlasticM(s, fyd, N, sgn, k = 1) {
+    const Qt = teeAbove(s, s.h, k), F = Qt.A * fyd, C = (F + N) / 2;
+    if (C <= 0 || C >= F) return { M: 0, dp: null, F };
+    const dp = teeDepthOf(s, sgn >= 0 ? C / fyd : Qt.A - C / fyd, k), q = teeAbove(s, dp, k);
+    return { M: fyd * (2 * (s.c * q.A - q.S) - (s.c * Qt.A - Qt.S)), dp, F };
+  }
+  // A tee at one station (6.2), the flange at the top. Shear parallel to the stem on A_v of 6.2.6(3)(c), across on the flange.
+  // Class 1 and 2: the stress blocks with N_Ed (6.2.9.1(1)), the stem's yield strength reduced for shear (6.2.8(3)); M_N,z
+  // linear (6.2.1(7)); both axes with unity exponents. Class 3: the elastic stresses at the tips of the flange and the toe of
+  // the stem (6.2.9.2). Class 4: A_eff and its shift e_N (the moment N_Ed e_N) with W_eff by the sign of the moment (6.2.9.3).
+  function sectionCheckTee(s, fy, N, My, V, Mz, Vz) {
+    const sgn = My > 1e-6 ? 1 : My < -1e-6 ? -1 : 0, biax = Math.abs(Mz) > 1e-6;
+    const cl = classifyTee(s, fy, N, sgn !== 0, biax, sgn);
+    if (cl.flange.cls === 4) throw new Error('Class 4 flange of a tee: outside the scope of this tool');
+    const sh = shear(s, fy), shz = shearZ(s, fy), comp = aeffCompression(s, fy), fyd = fy / GM0;
+    const uV = Math.max(Math.abs(V) / sh.VRd, Math.abs(Vz) / shz.VRd);
+    const rho = Math.abs(V) > 0.5 * sh.VRd ? (2 * Math.abs(V) / sh.VRd - 1) ** 2 : 0;
+    const rhoZ = Math.abs(Vz) > 0.5 * shz.VRd ? (2 * Math.abs(Vz) / shz.VRd - 1) ** 2 : 0;
+    const NRd = (N > 0 && comp.cls === 4 ? comp.Aeff : s.A) * fyd;
+    const out = { cls: cl, shear: sh, shearZ: shz, rho, rhoZ, uV, NRd, uN: Math.abs(N) / NRd, sgn };
+    const sd = (m, r) => m <= 1e-6 ? 0 : r <= 0 ? Infinity : m / r;
+    if (cl.cls <= 2) {
+      const P = teePlasticM(s, fyd, N, sgn || 1, 1 - rho), P0 = teePlasticM(s, fyd, 0, sgn || 1, 1 - rho);
+      const n = Math.abs(N) / P.F, Mplz = (1 - rhoZ) * s.Wplz * fyd, MNz = Math.max(0, Mplz * (1 - n));
+      const uMy = sd(Math.abs(My), P.M), uMz = sd(Math.abs(Mz), MNz), uNM = uMy + uMz;
+      Object.assign(out, { method: 'plastic', Mply: P0.M, Mplz, MNy: P.M, MNz, n, Npl: P.F, dpN: P.dp, dp0: P0.dp, ay: 1, bz: 1,
+        rule: 'tee: stress blocks about y-y, linear about z-z, unity exponents', uMy: Math.abs(My) / P0.M, uNM, uM: Math.max(uNM, n) });
+    } else if (cl.cls === 3) {
+      const sN = N / s.A, sTop = sN + My / s.WelyF, sToe = sN - My / s.WelyT, sz = Math.abs(Mz) / s.Welz, szToe = Math.abs(Mz) * s.tw / 2 / s.Iz;
+      const uTop = (Math.abs(sTop) + sz) / ((1 - rhoZ) * fyd), uToe = (Math.abs(sToe) + szToe) / ((1 - rho) * fyd);
+      Object.assign(out, { method: 'elastic', sTop, sToe, sz, szToe, uTop, uToe, uNM: Math.max(uTop, uToe), uMy: Math.abs(My) / (s.Wely * fyd) });
+      out.uM = out.uNM;
+    } else {
+      const Aeff = N > 0 ? comp.Aeff : s.A, eN = N > 0 ? comp.eN : 0, M1 = My - (N > 0 ? N * eN : 0);
+      const wb = weffTee(s, fy, M1 >= 0 ? 1 : -1), sig = Math.abs(N) / Aeff + Math.abs(M1) / wb.Weff + Math.abs(Mz) / s.Welz;
+      Object.assign(out, { method: 'effective', Aeff, eN, M1, wb, sig, uNM: sig / ((1 - Math.max(rho, rhoZ)) * fyd), uMy: Math.abs(My) / (weffTee(s, fy, sgn || 1).Weff * fyd) });
+      out.uM = out.uNM;
+    }
+    out.util = Math.max(out.uV, out.uM, out.uN);
+    return out;
+  }
   function sectionCheck(s, fy, N, My, V, Mz = 0, Vz = 0) {
+    if (s.shape === 'T') return sectionCheckTee(s, fy, N, My, V, Mz, Vz);
     const bending = Math.abs(My) > 1e-6 || Math.abs(Mz) > 1e-6, biax = Math.abs(Mz) > 1e-6;
     const cl = classify(s, fy, N, bending, biax);
     if (!isHollow(s) && cl.flange.cls === 4) throw new Error('Class 4 flange: outside the scope of this tool');
@@ -1091,7 +1309,7 @@ const EC3 = (() => {
   function fbCurves(s, grade) {               // Table 6.2
     const hi = grade === 'S460';
     if (isHollow(s)) { const c = s.cold ? 'c' : hi ? 'a0' : 'a'; return { y: c, z: c }; }
-    if (s.shape === 'PFC') return { y: 'c', z: 'c' };            // U-sections
+    if (s.shape === 'PFC' || s.shape === 'T') return { y: 'c', z: 'c' };            // U-, T- sections
     const hb = s.h / s.b, t = s.tf;
     if (!s.rolled) return t <= 40 ? { y: 'b', z: 'c' } : { y: 'c', z: 'd' };
     if (hb > 1.2) return t <= 40 ? (hi ? { y: 'a0', z: 'a0' } : { y: 'a', z: 'b' }) : (hi ? { y: 'a', z: 'a' } : { y: 'b', z: 'c' });
@@ -1112,6 +1330,7 @@ const EC3 = (() => {
       return { method: '6.3.2.3', lam0: 0.4, beta: 0.75, curve: hb <= 2 ? 'c' : 'd' };
     }
     if (s.shape === 'PFC') return { method: '6.3.2.3', lam0: 0.4, beta: 0.75, curve: 'd' };   // all other hot-rolled sections
+    if (s.shape === 'T') return { method: '6.3.2.2', lam0: 0.2, beta: 1.0, curve: 'd' };      // the general case, other sections
     if (s.rolled) return { method: '6.3.2.3', lam0: 0.4, beta: 0.75, curve: hb <= 2 ? 'b' : hb <= 3.1 ? 'c' : 'd' };
     if (hb <= 3.1) return { method: '6.3.2.3', lam0: 0.2, beta: 1.0, curve: hb <= 2 ? 'c' : 'd' };
     return { method: '6.3.2.2', lam0: 0.2, beta: 1.0, curve: 'd' };
@@ -1350,7 +1569,10 @@ const EC3 = (() => {
   }
 
   // Closed-form Mcr for uniform moment between forks (used for reporting C1)
-  function mcrUniform(s, L) {
+  // a monosymmetric section (z_j, a tee): (π²EI_z/L²)[√(I_w/I_z + L²GI_t/(π²EI_z) + z_j²) + z_j] with z_j signed by the moment
+  // (sgn > 0: sagging, the flange of a tee in compression)
+  function mcrUniform(s, L, sgn = 1) {
+    if (s.zj) { const z = (sgn < 0 ? -1 : 1) * s.zj, P = Math.PI ** 2 * E * s.Iz / (L * L); return P * (Math.sqrt(s.Iw / s.Iz + L * L * G * s.It / (Math.PI ** 2 * E * s.Iz) + z * z) + z); }
     return Math.PI / L * Math.sqrt(E * s.Iz * G * s.It * (1 + Math.PI ** 2 * E * s.Iw / (L * L * G * s.It)));
   }
 
@@ -1455,7 +1677,7 @@ const EC3 = (() => {
   function cm0Linear(psi, N, Ncr) { return 0.79 + 0.21 * psi + 0.36 * (psi - 0.33) * N / Ncr; }
   function cm0Transverse(EI, L, delta, Mmax, N, Ncr) { return Mmax > 0 ? 1 + (Math.PI ** 2 * EI * Math.abs(delta) / (L * L * Math.abs(Mmax)) - 1) * N / Ncr : 1; }
 
-  return { E, G, GM0, GM1, ETA, GRADES, ALPHA, yieldStrength, fromRow, fromRowPFC, fromHist, customI, rhs, chs, hollowRadii, isHollow, spandrel, classify, webBearing, internalLimits, kSigmaInternal, rhoInternal, rhoOutstand, aeffCompression, weffBending, wyByClass, ncrFE, shear, shearZ, chsMN,
+  return { E, G, GM0, GM1, ETA, GRADES, ALPHA, yieldStrength, fromRow, fromRowPFC, fromHist, customI, tee, teeAbove, teeDepthOf, filletPart, rhs, chs, hollowRadii, isHollow, spandrel, classify, webBearing, internalLimits, kSigmaInternal, rhoInternal, rhoOutstand, aeffCompression, weffBending, weffTee, wyByClass, ncrFE, shear, shearZ, chsMN, teePlasticM, kSigmaTipComp, kSigmaTipTens,
     sectionCheck, fbCurves, chiFlex, ltbParams, chiLT, ltbModel, mcrFE, mcrUniform, cmFactor, annexB, annexA, cm0Linear, cm0Transverse, symEigenvalues };
 })();
 if (typeof module !== 'undefined') module.exports = { EC3 };
@@ -1504,23 +1726,42 @@ const Design = (() => {
   }
 
   // chi_LT and Mb,Rd from Mcr (6.3.2.2 / 6.3.2.3 with UK NA); C1 (shape-only, loads at shear centre) sets kc = 1/sqrt(C1)
-  function ltbResult(sec, fy, cls, Mcr, C1, Mmax) {
-    const Wy = EC3.wyByClass(sec, fy, cls), p = EC3.ltbParams(sec);
+  function ltbResult(sec, fy, cls, Mcr, C1, Mmax, sgn = 1) {
+    const Wy = EC3.wyByClass(sec, fy, cls, sgn), p = EC3.ltbParams(sec);
     if (p.none) { Mcr = Infinity; C1 = null; }            // CHS: not susceptible to lateral-torsional buckling
     // kc = 1/sqrt(C1); not taken below 0.6, the lowest value in Table 6.6 (conservative where exact C1 > 2.78)
     const kc = C1 && C1 > 1 ? Math.max(0.6, Math.min(1, 1 / Math.sqrt(C1))) : 1;
     const lamLT = Mcr === Infinity ? 0 : Math.sqrt(Wy * fy / Mcr);
     const c = EC3.chiLT(lamLT, Mmax / Mcr, p, kc);
     const MbRd = c.chiMod * Wy * fy / EC3.GM1;
-    return { Mcr, C1, kc, lamLT, ...p, ...c, Wy, MbRd, util: Mmax / MbRd, Mmax };
+    return { Mcr, C1, kc, lamLT, ...p, ...c, Wy, MbRd, util: Mmax / MbRd, Mmax, cls, sgn };
+  }
+  // A tee: the buckling mode is that of the whole moment diagram (λ from the finite elements); the moments of each sign are
+  // checked with that sign's class and modulus, M_cr = λ M of that sign, C₁ against M_cr,0 of that sign. o.N, o.biax: for the
+  // class (with the axial force); the worse sign governs, both kept in .signs
+  function ltbTee(sec, fy, seg, lam, o = {}) {
+    const xs = Array.from({ length: 41 }, (_, k) => seg.L * k / 40), Ms = xs.map(seg.M);
+    const out = [];
+    for (const sg of [1, -1]) {
+      const Ms_ = Math.max(0, ...Ms.map(m => sg * m));
+      if (Ms_ < 1) continue;
+      const cls = EC3.classify(sec, fy, o.N || 0, true, !!o.biax, sg).cls;
+      const C1 = seg.forkFork && !seg.topRestrained && Number.isFinite(lam) ? lam * Ms_ / EC3.mcrUniform(sec, seg.L, sg) : null;
+      out.push(ltbResult(sec, fy, cls, lam * Ms_, C1, Ms_, sg));
+    }
+    if (!out.length) return null;
+    const w = out.reduce((a, r) => r.util > a.util ? r : a, out[0]);
+    return { ...w, signs: out };
   }
 
   // Single-shape LTB (member mode and tests). seg: {L, M, q, P, Mref, Mmax, restraints, topRestrained, forkFork}
   function ltb(sec, fy, cls, seg, opt) {
     const { E, G } = EC3;
     if (seg.Mmax < 1) return null;
-    const base = { L: seg.L, EIz: E * sec.Iz, GIt: G * sec.It, EIw: E * sec.Iw, hs: sec.h - sec.tf, restraints: seg.restraints, topRestrained: seg.topRestrained, nEl: opt.nEl || 10 };
-    const lam = EC3.mcrFE({ ...base, M: seg.M, q: seg.q, P: seg.P, a: opt.destab ? sec.h / 2 : 0 });
+    const T = sec.shape === 'T';   // a tee, the flange at the top: the top of the flange t_f/2 above the shear centre
+    const base = { L: seg.L, EIz: E * sec.Iz, GIt: G * sec.It, EIw: E * sec.Iw, hs: T ? sec.tf : sec.h - sec.tf, zj: sec.zj || 0, restraints: seg.restraints, topRestrained: seg.topRestrained, nEl: opt.nEl || 10 };
+    const lam = EC3.mcrFE({ ...base, M: seg.M, q: seg.q, P: seg.P, a: opt.destab ? (T ? sec.tf / 2 : sec.h / 2) : 0 });
+    if (T) return ltbTee(sec, fy, seg, lam, opt);
     let C1 = null;
     if (seg.forkFork && !seg.topRestrained) {
       const lam0 = opt.destab ? EC3.mcrFE({ ...base, M: seg.M }) : lam;
@@ -1535,16 +1776,19 @@ const Design = (() => {
     const A = comp.cls === 4 ? comp.Aeff : sec.A, NRk = A * fy;
     const cur = EC3.fbCurves(sec, grade);
     const Ncry = Math.PI ** 2 * E * sec.Iy / Lcry ** 2, Ncrz = Math.PI ** 2 * E * sec.Iz / Lcrz ** 2;
-    // 6.3.1.4: torsional (doubly symmetric) or torsional-flexural (channel, coupled with minor-axis flexure since the
-    // shear centre lies on the major axis at y0 from the centroid); closed hollow sections are not susceptible
-    let NcrT = Infinity, NcrTF = null, i02 = null;
+    // 6.3.1.4: torsional (doubly symmetric) or torsional-flexural, where the shear centre lies off the centroid on the axis
+    // of symmetry: a channel at y_0 along y-y, a tee at z_0 along z-z. Torsion couples with flexure about that axis
+    // (BS EN 1993-1-3 6.2.3(7)): the channel's N_cr,y, the tee's N_cr,z. Closed hollow sections are not susceptible.
+    let NcrT = Infinity, NcrTF = null, i02 = null, tfAxis = null, e0 = 0;
     if (!EC3.isHollow(sec)) {
-      const y0 = sec.shape === 'PFC' ? sec.y0 : 0;
-      i02 = (sec.Iy + sec.Iz) / sec.A + y0 * y0;
+      const y0 = sec.shape === 'PFC' ? sec.y0 : 0, z0 = sec.shape === 'T' ? sec.z0 : 0;
+      e0 = y0 || z0;
+      i02 = (sec.Iy + sec.Iz) / sec.A + e0 * e0;
       NcrT = (G * sec.It + Math.PI ** 2 * E * sec.Iw / LT ** 2) / i02;
-      if (y0) {
-        const k = y0 * y0 / i02, beta = 1 - k, r = NcrT / Ncrz;
-        NcrTF = Ncrz / (2 * beta) * (1 + r - Math.sqrt((1 - r) ** 2 + 4 * k * r));
+      if (e0) {
+        tfAxis = y0 ? 'y' : 'z';
+        const Nf = y0 ? Ncry : Ncrz, k = e0 * e0 / i02, beta = 1 - k, r = NcrT / Nf;
+        NcrTF = Nf / (2 * beta) * (1 + r - Math.sqrt((1 - r) ** 2 + 4 * k * r));
       }
     }
     const NcrTor = NcrTF ?? NcrT;
@@ -1552,24 +1796,24 @@ const Design = (() => {
     const cy = EC3.chiFlex(ly, cur.y), cz = EC3.chiFlex(lz, cur.z), cT = EC3.chiFlex(lT, cur.z);
     const chiMin = Math.min(cy.chi, cz.chi, cT.chi);
     const NbRd = chiMin * NRk / EC3.GM1;
-    return { comp, A, NRk, curves: cur, Lcry, Lcrz, LT, Ncry, Ncrz, NcrT: NcrTor, NcrTpure: NcrT, NcrTF, i02, torsionalMode: EC3.isHollow(sec) ? 'none' : NcrTF ? 'torsional-flexural' : 'torsional', lamY: ly, lamZ: lz, lamT: lT, y: cy, z: cz, T: cT, chiZT: Math.min(cz.chi, cT.chi), NbRd, util: Ncomp > 0 ? Ncomp / NbRd : 0 };
+    return { comp, A, NRk, curves: cur, Lcry, Lcrz, LT, Ncry, Ncrz, NcrT: NcrTor, NcrTpure: NcrT, NcrTF, i02, tfAxis, e0, torsionalMode: EC3.isHollow(sec) ? 'none' : NcrTF ? 'torsional-flexural' : 'torsional', lamY: ly, lamZ: lz, lamT: lT, y: cy, z: cz, T: cT, chiZT: Math.min(cz.chi, cT.chi), NbRd, util: Ncomp > 0 ? Ncomp / NbRd : 0 };
   }
 
   // 6.3.3, eqs (6.61)/(6.62). Interaction factors from Annex B, or from Annex A when A = { Cmy0, Cmz0, lam0, C1 } is given.
-  function interaction(sec, fy, cls, N, ab, MyEd, chiLTmod, Cmy, CmLT, MzEd = 0, Cmz = 1, A = null) {
-    const Wy = EC3.wyByClass(sec, fy, cls), Wz = cls <= 2 ? sec.Wplz : sec.Welz;
+  function interaction(sec, fy, cls, N, ab, MyEd, chiLTmod, Cmy, CmLT, MzEd = 0, Cmz = 1, A = null, sgn = 1) {
+    const Wy = EC3.wyByClass(sec, fy, cls, sgn), Wz = cls <= 2 ? sec.Wplz : sec.Welz;
     const MyRk = Wy * fy, MzRk = Wz * fy;
     const nY = N / (ab.y.chi * ab.NRk / EC3.GM1), nZ = N / (ab.chiZT * ab.NRk / EC3.GM1);
     if (A) {
       const torsional = !EC3.isHollow(sec);
-      const Wel = cls === 4 ? EC3.weffBending(sec, fy).Weff : sec.Wely;
+      const Wel = cls === 4 ? EC3.weffBending(sec, fy, sgn).Weff : sec.Wely;
       const k = EC3.annexA({ cls, N, My: MyEd, Mz: MzEd, NRk: ab.NRk, chiY: ab.y.chi, chiZ: ab.z.chi, lamY: ab.lamY, lamZ: ab.lamZ,
         Ncry: ab.Ncry, Ncrz: ab.Ncrz, NcrT: ab.NcrTpure, NcrTF: ab.NcrTF ?? ab.NcrTpure, Cmy0: A.Cmy0, Cmz0: A.Cmz0, lam0: A.lam0, C1: A.C1,
         chiLT: chiLTmod, aLT: 1 - sec.It / sec.Iy, Wply: sec.Wply, Wely: sec.Wely, Wplz: sec.Wplz, Welz: sec.Welz, fy,
         epsY: N > 0 ? MyEd / N * ab.A / Wel : Infinity, torsional });
       const u61 = nY + k.kyy * MyEd / (chiLTmod * MyRk / EC3.GM1) + k.kyz * MzEd / (MzRk / EC3.GM1);
       const u62 = nZ + k.kzy * MyEd / (chiLTmod * MyRk / EC3.GM1) + k.kzz * MzEd / (MzRk / EC3.GM1);
-      return { method: 'A', nY, nZ, ...k, Cmy0: A.Cmy0, Cmz0: A.Cmz0, MyRk, MzRk, u61, u62, util: Math.max(u61, u62) };
+      return { method: 'A', nY, nZ, ...k, Cmy0: A.Cmy0, Cmz0: A.Cmz0, MyRk, MzRk, u61, u62, util: Math.max(u61, u62), sgn, cls, MyEd };
     }
     const k = EC3.annexB({ cls, lamY: ab.lamY, lamZ: ab.lamZ, nY, nZ, Cmy, Cmz, CmLT, torsional: !EC3.isHollow(sec), hollow: EC3.isHollow(sec) });   // closed sections: not susceptible to torsional deformations
     const u61 = nY + k.kyy * MyEd / (chiLTmod * MyRk / EC3.GM1) + k.kyz * MzEd / (MzRk / EC3.GM1);
@@ -1589,6 +1833,7 @@ const Design = (() => {
            restraint[] per member: {mode:'ends'|'points'|'top', pts:[mm local]}, tipRestrained{L,R}, destab,
            defl:{brittle}} */
   function designBeam(inp) {
+    if (inp.sec.shape === 'T') throw new Error('Tees are designed as members (Steel Member Design): beams from spans and loads take I sections, channels and hollow sections');
     const sec = inp.sec, fy = EC3.yieldStrength(inp.grade, Math.max(sec.tf, sec.tw), inp.fy);
     const lay = Beam.layout(inp);
     const loads = inp.loads.slice();
@@ -1912,14 +2157,24 @@ const Design = (() => {
       [...xs0].filter(x => x >= -1e-6 && x <= sp + 1e-6).sort((a, b) => a - b).forEach(x => wins.push({ xa: Math.min(Math.max(x, 0), sp), L: LLT }));
     }
     let worst = null;
+    const isT = sec.shape === 'T';
+    // a tee whose L_LT runs beyond the member: each sign's C₁ times its uniform-moment M_cr over L_LT
+    const overTee = (lt, Lo) => {
+      const sg = lt.signs.map(r => ltbResult(sec, fy, r.cls, (r.C1 || 1) * EC3.mcrUniform(sec, Lo, r.sgn), r.C1, r.Mmax, r.sgn));
+      return { ...sg.reduce((a, r) => r.util > a.util ? r : a, sg[0]), signs: sg };
+    };
+    // a Class 4 tee in compression: N_Ed acts at the gross centroid, e_N below the effective one, a hogging moment
+    // ΔM_y,Ed = e_N N_Ed (the toe in compression, Table 6.7) taken with the moment diagram in 6.3.3
+    const dM = isT && N > 0 && ab.comp.cls === 4 ? N * ab.comp.eN : 0;
+    out.dM = dM;
     for (let i = 0; i < wins.length; i++) {
       const w = wins[i], xa = w.xa, Lseg = w.L, sxs = Array.from({ length: 11 }, (_, k) => Lseg * k / 10);
       const Mmax = Math.max(...sxs.map(x => Math.abs(My(xa + x))));
       const CmLT = EC3.cmFactor(sxs, sxs.map(x => My(xa + x)), !!inp.hasUdl, false).Cm;
       let lt = null;
       if (Mmax > 1) {
-        lt = ltb(sec, fy, cls, { L: Lseg, M: x => My(xa + x), Mref: Mmax, Mmax, restraints: [{ x: 0, type: 'fork' }, { x: Lseg, type: 'fork' }], forkFork: true }, { destab: false });
-        if (w.over) lt = ltbResult(sec, fy, cls, (lt.C1 || 1) * EC3.mcrUniform(sec, w.over), lt.C1, Mmax);   // L_LT beyond the member
+        lt = ltb(sec, fy, cls, { L: Lseg, M: x => My(xa + x), Mref: Mmax, Mmax, restraints: [{ x: 0, type: 'fork' }, { x: Lseg, type: 'fork' }], forkFork: true }, { destab: false, N, biax: hasMz });
+        if (w.over) lt = isT ? overTee(lt, w.over) : ltbResult(sec, fy, cls, (lt.C1 || 1) * EC3.mcrUniform(sec, w.over), lt.C1, Mmax);   // L_LT beyond the member
         lt = { ...lt, Lseg: w.over || Lseg, xa };
         if (!G) out.segResults.push({ seg: i, ...lt });
         else if (!worst || lt.util > worst.util) worst = { seg: i, ...lt };
@@ -1927,7 +2182,23 @@ const Design = (() => {
       }
       const chiLT = lt ? lt.chiMod : 1;
       const MzMax = Math.max(Math.abs(Mz(xa)), Math.abs(Mz(xa + Lseg)));
-      if (N > 0 || hasMz) {           // 6.3.3 with compression and/or biaxial bending
+      if ((N > 0 || hasMz) && isT) {  // 6.3.3 for a tee: Annex A (Annex B's factors are for I, H and hollow sections), each sign
+        const MyI = x => My(xa + x) - dM, MmaxI = Math.max(...sxs.map(x => Math.abs(MyI(x))));
+        let lti = null;
+        if (MmaxI > 1) {
+          lti = ltb(sec, fy, cls, { L: Lseg, M: MyI, Mref: MmaxI, Mmax: MmaxI, restraints: [{ x: 0, type: 'fork' }, { x: Lseg, type: 'fork' }], forkFork: true }, { destab: false, N, biax: hasMz });
+          if (w.over) lti = overTee(lti, w.over);
+        }
+        const signs = lti ? lti.signs : [{ sgn: 1, cls: EC3.classify(sec, fy, N, false, hasMz, 1).cls, chiMod: 1, Mmax: 0, C1: null }];
+        const CmyT = swayY ? 0.9 : EC3.cmFactor(xs, xs.map(x => My(x) - dM), !!inp.hasUdl, false).Cm;
+        for (const r of signs) {
+          const Wy = EC3.wyByClass(sec, fy, r.cls, r.sgn), Mcr0 = EC3.mcrUniform(sec, w.over || Lseg, r.sgn);
+          const A = { Cmy0: swayY ? 1 : EC3.cm0Linear(psiOf(My(0) - dM, My(L) - dM), Nc, ab.Ncry), Cmz0: swayZ ? 1 : EC3.cm0Linear(psiOf(inp.MzB, inp.MzT), Nc, ab.Ncrz),
+            lam0: Math.sqrt(Wy * fy / Mcr0), C1: r.C1 || 1 };
+          const ir = interaction(sec, fy, r.cls, Nc, ab, r.Mmax, r.chiMod, CmyT, CmLT, MzMax, Cmz, A, r.sgn);
+          track(out.gov, 'interaction', ir.util, { seg: i, xa, Lseg: w.over || Lseg, ir, chiLT: r.chiMod, swayY, swayZ, dM, lt: lti ? r : null, Mcr0 });
+        }
+      } else if (N > 0 || hasMz) {           // 6.3.3 with compression and/or biaxial bending
         let A = null;
         if (annexA) {
           const Wy = EC3.wyByClass(sec, fy, cls), Mcr0 = EC3.mcrUniform(sec, w.over || Lseg);
@@ -1939,6 +2210,7 @@ const Design = (() => {
       }
     }
     if (worst) out.segResults.push(worst);
+    out.annexA = annexA || isT;
     out.windows = G ? wins.length : 0;
     out.cls = cls; out.Cmy = Cmy; out.Cmz = Cmz; out.swayY = swayY; out.swayZ = swayZ;
     out.utilMax = Math.max(...Object.values(out.gov).map(g => g.util));
@@ -3107,12 +3379,46 @@ const EC3Script = (() => {
   'use strict';
   const f1 = v => (+v).toFixed(1), f2 = v => (+v).toFixed(2), f3 = v => (+v).toFixed(3);
   const hollow = s => s.shape === 'RHS' || s.shape === 'CHS';
-  const SHAPE = { I: 'I or H section', PFC: 'parallel flange channel', RHS: 'rectangular or square hollow section', CHS: 'circular hollow section' };
+  const SHAPE = { I: 'I or H section', PFC: 'parallel flange channel', RHS: 'rectangular or square hollow section', CHS: 'circular hollow section', T: 'tee' };
+
+  // ---------- a tee: its properties from the parent's dimensions ----------
+  // The flange at the top; the two root fillets (spandrels) included; c_T the centroid below the top of the flange. W_pl,y
+  // about the plastic neutral axis (solved) and z_j (integrated) are given; the rest are formulas (SCI P363 for I_t and I_w).
+  function sectionTee(C, s) {
+    C.note(`${s.name}: a tee split at mid-depth from the ${s.parent}, rolled, its flange at the top. Properties from the parent's dimensions with the root fillets; I_t and I_w by the SCI P363 tee formulae.`);
+    C.input('h_p', s.h * 2, 'mm', `depth of the ${s.parent}`, '');
+    C.calc('h', 'h_p/2', s.h, 'mm', 'depth of the tee: half the parent', '');
+    C.input('b', s.b, 'mm', 'flange width', ''); C.input('t_w', s.tw, 'mm', 'stem thickness', ''); C.input('t_f', s.tf, 'mm', 'flange thickness', ''); C.input('r', s.r, 'mm', 'root radius', '');
+    const { As, e, Ic } = EC3.spandrel(s.r);
+    C.calc('A_fil', '(1 - PI()/4)*r^2', As, 'mm2', 'area of a root fillet', '', { sym: 'A_fillet' });
+    C.calc('e_fil', 'r*(10 - 3*PI())/(12 - 3*PI())', e, 'mm', 'its centroid from the corner', '', { sym: 'e_fillet' });
+    C.calc('A', 'b*t_f + (h - t_f)*t_w + 2*A_fil', s.A / 100, 'cm2', 'area', '');
+    C.calc('c_T', '(b*t_f^2/2 + (h - t_f)*t_w*(t_f + h)/2 + 2*A_fil*(t_f + e_fil))/A', s.c, 'mm', 'centroid below the top of the flange', '', { sym: 'c' });
+    // the fillet's second moment about its own centroid, (1 − 5π/16)r⁴ − A_fil e_fil², within the sums (on its own it is
+    // below the smallest value CalcPad keeps in SI units)
+    C.calc('I_y', 'b*t_f^3/12 + b*t_f*(c_T - t_f/2)^2 + t_w*(h - t_f)^3/12 + t_w*(h - t_f)*((t_f + h)/2 - c_T)^2 + 2*((1 - 5*PI()/16)*r^4 - A_fil*e_fil^2 + A_fil*(t_f + e_fil - c_T)^2)', s.Iy / 1e4, 'cm4', 'second moment of area about y-y (parallel to the flange), the fillets with their own second moment', '');
+    C.calc('I_z', 't_f*b^3/12 + (h - t_f)*t_w^3/12 + 2*((1 - 5*PI()/16)*r^4 - A_fil*e_fil^2 + A_fil*(t_w/2 + e_fil)^2)', s.Iz / 1e4, 'cm4', 'second moment of area about z-z (the stem)', '');
+    C.calc('W_elyf', 'I_y/c_T', s.WelyF / 1e3, 'cm3', 'elastic modulus to the top of the flange', '', { sym: 'W_el,y,f' });
+    C.calc('W_elyt', 'I_y/(h - c_T)', s.WelyT / 1e3, 'cm3', 'elastic modulus to the toe of the stem', '', { sym: 'W_el,y,t' });
+    C.calc('W_ely', 'MIN(W_elyf, W_elyt)', s.Wely / 1e3, 'cm3', 'elastic modulus, the lesser (W_el,min)', '6.2.5(2)', { sym: 'W_el,y' });
+    C.calc('W_elz', 'I_z/(b/2)', s.Welz / 1e3, 'cm3', 'elastic modulus about z-z', '', { sym: 'W_el,z' });
+    C.given('z_pl', s.zp, 'mm', 'plastic neutral axis below the top of the flange', 'solved: half the area above it', '', { sym: 'z_pl' });
+    C.given('W_ply', s.Wply / 1e3, 'cm3', 'plastic modulus about y-y: the first moments of the areas either side of z_pl', 'the flange, stem and fillets about z_pl', '', { sym: 'W_pl,y' });
+    C.calc('W_plz', 't_f*b^2/4 + (h - t_f)*t_w^2/4 + 2*A_fil*(t_w/2 + e_fil)', s.Wplz / 1e3, 'cm3', 'plastic modulus about z-z', '', { sym: 'W_pl,z' });
+    const tw = s.tw, tf = s.tf, r = s.r, a1 = -0.042 + 0.2204 * tw / tf + 0.1355 * r / tf - 0.0865 * r * tw / tf ** 2 - 0.0725 * tw ** 2 / tf ** 2, D1 = ((tf + r) ** 2 + tw * (r + tw / 4)) / (2 * r + tf);
+    C.calc('a_1t', '-0.042 + 0.2204*t_w/t_f + 0.1355*r/t_f - 0.0865*r*t_w/t_f^2 - 0.0725*t_w^2/t_f^2', a1, '', 'fillet factor (SCI P363)', '', { sym: 'α₁' });
+    C.calc('D_1t', '((t_f + r)^2 + t_w*(r + t_w/4))/(2*r + t_f)', D1, 'mm', 'diameter of the circle in the junction (SCI P363)', '', { sym: 'D₁' });
+    C.calc('I_t', 'b*t_f^3/3 + (h - t_f)*t_w^3/3 + a_1t*D_1t^4 - 0.21*t_f^4 - 0.105*t_w^4', s.It / 1e4, 'cm4', 'torsion constant: half the parent\'s, less 0.105 t_w⁴ for the cut end of the stem', 'SCI P363');
+    C.given('I_w', s.Iw / 1e6, 'cm6', 'warping constant of a tee', 'b³t_f³/144 + t_w³(h − t_f/2)³/36 (SCI P363), given as a value: CalcPad keeps no value under 5×10⁻¹¹ in SI units (m⁶)', 'SCI P363');
+    C.calc('z_0', 'c_T - t_f/2', s.z0, 'mm', 'shear centre above the centroid: at the flange–stem junction', '', { sym: 'z_0' });
+    C.given('z_j', s.zj, 'mm', 'monosymmetry constant, z_0 − ∫z(y² + z²)dA/(2I_y): positive, stabilising, when the flange is in compression', 'integrated over the flange, stem and fillets', 'SN030, NCCI', { sym: 'z_j' });
+  }
 
   // ---------- the section ----------
   function section(C, s, o = {}) {
     if (C.has('A')) return;
     C.head(o.head || 'Section');
+    if (s.shape === 'T') { sectionTee(C, s); return; }
     const src = s.hist ? `BCSA historical tables${s.hist.series ? `, ${s.hist.series}` : ''}` : s.productStd === 'BS EN 10025-2 (plate)' || s.rolled === false && s.shape === 'I' ? 'from the plate sizes (SCI P363 formulae)' : 'section tables (British Steel, BS EN 10365)';
     C.note(`${s.name}: ${SHAPE[s.shape] || s.shape}${s.cold ? ', cold-formed' : s.shape === 'RHS' || s.shape === 'CHS' ? ', hot-finished' : s.rolled ? ', rolled' : ', welded'}. Properties: ${src}.`);
     if (s.shape === 'CHS') { C.input('d', s.d, 'mm', 'outside diameter', ''); C.input('t', s.t, 'mm', 'wall thickness', ''); }
@@ -3152,10 +3458,11 @@ const EC3Script = (() => {
   // ---------- classification, Table 5.2 ----------
   // N in N (+ compression), the name of the axial force already defined (or null: no axial force); sfx keeps two
   // classifications apart in one calculation
-  function classify(C, s, fy, N, bending, biax, nName, sfx = '', title, fyn = 'f_y') {
-    const cl = EC3.classify(s, fy, N, bending, biax), x = sfx;
+  function classify(C, s, fy, N, bending, biax, nName, sfx = '', title, fyn = 'f_y', sgn = 0) {
+    const cl = EC3.classify(s, fy, N, bending, biax, sgn), x = sfx;
     C.head(title || 'Classification, Table 5.2');
     const clsExpr = (r, l1, l2, l3) => `IF(${r} <= ${l1}, 1, IF(${r} <= ${l2}, 2, IF(${r} <= ${l3}, 3, 4)))`;
+    if (s.shape === 'T') { classifyTee(C, s, fy, N, cl, nName, x, fyn, clsExpr); return cl; }
     if (s.shape === 'CHS') {
       C.calc(`dt${x}`, 'd/t', cl.tube.ratio, '', 'd/t', 'Table 5.2 sheet 3', { sym: 'd/t' });
       C.calc(`cls${x}`, clsExpr(`dt${x}`, '50*eps^2', '70*eps^2', '90*eps^2'), cl.cls, '', 'class: d/t against 50ε², 70ε², 90ε²', 'Table 5.2 sheet 3', { sym: 'Class' });
@@ -3200,10 +3507,160 @@ const EC3Script = (() => {
     return cl;
   }
 
+  // a tee: the flange's two outstands; the stem an outstand from the root of the fillet, its toe in compression or tension
+  function classifyTee(C, s, fy, N, cl, nName, x, fyn, clsExpr) {
+    const f = cl.flange, w = cl.web, sg = cl.sgn;
+    C.calc(`c_f${x}`, '(b - t_w - 2*r)/2', f.c, 'mm', 'flange outstand', 'Table 5.2 sheet 2');
+    C.calc(`rf${x}`, `c_f${x}/t_f`, f.ratio, '', 'c/t of the flange', 'Table 5.2', { sym: 'c/t_f' });
+    if (!f.comp) C.input(`cls_f${x}`, 1, '', 'the flange in tension (the toe of the stem compressed, no axial compression): Class 1', 'Table 5.2', { sym: 'Class_f' });
+    else C.calc(`cls_f${x}`, clsExpr(`rf${x}`, '9*eps', '10*eps', '14*eps'), f.cls, '', 'flange outstands in compression: c/t against 9ε, 10ε, 14ε', 'Table 5.2 sheet 2', { sym: 'Class_f' });
+    C.calc(`c_w${x}`, 'h - t_f - r', w.c, 'mm', 'the stem: an outstand from the root of the fillet', 'Table 5.2 sheet 2');
+    C.calc(`rw${x}`, `c_w${x}/t_w`, w.ratio, '', 'c/t of the stem', 'Table 5.2', { sym: 'c/t_w' });
+    if (!Number.isFinite(w.lim[0])) C.input(`cls_w${x}`, 1, '', `${w.how}: Class 1`, 'Table 5.2', { sym: 'Class_w' });
+    else if (w.psi === 1 && w.alpha === 1) C.calc(`cls_w${x}`, clsExpr(`rw${x}`, '9*eps', '10*eps', '14*eps'), w.cls, '', `${w.how}: c/t against 9ε, 10ε, 14ε`, 'Table 5.2 sheet 2', { sym: 'Class_w' });
+    else {
+      const NN = nName || null, AcN = NN ? `(A*${fyn} + ${NN})/2` : `A*${fyn}/2`;
+      const dp = sg > 0 ? EC3.teeDepthOf(s, (s.A + N / fy) / 2) : EC3.teeDepthOf(s, s.A - (s.A + N / fy) / 2);
+      if (NN && Math.abs(N) > 0) C.given(`z_N${x}`, dp, 'mm', `plastic neutral axis with ${NN}, below the top: the ${sg > 0 ? 'area above it carries' : 'area below it carries'} ${AcN.replace(/\*/g, ' ')} in compression at f_y`, 'solved over the flange, stem and fillets', 'Table 5.2', { sym: 'z_pl,N' });
+      else C.calc(`z_N${x}`, 'z_pl', dp, 'mm', 'no axial force: the plastic neutral axis of the section', 'Table 5.2', { sym: 'z_pl,N' });
+      C.calc(`sig_N${x}`, NN ? `${NN}/A` : `0*${fyn}`, N / s.A, 'N/mm2', 'axial stress', '', { sym: 'σ_N' });
+      if (sg > 0) {
+        C.calc(`alpha${x}`, `MAX(0, MIN(1, (z_N${x} - t_f - r)/c_w${x}))`, w.alpha, '', 'the compressed part of the stem, from its root (plastic)', 'Table 5.2 sheet 2', { sym: 'α' });
+        C.calc(`sig_r${x}`, `sig_N${x} + (${fyn} - sig_N${x})*(c_T - t_f - r)/c_T`, sig_r(s, fy, N, 1), 'N/mm2', 'elastic stress at the root of the stem, the top of the flange at f_y', '', { sym: 'σ_root' });
+        C.calc(`sig_t${x}`, `sig_N${x} + (${fyn} - sig_N${x})*(c_T - h)/c_T`, sig_t(s, fy, N), 'N/mm2', 'elastic stress at the toe', '', { sym: 'σ_toe' });
+        C.calc(`psi${x}`, `IF(sig_r${x} > 0, MAX(-3, sig_t${x}/sig_r${x}), -1)`, w.psi, '', 'ψ = σ_toe/σ_root: the toe in tension', 'EN 1993-1-5 Table 4.2', { sym: 'ψ' });
+        C.calc(`k_s${x}`, `IF(psi${x} >= 1, 0.43, IF(psi${x} > 0, 0.578/(psi${x} + 0.34), IF(psi${x} > -1, 1.7 - 5*psi${x} + 17.1*psi${x}^2, 23.8)))`, w.ks, '', 'buckling factor, the free edge in tension (below ψ = −1 the value at −1)', 'EN 1993-1-5 Table 4.2', { sym: 'k_σ' });
+        C.calc(`lw1${x}`, `9*eps/(MAX(alpha${x}, 1E-9)*SQRT(MAX(alpha${x}, 1E-9)))`, w.lim[0], '', 'Class 1 limit, the tip in tension: 9ε/(α√α)', 'Table 5.2 sheet 2', { sym: 'c/t lim,1' });
+        C.calc(`lw2${x}`, `10*eps/(MAX(alpha${x}, 1E-9)*SQRT(MAX(alpha${x}, 1E-9)))`, w.lim[1], '', 'Class 2 limit: 10ε/(α√α)', 'Table 5.2 sheet 2', { sym: 'c/t lim,2' });
+      } else {
+        C.calc(`alpha${x}`, `MAX(0, MIN(1, (h - MAX(z_N${x}, t_f + r))/c_w${x}))`, w.alpha, '', 'the compressed part of the stem, from its toe (plastic)', 'Table 5.2 sheet 2', { sym: 'α' });
+        C.calc(`sig_r${x}`, `sig_N${x} - (${fyn} - sig_N${x})*(c_T - t_f - r)/(h - c_T)`, sig_r(s, fy, N, -1), 'N/mm2', 'elastic stress at the root of the stem, the toe at f_y', '', { sym: 'σ_root' });
+        C.calc(`psi${x}`, `MAX(-3, MIN(1, sig_r${x}/${fyn}))`, w.psi, '', 'ψ = σ_root/σ_toe: the toe in compression', 'EN 1993-1-5 Table 4.2', { sym: 'ψ' });
+        C.calc(`k_s${x}`, `0.57 - 0.21*psi${x} + 0.07*psi${x}^2`, w.ks, '', 'buckling factor, the free edge in compression', 'EN 1993-1-5 Table 4.2', { sym: 'k_σ' });
+        C.calc(`lw1${x}`, `9*eps/MAX(alpha${x}, 1E-9)`, w.lim[0], '', 'Class 1 limit, the tip in compression: 9ε/α', 'Table 5.2 sheet 2', { sym: 'c/t lim,1' });
+        C.calc(`lw2${x}`, `10*eps/MAX(alpha${x}, 1E-9)`, w.lim[1], '', 'Class 2 limit: 10ε/α', 'Table 5.2 sheet 2', { sym: 'c/t lim,2' });
+      }
+      C.calc(`lw3${x}`, `21*eps*SQRT(k_s${x})`, w.lim[2], '', 'Class 3 limit: 21ε√k_σ', 'Table 5.2 sheet 2', { sym: 'c/t lim,3' });
+      C.calc(`cls_w${x}`, clsExpr(`rw${x}`, `lw1${x}`, `lw2${x}`, `lw3${x}`), w.cls, '', `stem class, ${w.how}`, 'Table 5.2', { sym: 'Class_w' });
+    }
+    C.calc(`cls${x}`, `MAX(cls_f${x}, cls_w${x})`, cl.cls, '', `class of the tee${sg > 0 ? ' with the flange in compression' : sg < 0 ? ' with the toe of the stem in compression' : ''}: the worse of its parts`, '5.5.2(6)', { sym: 'Class' });
+  }
+  // the elastic stresses of a tee at the root of the stem and at its toe, the extreme compression fibre at f_y (sgn > 0: the top)
+  function sig_r(s, fy, N, sgn) {
+    const sN = N / s.A, d0 = s.tf + s.r;
+    return sgn > 0 ? sN + (fy - sN) * (s.c - d0) / s.c : sN - (fy - sN) * (s.c - d0) / (s.h - s.c);
+  }
+  function sig_t(s, fy, N) { const sN = N / s.A; return sN + (fy - sN) * (s.c - s.h) / s.c; }
+
+  // a tee in uniform compression: the stem's ineffective part at its toe (k_σ = 0.43), A_eff and the shift e_N
+  function teeAeff(C, s, fy, comp) {
+    if (C.has('A_eff')) return;
+    const cw = s.h - s.tf - s.r, eps = Math.sqrt(235 / fy), lp = (cw / s.tw) / (28.4 * eps * Math.sqrt(0.43));
+    C.calc('c_wA', 'h - t_f - r', cw, 'mm', 'the stem from the root of the fillet', 'Table 5.2 sheet 2', { sym: 'c_w' });
+    C.calc('lam_pc', '(c_wA/t_w)/(28.4*eps*SQRT(0.43))', lp, '', 'plate slenderness of the stem in uniform compression, k_σ = 0.43', 'EN 1993-1-5 4.4(2)', { sym: 'λ̄_p' });
+    C.calc('rho_c', 'IF(lam_pc <= 0.748, 1, MIN(1, (lam_pc - 0.188)/lam_pc^2))', comp.rhoW, '', 'reduction factor of an outstand', 'EN 1993-1-5 (4.3)', { sym: 'ρ' });
+    C.calc('l_hc', '(1 - rho_c)*c_wA', comp.holeW, 'mm', 'the ineffective length at the toe', 'EN 1993-1-5 Table 4.2', { sym: 'c − b_eff' });
+    C.calc('A_eff', 'A - l_hc*t_w', comp.Aeff / 100, 'cm2', 'effective area in uniform compression', 'EN 1993-1-5 4.3', { sym: 'A_eff' });
+    C.calc('e_N', 'l_hc*t_w*(h - l_hc/2 - c_T)/A_eff', comp.eN, 'mm', 'the effective centroid above the gross centroid', '6.2.2.5(4)', { sym: 'e_N' });
+  }
+  // a tee in bending of one sign: W_eff with ψ from the gross section (an outstand, EN 1993-1-5 4.4(3)); the name W_eff
+  function teeWeff(C, s, fy, sgn) {
+    if (C.has('W_eff')) return;
+    const wb = EC3.weffTee(s, fy, sgn);
+    if (!(wb.hole > 0) && !wb.lp) { C.calc('W_eff', 'W_ely', s.Wely / 1e3, 'cm3', 'not Class 4 in bending alone: the elastic modulus', 'EN 1993-1-5 4.3', { sym: 'W_eff,y' }); return; }
+    const sg = sgn < 0 ? -1 : 1;
+    C.note(`The effective section in bending with the ${sg < 0 ? 'toe of the stem' : 'flange'} in compression, ψ of the stem from the gross section (an outstand: BS EN 1993-1-5 4.4(3)).`);
+    C.calc('c_wb', 'h - t_f - r', s.h - s.tf - s.r, 'mm', 'the stem from the root of the fillet', 'Table 5.2 sheet 2', { sym: 'c_w' });
+    if (sg < 0) {
+      C.calc('psi_b', 'MAX(-3, MIN(1, -(c_T - t_f - r)/(h - c_T)))', wb.psi, '', 'ψ = σ_root/σ_toe in bending alone, the toe in compression', 'EN 1993-1-5 Table 4.2', { sym: 'ψ' });
+      C.calc('k_sb', '0.57 - 0.21*psi_b + 0.07*psi_b^2', wb.ks, '', 'the free edge in compression', 'EN 1993-1-5 Table 4.2', { sym: 'k_σ' });
+    } else {
+      C.calc('psi_b', 'MAX(-3, (c_T - h)/(c_T - t_f - r))', wb.psi, '', 'ψ = σ_toe/σ_root in bending alone, the toe in tension', 'EN 1993-1-5 Table 4.2', { sym: 'ψ' });
+      C.calc('k_sb', 'IF(psi_b >= 1, 0.43, IF(psi_b > 0, 0.578/(psi_b + 0.34), IF(psi_b > -1, 1.7 - 5*psi_b + 17.1*psi_b^2, 23.8)))', wb.ks, '', 'the free edge in tension', 'EN 1993-1-5 Table 4.2', { sym: 'k_σ' });
+    }
+    C.calc('lam_pb', '(c_wb/t_w)/(28.4*eps*SQRT(k_sb))', wb.lp, '', 'plate slenderness of the stem', 'EN 1993-1-5 4.4(2)', { sym: 'λ̄_p' });
+    C.calc('rho_b', 'IF(lam_pb <= 0.748, 1, MIN(1, (lam_pb - 0.188)/lam_pb^2))', wb.rho, '', 'reduction factor of an outstand', 'EN 1993-1-5 (4.3)', { sym: 'ρ' });
+    C.calc('b_cb', 'IF(psi_b < 0, c_wb/(1 - psi_b), c_wb)', wb.bc, 'mm', 'the compressed width of the stem', 'EN 1993-1-5 Table 4.2', { sym: 'b_c' });
+    C.calc('l_hb', '(1 - rho_b)*b_cb', wb.hole, 'mm', `the ineffective length, ${sg < 0 ? 'at the toe' : 'from ρb_c to b_c below the root'}`, 'EN 1993-1-5 Table 4.2', { sym: 'b_c − b_eff' });
+    if (sg < 0) C.calc('z_hb', 'c_T - (h - l_hb/2)', s.c - (wb.d1 + wb.d2) / 2, 'mm', 'its centroid above the centroid of the tee', '', { sym: 'z_hole' });
+    else C.calc('z_hb', 'c_T - (t_f + r + rho_b*b_cb + l_hb/2)', s.c - (wb.d1 + wb.d2) / 2, 'mm', 'its centroid above the centroid of the tee', '', { sym: 'z_hole' });
+    C.calc('A_eb', 'A - l_hb*t_w', wb.Aeff / 100, 'cm2', 'effective area in bending', '', { sym: 'A_eff,b' });
+    C.calc('s_eb', '-l_hb*t_w*z_hb/A_eb', wb.shift, 'mm', 'the effective centroid above the gross', '', { sym: 'Δz' });
+    C.calc('I_eff', 'I_y - (t_w*l_hb^3/12 + l_hb*t_w*z_hb^2) - A_eb*s_eb^2', wb.Ieff / 1e4, 'cm4', 'second moment of the effective section', '', { sym: 'I_eff,y' });
+    C.calc('W_eff', sg < 0 ? 'I_eff/MAX(c_T - s_eb, h - l_hb - (c_T - s_eb))' : 'I_eff/MAX(c_T - s_eb, h - (c_T - s_eb))', wb.Weff / 1e3, 'cm3', 'effective modulus to the farther extreme fibre (W_eff,min)', 'EN 1993-1-5 4.3(4)', { sym: 'W_eff,y' });
+  }
+
   // ---------- the cross-section at one station, 6.2 ----------
   // act: { N, My, V, Mz, Vz } in N and N mm (V parallel to the web, Vz parallel to the flanges), their names already
   // defined: n = { N, My, V, Mz, Vz } (a name may be null when that action is zero and undefined)
+  // a tee at one station: shear on A_v of 6.2.6(3)(c); plastic stress blocks (Class 1, 2), the stresses at the tips of the
+  // flange and the toe (Class 3), or A_eff with N_Ed e_N and W_eff of the moment's sign (Class 4)
+  function crossTee(C, s, fy, act, n) {
+    const sc = EC3.sectionCheck(s, fy, act.N, act.My, act.V, act.Mz, act.Vz), sh = sc.shear, shz = sc.shearZ, u = [];
+    const sgn = sc.sgn, biax = Math.abs(act.Mz) > 1e-6, hasMy = Math.abs(act.My) > 1e-6;
+    classify(C, s, fy, act.N, sgn !== 0, biax, n.N, '_s', 'Classification at this station, Table 5.2', 'f_y', sgn);
+    const cls = sc.cls.cls;
+    C.head('Shear, 6.2.6');
+    C.calc('A_v', 'A - b*t_f + (t_w + 2*r)*t_f/2', sh.Av, 'mm2', 'shear area of a rolled tee, load parallel to the stem', '6.2.6(3)(c)');
+    C.calc('V_plRd', 'A_v*f_y/(SQRT(3)*gamma_M0)', sh.Vpl / 1e3, 'kN', 'plastic shear resistance', '6.2.6(2)', { sym: 'V_pl,Rd' });
+    C.note('The stem is an outstand, not a web between flanges: it is not checked for shear buckling (6.2.6(6) and BS EN 1993-1-5 section 5 are for webs).');
+    if (n.V) { C.check('U_Vz', `ABS(${n.V})/V_plRd`, Math.abs(act.V) / sh.VRd, 'shear parallel to the stem', '6.2.6'); u.push(Math.abs(act.V) / sh.VRd); }
+    if (n.Vz && Math.abs(act.Vz) > 0) {
+      C.calc('A_vy', 'A - (h - t_f)*t_w', shz.Av, 'mm2', 'shear area across: the flange (and fillets), the stem left out', '6.2.6(3)', { sym: 'A_v,y' });
+      C.calc('V_plyRd', 'A_vy*f_y/(SQRT(3)*gamma_M0)', shz.Vpl / 1e3, 'kN', 'plastic shear resistance parallel to the flange', '6.2.6(2)', { sym: 'V_pl,y,Rd' });
+      C.check('U_Vy', `ABS(${n.Vz})/V_plyRd`, Math.abs(act.Vz) / shz.VRd, 'shear parallel to the flange', '6.2.6');
+      u.push(Math.abs(act.Vz) / shz.VRd);
+    }
+    if (n.V && Math.abs(act.V) > 0.5 * sh.VRd) C.calc('rho', `(2*ABS(${n.V})/V_plRd - 1)^2`, sc.rho, '', 'V_Ed is more than half V_pl,Rd: the stem\'s yield strength reduced', '6.2.8(3)', { sym: 'ρ' });
+    else C.input('rho', 0, '', 'V_Ed is not more than half V_pl,Rd: no reduction', '6.2.8(2)', { sym: 'ρ' });
+    if (n.Vz && Math.abs(act.Vz) > 0.5 * shz.VRd) C.calc('rho_z', `(2*ABS(${n.Vz})/V_plyRd - 1)^2`, sc.rhoZ, '', 'reduction for the shear parallel to the flange', '6.2.8(3)', { sym: 'ρ_z' });
+    else C.input('rho_z', 0, '', 'shear parallel to the flange not more than half its resistance', '6.2.8(2)', { sym: 'ρ_z' });
+    const comp = EC3.aeffCompression(s, fy);
+    C.head(act.N > 0 ? 'Compression, 6.2.4' : act.N < 0 ? 'Tension, 6.2.3' : 'Axial resistance, 6.2.3 and 6.2.4');
+    if (act.N > 0 && comp.cls === 4) { teeAeff(C, s, fy, comp); C.calc('N_Rd', 'A_eff*f_y/gamma_M0', sc.NRd / 1e3, 'kN', 'compression resistance, Class 4', '6.2.4(2)', { sym: 'N_c,Rd' }); }
+    else C.calc('N_Rd', 'A*f_y/gamma_M0', sc.NRd / 1e3, 'kN', act.N < 0 ? 'tension resistance, gross section (holes not considered)' : 'resistance of the gross section', act.N < 0 ? '6.2.3(2)' : '6.2.4(2)', { sym: act.N < 0 ? 'N_pl,Rd' : 'N_c,Rd' });
+    if (n.N) { C.check('U_N', `ABS(${n.N})/N_Rd`, sc.uN, act.N < 0 ? 'tension' : 'compression', act.N < 0 ? '6.2.3' : '6.2.4'); u.push(sc.uN); }
+    const NN = n.N ? `ABS(${n.N})` : '0*A*f_y', Mz = biax && n.Mz ? `ABS(${n.Mz})` : null;
+    const side = sgn > 0 ? 'the flange in compression' : sgn < 0 ? 'the toe of the stem in compression' : 'no major-axis moment';
+    if (sc.method === 'plastic') {
+      C.head(`Bending${n.N && act.N ? ' with axial force' : ''}${Mz ? ', both axes' : ''}: Class ${cls}, plastic, 6.2.5 to 6.2.9`);
+      C.calc('A_st', '(h - t_f)*t_w + 2*A_fil', (s.h - s.tf) * s.tw + 2 * EC3.spandrel(s.r).As, 'mm2', 'the stem and its fillets', '');
+      C.calc('N_plRd', '(A - rho*A_st)*f_y/gamma_M0', sc.Npl / 1e3, 'kN', 'squash load, the stem at (1 − ρ)f_y', '6.2.8(3), 6.2.9.1', { sym: 'N_pl,Rd' });
+      C.calc('n', `${NN}/N_plRd`, sc.n, '', 'n = N_Ed/N_pl,Rd', '6.2.9.1');
+      if (hasMy && (Math.abs(act.N) > 0 || sc.rho > 0)) C.given('M_NyRd', sc.MNy / 1e6, 'kNm', `plastic moment about y-y with ${side}${Math.abs(act.N) > 0 ? ' and N_Ed' : ''}: the stress blocks either side of the neutral axis${sc.dpN != null ? ` at ${f1(sc.dpN)} mm below the top` : ''}${sc.rho > 0 ? ', the stem at (1 − ρ)f_y' : ''}`, 'the stress blocks over the flange, stem and fillets, about the centroid (where N_Ed acts)', '6.2.9.1(1)', { sym: 'M_N,y,Rd' });
+      else if (hasMy) C.calc('M_NyRd', 'W_ply*f_y/gamma_M0', sc.MNy / 1e6, 'kNm', 'plastic moment: no axial force, no reduction for shear', '6.2.5(2)', { sym: 'M_N,y,Rd' });
+      if (Mz) {
+        C.calc('M_plzRd', '(1 - rho_z)*W_plz*f_y/gamma_M0', sc.Mplz / 1e6, 'kNm', 'plastic moment about z-z', '6.2.5(2), 6.2.8', { sym: 'M_pl,z,Rd' });
+        C.calc('M_NzRd', 'MAX(0*M_plzRd, M_plzRd*(1 - n))', sc.MNz / 1e6, 'kNm', 'with the axial force: linear (conservative)', '6.2.1(7)', { sym: 'M_N,z,Rd' });
+      }
+      const terms = [hasMy ? `ABS(${n.My})/M_NyRd` : null, Mz ? `${Mz}/M_NzRd` : null].filter(Boolean);
+      if (terms.length) C.check('U_NM', terms.join(' + '), sc.uNM, `bending${Mz ? ' about both axes, unity exponents' : ''}${n.N && act.N ? ' with axial force' : ''}`, Mz ? '6.2.1(7)' : '6.2.9.1');
+      C.check('U_M', terms.length ? 'MAX(U_NM, n)' : 'n', sc.uM, 'cross-section: bending and axial force', '6.2.5, 6.2.9');
+      u.push(sc.uM);
+    } else if (cls === 3) {
+      C.head(`Bending${n.N && act.N ? ' with axial force' : ''}: Class 3, elastic, 6.2.9.2`);
+      const My = hasMy ? n.My : '0*f_y*W_ely', NE = n.N || '0*A*f_y';
+      C.calc('sig_top', `${NE}/A + ${My}/W_elyf`, sc.sTop, 'N/mm2', 'stress at the top of the flange (compression positive)', '6.2.9.2');
+      C.calc('sig_toe', `${NE}/A - ${My}/W_elyt`, sc.sToe, 'N/mm2', 'stress at the toe of the stem', '6.2.9.2');
+      if (Mz) { C.calc('sig_zf', `${Mz}/W_elz`, sc.sz, 'N/mm2', 'from M_z at the tips of the flange', ''); C.calc('sig_zt', `${Mz}*t_w/(2*I_z)`, sc.szToe, 'N/mm2', 'from M_z at the toe', ''); }
+      C.calc('U_top', `(ABS(sig_top)${Mz ? ' + sig_zf' : ''})/((1 - rho_z)*f_y/gamma_M0)`, sc.uTop, '', 'the tips of the flange', '6.2.9.2 (6.42)');
+      C.calc('U_toe', `(ABS(sig_toe)${Mz ? ' + sig_zt' : ''})/((1 - rho)*f_y/gamma_M0)`, sc.uToe, '', 'the toe of the stem (its yield strength reduced for shear)', '6.2.9.2 (6.42)');
+      C.check('U_M', 'MAX(U_top, U_toe)', sc.uM, 'cross-section: bending and axial force, elastic', '6.2.1(7), 6.2.9.2');
+      u.push(sc.uM);
+    } else {
+      C.head(`Bending${n.N && act.N ? ' with axial force' : ''}: Class 4, effective section, 6.2.9.3`);
+      const NE = n.N || '0*A*f_y', My = hasMy ? n.My : '0*f_y*W_ely';
+      if (act.N > 0) { teeAeff(C, s, fy, comp); C.calc('A_N', 'A_eff', sc.Aeff / 100, 'cm2', 'effective area for the axial force', '6.2.9.3', { sym: 'A_eff' }); C.calc('M_1', `${My} - ${NE}*e_N`, sc.M1 / 1e6, 'kNm', 'M_y,Ed with N_Ed e_N: the axial force below the effective centroid, a hogging moment', '6.2.9.3 (6.44)', { sym: 'M_y,Ed + N_Ed e_N' }); }
+      else { C.calc('A_N', 'A', s.A / 100, 'cm2', 'the gross area (no compression)', '6.2.9.3', { sym: 'A' }); C.calc('M_1', My, sc.M1 / 1e6, 'kNm', 'M_y,Ed', '6.2.9.3', { sym: 'M_y,Ed' }); }
+      teeWeff(C, s, fy, sc.M1 >= 0 ? 1 : -1);
+      C.calc('sigma_x', `${NN}/A_N + ABS(M_1)/W_eff${Mz ? ` + ${Mz}/W_elz` : ''}`, sc.sig, 'N/mm2', `longitudinal stress at the worst fibre (W_eff with ${sc.M1 >= 0 ? 'the flange' : 'the toe'} in compression)`, '6.2.9.3 (6.44)', { sym: 'σ_x,Ed' });
+      C.check('U_M', 'sigma_x/((1 - MAX(rho, rho_z))*f_y/gamma_M0)', sc.uM, 'cross-section: bending and axial force, effective', '6.2.9.3');
+      u.push(sc.uM);
+    }
+    return { sc, util: Math.max(0, ...u) };
+  }
   function cross(C, s, fy, act, n) {
+    if (s.shape === 'T') return crossTee(C, s, fy, act, n);
     const sc = EC3.sectionCheck(s, fy, act.N, act.My, act.V, act.Mz, act.Vz), sh = sc.shear, shz = sc.shearZ, u = [];
     const bending = Math.abs(act.My) > 1e-6 || Math.abs(act.Mz) > 1e-6, biax = Math.abs(act.Mz) > 1e-6;
     classify(C, s, fy, act.N, bending, biax, n.N, '_s', 'Classification at this station, Table 5.2');
@@ -3348,10 +3805,11 @@ const EC3Script = (() => {
   // ab: Design.axialBuckling's result; the compression N_Ed and the buckling lengths L_cry, L_crz, L_T already defined
   function flexural(C, s, fy, grade, ab, nName) {
     C.head('Buckling resistance, 6.3.1');
-    if (ab.comp.cls === 4) { C.given('A_eff', ab.A / 100, 'cm2', 'effective area in uniform compression', 'EN 1993-1-5 4.4', 'EN 1993-1-5 4.4', { sym: 'A_eff' }); C.calc('N_Rk', 'A_eff*f_y', ab.NRk / 1e3, 'kN', 'Class 4: the effective area', '6.3.1.1(3)', { sym: 'N_Rk' }); }
+    if (ab.comp.cls === 4 && s.shape === 'T') { teeAeff(C, s, fy, ab.comp); C.calc('N_Rk', 'A_eff*f_y', ab.NRk / 1e3, 'kN', 'Class 4: the effective area', '6.3.1.1(3)', { sym: 'N_Rk' }); }
+    else if (ab.comp.cls === 4) { C.given('A_eff', ab.A / 100, 'cm2', 'effective area in uniform compression', 'EN 1993-1-5 4.4', 'EN 1993-1-5 4.4', { sym: 'A_eff' }); C.calc('N_Rk', 'A_eff*f_y', ab.NRk / 1e3, 'kN', 'Class 4: the effective area', '6.3.1.1(3)', { sym: 'N_Rk' }); }
     else C.calc('N_Rk', 'A*f_y', ab.NRk / 1e3, 'kN', 'characteristic resistance', '6.3.1.1(3)', { sym: 'N_Rk' });
     const cv = ab.curves, hi = grade === 'S460';
-    const why = hollow(s) ? `${s.cold ? 'cold-formed' : 'hot-finished'} hollow section${hi ? ', S460' : ''}` : s.shape === 'PFC' ? 'U section' : !s.rolled ? `welded I, t_f ${s.tf <= 40 ? '≤' : '>'} 40 mm` : `rolled I, h/b = ${f2(s.h / s.b)}${s.h / s.b > 1.2 ? ' > 1.2' : ' ≤ 1.2'}, t_f = ${s.tf} mm${hi ? ', S460' : ''}`;
+    const why = hollow(s) ? `${s.cold ? 'cold-formed' : 'hot-finished'} hollow section${hi ? ', S460' : ''}` : s.shape === 'PFC' ? 'U section' : s.shape === 'T' ? 'T section' : !s.rolled ? `welded I, t_f ${s.tf <= 40 ? '≤' : '>'} 40 mm` : `rolled I, h/b = ${f2(s.h / s.b)}${s.h / s.b > 1.2 ? ' > 1.2' : ' ≤ 1.2'}, t_f = ${s.tf} mm${hi ? ', S460' : ''}`;
     C.input('alpha_y', EC3.ALPHA[cv.y], '', `imperfection factor, curve ${cv.y} about y-y (${why})`, 'Tables 6.1, 6.2', { sym: 'α_y' });
     C.input('alpha_z', EC3.ALPHA[cv.z], '', `imperfection factor, curve ${cv.z} about z-z`, 'Tables 6.1, 6.2', { sym: 'α_z' });
     const mode = (k, I, L, Ncr, lam, c, a, title) => {
@@ -3364,16 +3822,18 @@ const EC3Script = (() => {
     mode('z', 'I_z', 'L_crz', ab.Ncrz, ab.lamZ, ab.z, 'alpha_z', 'flexural, minor axis');
     let chi = 'MIN(chi_y, chi_z)';
     if (ab.torsionalMode !== 'none') {
-      const y0 = s.shape === 'PFC' ? s.y0 : 0;
+      const y0 = s.shape === 'PFC' ? s.y0 : 0, T = s.shape === 'T', e0 = y0 || (T ? s.z0 : 0), e0n = y0 ? 'y_0' : 'z_0';
       if (y0) C.input('y_0', y0, 'mm', 'distance of the shear centre from the centroid (thin-walled, e = 3b′²t_f/(6b′t_f + h′t_w) from the web)', '', { sym: 'y_0' });
-      C.calc('i_0sq', y0 ? '(I_y + I_z)/A + y_0^2' : '(I_y + I_z)/A', ab.i02, 'mm2', 'polar radius of gyration squared about the shear centre', '6.3.1.4, EN 1993-1-3 6.2.3', { sym: 'i_0²' });
+      C.calc('i_0sq', e0 ? `(I_y + I_z)/A + ${e0n}^2` : '(I_y + I_z)/A', ab.i02, 'mm2', 'polar radius of gyration squared about the shear centre', '6.3.1.4, EN 1993-1-3 6.2.3', { sym: 'i_0²' });
       C.calc('N_crTp', '(G*I_t + PI()^2*E*I_w/L_T^2)/i_0sq', ab.NcrTpure / 1e3, 'kN', 'elastic critical force, torsional', 'EN 1993-1-3 (6.33b)', { sym: 'N_cr,T' });
       let NT = 'N_crTp';
       if (ab.NcrTF) {
-        C.calc('k_TF', 'y_0^2/i_0sq', y0 * y0 / ab.i02, '', '', 'EN 1993-1-3 6.2.3', { sym: '(y_0/i_0)²' });
-        C.calc('beta_TF', '1 - k_TF', 1 - y0 * y0 / ab.i02, '', '', 'EN 1993-1-3 (6.35)', { sym: 'β' });
-        C.calc('r_TF', 'N_crTp/N_crz', ab.NcrTpure / ab.Ncrz, '', '', '');
-        C.calc('N_crTF', 'N_crz/(2*beta_TF)*(1 + r_TF - SQRT((1 - r_TF)^2 + 4*k_TF*r_TF))', ab.NcrTF / 1e3, 'kN', 'elastic critical force, torsional-flexural (the channel: shear centre off the centroid)', 'EN 1993-1-3 (6.35)', { sym: 'N_cr,TF' });
+        const Nf = y0 ? 'N_cry' : 'N_crz', NfV = y0 ? ab.Ncry : ab.Ncrz;
+        C.note(y0 ? 'The channel\'s shear centre lies on its y-y axis of symmetry, off the centroid: torsion couples with flexure about y-y.' : 'The tee\'s shear centre lies on its z-z axis of symmetry (the stem), off the centroid: torsion couples with flexure about z-z.');
+        C.calc('k_TF', `${e0n}^2/i_0sq`, e0 * e0 / ab.i02, '', '', 'EN 1993-1-3 6.2.3', { sym: `(${e0n}/i_0)²` });
+        C.calc('beta_TF', '1 - k_TF', 1 - e0 * e0 / ab.i02, '', '', 'EN 1993-1-3 (6.35)', { sym: 'β' });
+        C.calc('r_TF', `N_crTp/${Nf}`, ab.NcrTpure / NfV, '', '', '');
+        C.calc('N_crTF', `${Nf}/(2*beta_TF)*(1 + r_TF - SQRT((1 - r_TF)^2 + 4*k_TF*r_TF))`, ab.NcrTF / 1e3, 'kN', `elastic critical force, torsional-flexural (coupled with flexure about ${y0 ? 'y-y' : 'z-z'})`, 'EN 1993-1-3 (6.35)', { sym: 'N_cr,TF' });
         NT = 'N_crTF';
       }
       C.calc('lam_T', `SQRT(N_Rk/${NT})`, ab.lamT, '', 'slenderness, torsional', '6.3.1.4 (6.52)', { sym: 'λ̄_T' });
@@ -3401,25 +3861,29 @@ const EC3Script = (() => {
       C.check('U_LT', `${M}/M_bRd`, lt.util, 'bending of the member', '6.3.2.1');
       return lt.util;
     }
-    const unb = !Number.isFinite(lt.Mcr);
+    const unb = !Number.isFinite(lt.Mcr), T = s.shape === 'T', sg = lt.sgn < 0 ? -1 : 1;
+    const side = sg > 0 ? 'the flange in compression' : 'the toe of the stem in compression';
+    if (T) C.note(`A tee: the moments with ${side} (M_Ed the largest of them), with that side's class and modulus; the buckling mode is that of the whole moment diagram.`);
     if (unb) C.note(`${o.McrHow ? `M_cr by ${o.McrHow}` : 'M_cr by finite elements'}: no lateral-torsional buckling mode under this moment (the compression flange is held), so M_cr is unbounded and λ̄_LT = 0.`);
+    else if (!o.noMcr0 && T) C.calc('M_cr0', `PI()^2*E*I_z/L_LT^2*(SQRT(I_w/I_z + L_LT^2*G*I_t/(PI()^2*E*I_z) + z_j^2) ${sg > 0 ? '+' : '-'} z_j)`, EC3.mcrUniform(s, o.Lseg, sg) / 1e6, 'kNm', `elastic critical moment for uniform moment between forks, ${side} (z_j ${sg > 0 ? 'stabilising' : 'destabilising'})`, 'SN003, SN030, NCCI', { sym: 'M_cr,0' });
     else if (!o.noMcr0) C.calc('M_cr0', 'PI()/L_LT*SQRT(E*I_z*G*I_t*(1 + PI()^2*E*I_w/(L_LT^2*G*I_t)))', EC3.mcrUniform(s, o.Lseg) / 1e6, 'kNm', 'elastic critical moment for uniform moment between forks', 'SN003, NCCI', { sym: 'M_cr,0' });
     if (unb) { /* nothing more to find */ }
     else if (o.over) {
       C.given('C_1', lt.C1, '', 'from the moment diagram of the member: M_cr by finite elements over its length over M_cr,0 of the same length', 'finite elements', '', { sym: 'C_1' });
       C.calc('M_cr', 'C_1*M_cr0', lt.Mcr / 1e6, 'kNm', 'elastic critical moment over L_LT', '', { sym: 'M_cr' });
     } else {
-      C.given('M_cr', lt.Mcr / 1e6, 'kNm', 'elastic critical moment of the segment', o.McrHow || 'finite elements (beam elements with warping: forks at the restraints, the moment diagram of the segment, loads at the shear centre)', '6.3.2.2(2)', { sym: 'M_cr' });
+      C.given('M_cr', lt.Mcr / 1e6, 'kNm', T ? `elastic critical moment of the segment at M_Ed, ${side}` : 'elastic critical moment of the segment', o.McrHow || (T ? 'finite elements (beam elements with warping and the Wagner term of z_j: forks at the restraints, the moment diagram of the segment, loads at the shear centre): λ M_Ed, λ the critical factor of the whole diagram' : 'finite elements (beam elements with warping: forks at the restraints, the moment diagram of the segment, loads at the shear centre)'), '6.3.2.2(2)', { sym: 'M_cr' });
       if (lt.C1 != null && o.C1given) C.given('C_1', lt.C1, '', 'equivalent uniform moment factor of the moment diagram alone', 'M_cr with the loads at the shear centre (finite elements) over M_cr,0: the load height is left out of k_c', '6.3.2.3(2)', { sym: 'C_1' });
       else if (lt.C1 != null) C.calc('C_1', 'M_cr/M_cr0', lt.C1, '', 'equivalent uniform moment factor implied', '', { sym: 'C_1' });
     }
     const Wn = cls <= 2 ? 'W_ply' : cls === 3 ? 'W_ely' : null;
-    if (Wn) C.calc('W_yLT', Wn, lt.Wy / 1e3, 'cm3', `Class ${cls}: ${cls <= 2 ? 'plastic' : 'elastic'} modulus`, '6.3.2.2(1)', { sym: 'W_y' });
+    if (Wn) C.calc('W_yLT', Wn, lt.Wy / 1e3, 'cm3', `Class ${cls}${T ? ` with ${side}` : ''}: ${cls <= 2 ? 'plastic' : 'elastic'} modulus`, '6.3.2.2(1)', { sym: 'W_y' });
+    else if (T) { teeWeff(C, s, fy, sg); C.calc('W_yLT', 'W_eff', lt.Wy / 1e3, 'cm3', `Class 4 with ${side}: effective modulus`, '6.3.2.2(1)', { sym: 'W_eff,y' }); }
     else C.given('W_yLT', lt.Wy / 1e3, 'cm3', 'Class 4: effective modulus', 'EN 1993-1-5 4.4', '6.3.2.2(1)', { sym: 'W_eff,y' });
     if (unb) C.input('lam_LT', 0, '', 'M_cr unbounded', '6.3.2.2(1)', { sym: 'λ̄_LT' });
     else C.calc('lam_LT', 'SQRT(W_yLT*f_y/M_cr)', lt.lamLT, '', 'non-dimensional slenderness', '6.3.2.2(1)', { sym: 'λ̄_LT' });
     const rolled = lt.method === '6.3.2.3';
-    const why = s.shape === 'RHS' ? `${s.cold ? 'cold-formed' : 'hot-finished'} hollow section, h/b = ${f2(s.h / s.b)}` : s.shape === 'PFC' ? 'a hot-rolled channel' : `${s.rolled ? 'rolled' : 'welded'} I, h/b = ${f2(s.h / s.b)}`;
+    const why = s.shape === 'RHS' ? `${s.cold ? 'cold-formed' : 'hot-finished'} hollow section, h/b = ${f2(s.h / s.b)}` : s.shape === 'PFC' ? 'a hot-rolled channel' : T ? 'a tee: the general case, other cross-sections (Table 6.4 with the UK NA)' : `${s.rolled ? 'rolled' : 'welded'} I, h/b = ${f2(s.h / s.b)}`;
     C.note(`${rolled ? '6.3.2.3 with the UK NA (NA.2.17)' : '6.3.2.2'}: ${why}, buckling curve ${lt.curve}.`);
     C.input('lam_LT0', lt.lam0, '', 'plateau length', rolled ? '6.3.2.3, UK NA' : '6.3.2.2', { sym: 'λ̄_LT,0' });
     C.input('beta_LT', lt.beta, '', '', rolled ? '6.3.2.3, UK NA' : '6.3.2.2', { sym: 'β' });
@@ -3463,9 +3927,11 @@ const EC3Script = (() => {
   function interaction(C, s, fy, cls, ab, ir, o = {}) {
     const NE = o.N || 'N_Ed';
     C.head(`Members in bending and axial compression, 6.3.3, Annex ${ir.method}`);
+    if (s.shape === 'T') C.note(`A tee: Annex A (Method 1), since Annex B's interaction factors are for I, H and hollow sections; M_y,Ed with ${(o.sgn || 1) > 0 ? 'the flange' : 'the toe of the stem'} in compression, with that side's class and modulus.`);
     const Mz = o.Mz && Math.abs(o.MzV) > 0;
     const MyR = cls <= 2 ? 'W_ply' : cls === 3 ? 'W_ely' : null;
     if (MyR) C.calc('M_yRk', `${MyR}*f_y`, ir.MyRk / 1e6, 'kNm', 'characteristic moment, major axis', 'Table 6.7', { sym: 'M_y,Rk' });
+    else if (s.shape === 'T') { teeWeff(C, s, fy, o.sgn || 1); C.calc('M_yRk', 'W_eff*f_y', ir.MyRk / 1e6, 'kNm', 'Class 4: W_eff,y f_y', 'Table 6.7', { sym: 'M_y,Rk' }); }
     else C.given('M_yRk', ir.MyRk / 1e6, 'kNm', 'Class 4: W_eff,y f_y', 'EN 1993-1-5 4.4', 'Table 6.7', { sym: 'M_y,Rk' });
     C.calc('M_zRk', `${cls <= 2 ? 'W_plz' : 'W_elz'}*f_y`, ir.MzRk / 1e6, 'kNm', 'characteristic moment, minor axis', 'Table 6.7', { sym: 'M_z,Rk' });
     C.calc('chi_zT', ab.torsionalMode === 'none' ? 'chi_z' : 'MIN(chi_z, chi_T)', ab.chiZT, '', 'about the minor axis: the lesser of flexural and torsional', '6.3.3(4)', { sym: 'χ_z' });
@@ -3512,13 +3978,14 @@ const EC3Script = (() => {
     }
     if (s.shape === 'CHS') C.input('lam_0', k.lam0, '', 'a circular hollow section: λ̄₀ = 0', 'Table A.2', { sym: 'λ̄₀' });
     else {
-      if (!C.has('W_yLT')) { const W = cls <= 2 ? 'W_ply' : cls === 3 ? 'W_ely' : null; if (W) C.calc('W_yLT', W, (cls <= 2 ? s.Wply : s.Wely) / 1e3, 'cm3', `Class ${cls}`, '6.3.2.2(1)', { sym: 'W_y' }); else C.given('W_yLT', EC3.wyByClass(s, fy, cls) / 1e3, 'cm3', 'Class 4: effective modulus', 'EN 1993-1-5 4.4', '', { sym: 'W_eff,y' }); }
+      if (!C.has('W_yLT')) { const W = cls <= 2 ? 'W_ply' : cls === 3 ? 'W_ely' : null; if (W) C.calc('W_yLT', W, (cls <= 2 ? s.Wply : s.Wely) / 1e3, 'cm3', `Class ${cls}`, '6.3.2.2(1)', { sym: 'W_y' }); else if (s.shape === 'T') { teeWeff(C, s, fy, o.sgn || 1); C.calc('W_yLT', 'W_eff', EC3.wyByClass(s, fy, cls, o.sgn || 1) / 1e3, 'cm3', 'Class 4: effective modulus', '6.3.2.2(1)', { sym: 'W_eff,y' }); } else C.given('W_yLT', EC3.wyByClass(s, fy, cls) / 1e3, 'cm3', 'Class 4: effective modulus', 'EN 1993-1-5 4.4', '', { sym: 'W_eff,y' }); }
       if (o.lam0Given && !(ir.lam0 > 0)) C.input('lam_0', 0, '', 'no lateral-torsional buckling of the segment under a uniform moment (M_cr,0 unbounded)', 'Table A.2', { sym: 'λ̄₀' });
       else if (o.lam0Given) {
         C.given('M_cr0A', ir.lam0 > 0 ? EC3.wyByClass(s, fy, cls) * fy / ir.lam0 ** 2 / 1e6 : Infinity, 'kNm', 'elastic critical moment of the segment under a uniform moment', o.Mcr0How || 'finite elements: the model of the segment used for M_cr, with a uniform moment', 'Table A.2', { sym: 'M_cr,0' });
         C.calc('lam_0', 'SQRT(W_yLT*f_y/M_cr0A)', k.lam0, '', 'λ̄₀: the slenderness for lateral-torsional buckling under uniform moment', 'Table A.2', { sym: 'λ̄₀' });
       } else {
-      if (!C.has('M_cr0')) C.calc('M_cr0', 'PI()/L_LT*SQRT(E*I_z*G*I_t*(1 + PI()^2*E*I_w/(L_LT^2*G*I_t)))', o.Mcr0 / 1e6, 'kNm', 'elastic critical moment for uniform moment between forks', 'SN003, NCCI', { sym: 'M_cr,0' });
+      if (!C.has('M_cr0') && s.shape === 'T') C.calc('M_cr0', `PI()^2*E*I_z/L_LT^2*(SQRT(I_w/I_z + L_LT^2*G*I_t/(PI()^2*E*I_z) + z_j^2) ${(o.sgn || 1) > 0 ? '+' : '-'} z_j)`, o.Mcr0 / 1e6, 'kNm', 'elastic critical moment for uniform moment between forks, z_j by the sign of the moment', 'SN003, SN030, NCCI', { sym: 'M_cr,0' });
+      else if (!C.has('M_cr0')) C.calc('M_cr0', 'PI()/L_LT*SQRT(E*I_z*G*I_t*(1 + PI()^2*E*I_w/(L_LT^2*G*I_t)))', o.Mcr0 / 1e6, 'kNm', 'elastic critical moment for uniform moment between forks', 'SN003, NCCI', { sym: 'M_cr,0' });
       C.calc('lam_0', 'SQRT(W_yLT*f_y/M_cr0)', k.lam0, '', 'λ̄₀: the slenderness for lateral-torsional buckling under uniform moment', 'Table A.2', { sym: 'λ̄₀' });
       }
     }
@@ -3612,9 +4079,15 @@ const SteelMemberScript = (() => {
       if (o.T !== false) { C.input('n_LT', Math.max(1, Math.round(inp.nLT || 1)), '', 'equal segments between lateral and torsional restraints', '', { sym: 'n_LT' }); C.calc('L_T', 'L/n_LT', R.Lcr.LT, 'mm', 'torsional buckling length: the segment between restraints', '6.3.1.4', { sym: 'L_T' }); }
     }
   }
-  const memberClass = (C, R, inp) => {
+  const memberClass = (C, R, inp, sgn = 0, bendingT = true) => {
     const hasM = Math.abs(inp.MyB) + Math.abs(inp.MyT) > 0 || inp.Myf, hasMz = Math.abs(inp.MzB) + Math.abs(inp.MzT) > 0;
+    if (R.sec.shape === 'T') return EC3Script.classify(C, R.sec, R.fy, inp.N || 0, bendingT, hasMz, 'N_Ed', '', `Class of the member with ${sgn < 0 ? 'the toe of the stem' : 'the flange'} in compression, Table 5.2 (for buckling)`, 'f_y', sgn < 0 ? -1 : 1);
     return EC3Script.classify(C, R.sec, R.fy, inp.N || 0, !!(hasM || hasMz), hasMz, 'N_Ed', '', 'Class of the member, Table 5.2 (for buckling)');
+  };
+  // a tee: the signs of M_y along the member (+1 the flange in compression, −1 the toe)
+  const teeSigns = inp => {
+    const My = inp.Myf || (x => inp.MyB + (inp.MyT - inp.MyB) * x / inp.L), ms = Array.from({ length: 41 }, (_, k) => My(inp.L * k / 40));
+    return [...(Math.max(...ms) >= 1 ? [1] : []), ...(Math.min(...ms) <= -1 ? [-1] : [])];
   };
 
   // ---------- the section, its steel and class ----------
@@ -3622,6 +4095,13 @@ const SteelMemberScript = (() => {
     const C = create('Section, steel and class');
     EC3Script.section(C, R.sec); EC3Script.steel(C, R.sec, inp.grade, R.fy);
     actions(C, R, inp);
+    if (R.sec.shape === 'T') {
+      const sg = teeSigns(inp), hasMz = Math.abs(inp.MzB) + Math.abs(inp.MzT) > 0, cl = {};
+      if (!sg.length) cl[0] = EC3Script.classify(C, R.sec, R.fy, inp.N || 0, false, hasMz, 'N_Ed', '', 'Class of the member, Table 5.2', 'f_y', 1).cls;
+      for (const s of sg) cl[s] = EC3Script.classify(C, R.sec, R.fy, inp.N || 0, true, hasMz, 'N_Ed', sg.length > 1 ? (s > 0 ? '_p' : '_m') : '', `Class with ${s > 0 ? 'the flange (sagging)' : 'the toe of the stem (hogging)'} in compression, Table 5.2`, 'f_y', s).cls;
+      const sum = sg.length ? sg.map(s => `Class ${cl[s]} ${s > 0 ? 'sagging' : 'hogging'}`).join(', ') : `Class ${cl[0]}`;
+      return { key: 'section', title: C.meta.title, sum: `${R.sec.name}, f_y ${R.fy} N/mm², ${sum}`, util: null, C };
+    }
     memberClass(C, R, inp);
     return { key: 'section', title: C.meta.title, sum: `${R.sec.name}, f_y ${R.fy} N/mm², Class ${R.cls}`, util: null, C };
   }
@@ -3693,23 +4173,59 @@ const SteelMemberScript = (() => {
     if (inp.Myf) { C.given(o.M || 'M_Ed', g.Mmax / 1e6, 'kNm', 'the largest major-axis moment in the segment', inp.wUdl != null ? 'the largest of M_y(x) = M_yB + (M_yT − M_yB)x/L + w_Ed x(L − x)/2 at eleven points along the segment' : 'from the analysis', '', { sym: 'M_y,Ed' }); return; }
     C.calc('M_ya', 'M_yB + (M_yT - M_yB)*x_a/L', My(g.xa) / 1e6, 'kNm', 'moment at the start', '', { sym: 'M_y(x_a)' });
     C.calc('M_yb', 'M_yB + (M_yT - M_yB)*x_b/L', My(g.xa + (g.over ? L : g.Lseg)) / 1e6, 'kNm', 'moment at the end', '', { sym: 'M_y(x_b)' });
+    if (o.sgn) {                       // a tee: the moments of one sign (and the shift of a Class 4 section in compression)
+      const dM = o.dM || 0, a = o.dM ? 'M_yaI' : 'M_ya', b = o.dM ? 'M_ybI' : 'M_yb';
+      if (o.dM) { C.calc('M_yaI', 'M_ya - DM_y', (My(g.xa) - dM) / 1e6, 'kNm', 'with ΔM_y,Ed', '', { sym: 'M_y(x_a) − ΔM' }); C.calc('M_ybI', 'M_yb - DM_y', (My(g.xa + (g.over ? L : g.Lseg)) - dM) / 1e6, 'kNm', 'with ΔM_y,Ed', '', { sym: 'M_y(x_b) − ΔM' }); }
+      C.calc(o.M || 'M_Ed', o.sgn > 0 ? `MAX(${a}, ${b}, 0*${a})` : `MAX(-${a}, -${b}, 0*${a})`, g.Mmax / 1e6, 'kNm', `the largest moment with ${o.sgn > 0 ? 'the flange' : 'the toe of the stem'} in compression (linear)`, '', { sym: 'M_y,Ed' });
+      return;
+    }
     C.calc(o.M || 'M_Ed', 'MAX(ABS(M_ya), ABS(M_yb))', g.Mmax / 1e6, 'kNm', 'the largest moment in the segment (linear)', '', { sym: 'M_y,Ed' });
   }
 
   // ---------- lateral-torsional buckling ----------
   function ltbZone(R, inp) {
-    const g = R.gov.ltb, C = create('Lateral-torsional buckling');
+    const g = R.gov.ltb, C = create('Lateral-torsional buckling'), T = R.sec.shape === 'T';
     EC3Script.section(C, R.sec); EC3Script.steel(C, R.sec, inp.grade, R.fy);
     actions(C, R, inp, { Mz: false });
-    memberClass(C, R, inp);
+    memberClass(C, R, inp, T ? g.sgn : 0);
     const over = g.Lseg > inp.L * (1 + 1e-9) ? g.Lseg : null;
-    segment(C, R, inp, { ...g, over, Lseg: over ? inp.L : g.Lseg });
-    EC3Script.ltb(C, R.sec, R.fy, R.cls, g, { Lseg: over || g.Lseg, over, M: 'M_Ed' });
+    segment(C, R, inp, { ...g, over, Lseg: over ? inp.L : g.Lseg }, { sgn: T ? g.sgn : 0 });
+    EC3Script.ltb(C, R.sec, R.fy, T ? g.cls : R.cls, g, { Lseg: over || g.Lseg, over, M: 'M_Ed' });
     return { key: 'ltb', title: C.meta.title, sum: `M_cr ${kNm(g.Mcr)} kNm, χ_LT,mod ${g.chiMod.toFixed(3)}, M_b,Rd ${kNm(g.MbRd)} kNm`, util: g.util, C };
   }
 
   // ---------- interaction ----------
+  // a tee: Annex A with the moments of the governing sign, M_y shifted by ΔM_y,Ed = e_N N_Ed for a Class 4 section in compression
+  function interactionZoneTee(R, inp) {
+    const g = R.gov.interaction, ir = g.ir, C = create('Bending and axial compression, 6.3.3 (Annex A)'), sec = R.sec, sg = ir.sgn < 0 ? -1 : 1, lt = g.lt;
+    EC3Script.section(C, sec); EC3Script.steel(C, sec, inp.grade, R.fy);
+    actions(C, R, inp);
+    memberClass(C, R, inp, sg, !!lt);
+    lengths(C, R, inp);
+    const NC = inp.N < 0 ? 'N_c' : 'N_Ed';
+    if (inp.N < 0) C.calc('N_c', 'MAX(N_Ed, 0*N_Ed)', 0, 'kN', 'compression for buckling: the member is in tension, which is ignored (it would help)', '6.3.3');
+    EC3Script.flexural(C, sec, R.fy, inp.grade, R.ab, NC);
+    if (g.dM) C.calc('DM_y', `${NC}*e_N`, g.dM / 1e6, 'kNm', 'ΔM_y,Ed = e_N N_Ed: N_Ed acts below the effective centroid, a hogging moment (the toe in compression) taken with the moment diagram', 'Table 6.7', { sym: 'ΔM_y,Ed' });
+    const L = inp.L, over = g.Lseg > L * (1 + 1e-9) ? g.Lseg : null, segL = over ? L : g.Lseg;
+    segment(C, R, inp, { ...(lt || { Mmax: 0 }), seg: g.seg, xa: g.xa, Lseg: segL, over }, { M: 'M_yEd', title: 'The segment between lateral restraints', sgn: sg, dM: g.dM });
+    if (lt) EC3Script.ltb(C, sec, R.fy, lt.cls, lt, { Lseg: over || segL, over, M: 'M_yEd' });
+    else C.input('chi_LTm', 1, '', 'no major-axis moment in the segment: no lateral-torsional buckling', '', { sym: 'χ_LT' });
+    const hasMz = Math.abs(inp.MzB) + Math.abs(inp.MzT) > 0, Mz = x => inp.MzB + (inp.MzT - inp.MzB) * x / L;
+    if (hasMz) {
+      C.calc('M_za', 'M_zB + (M_zT - M_zB)*x_a/L', Mz(g.xa) / 1e6, 'kNm', 'minor-axis moment at the start', '', { sym: 'M_z(x_a)' });
+      C.calc('M_zb', 'M_zB + (M_zT - M_zB)*x_b/L', Mz(g.xa + segL) / 1e6, 'kNm', 'at the end', '', { sym: 'M_z(x_b)' });
+      C.calc('M_zEd', 'MAX(ABS(M_za), ABS(M_zb))', Math.max(Math.abs(Mz(g.xa)), Math.abs(Mz(g.xa + segL))) / 1e6, 'kNm', 'the larger', '', { sym: 'M_z,Ed' });
+    }
+    const cls = ir.cls, Wel = cls === 4 ? EC3.weffBending(sec, R.fy, sg).Weff : sec.Wely, epsY = inp.N > 0 ? ir.MyEd / inp.N * R.ab.A / Wel : Infinity;
+    const My = inp.Myf || (x => inp.MyB + (inp.MyT - inp.MyB) * x / L);
+    const psiOf = (a, b) => { const big = Math.abs(a) >= Math.abs(b) ? a : b, sm = big === a ? b : a; return big ? sm / big : 1; };
+    const u = EC3Script.interaction(C, sec, R.fy, cls, R.ab, ir, { N: NC, Mz: hasMz, MzV: hasMz ? 1 : 0, epsY, Mcr0: g.Mcr0, sgn: sg,
+      cm0y: R.swayY ? 'a sway mode: 1.0 taken (outside Table A.2)' : `Table A.2, end moments: 0.79 + 0.21ψ + 0.36(ψ − 0.33)N_Ed/N_cr,y with ψ = ${psiOf(My(0) - (g.dM || 0), My(L) - (g.dM || 0)).toFixed(3)}${g.dM ? ' (the moments with ΔM_y,Ed)' : ''}`,
+      cm0z: R.swayZ ? 'a sway mode: 1.0 taken' : `Table A.2, end moments, ψ = ${psiOf(inp.MzB, inp.MzT).toFixed(3)}` });
+    return { key: 'interaction', title: C.meta.title, sum: `${sg > 0 ? 'sagging' : 'hogging'}: (6.61) ${ir.u61.toFixed(3)}, (6.62) ${ir.u62.toFixed(3)}`, util: Math.max(u, ...C.items.filter(it => it.t === 'chk').map(it => it.v)), C };
+  }
   function interactionZone(R, inp) {
+    if (R.sec.shape === 'T') return interactionZoneTee(R, inp);
     const g = R.gov.interaction, ir = g.ir, C = create(`Bending and axial compression, 6.3.3 (Annex ${ir.method})`), sec = R.sec;
     EC3Script.section(C, sec); EC3Script.steel(C, sec, inp.grade, R.fy);
     actions(C, R, inp);
@@ -4152,6 +4668,12 @@ const DK = (() => {
       const w = s.b * k, h = s.h * k, t = Math.max(s.t * k, 1.2), ro = Math.min((s.ro || 1.5 * s.t) * k, w / 2), ri = Math.max(0, ro - t);
       const rr = (x, y, W, H, r) => `M${f1(x + r)} ${f1(y)} H${f1(x + W - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W)} ${f1(y + r)} V${f1(y + H - r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + W - r)} ${f1(y + H)} H${f1(x + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x)} ${f1(y + H - r)} V${f1(y + r)} A${f1(r)} ${f1(r)} 0 0 1 ${f1(x + r)} ${f1(y)} Z`;
       return `<path d="${rr(cx - w / 2, cy - h / 2, w, h, ro)} ${rr(cx - w / 2 + t, cy - h / 2 + t, w - 2 * t, h - 2 * t, ri)}" fill="${fill}" fill-rule="evenodd" stroke="${edge}" stroke-width="1.1"/>`;
+    }
+    if (s.shape === 'T') {     // tee, the flange at the top, its centroid at cy, the root fillets drawn
+      const b = s.b * k, tf = Math.max(s.tf * k, 1.2), tw = Math.max(s.tw * k, 1.2), h = s.h * k, r = Math.max(0, (s.r || 0) * k), y0 = cy - (s.c ?? s.h / 2) * k, x0 = cx - b / 2;
+      const d = `M${f1(x0)} ${f1(y0)} H${f1(x0 + b)} V${f1(y0 + tf)} H${f1(cx + tw / 2 + r)}` + (r ? ` A${f1(r)} ${f1(r)} 0 0 0 ${f1(cx + tw / 2)} ${f1(y0 + tf + r)}` : '')
+        + ` V${f1(y0 + h)} H${f1(cx - tw / 2)} V${f1(y0 + tf + r)}` + (r ? ` A${f1(r)} ${f1(r)} 0 0 0 ${f1(cx - tw / 2 - r)} ${f1(y0 + tf)}` : '') + ` H${f1(x0)} Z`;
+      return `<path d="${d}" fill="${fill}" stroke="${edge}" stroke-width="1.1"/>`;
     }
     if (s.shape === 'PFC') {   // channel, toes to the right, web on the left
       const b = s.b * k, h = s.h * k, tf = Math.max(s.tf * k, 1.2), tw = Math.max(s.tw * k, 1.2), x0 = cx - b / 2, y0 = cy - h / 2;
