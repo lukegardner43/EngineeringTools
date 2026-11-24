@@ -279,6 +279,431 @@ sub,sup{font-size:max(11px,.75em);line-height:0;}
 </div>
 <div id="report"></div>
 <script id="engine">
+/* ===== CALCULATION SCRIPT (EngineeringTools) =====
+   One record of a tool's calculation, written step by step, from which the tool shows its full calculation (on the page
+   and the A4 sheet) and writes it for CalcPad (text to paste, or a .perega file to open), so that the two cannot differ.
+   Every number the calculation reports is one of:
+   - an input, with its unit;
+   - a formula in CalcPad's syntax (names, + − * / ^, SQRT MIN MAX ABS IF LOG EXP ROUND PI(), x[#unit] for a value as a
+     plain number in a given unit, as the empirical Eurocode formulas need), shown as the symbols, then the numbers put
+     in, then the result, with its clause; CalcPad recalculates these itself;
+   - a value the formula language cannot reach (an iteration, a table read, an analysis), stated as such with how it
+     was found and, where it can be, an equation that confirms it;
+   - a utilisation, with its limit.
+   API: const C = CalcScript.create({ title, tool, standard });
+        C.head(text), C.note(text),
+        C.input(name, value, unit, desc, ref, { sym }), C.calc(name, expr, value, unit, desc, ref, { sym }),
+        C.given(name, value, unit, desc, how, ref, { sym }), C.check(name, expr, value, desc, ref, { limit, sym }),
+        C.img(svg, caption);
+        C.html() — the full calculation; C.calcpad() — CalcPad text; C.perega(meta) — a .perega document (object).
+        CalcScript.project([{ C, title }], meta, name) — a .peregaproj (one CalcPad check per script, for a tool with several
+        zones or members whose names repeat); copy(C, meta), download(C, meta, file), downloadProject(list, meta, file) for the buttons.
+   Units are CalcPad's: mm cm m km, N kN MN, Pa kPa MPa GPa (N/mm2 for stresses), kg g t, s, deg rad, combined with * / ^
+   or run together (kNm, kNm/m, mm2/m). Values are given in the unit stated.
+   Source: scratchpad/common/calcscript.js. */
+const CalcScript = (() => {
+  'use strict';
+  // CalcPad's unit table: the SI factor and the SI symbol of each unit
+  const CONV = { mm: 1e-3, cm: 1e-2, m: 1, km: 1e3, N: 1, kN: 1e3, MN: 1e6, g: 1e-3, kg: 1, t: 1e3, Pa: 1, kPa: 1e3, MPa: 1e6, GPa: 1e9, s: 1, ms: 1e-3, min: 60, hr: 3600, deg: Math.PI / 180, rad: 1 };
+  const SIB = { mm: 'm', cm: 'm', m: 'm', km: 'm', N: 'N', kN: 'N', MN: 'N', g: 'kg', kg: 'kg', t: 'kg', Pa: 'Pa', kPa: 'Pa', MPa: 'Pa', GPa: 'Pa', s: 's', ms: 's', min: 's', hr: 's', deg: 'rad', rad: 'rad' };
+  const ORDER = { N: 0, kN: 0, MN: 0, Pa: 1, kPa: 1, MPa: 1, GPa: 1, J: 2, W: 2, Hz: 2, kg: 4, g: 4, t: 4, m: 5, mm: 5, cm: 5, km: 5, s: 6, ms: 6, min: 6, hr: 6, rad: 7, deg: 7 };
+  // "kNm" → kN, m (longest known symbol first, as CalcPad reads run-together units)
+  function split(tok) {
+    if (CONV[tok] !== undefined) return [tok];
+    const go = s => { if (!s) return []; for (let n = Math.min(3, s.length); n >= 1; n--) { if (CONV[s.slice(0, n)] === undefined) continue; const r = go(s.slice(n)); if (r) return [s.slice(0, n), ...r]; } return null; };
+    return go(tok);
+  }
+  function terms(u) {
+    const s = String(u || '').replace(/²/g, '^2').replace(/³/g, '^3').replace(/⁴/g, '^4').replace(/·/g, '*'), out = [];
+    const add = (str, sign) => str.split('*').forEach(p => { const t = p.trim(); if (!t) return; const m = t.match(/^([a-zA-Z]+)(?:\^?(-?\d+))?$/); if (!m) throw new Error(`CalcScript: unit "${u}"`); const e = m[2] ? +m[2] : 1, sy = split(m[1]); if (!sy) throw new Error(`CalcScript: unknown unit "${m[1]}"`); sy.forEach((x, i) => out.push([x, sign * (i === sy.length - 1 ? e : 1)])); });
+    const parts = s.split('/'); add(parts[0], 1); for (let i = 1; i < parts.length; i++) add(parts[i], -1);
+    return out;
+  }
+  const factor = u => terms(u).reduce((f, [s, e]) => f * CONV[s] ** e, 1);
+  const toSI = (v, u) => (u ? v * factor(u) : v);
+  function siUnit(u) {   // the SI unit string CalcPad stores with a literal (as unitObjToStr(toSIUnitObj(...)))
+    const o = {}; for (const [s, e] of terms(u)) { const b = SIB[s]; o[b] = (o[b] || 0) + e; if (!o[b]) delete o[b]; }
+    const rank = s => (ORDER[s] !== undefined ? ORDER[s] : 3), cmp = ([a], [b]) => rank(a) - rank(b) || a.localeCompare(b);
+    const f = ([s, e]) => (Math.abs(e) === 1 ? s : s + '^' + Math.abs(e));
+    const pos = Object.entries(o).filter(([, e]) => e > 0).sort(cmp), neg = Object.entries(o).filter(([, e]) => e < 0).sort(cmp);
+    return pos.map(f).join('·') + (neg.length ? '/' + neg.map(f).join('·') : '');
+  }
+  // ---------- display ----------
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const GREEK = { alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', zeta: 'ζ', eta: 'η', theta: 'θ', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', rho: 'ρ', sigma: 'σ', tau: 'τ', phi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω', Delta: 'Δ', Sigma: 'Σ', Phi: 'Φ' };
+  // a name as a symbol: the part before the first _ as the base (Greek where it is a Greek letter's name), the rest subscript;
+  // sym overrides the text ("A_s,req")
+  function symHTML(name, sym) {
+    const s = sym || name, i = s.indexOf('_'), base = i < 0 ? s : s.slice(0, i), sub = i < 0 ? '' : s.slice(i + 1);
+    const g = x => GREEK[x] || x;
+    return `<i>${esc(g(base))}</i>${sub ? `<sub>${esc(sub.split(',').map(g).join(','))}</sub>` : ''}`;
+  }
+  const UNIT_SHOW = { 'N/mm2': 'N/mm²', MPa: 'N/mm²', mm2: 'mm²', mm3: 'mm³', mm4: 'mm⁴', 'mm2/m': 'mm²/m', kNm: 'kNm', 'kN*m': 'kNm', 'kNm/m': 'kNm/m', 'kN*m/m': 'kNm/m', 'kN/m2': 'kN/m²', 'kN/m3': 'kN/m³', m2: 'm²', m3: 'm³', m4: 'm⁴' };
+  const unitHTML = u => (u ? esc(UNIT_SHOW[u] || String(u).replace(/\^-(\d)(?![0-9])/g, (_, k) => '⁻' + '⁰¹²³⁴⁵⁶⁷⁸⁹'[k]).replace(/\^?2(?![0-9])/g, '²').replace(/\^?3(?![0-9])/g, '³').replace(/\*/g, '·')) : '');
+  // a number to about four significant figures, no exponent for the sizes met in design
+  function num(v) {
+    if (v === Infinity) return '∞'; if (v === -Infinity) return '−∞'; if (!Number.isFinite(v)) return '–';
+    if (v === 0) return '0';
+    const a = Math.abs(v);
+    let s = a >= 1e4 ? Math.round(v).toLocaleString('en-GB') : a >= 1000 ? Math.round(v).toString() : a >= 100 ? (Math.round(v * 10) / 10).toString() : a >= 1e-4 ? (+v.toPrecision(4)).toString() : v.toExponential(3);
+    return s.replace(/^-/, '−');
+  }
+  // CalcPad expression → tokens
+  function tokens(expr) {
+    const out = []; let i = 0; const s = String(expr);
+    while (i < s.length) {
+      const ch = s[i];
+      if (/\s/.test(ch)) { i++; continue; }
+      if (/\d/.test(ch) || (ch === '.' && /\d/.test(s[i + 1] || ''))) { let n = ''; while (i < s.length && /[\d.]/.test(s[i])) n += s[i++]; if (/[eE]/.test(s[i] || '') && /[-+\d]/.test(s[i + 1] || '')) { n += s[i++]; if (/[-+]/.test(s[i])) n += s[i++]; while (/\d/.test(s[i] || '')) n += s[i++]; } out.push({ t: 'n', v: n }); continue; }
+      if (/[A-Za-z]/.test(ch)) {
+        let n = ''; while (i < s.length && /[A-Za-z0-9_]/.test(s[i])) n += s[i++];
+        let unit = ''; if (s[i] === '[') { const j = s.indexOf(']', i); unit = s.slice(i + 1, j); i = j + 1; }
+        let k = i; while (/\s/.test(s[k] || '')) k++;
+        out.push(s[k] === '(' && /^[A-Z][A-Z0-9]*$/.test(n) ? { t: 'f', v: n } : { t: 'id', v: n, unit }); continue;
+      }
+      const two = s.slice(i, i + 2);
+      if (['<=', '>=', '==', '!=', '<>'].includes(two)) { out.push({ t: 'op', v: two }); i += 2; continue; }
+      out.push({ t: 'op', v: ch }); i++;
+    }
+    return out;
+  }
+  const FN = { SQRT: '√', ABS: 'abs', MIN: 'min', MAX: 'max', IF: 'if', LOG: 'log', EXP: 'exp', ROUND: 'round', SIN: 'sin', COS: 'cos', TAN: 'tan', ATAN: 'atan', ASIN: 'asin', ACOS: 'acos', PI: 'π' };
+  const OPS = { '*': '·', '<=': '≤', '>=': '≥', '!=': '≠', '<>': '≠', '==': '=', '-': '−' };
+  // the expression as HTML: symbols (sub = null) or with each name's value put in (sub = name → { v, unit })
+  function exprHTML(expr, syms, sub) {
+    const tk = tokens(expr); let h = '';
+    for (let i = 0; i < tk.length; i++) {
+      const t = tk[i], nx = tk[i + 1];
+      if (t.t === 'n') h += esc(t.v.replace(/^(\d+)\.?0*$/, '$1'));
+      else if (t.t === 'f') { if (t.v === 'PI') { h += 'π'; i += 2; continue; } h += FN[t.v] || t.v.toLowerCase(); }
+      else if (t.t === 'id') {
+        // a value put in: bracketed where it is negative, or carries a unit and is raised to a power
+        if (sub && sub[t.v]) { const q = sub[t.v], u = t.unit ? '' : unitHTML(q.unit), br = q.v < 0 || (u && nx && nx.v === '^'); h += `${br ? '(' : ''}${num(q.v)}${u ? '&#8239;' + u : ''}${br ? ')' : ''}`; }
+        else h += symHTML(t.v, syms[t.v]);
+      } else if (t.v === '^') {
+        // a power: the next token (or bracket group) raised
+        let j = i + 1, depth = 0, grp = '';
+        do { const q = tk[j]; grp += q.t === 'op' ? q.v : (q.unit ? `${q.v}[${q.unit}]` : q.v); if (q.v === '(') depth++; if (q.v === ')') depth--; j++; } while (depth > 0 && j < tk.length);
+        const inner = grp.replace(/^\((.*)\)$/, '$1');
+        h += `<sup>${exprHTML(inner, syms, null)}</sup>`; i = j - 1;
+      } else if (t.v === '*') h += sub ? ' × ' : '·';
+      else if (t.v === '/') h += ' / ';
+      else if (t.v === '-' && (i === 0 || (tk[i - 1].t === 'op' && ['(', ',', '+', '-', '*', '/', '^', '<', '>', '<=', '>='].includes(tk[i - 1].v)))) h += '−';   // unary minus
+      else if (['+', '-', '<=', '>=', '<', '>', '==', '!=', '<>'].includes(t.v)) h += ` ${OPS[t.v] || esc(t.v)} `;
+      else if (t.v === ',') h += ', ';
+      else h += esc(t.v);
+      void nx;
+    }
+    return h.replace(/\s+/g, ' ').trim();
+  }
+  // ---------- the script ----------
+  function create(meta = {}) {
+    const items = [], vals = {}, syms = {}, units = {}, names = new Set();
+    const name0 = (n, kind) => {
+      if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(n)) throw new Error(`CalcScript: "${n}" is not a CalcPad name`);
+      if (names.has(n)) throw new Error(`CalcScript: "${n}" is defined twice`);
+      names.add(n); void kind;
+    };
+    const keep = (name, v, unit, o) => { vals[name] = v; units[name] = unit || ''; if (o && o.sym) syms[name] = o.sym; };
+    // a formula and the unit CalcPad shows it in: [unit], [#unit] (an empirical formula's result) or [#] (a plain number)
+    const split = (expr, unit) => { const m = String(expr).match(/^(.*?)\s*\[([^\]]+)\]\s*$/); return m ? { core: m[1].trim(), spec: m[2].trim() } : { core: String(expr).trim(), spec: unit || '#' }; };
+    const C = {
+      meta, items,
+      head(text) { items.push({ t: 'h', text }); return C; },
+      note(text) { items.push({ t: 'p', text }); return C; },
+      input(name, v, unit, desc, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'in', name, v, unit: unit || '', desc, ref }); return v; },
+      calc(name, expr, v, unit, desc, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'calc', name, expr, ...split(expr, unit), v, unit: unit || '', desc, ref }); return v; },
+      given(name, v, unit, desc, how, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'val', name, v, unit: unit || '', desc, how, ref }); return v; },
+      check(name, expr, v, desc, ref, o = {}) { name0(name); keep(name, v, '', o); items.push({ t: 'chk', name, expr, ...split(expr, ''), v, desc, ref, limit: o.limit ?? 1 }); return v; },
+      img(svg, caption) { items.push({ t: 'img', svg, caption }); return C; },
+      // a CalcPad plot line (PLOT(...) or SECTION(...)): drawn live by CalcPad from the values; not on the page, which has its own drawings
+      plot(src) { items.push({ t: 'plot', src }); return C; },
+      value: n => vals[n], has: n => names.has(n), sym: n => syms[n],
+      // an item as it is (merge() renames items and puts them in a check of their own)
+      raw(it, sym) { if (it.name) { name0(it.name); keep(it.name, it.v, it.t === 'chk' ? '' : it.unit, sym ? { sym } : null); } items.push(it); return C; },
+      // ----- the full calculation, for the page and the A4 sheet -----
+      html(opts = {}) {
+        const sub = Object.fromEntries(Object.keys(vals).map(n => [n, { v: vals[n], unit: units[n] }]));
+        // opts.skip: headings whose sections are left out (the same materials in every zone of a sheet), said in a line
+        let h = `<div class="cs${opts.sheet ? ' cs-sheet' : ''}">`, skipping = false;
+        for (const it of items) {
+          if (it.t === 'h') { skipping = !!(opts.skip && opts.skip.includes(it.text)); h += skipping ? `<div class="cs-p">${esc(it.text)}: as above.</div>` : `<div class="cs-h">${esc(it.text)}</div>`; continue; }
+          if (skipping) continue;
+          if (it.t === 'p') { h += `<div class="cs-p">${esc(it.text)}</div>`; continue; }
+          if (it.t === 'plot') continue;
+          if (it.t === 'img') { if (!opts.noImg) h += `<div class="cs-img">${it.svg}${it.caption ? `<div class="cs-cap">${esc(it.caption)}</div>` : ''}</div>`; continue; }
+          const S = symHTML(it.name, syms[it.name]), res = `${num(it.v)}${it.unit ? '&#8239;' + unitHTML(it.unit) : ''}`;
+          let eq;
+          if (it.t === 'in') eq = `${S} = ${res}`;
+          else if (it.t === 'val') eq = `${S} = ${res}`;
+          else {
+            const sy = exprHTML(it.core, syms, null), nu = exprHTML(it.core, syms, sub);
+            eq = `${S} = ${sy}${nu !== sy ? ` = ${nu}` : ''} = <b>${res}</b>`;
+            if (it.t === 'chk') eq += ` ${it.v <= it.limit + 1e-9 ? `≤ ${num(it.limit)} <span class="cs-ok">OK</span>` : `> ${num(it.limit)} <span class="cs-ng">NOT OK</span>`}`;
+          }
+          const d = [it.desc, it.how].filter(Boolean).map(esc).join('; ');
+          h += `<div class="cs-r cs-${it.t}"><div class="cs-eq">${eq}${d ? `<div class="cs-d">${d}</div>` : ''}</div><div class="cs-ref">${esc(it.ref || '')}</div></div>`;
+        }
+        return h + '</div>';
+      },
+      // ----- CalcPad text: paste into a sheet and every line becomes a live chip -----
+      lines() {
+        const out = [];
+        // an "=" in the words would start a definition in CalcPad: "a = b" is written "a is b"
+        const clean = s => String(s || '').replace(/\s*=\s*/g, ' is ').replace(/\s+/g, ' ').trim();
+        const pre = it => { const d = clean([it.desc, it.t === 'val' && it.how ? `(${it.how})` : ''].filter(Boolean).join(' ')), r = clean(it.ref); return `${d}${r ? `${d ? ', ' : ''}${r}` : ''}${d || r ? ': ' : ''}`; };
+        for (const it of items) {
+          if (it.t === 'h') { out.push({ it, text: '' }, { it, text: clean(it.text) }); continue; }
+          if (it.t === 'p') { out.push({ it, text: clean(it.text) }); continue; }
+          if (it.t === 'img') continue;
+          if (it.t === 'plot') { out.push({ it, text: it.src }); continue; }
+          if (it.t === 'in' || it.t === 'val') out.push({ it, text: `${pre(it)}${it.name} = ${lit(it.v)}${it.unit ? ' ' + it.unit : ''}` });
+          else out.push({ it, text: `${pre(it)}${it.name} = ${it.core} [${it.spec}]` });
+        }
+        return out;
+      },
+      calcpad() { const L = C.lines().map(l => l.text); while (L.length && !L[0]) L.shift(); return L.join('\n'); },
+      // ----- a .perega document: the same lines as CalcPad's own chips, with the drawings as images -----
+      perega(m = {}, images = {}) {
+        let html = '';
+        const chip = it => {
+          if (it.t === 'in' || it.t === 'val') {
+            const si = toSI(it.v, it.unit), su = it.unit ? siUnit(it.unit) : '';
+            const a = { 'data-var-name': it.name, 'data-var-val': String(si), 'data-bare': '1' };   // data-bare: CalcPad draws it on opening
+            if (it.unit) { a['data-var-unit'] = it.unit; if (su && su !== it.unit) a['data-var-si-unit'] = su; if (lit(it.v) !== String(si)) a['data-var-orig-num'] = lit(it.v); }
+            return `<span contenteditable="false" class="var-def-chip" ${Object.entries(a).map(([k, v]) => `${k}="${esc(v)}"`).join(' ')}><span class="vdc-name">${esc(it.name)} = </span><span class="vdc-val">${esc(lit(it.v))}${it.unit ? ' ' + esc(it.unit) : ''}</span></span>`;
+          }
+          const a = { 'data-var-name': it.name, 'data-var-val': String(toSI(it.v, it.unit)), 'data-var-expr': it.core, 'data-var-display-unit': it.spec, 'data-bare': '1' };
+          return `<span contenteditable="false" class="var-def-chip" ${Object.entries(a).map(([k, v]) => `${k}="${esc(v)}"`).join(' ')}><span class="vdc-name">${esc(it.name)} = ${esc(it.core)}</span></span>`;
+        };
+        let first = true;
+        for (const it of items) {
+          const br = first ? '' : '<br>'; first = false;
+          if (it.t === 'h') { html += `${br}<br><b>${esc(it.text)}</b>`; continue; }
+          if (it.t === 'p') { html += `${br}${esc(it.text)}`; continue; }
+          if (it.t === 'plot') { html += `${br}<span contenteditable="false" class="plot-chip" data-plot="${esc(it.src)}"></span> `; continue; }
+          if (it.t === 'img') { const src = images[items.indexOf(it)]; if (src) html += `${br}<span contenteditable="false" class="calc-img-wrap"><img src="${src}" draggable="false" style="width:${Math.round(Math.min(images.width || 500, (images.nat && images.nat[items.indexOf(it)]) || Infinity))}px;height:auto"><span class="img-resize-handle"></span><span class="img-size-label"></span></span>${it.caption ? `<br><i>${esc(it.caption)}</i>` : ''}`; else first = !html; continue; }
+          const L = C.lines().find(l => l.it === it), text = L.text, k = text.lastIndexOf(`${it.name} = `);
+          html += `${br}${esc(text.slice(0, k))}${chip(it)} `;
+        }
+        const today = new Date().toISOString().slice(0, 10);
+        return { version: 2, meta: { 'm-project': m.project || '', 'm-projno': m.job || '', 'm-date': m.date || today, 'm-desc': m.title || meta.title || '', 'm-sheet': m.sheet || '', 'm-orig': m.by || '', 'm-deliv': '', 'm-checked': '', 'm-suit': '', 'm-rev': '' },
+          pages: [html], preferredUnits: {}, et: { tool: meta.tool || '', standard: meta.standard || '' } };
+      },
+    };
+    return C;
+  }
+  // a number as CalcPad reads it: full precision, no grouping
+  const lit = v => (Number.isFinite(v) ? String(+v.toPrecision(12)) : '0');
+  // the drawings as PNG data URLs (CalcPad's Word export takes PNG): resolves to { index: dataURL, width }
+  async function rasterise(C, width = 520) {
+    const out = { width, nat: {} };   // nat: each drawing's own width, so a small one is not blown up
+    const jobs = C.items.map((it, i) => it.t !== 'img' ? null : new Promise(res => {
+      try {
+        const doc = new DOMParser().parseFromString(it.svg, 'image/svg+xml'), sv = doc.documentElement;
+        if (!sv || sv.nodeName !== 'svg') return res();
+        if (!sv.getAttribute('xmlns')) sv.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        const vb = (sv.getAttribute('viewBox') || '').split(/[ ,]+/).map(Number), w = vb[2] || +sv.getAttribute('width') || 600, h = vb[3] || +sv.getAttribute('height') || 400;
+        sv.setAttribute('width', w); sv.setAttribute('height', h); out.nat[i] = w;
+        // the page's colours and fonts as the drawing uses them
+        const st = doc.createElementNS('http://www.w3.org/2000/svg', 'style'); st.textContent = 'text{font-family:Arial,Helvetica,sans-serif}'; sv.insertBefore(st, sv.firstChild);
+        const img = new Image(), url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(sv));
+        img.onload = () => { const k = 2, cv = document.createElement('canvas'); cv.width = w * k; cv.height = h * k; const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, cv.width, cv.height); out[i] = cv.toDataURL('image/png'); res(); };
+        img.onerror = () => res(); img.src = url;
+      } catch (e) { res(); }
+    }));
+    await Promise.all(jobs.filter(Boolean));
+    return out;
+  }
+  // the buttons' work: copy the CalcPad text (with the chips as HTML for a paste straight into CalcPad), download a .perega
+  async function copy(C, m) {
+    const text = C.calcpad();
+    try {
+      if (navigator.clipboard && window.ClipboardItem) {
+        const doc = C.perega(m), html = doc.pages[0];
+        await navigator.clipboard.write([new ClipboardItem({ 'text/plain': new Blob([text], { type: 'text/plain' }), 'text/html': new Blob([html], { type: 'text/html' }) })]);
+        return true;
+      }
+      await navigator.clipboard.writeText(text); return true;
+    } catch (e) {
+      const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+      let ok = false; try { ok = document.execCommand('copy'); } catch (e2) { ok = false; } ta.remove(); return ok;
+    }
+  }
+  const fileSafe = s => String(s || 'Calculation').replace(/×/g, 'x').replace(/\//g, '-').replace(/[^A-Za-z0-9 ._()-]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Calculation';
+  function save(text, fileName, ext) {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = fileSafe(fileName) + ext;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+  async function download(C, m, fileName) {
+    let images = {}; try { images = await rasterise(C); } catch (e) { images = {}; }
+    save(JSON.stringify({ ...C.perega(m, images), savedAt: new Date().toISOString() }, null, 2), fileName, '.perega');
+  }
+  // a CalcPad project (.peregaproj): one check per script, in order, each a whole document of its own (CalcPad keeps each
+  // check's names apart, so the zones of a beam can all use M_Ed, d, ...). list: [{ C, title }]
+  // Values several checks define alike (the same name, definition, unit, description and source: the materials, a section
+  // several zones share, ...) go once into a first check of shared values, which CalcPad (a pack's shared check, from CalcPad dd29f6a) gives
+  // to every other check of the pack; each check says, where they were, which of its values come from there. A value stays
+  // in a check unless everything it uses there is shared too, so a check with a different f_ck keeps its own f_cd.
+  // Returns the list with the shared check first ({ C, title, shared: true }), or the list as it was if nothing repeats.
+  const IDENT = /[A-Za-z][A-Za-z0-9_]*/g;
+  function shareOut(list) {
+    const defs = it => it.t === 'in' || it.t === 'val' || it.t === 'calc';
+    const key = it => JSON.stringify([it.t, it.name, it.t === 'calc' ? `${it.core} [${it.spec}]` : `${lit(it.v)} ${it.unit}`, it.desc || '', it.ref || '', it.how || '']);
+    const count = new Map();
+    list.forEach(({ C }) => { const seen = new Set(); C.items.forEach(it => { if (!defs(it)) return; const k = key(it); if (!seen.has(k)) { seen.add(k); count.set(k, (count.get(k) || 0) + 1); } }); });
+    const best = new Map();   // name → the definition most checks share (one per name)
+    for (const [k, c] of count) { if (c < 2) continue; const nm = JSON.parse(k)[1], b = best.get(nm); if (!b || c > count.get(b)) best.set(nm, k); }
+    if (!best.size) return list;
+    const shared = [], sharedKeys = new Set();
+    const out = list.map(({ C, title, ...rest }) => {
+      const local = new Set(C.items.filter(defs).map(it => it.name)), gone = new Set();
+      C.items.forEach(it => {
+        if (!defs(it) || best.get(it.name) !== key(it)) return;
+        const uses = it.t === 'calc' ? (it.core.match(IDENT) || []).filter(n => n !== it.name && local.has(n)) : [];
+        if (uses.every(n => gone.has(n))) gone.add(it.name);
+      });
+      if (!gone.size) return { C, title, ...rest };
+      const C2 = create({ ...C.meta }); let head = null, run = [];
+      const flush = () => { if (run.length) { C2.items.push({ t: 'p', text: `From the shared values: ${run.join(', ')}.` }); run = []; } };
+      for (const it of C.items) {
+        if (it.t === 'h') { flush(); head = it.text; C2.items.push(it); continue; }
+        if (defs(it) && gone.has(it.name)) { run.push(it.name); const k = key(it); if (!sharedKeys.has(k)) { sharedKeys.add(k); shared.push({ head, it }); } continue; }
+        flush(); C2.items.push(it);
+      }
+      flush();
+      return { C: C2, title, ...rest };
+    });
+    if (!shared.length) return list;
+    const S = create({ title: 'Shared values', tool: list[0].C.meta.tool, standard: list[0].C.meta.standard });
+    S.items.push({ t: 'p', text: 'The values several checks of this project use, defined once: CalcPad gives them to every other check. A check that needs a different value defines its own.' });
+    let h = null;
+    for (const { head, it } of shared) { if (head !== h) { h = head; if (head) S.items.push({ t: 'h', text: head }); } S.items.push(it); }
+    return [{ C: S, title: 'Shared values', shared: true }, ...out];
+  }
+  async function project(list, m = {}, name = 'Calculation', o = {}) {
+    const checks = [];
+    if (o.share !== false && list.length > 1) list = shareOut(list);
+    for (let k = 0; k < list.length; k++) {
+      const { C, title, shared } = list[k]; let images = {};
+      try { images = typeof document !== 'undefined' ? await rasterise(C) : {}; } catch (e) { images = {}; }
+      checks.push({ id: 'c' + (k + 1), name: title, doc: C.perega({ ...m, title }, images), ...(shared ? { shared: true } : {}) });
+    }
+    return { kind: 'calcpad-project', version: 1, name: fileSafe(name), activeId: checks.length ? checks[0].id : null, checks, savedAt: new Date().toISOString() };
+  }
+  // every part of a calculation as one CalcPad check (one .perega), each part under its own heading, in order. A value a
+  // later part defines just as an earlier part did (the same name and the same value, or the same formula of the same
+  // values: the materials, the section, a load) is written once, where it first comes, and the later part says so; a name
+  // a later part defines differently takes the part's number (M_Ed → M_Ed_3), in that part's formulas too, so every value
+  // is still the tool's. list: [{ C, title }]
+  // a unit in brackets, or a name (one followed by a colon is an option of a PLOT or SECTION line, not a name)
+  const TOK = /(\[[^\]]*\])|([A-Za-z][A-Za-z0-9_]*)(\s*:)?/g;
+  function merge(list, meta = {}) {
+    const M = create({ ...(list[0] ? list[0].C.meta : {}), ...meta }), byKey = new Map();
+    list.forEach(({ C, title }, zi) => {
+      const k = zi + 1, ren = new Map(), re = s => String(s).replace(TOK, (t, u, n, colon) => u || colon ? t : (ren.get(n) || n));
+      if (list.length > 1) M.items.push({ t: 'h', text: `Part ${k}: ${title}` });
+      let hIdx = -1, same = [];
+      const flush = () => {
+        if (hIdx < 0) return;
+        if (M.items.length === hIdx + 1 && !same.length) M.items.splice(hIdx, 1);
+        else if (same.length) M.items.splice(hIdx + 1, 0, { t: 'p', text: `As in an earlier part: ${same.join(', ')}.` });
+        hIdx = -1; same = [];
+      };
+      for (const it of C.items) {
+        if (it.t === 'h') { flush(); hIdx = M.items.length; M.items.push(it); continue; }
+        if (!it.name) { M.items.push(it.t === 'plot' ? { ...it, src: re(it.src) } : it); continue; }
+        const core = it.core != null ? re(it.core) : null;
+        const key = JSON.stringify([it.t === 'chk' ? 'chk' : 'def', it.name, core != null ? `${core} [${it.spec}]` : `${lit(it.v)} ${it.unit}`]);
+        if (byKey.has(key)) { ren.set(it.name, byKey.get(key)); same.push(byKey.get(key)); continue; }
+        let nm = it.name;
+        if (M.has(nm)) { nm = `${it.name}_${k}`; for (let j = 2; M.has(nm); j++) nm = `${it.name}_${k}_${j}`; }
+        ren.set(it.name, nm); byKey.set(key, nm);
+        M.raw(core != null ? { ...it, name: nm, core, expr: `${core} [${it.spec}]` } : { ...it, name: nm }, C.sym(it.name));
+      }
+      flush();
+    });
+    return M;
+  }
+  async function downloadProject(list, m, fileName) { save(JSON.stringify(await project(list, m, fileName), null, 2), fileName, '.peregaproj'); }
+  // a tool with several zones (Z: [{ key, title, sum, util, C }]): the project button, then each zone as a <details> with its
+  // own buttons and its full calculation; wire() answers the buttons (once per page, on a container that stays)
+  const uf = u => (Number.isFinite(u) ? u.toFixed(3) : '>99');
+  // The whole calculation downloads as one CalcPad check (.perega): its parts merged in order (merge()). Each part also
+  // downloads on its own. o.noProj: no buttons for the whole (a page that shows its parts in several places and has its
+  // own buttons for the whole, data-cp="all" and "copyall").
+  const allTools = (n, msg = '') => `<div class="cs-tools"><button class="btn2" type="button" data-cp="all">Download CalcPad check (.perega)</button><button class="btn2" type="button" data-cp="copyall">Copy for CalcPad</button><span class="aux" data-cpmsg="all">${msg || (n > 1 ? `The whole calculation as one check, its ${n} parts in order. Each part below also downloads on its own.` : '')}</span></div>`;
+  function zonesHTML(Z, o = {}) {
+    const many = Z.length > 1;
+    return (o.noProj ? '' : allTools(Z.length))
+      + Z.map(zn => `<details class="zone"><summary><span>${esc(zn.title)}${zn.sum ? `<small> · ${esc(zn.sum)}</small>` : ''}</span>${zn.util != null ? `<span class="u ${zn.util > 1 ? 'over' : ''}">${uf(zn.util)}</span>` : ''}</summary>`
+        + `<div class="zfull"><div class="cs-tools"><button class="btn2" type="button" data-cp="save" data-zone="${esc(zn.key)}">${many ? 'Download this part (.perega)' : 'Download CalcPad check (.perega)'}</button><button class="btn2" type="button" data-cp="copy" data-zone="${esc(zn.key)}">${many ? 'Copy this part' : 'Copy for CalcPad'}</button><span class="aux" data-cpmsg="${esc(zn.key)}"></span></div>${zn.C.html({ noImg: true })}</div></details>`).join('');
+  }
+  // getZ() → the zones shown; meta(title) → the project details; name(title) → a file name; proj: the project's title
+  function wire(root, getZ, meta, name, proj) {
+    root.addEventListener('click', async e => {
+      const b = e.target.closest('[data-cp]'), Z = getZ(); if (!b || !Z) return;
+      // the message goes beside the button pressed
+      const msg = k => (b.closest('.cs-tools') && b.closest('.cs-tools').querySelector('[data-cpmsg]')) || root.querySelector(`[data-cpmsg="${k}"]`) || { textContent: '' };
+      const all = () => Z.length === 1 ? Z[0].C : merge(Z.map(zn => ({ C: zn.C, title: zn.title })), { title: proj });
+      if (b.dataset.cp === 'all') { await download(all(), meta(proj), name(proj)); msg('all').textContent = 'Downloaded the check (.perega): open it in CalcPad with File ▸ Open.'; return; }
+      if (b.dataset.cp === 'copyall') { const ok = await copy(all(), meta(proj)); msg('all').textContent = ok ? 'Copied: paste it into a CalcPad sheet.' : 'Could not copy: use Download CalcPad check.'; return; }
+      if (b.dataset.cp === 'proj') { await downloadProject(Z.map(zn => ({ C: zn.C, title: zn.title })), meta(proj), name(proj)); msg('proj').textContent = 'Downloaded the project: open it in CalcPad with File ▸ Open project.'; return; }
+      const zn = Z.find(z => z.key === b.dataset.zone); if (!zn) return;
+      if (b.dataset.cp === 'copy') { const ok = await copy(zn.C, meta(zn.title)); msg(zn.key).textContent = ok ? 'Copied: paste it into a CalcPad sheet.' : 'Could not copy: use Download this check.'; }
+      else { await download(zn.C, meta(zn.title), name(zn.title)); msg(zn.key).textContent = 'Downloaded the check (.perega): open it in CalcPad with File ▸ Open.'; }
+    });
+  }
+  // the zones on the A4 sheet: every zone in full, the materials set out once and "as above" after
+  function sheetHTML(Z, h2 = t => `<h2>${t}</h2>`) {
+    let mat = false;
+    return Z.map(zn => { const s = `<div class="rs">${h2(`${esc(zn.title)}${zn.sum ? ` <span style="font-weight:400;color:#555">· ${esc(zn.sum)}</span>` : ''}`)}${zn.C.html({ sheet: true, noImg: true, skip: mat ? ['Materials'] : [] })}</div>`; if (zn.C.items.some(it => it.t === 'h' && it.text === 'Materials')) mat = true; return s; }).join('');
+  }
+  // the style of the full calculation (each tool's page and sheet include it)
+  const CSS = `.cs{font-size:13px;line-height:1.45}.cs-h{font-weight:600;font-size:14px;margin:14px 0 4px;padding-bottom:3px;border-bottom:1px solid var(--bdr,#e6e6e6)}
+.cs-p{color:var(--mut,#5f6368);margin:4px 0}.cs-r{display:grid;grid-template-columns:1fr 110px;gap:10px;padding:4px 0;border-bottom:1px solid #f0f0f0}
+.cs-eq{overflow-wrap:anywhere}.cs-eq i{font-style:italic}.cs-eq sub,.cs-eq sup{font-size:75%}.cs-d{color:var(--mut,#5f6368);font-size:12px}
+.cs-ref{color:var(--faint,#6b6b6b);font-size:12px;text-align:right}.cs-ok{color:var(--pass,#247b50);font-weight:600}.cs-ng{color:var(--fail,#c4242a);font-weight:600}
+.cs-val .cs-eq{color:#333}.cs-img{margin:8px 0}.cs-cap{font-size:12px;color:var(--mut,#5f6368)}
+.cs-sheet{font-size:9pt}.cs-sheet .cs-r{grid-template-columns:1fr 70pt;padding:1pt 0;break-inside:avoid}.cs-sheet .cs-h{font-size:10pt;margin:6pt 0 2pt}.cs-sheet .cs-d,.cs-sheet .cs-ref{font-size:8pt}.cs-sheet .cs-d{display:inline;margin-left:8pt}.cs-sheet .cs-p{margin:2pt 0}
+.zone .zfull{padding:0 10px 8px}.zone summary small{color:var(--faint,#6b6b6b);font-size:12px}.cs-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.cs-tools .btn2{width:auto;flex:0 0 auto;margin:0;padding:0 16px}
+@media print{.cs-tools{display:none}}`;
+  // The tool's drawings in its calculation, as pictures for CalcPad (and the page's full calculation). sheet: the drawing
+  // module's A4-sheet HTML (DK.sheet: a heading and the drawing for each), or a list of [title, svg]; where(title, i): the
+  // key of the zone a drawing goes in (the first zone when it names none; false leaves the drawing out). Each goes at the
+  // head of its zone, in the sheet's order, captioned with its heading. Returns Z.
+  const ENT = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', minus: '\u2212', ndash: '\u2013', mdash: '\u2014', times: '\u00d7', middot: '\u00b7', deg: '\u00b0', le: '\u2264', ge: '\u2265', radic: '\u221a', sup2: '\u00b2', sup3: '\u00b3', larr: '\u2190', rarr: '\u2192', alpha: '\u03b1', beta: '\u03b2', gamma: '\u03b3', delta: '\u03b4', Delta: '\u0394', epsilon: '\u03b5', zeta: '\u03b6', eta: '\u03b7', theta: '\u03b8', kappa: '\u03ba', lambda: '\u03bb', mu: '\u03bc', nu: '\u03bd', xi: '\u03be', pi: '\u03c0', rho: '\u03c1', sigma: '\u03c3', tau: '\u03c4', phi: '\u03c6', Phi: '\u03a6', chi: '\u03c7', psi: '\u03c8', omega: '\u03c9' };
+  const plainText = s => String(s).replace(/<[^>]*>/g, '').replace(/&#(x?)([0-9a-f]+);/gi, (m, x, n) => String.fromCodePoint(parseInt(n, x ? 16 : 10)))
+    .replace(/&([a-z]+[0-9]?);/gi, (m, n) => ENT[n] ?? m).replace(/\s+/g, ' ').trim();
+  // the outermost <svg> elements of a piece of HTML, whole (a drawing may hold another)
+  function svgsIn(html) {
+    const out = [], re = /<svg\b|<\/svg>/g; let depth = 0, start = -1, m;
+    while ((m = re.exec(html))) {
+      if (m[0] !== '</svg>') { if (depth++ === 0) start = m.index; }
+      else if (depth > 0 && --depth === 0) out.push(html.slice(start, m.index + 6));
+    }
+    return out;
+  }
+  function pictures(Z, sheet, where) {
+    if (!Z || !Z.length || !sheet) return Z;
+    const blocks = Array.isArray(sheet) ? sheet.map(([t, s]) => [plainText(t), svgsIn(String(s))])
+      : String(sheet).split('<div class="rfig"').slice(1).map(ch => { const t = ch.match(/<h3>([\s\S]*?)<\/h3>/); return [t ? plainText(t[1]) : '', svgsIn(ch)]; });
+    const at = new Map();
+    blocks.forEach(([title, svgs], i) => {
+      if (!svgs.length) return;
+      const key = where ? where(title, i) : undefined;
+      if (key === false) return;
+      const zn = Z.find(z => z.key === key) || Z[0];
+      if (!at.has(zn)) at.set(zn, []);
+      svgs.forEach((svg, j) => at.get(zn).push({ t: 'img', svg, caption: j === svgs.length - 1 ? title : '' }));
+    });
+    for (const [zn, list] of at) zn.C.items.unshift(...list);
+    return Z;
+  }
+  return { create, toSI, siUnit, factor, num, exprHTML, symHTML, unitHTML, tokens, rasterise, copy, download, merge, project, downloadProject, zonesHTML, allTools, wire, sheetHTML, pictures, CSS };
+})();
+if (typeof module !== 'undefined') module.exports = { CalcScript };
+
 /* ===== EC5 CORE (EngineeringTools) =====
    Timber to BS EN 1995-1-1:2004+A2:2014 with the UK National Annex (and BS EN 1990 + UK NA for actions). Shared by the
    timber tools.
@@ -460,7 +885,10 @@ const TimberBeam = (() => {
     }
     return { udl, pts };
   }
-  // effects of a group on the simply supported span: reactions, V(x), M(x), deflection y(x) (bending + shear)
+  // effects of a group on the simply supported span: reactions, V(x), M(x), deflection y(x) (bending + shear). The bending
+  // deflection is exact: a point load P at a deflects the span at x by P b x (L² − b² − x²)/(6 L EI) for x ≤ a (b = L − a),
+  // P a (L − x)(2Lx − x² − a²)/(6 L EI) beyond; a distributed load is that integrated over its length, by two-point Gauss
+  // on each side of x (the integrand is cubic there, so the rule is exact). A full-length uniform load gives 5wL⁴/(384EI).
   function effects(G, L, EI, GAk) {
     const xs = Array.from({ length: N + 1 }, (_, i) => L * i / N);
     let RB = 0, W = 0;
@@ -469,11 +897,16 @@ const TimberBeam = (() => {
     const RA = W - RB;
     const V = xs.map(x => { let v = RA; for (const [a, b, w] of G.udl) v -= w * Math.max(0, Math.min(x, b) - a); for (const [a, P] of G.pts) if (a < x - 1e-9) v -= P; return v; });
     const M = xs.map(x => { let m = RA * x; for (const [a, b, w] of G.udl) { const l = Math.max(0, Math.min(x, b) - a); m -= w * l * (x - a - l / 2); } for (const [a, P] of G.pts) if (a < x) m -= P * (x - a); return m; });
-    // bending: y'' = −M/EI with y(0) = y(L) = 0 (downward deflection positive)
-    const h = L / N, th = [0];
-    for (let i = 1; i <= N; i++) th.push(th[i - 1] + (M[i - 1] + M[i]) / 2 * h / EI);
-    const y0 = [0]; for (let i = 1; i <= N; i++) y0.push(y0[i - 1] + (th[i - 1] + th[i]) / 2 * h);
-    const c = y0[N] / L, y = y0.map((v, i) => -(v - c * xs[i]) + M[i] / GAk);
+    // bending (downward deflection positive), then shear M/(κGA)
+    const g = (x, a) => (x <= a ? (L - a) * x * (L * L - (L - a) ** 2 - x * x) : a * (L - x) * (2 * L * x - x * x - a * a)) / (6 * L * EI);
+    const GP = [0.5 - 0.5 / Math.sqrt(3), 0.5 + 0.5 / Math.sqrt(3)];
+    const gauss = (x, p, q) => (q > p ? (q - p) / 2 * (g(x, p + GP[0] * (q - p)) + g(x, p + GP[1] * (q - p))) : 0);
+    const y = xs.map((x, i) => {
+      let v = 0;
+      for (const [a, b, w] of G.udl) v += w * (gauss(x, a, Math.min(b, x)) + gauss(x, Math.max(a, x), b));
+      for (const [a, P] of G.pts) v += P * g(x, a);
+      return v + M[i] / GAk;
+    });
     return { xs, RA, RB, V, M, y };
   }
 
@@ -598,7 +1031,9 @@ const TimberBeam = (() => {
     steps.push({ ref: '7.3, NA.2.6', text: `floor vibration: (EI)_L = ${r2(EIl * 1e-12)} × 10⁶ N m²/m, (EI)_B = ${r2(EIb * 1e-6)} N m²/m; f₁ = π/(2L²) √((EI)_L/m) = ${r2(f1)} Hz; k_dist = ${r3(kdist)}, k_amp = ${kamp}; a = ${r3(a)} mm/kN; b = ${r2(bb)}; n₄₀ = ${r2(n40)}; v = ${r3(vel * 1000)} × 10⁻³ ≤ b^(f₁ζ − 1) = ${r3(vlim * 1000)} × 10⁻³ m/Ns²` });
     checks.push({ id: 'f1', name: 'Floor frequency', ref: '7.3.3, NA.2.6', util: 8 / f1, note: `f₁ = ${r2(f1)} Hz > 8 Hz` });
     checks.push({ id: 'a', name: 'Floor deflection under 1 kN', ref: 'NA.2.6.2', util: a / alim, note: `a = ${r3(a)} ≤ ${r3(alim)} mm` });
-    checks.push({ id: 'v', name: 'Unit impulse velocity', ref: '7.3.3(4)', util: vel / vlim, note: `v = ${r3(vel * 1000)} × 10⁻³ ≤ ${r3(vlim * 1000)} × 10⁻³ m/Ns²` });
+    // b = 160 − 40a reaches 0 at a = 4 mm: beyond that the UK NA gives no limit on the velocity (the floor already fails on a)
+    if (bb > 0) checks.push({ id: 'v', name: 'Unit impulse velocity', ref: '7.3.3(4)', util: vel / vlim, note: `v = ${r3(vel * 1000)} × 10⁻³ ≤ ${r3(vlim * 1000)} × 10⁻³ m/Ns²` });
+    else warnings.push(`The deflection under 1 kN, a = ${r2(a)} mm, is past 4 mm, where the UK NA's b (160 − 40a) reaches zero: the unit impulse velocity has no limit there and is not checked. The floor fails on its deflection under 1 kN.`);
     if (f1 <= 8) warnings.push('f₁ is 8 Hz or less: the floor needs a special investigation (7.3.1(3)).');
     return { m, B, EIl, EIb, f1, kdist, kamp, a, alim, bb, vlim, n40, vel };
   }
@@ -612,6 +1047,439 @@ const TimberBeam = (() => {
   }
   return { design, suggest, effects, group };
 })();
+
+/* ===== EC5 CALCULATION BLOCKS (EngineeringTools) =====
+   The steps of BS EN 1995-1-1:2004+A2:2014 (+ UK NA) that the timber tools share, written as CalcScript (one record for
+   the page, the A4 sheet and CalcPad): the timber and its characteristic values (BS EN 338, BS EN 14080 or a product's
+   declaration), γ_M, k_mod for a combination, k_sys, k_def, the size factor k_h, design strengths, k_crit (6.3.3) and k_c
+   (6.3.2), and a combination's partial factors. Each block writes a value once (a part that needs it again finds it there),
+   so a part of a calculation can be opened in CalcPad on its own.
+   Source: scratchpad/ec5/script.js. Needs CalcScript and EC5 (ec5/core.js). */
+const EC5Script = (() => {
+  'use strict';
+  const DUR = ['permanent', 'long-term', 'medium-term', 'short-term', 'instantaneous'];
+  const SYM = { fmk: ['f_mk', 'f_m,k', 'bending strength'], ft0k: ['f_t0k', 'f_t,0,k', 'tension strength parallel to the grain'], ft90k: ['f_t90k', 'f_t,90,k', 'tension strength perpendicular to the grain'],
+    fc0k: ['f_c0k', 'f_c,0,k', 'compression strength parallel to the grain'], fc90k: ['f_c90k', 'f_c,90,k', 'compression strength perpendicular to the grain'], fvk: ['f_vk', 'f_v,k', 'shear strength'],
+    E0mean: ['E_0mean', 'E_0,mean', 'mean modulus of elasticity parallel to the grain'], E005: ['E_005', 'E_0,05', 'fifth-percentile modulus of elasticity'], E90mean: ['E_90mean', 'E_90,mean', 'mean modulus perpendicular to the grain'],
+    Gmean: ['G_mean', 'G_mean', 'mean shear modulus'], rhok: ['rho_k', 'ρ_k', 'characteristic density'], rhomean: ['rho_mean', 'ρ_mean', 'mean density'] };
+  const nameOf = k => SYM[k][0];
+  const KIND = { solid: 'solid timber', glulam: 'glued laminated timber', lvl: 'a product (LVL or similar)' };
+
+  // the timber's characteristic values (only those asked for), each once
+  function material(C, M, keys) {
+    if (!C.has('gamma_M')) {
+      C.head('Timber');
+      C.note(`${M.name}: ${M.family === 'other' ? `${KIND[M.kind] || 'a product'}, its declared values` : `${M.family === 'hard' ? 'hardwood' : M.family === 'glulam' ? 'glued laminated timber' : 'softwood'}, ${M.src}`}.`);
+      C.input('gamma_M', M.gM, '', `partial factor for ${M.kind === 'solid' ? 'solid timber' : M.kind === 'glulam' ? 'glulam' : 'the product'}`, M.family === 'other' ? 'declared' : 'UK NA Table NA.3', { sym: 'γ_M' });
+    }
+    for (const k of keys) {
+      if (k === 'G005') {
+        if (C.has('G_005')) continue;
+        if (M.family === 'solid' || M.family === 'hard') { need(C, M, 'Gmean'); need(C, M, 'E005'); need(C, M, 'E0mean'); C.calc('G_005', 'G_mean*E_005/E_0mean', M.G005, 'N/mm2', 'fifth-percentile shear modulus, in the ratio of the moduli', '', { sym: 'G_0,05' }); }
+        else C.input('G_005', M.G005, 'N/mm2', 'fifth-percentile shear modulus', M.family === 'glulam' ? M.src : 'declared', { sym: 'G_0,05' });
+        continue;
+      }
+      need(C, M, k);
+    }
+  }
+  function need(C, M, k) {
+    const [n, sym, desc] = SYM[k];
+    if (C.has(n)) return;
+    const unit = k === 'rhok' || k === 'rhomean' ? 'kg/m3' : 'N/mm2', v = M[k];
+    if (!(v > 0) && k !== 'ft90k') throw new Error(`EC5Script: ${sym} is needed`);
+    C.input(n, v, unit, desc, M.family === 'other' ? 'declared' : M.src, { sym });
+  }
+
+  // k_mod of a combination: its shortest-duration action (3.1.3(2)); name: k_mod unless a part needs two
+  function kmod(C, sc, c, name = 'k_mod') {
+    if (C.has(name)) return;
+    C.input(name, c.kmod, '', `modification factor: service class ${sc}, ${DUR[c.dur]} (the combination's shortest-duration action, 3.1.3(2))`, 'Table 3.1', { sym: 'k_mod' });
+  }
+  function ksys(C, v) { if (!C.has('k_sys')) C.input('k_sys', v, '', v > 1 ? 'system strength factor: several members sharing the load (6.6)' : 'system strength factor (no load sharing)', '6.6', { sym: 'k_sys' }); }
+  function kdef(C, sc, v) { if (!C.has('k_def')) C.input('k_def', v, '', `deformation factor, service class ${sc}`, 'Table 3.2', { sym: 'k_def' }); }
+
+  /* the size factor k_h for a depth (or width) dep (a name already written, value h mm): solid timber with ρ_k ≤ 700 kg/m³
+     below 150 mm (3.2(3)), glulam below 600 mm (3.3(3)), a product below 300 mm with its exponent s (3.4(3)) */
+  function kh(C, M, name, dep, h, sym = 'k_h', what = '') {
+    if (C.has(name)) return;
+    const v = EC5.kh(M, h), tail = what ? ` (${what})` : '';
+    if (M.kind === 'solid' && M.rhok <= 700 && h < 150) C.calc(name, `MIN((150/${dep}[#mm])^0.2, 1.3)`, v, '', `size factor: ${M.family === 'hard' ? 'hardwood' : 'solid timber'} less than 150 mm deep${tail}`, '3.2(3) (3.1)', { sym });
+    else if (M.kind === 'glulam' && h < 600) C.calc(name, `MIN((600/${dep}[#mm])^0.1, 1.1)`, v, '', `size factor: glulam less than 600 mm deep${tail}`, '3.3(3) (3.2)', { sym });
+    else if (M.kind === 'lvl' && h < 300) { if (!C.has('s_h')) C.input('s_h', M.sExp || 0.12, '', 'size effect exponent of the product', '3.4(3), declared', { sym: 's' }); C.calc(name, `MIN((300/${dep}[#mm])^s_h, 1.2)`, v, '', `size factor: a product less than 300 mm deep${tail}`, '3.4(3) (3.3)', { sym }); }
+    else C.input(name, 1, '', `size factor${tail}: ${M.kind === 'solid' ? (M.rhok > 700 ? 'ρ_k over 700 kg/m³' : '150 mm or more') : M.kind === 'glulam' ? '600 mm or more' : '300 mm or more'}`, M.kind === 'solid' ? '3.2(3)' : M.kind === 'glulam' ? '3.3(3)' : '3.4(3)', { sym });
+  }
+
+  // a design strength: k_mod k_sys [k_h] f_k/γ_M (2.4.1 (2.14))
+  function fd(C, name, fk, o = {}) {
+    if (C.has(name)) return C.value(name);
+    const parts = [o.kmod || 'k_mod', ...(o.noSys ? [] : ['k_sys']), ...(o.kh ? [o.kh] : []), fk].join('*');
+    return C.calc(name, `${parts}/gamma_M`, o.v, 'N/mm2', o.desc || 'design strength', '2.4.1 (2.14)', { sym: o.sym });
+  }
+
+  /* lateral torsional buckling (6.3.3) of a rectangular section b × h over l_ef (names given, values in R = EC5.kcrit's
+     result): σ_m,crit by (6.32) for solid softwood, otherwise (6.31); λ_rel,m (6.30) and k_crit (6.34). sfx tells two
+     apart (sagging and hogging). */
+  function kcrit(C, M, R, o) {
+    const s = o.sfx || '', b = o.b || 'b', h = o.h || 'h', lef = o.lef;
+    if (M.kind === 'solid' && M.softwood) C.calc(`sig_mcrit${s}`, `0.78*${b}^2*E_005/(${h}*${lef})`, R.scrit, 'N/mm2', 'critical bending stress, solid softwood', '6.3.3(3) (6.32)', { sym: 'σ_m,crit' });
+    else {
+      material(C, M, ['E005', 'G005']);
+      C.calc(`I_z${s}`, `${h}*${b}^3/12`, o.h_v * o.b_v ** 3 / 12, 'mm4', 'second moment of area about the weak axis', '', { sym: 'I_z' });
+      C.calc(`I_tor${s}`, `${h}*${b}^3/3*(1 - 0.63*${b}/${h})`, o.h_v * o.b_v ** 3 / 3 * (1 - 0.63 * o.b_v / o.h_v), 'mm4', 'torsion constant of the rectangle', '', { sym: 'I_tor' });
+      C.calc(`W_yb${s}`, `${b}*${h}^2/6`, o.b_v * o.h_v * o.h_v / 6, 'mm3', 'section modulus about the strong axis', '', { sym: 'W_y' });
+      C.calc(`sig_mcrit${s}`, `PI()*SQRT(E_005*I_z${s}*G_005*I_tor${s})/(${lef}*W_yb${s})`, R.scrit, 'N/mm2', 'critical bending stress', '6.3.3(2) (6.31)', { sym: 'σ_m,crit' });
+    }
+    C.calc(`lam_relm${s}`, `SQRT(f_mk/sig_mcrit${s})`, R.lam, '', 'relative slenderness for bending', '6.3.3(2) (6.30)', { sym: 'λ_rel,m' });
+    return C.calc(`k_crit${s}`, `IF(lam_relm${s} <= 0.75, 1, IF(lam_relm${s} <= 1.4, 1.56 - 0.75*lam_relm${s}, 1/lam_relm${s}^2))`, R.k, '', 'reduction for lateral torsional buckling', '6.3.3(4) (6.34)', { sym: 'k_crit' });
+  }
+
+  /* flexural buckling (6.3.2) about one axis: lef and i are names written already; B = EC5.kc's result; ax 'y' or 'z' */
+  function kc(C, M, B, o) {
+    const ax = o.ax, l = `lam_${ax}`;
+    if (!C.has('beta_c')) C.input('beta_c', B.bc, '', M.kind === 'solid' ? 'straightness factor, solid timber' : 'straightness factor, glulam and LVL', '6.3.2(3) (6.29)', { sym: 'β_c' });
+    C.calc(l, `${o.lef}/${o.i}`, B.lam, '', `slenderness about ${ax}–${ax}`, '6.3.2', { sym: `λ_${ax}` });
+    C.calc(`lam_rel${ax}`, `${l}/PI()*SQRT(f_c0k/E_005)`, B.lr, '', `relative slenderness about ${ax}–${ax}`, '6.3.2(1) (6.21), (6.22)', { sym: `λ_rel,${ax}` });
+    C.calc(`k_${ax}`, `0.5*(1 + beta_c*(lam_rel${ax} - 0.3) + lam_rel${ax}^2)`, B.k, '', '', '6.3.2(3) (6.27), (6.28)', { sym: `k_${ax}` });
+    return C.calc(`k_c${ax}`, `IF(lam_rel${ax} <= 0.3, 1, 1/(k_${ax} + SQRT(k_${ax}^2 - lam_rel${ax}^2)))`, B.kc, '', `instability factor about ${ax}–${ax} (1 when λ_rel ≤ 0.3)`, '6.3.2(3) (6.25), (6.26)', { sym: `k_c,${ax}` });
+  }
+
+  /* a ULS combination's partial factors: γ_G and one γ for each variable action it takes (the accompanying ones already
+     times ψ₀); keys: the variable actions with the names they go by; returns { G: 'gamma_G', Q: 'gamma_Q', ... } */
+  function combo(C, c, keys) {
+    const out = {};
+    if (!C.has('gamma_G')) {
+      C.note(`Combination ${c.name}${c.fav ? ': the permanent action favourable' : ''}.`);
+      C.input('gamma_G', c.gG, '', c.gG === 1 ? 'factor on the permanent action, favourable' : `factor on the permanent action${/6\.10b/.test(c.name) ? ' (ξγ_G, 6.10b)' : ''}`, 'BS EN 1990 Table NA.A1.2(B)', { sym: 'γ_G' });
+    }
+    out.G = 'gamma_G';
+    for (const k of keys) {
+      const g = c.gQ[k] || 0; if (!g) continue;
+      const nm = `gamma_${k}`; out[k] = nm;
+      if (!C.has(nm)) C.input(nm, g, '', c.lead === k || g === 1.5 ? `factor on ${k}${c.lead === k ? ', leading' : ''}` : `factor on ${k}, accompanying (1.5ψ₀)`, 'BS EN 1990 Table NA.A1.2(B), NA.A1.1', { sym: `γ_${k}` });
+    }
+    return out;
+  }
+  // Σ γ × effect for the actions a combination takes: f(key) → the effect's name
+  const sum = (g, keys, f) => keys.filter(k => g[k]).map(k => `${g[k]}*${f(k)}`).join(' + ') || '0';
+
+  return { material, need, kmod, ksys, kdef, kh, fd, kcrit, kc, combo, sum, DUR };
+})();
+if (typeof module !== 'undefined') module.exports = { EC5Script };
+
+/* ===== TIMBER BEAM: FULL CALCULATION (EngineeringTools) =====
+   TimberBeam.design written out, one CalcScript per part (each opens in CalcPad on its own; the whole downloads as one
+   check):
+   - the beam and its loads: the timber, the section (and plies), the span, each action's characteristic loads (an area
+     load times the spacing, line loads, the self-weight from ρ_mean) and its reactions;
+   - bending, shear and bearing, each for the combination that governs it, with that combination's k_mod: the effects of
+     each action built up with its factor (for loads along the whole span by formula, wL²/8 and wL/2; otherwise each
+     action's moment, shear or reaction where the combination's is largest, from the analysis), k_h, k_crit (6.3.3) with
+     l_ef from Table 6.1, a notch's k_v (6.5.2) and k_c,90 with the bearing's effective length (6.1.5);
+   - deflection: each action's deflection (5wL⁴/(384EI) + wL²/(8κGA) for loads along the whole span; otherwise the exact
+     deflected shape's largest value), w_inst and w_net,fin with the worst leading action (2.2.3, NA.2.5);
+   - floor vibration (7.3, UK NA NA.2.6): f₁, the deflection under 1 kN with k_dist and k_amp, and the unit impulse velocity.
+   Source: scratchpad/timberbeam/script.js. Needs CalcScript, EC5, EC5Script, TimberBeam. */
+const TimberBeamScript = (() => {
+  'use strict';
+  const TOOL = 'Timber Beam', STD = 'BS EN 1995-1-1:2004+A2:2014, UK NA; BS EN 1990, UK NA';
+  const pre = title => CalcScript.create({ title, tool: TOOL, standard: STD });
+  const ACT = { G: 'permanent', Q: 'imposed', S: 'snow', W: 'wind' };
+  const r2 = v => (Math.round(v * 100) / 100).toFixed(2);
+  const S = EC5Script;
+  const uniform = d => d.rows.every(r => r.form === 'area' || r.form === 'line');
+  const allUniform = D => Object.values(D.defs).every(uniform);
+  const keysOf = D => Object.keys(D.defs);
+
+  function section(C, D) {
+    if (C.has('h')) return;
+    C.head('Section');
+    if (D.n > 1) { C.input('b_1', D.b1, 'mm', 'breadth of one ply', ''); C.input('n_p', D.n, '', 'plies side by side, acting together', ''); C.calc('b', 'n_p*b_1', D.b, 'mm', 'breadth', ''); }
+    else C.input('b', D.b, 'mm', 'breadth', '');
+    C.input('h', D.h, 'mm', 'depth', '');
+    C.calc('A', 'b*h', D.b * D.h, 'mm2', 'area', '');
+    C.calc('W_y', 'b*h^2/6', D.W, 'mm3', 'section modulus', '');
+    C.calc('I_y', 'b*h^3/12', D.I, 'mm4', 'second moment of area', '');
+  }
+  function span(C, D) {
+    if (C.has('L')) return;
+    C.head('Span');
+    C.input('l_c', D.clear, 'mm', 'clear span', ''); C.input('l_b', D.lb, 'mm', 'bearing length at each end', '');
+    C.calc('L', 'l_c + l_b', D.L, 'mm', 'span, centre to centre of the bearings', '');
+  }
+  // one action's loads; for loads along the whole span, w_k = their sum per metre; returns w_k's name or null
+  function loads(C, D, k) {
+    const d = D.defs[k], done = C.done || (C.done = new Set());
+    if (done.has(k)) return uniform(d) ? `w_${k}` : null;
+    done.add(k);
+    section(C, D); span(C, D);
+    C.head(`${k}: ${ACT[k]} loads, characteristic`);
+    const terms = [];
+    d.rows.forEach((r, i) => {
+      const j = i + 1, sg = r.up ? '-' : '+', up = r.up ? ', upward' : '';
+      if (r.sw) {
+        S.material(C, D.M, ['rhomean']);
+        if (!C.has('g_n')) C.input('g_n', 9.81, 'N/kg', 'gravity', '');
+        C.calc('w_sw', 'rho_mean*g_n*b*h', D.M.rhomean * 9.81 * D.b * D.h * 1e-9, 'kN/m', 'self-weight of the beam', 'BS EN 1991-1-1');
+        terms.push(['+', 'w_sw']); return;
+      }
+      if (r.form === 'area') {
+        if (!C.has('s')) C.input('s', D.inp.spacing, 'mm', 'spacing of the beams (the width each carries)', '');
+        C.input(`q_${k}${j}`, +r.w, 'kN/m2', `area load${up}`, '', { sym: `q_${k},${j}` }); terms.push([sg, `q_${k}${j}*s`]);
+      } else if (r.form === 'line') { C.input(`w_${k}${j}`, +r.w, 'kN/m', `line load${up}`, '', { sym: `w_${k},${j}` }); terms.push([sg, `w_${k}${j}`]); }
+      else if (r.form === 'partial') { C.input(`w_${k}${j}`, +r.w, 'kN/m', `line load${up}`, '', { sym: `w_${k},${j}` }); C.input(`a_${k}${j}`, +r.a, 'm', 'from the left support', ''); C.input(`e_${k}${j}`, +r.b, 'm', 'to', '', { sym: `b_${k},${j}` }); }
+      else { C.input(`P_${k}${j}`, +r.w, 'kN', `point load${up}`, '', { sym: `P_${k},${j}` }); C.input(`a_${k}${j}`, +r.a, 'm', 'from the left support', ''); }
+    });
+    if (uniform(d) && !terms.length) { C.input(`w_${k}`, 0, 'kN/m', `no ${ACT[k]} load`, '', { sym: `w_${k}` }); return `w_${k}`; }
+    if (uniform(d)) {
+      const ex = terms.map(([s, t], i) => (i === 0 && s === '+' ? t : `${s} ${t}`)).join(' ').replace(/^- /, '-');
+      const w = d.G.udl.reduce((t, u) => t + u[2], 0);
+      C.calc(`w_${k}`, ex, w, 'kN/m', `${ACT[k]} load per metre along the span`, '', { sym: `w_${k}` });
+      return `w_${k}`;
+    }
+    C.note(`The ${ACT[k]} loads are not all along the whole span: their effects are found by statics of the simply supported span.`);
+    return null;
+  }
+  /* an effect of action k. uni (every action's loads along the whole span): by formula at mid-span (M) or at the support
+     (V, R). Otherwise at the point x (a name) where the combination's effect is largest, grid point i: by formula for an
+     action whose loads are along the whole span (w x (L − x)/2, w (L/2 − x)), from the statics for the others; the
+     reactions at both ends (R_kA, R_kB). nm: the name to write. */
+  function effect(C, D, k, kind, uni, x, i, nm) {
+    const w = loads(C, D, k), E = D.defs[k].E;
+    nm = nm || `${kind}_${k}k`;
+    if (C.has(nm) || C.has(`${nm}A`)) return nm;
+    const sym = `${kind}_${k},k`, how = 'statics of the simply supported span';
+    if (kind === 'M') {
+      if (uni) C.calc(nm, `${w}*L^2/8`, E.M[E.xs.length >> 1] / 1e6, 'kNm', `${ACT[k]} moment at mid-span`, '', { sym });
+      else if (w) C.calc(nm, `${w}*${x}*(L - ${x})/2`, E.M[i] / 1e6, 'kNm', `${ACT[k]} moment there`, '', { sym });
+      else C.given(nm, E.M[i] / 1e6, 'kNm', `${ACT[k]} moment there`, how, '', { sym });
+    } else if (kind === 'V') {
+      if (uni) C.calc(nm, `${w}*L/2`, E.V[0] / 1e3, 'kN', `${ACT[k]} shear at the support`, '', { sym });
+      else if (w) C.calc(nm, `${w}*(L/2 - ${x})`, E.V[i] / 1e3, 'kN', `${ACT[k]} shear there`, '', { sym });
+      else C.given(nm, E.V[i] / 1e3, 'kN', `${ACT[k]} shear there`, how, '', { sym });
+    } else if (uni) C.calc(nm, `${w}*L/2`, E.RA / 1e3, 'kN', `${ACT[k]} reaction at each support`, '', { sym });
+    else if (w) { C.calc(`R_${k}A`, `${w}*L/2`, E.RA / 1e3, 'kN', `${ACT[k]} reaction at the left support`, '', { sym: `R_${k},A` }); C.calc(`R_${k}B`, `${w}*L/2`, E.RB / 1e3, 'kN', 'and at the right', '', { sym: `R_${k},B` }); }
+    else { C.given(`R_${k}A`, E.RA / 1e3, 'kN', `${ACT[k]} reaction at the left support`, 'moments about the right support', '', { sym: `R_${k},A` }); C.given(`R_${k}B`, E.RB / 1e3, 'kN', 'and at the right', 'moments about the left support', '', { sym: `R_${k},B` }); }
+    return nm;
+  }
+  const comboKeys = (D, c) => keysOf(D).filter(k => k === 'G' ? c.gG : c.gQ[k]);
+
+  // ---------- the beam and its loads ----------
+  function beamZone(D) {
+    const C = pre('The beam and its loads');
+    if (D.inp.sw !== false) S.material(C, D.M, ['rhomean']);
+    section(C, D); span(C, D);
+    keysOf(D).forEach(k => loads(C, D, k));
+    C.head('Characteristic reactions');
+    keysOf(D).forEach(k => effect(C, D, k, 'R', allUniform(D)));
+    return { key: 'beam', title: C.meta.title, sum: `${D.n > 1 ? `${D.n} × ` : ''}${Math.round(D.b1)} × ${Math.round(D.h)} ${D.M.name}, L ${Math.round(D.L)} mm`, util: null, C };
+  }
+
+  // ---------- bending ----------
+  function bendZone(D) {
+    const B = D.govern.B, c = B.c, C = pre(`Bending, ${c.name}`), M = D.M;
+    S.material(C, M, ['fmk']); section(C, D); span(C, D);
+    const keys = comboKeys(D, c), uni = allUniform(D);
+    C.head('Design moment');
+    const g = S.combo(C, c, keys.filter(k => k !== 'G'));
+    const signs = [];
+    if (uni) {
+      keys.forEach(k => effect(C, D, k, 'M', true));
+      C.calc('M_Ed', S.sum(g, keys, k => `M_${k}k`), (B.Msag > B.Mhog ? B.Msag : -B.Mhog) / 1e6, 'kNm', 'design moment at mid-span (negative: hogging, the loads acting upward)', 'BS EN 1990 (6.10)', { sym: 'M_Ed' });
+      signs.push({ s: B.Msag >= B.Mhog ? 'sag' : 'hog', M: 'M_Ed', sfx: '' });
+    } else {
+      const both = B.Msag > 1e-6 && B.Mhog > 1e-6;
+      for (const [sg, Mv] of [['sag', B.Msag], ['hog', B.Mhog]]) {
+        if (!(Mv > 1e-6) && !(sg === 'sag' && !(B.Mhog > 1e-6))) continue;
+        const arr = B.E.M, i = arr.reduce((p, v, j) => (sg === 'sag' ? v > arr[p] : v < arr[p]) ? j : p, 0), sfx = both ? (sg === 'sag' ? 's' : 'h') : '';
+        C.given(`x_M${sfx}`, D.defs.G.E.xs[i], 'mm', `where the ${sg === 'sag' ? 'sagging' : 'hogging'} moment of the combination is largest, from the left support`, 'searched at 400 points along the span', '', { sym: 'x_M' });
+        const names = keys.map(k => [k, effect(C, D, k, 'M', false, `x_M${sfx}`, i, `M_${k}k${sfx}`)]);
+        const f = Object.fromEntries(names);
+        C.calc(`M_Ed${sfx}`, S.sum(g, keys, k => f[k]), B.E.M[i] / 1e6, 'kNm', `design ${sg === 'sag' ? 'sagging' : 'hogging'} moment`, 'BS EN 1990 (6.10)', { sym: 'M_Ed' });
+        signs.push({ s: sg, M: `M_Ed${sfx}`, sfx });
+      }
+    }
+    C.head('Bending strength');
+    S.kmod(C, D.sc, c); S.ksys(C, D.ksys); S.kh(C, M, 'k_h', 'h', D.h);
+    S.fd(C, 'f_md', 'f_mk', { kh: 'k_h', v: B.fmd, sym: 'f_m,d', desc: 'design bending strength' });
+    const terms = [];
+    for (const sg of signs) {
+      const L2 = sg.s === 'sag' ? D.ltb.sag : D.ltb.hog, x = sg.sfx;
+      C.calc(`sig_md${x}`, `ABS(${sg.M})/W_y`, Math.abs(sg.s === 'sag' ? B.Msag : B.Mhog) / D.W, 'N/mm2', `bending stress${signs.length > 1 ? (sg.s === 'sag' ? ', sagging' : ', hogging') : ''}`, '6.1.6', { sym: 'σ_m,d' });
+      if (L2) {
+        C.head(`Lateral torsional buckling${signs.length > 1 ? (sg.s === 'sag' ? ', sagging' : ', hogging') : ''} (6.3.3)`);
+        lef(C, D, sg.s, x);
+        S.material(C, M, ['E005']);
+        S.kcrit(C, M, L2, { sfx: x, lef: `l_ef${x}`, b_v: D.b, h_v: D.h });
+        terms.push(`sig_md${x}/(k_crit${x}*f_md)`);
+      } else {
+        if (!x) C.note(D.inp.restraint && D.inp.restraint.mode === 'both' ? 'Both edges are held along the span: no lateral torsional buckling (k_crit = 1).' : 'The compression edge is held along the span: no lateral torsional buckling (k_crit = 1).');
+        terms.push(`sig_md${x}/f_md`);
+      }
+    }
+    C.check('U_m', terms.length > 1 ? `MAX(${terms.join(', ')})` : terms[0], B.uB, `bending${D.ltb.sag || D.ltb.hog ? ' with lateral torsional buckling' : ''}`, D.ltb.sag || D.ltb.hog ? '6.1.6, 6.3.3 (6.33)' : '6.1.6 (6.11)');
+    return { key: 'bending', title: C.meta.title, sum: `k_mod ${c.kmod}`, util: B.uB, C };
+  }
+  // the effective length for lateral buckling (Table 6.1): sg 'sag' (the top edge in compression) or 'hog'
+  function lef(C, D, sg, x) {
+    const R = D.inp.restraint || {};
+    if (R.mode === 'lef') { C.input(`l_ef${x}`, +R.lef, 'mm', 'effective length for lateral buckling, as given', 'Table 6.1', { sym: 'l_ef' }); return; }
+    // the factor on L as the engine finds it, from l_ef: (l_ef − Δ)/L
+    const dl = sg === 'sag' ? (R.level === 'top' ? 2 * D.h : R.level === 'bottom' ? -0.5 * D.h : 0) : -0.5 * D.h;
+    const f = Math.round((lefOf(D, sg) - dl) / D.L * 1000) / 1000;
+    C.input(`a_ef${x}`, f, '', `simply supported, ${f === 0.9 ? 'a uniformly distributed load' : f === 0.8 ? 'one point load at mid-span' : 'other loads (l_ef = L)'}`, 'Table 6.1', { sym: 'l_ef/L' });
+    const lv = lefOf(D, sg);
+    if (sg === 'sag' && R.level === 'top') C.calc(`l_ef${x}`, `a_ef${x}*L + 2*h`, lv, 'mm', 'effective length: the load on the compression edge (+2h)', 'Table 6.1 note 2', { sym: 'l_ef' });
+    else if (dl !== 0) C.calc(`l_ef${x}`, `a_ef${x}*L - 0.5*h`, lv, 'mm', sg === 'sag' ? 'effective length: the load on the tension edge (−0.5h)' : 'effective length: under reversal the bottom edge is in compression and held at the supports only; the load acts on the tension edge (−0.5h)', 'Table 6.1 note 2', { sym: 'l_ef' });
+    else C.calc(`l_ef${x}`, `a_ef${x}*L`, lv, 'mm', 'effective length: the load at the centroid', 'Table 6.1', { sym: 'l_ef' });
+  }
+  // l_ef as the engine took it (from σ_m,crit for solid softwood, which is exact, otherwise rebuilt the engine's way)
+  function lefOf(D, sg) {
+    const R = D.inp.restraint || {}, L = D.L, h = D.h, defs = Object.values(D.defs);
+    if (R.mode === 'lef') return +R.lef;
+    const onlyUDL = defs.every(d => !d.G.pts.length && d.G.udl.every(u => u[0] <= 1e-6 && u[1] >= L - 1e-6));
+    const pts = defs.flatMap(d => d.G.pts), anyUDL = defs.some(d => d.G.udl.length);
+    const onePoint = pts.length > 0 && !anyUDL && pts.every(p => Math.abs(p[0] - L / 2) < 1e-6);
+    const onlyUDLorMid = defs.every(d => d.G.udl.every(u => u[0] <= 1e-6 && u[1] >= L - 1e-6));
+    if (sg === 'hog') return (onlyUDL ? 0.9 * L : L) - 0.5 * h;
+    const base = onlyUDL ? 0.9 * L : onePoint ? 0.8 * L : pts.every(p => Math.abs(p[0] - L / 2) < 1e-6) && onlyUDLorMid ? 0.9 * L : L;
+    return base + (R.level === 'top' ? 2 * h : R.level === 'bottom' ? -0.5 * h : 0);
+  }
+
+  // ---------- shear ----------
+  function shearZone(D) {
+    const Sg = D.govern.S, c = Sg.c, C = pre(`Shear, ${c.name}`), M = D.M;
+    S.material(C, M, ['fvk']); section(C, D); span(C, D);
+    const keys = comboKeys(D, c), uni = allUniform(D);
+    C.head('Design shear');
+    const g = S.combo(C, c, keys.filter(k => k !== 'G'));
+    if (uni) { keys.forEach(k => effect(C, D, k, 'V', true)); C.calc('V_Ed', `ABS(${S.sum(g, keys, k => `V_${k}k`)})`, Sg.Vm / 1e3, 'kN', 'design shear at the support', 'BS EN 1990 (6.10)', { sym: 'V_Ed' }); }
+    else {
+      const arr = Sg.E.V, i = arr.reduce((p, v, j) => (Math.abs(v) > Math.abs(arr[p]) ? j : p), 0);
+      C.given('x_V', D.defs.G.E.xs[i], 'mm', 'where the shear of the combination is largest, from the left support', 'searched at 400 points along the span', '', { sym: 'x_V' });
+      keys.forEach(k => effect(C, D, k, 'V', false, 'x_V', i));
+      C.calc('V_Ed', `ABS(${S.sum(g, keys, k => `V_${k}k`)})`, Sg.Vm / 1e3, 'kN', 'design shear', 'BS EN 1990 (6.10)', { sym: 'V_Ed' });
+    }
+    C.head('Shear strength (6.1.7)');
+    S.kmod(C, D.sc, c); S.ksys(C, D.ksys);
+    S.fd(C, 'f_vd', 'f_vk', { v: Sg.fvd, sym: 'f_v,d', desc: 'design shear strength' });
+    C.input('k_cr', M.kcr, '', M.kcr < 1 ? 'crack factor, solid timber and glulam' : 'crack factor, a product', '6.1.7(2)', { sym: 'k_cr' });
+    const nt = D.inp.notch && +D.inp.notch.hn > 0 ? D.inp.notch : null;
+    if (nt) {
+      C.head('Notch on the bottom edge at the support (6.5.2)');
+      C.input('h_n', +nt.hn, 'mm', 'depth of the notch', ''); C.input('x_n', +nt.x, 'mm', 'from the line of the reaction to the corner of the notch', '6.5.2 Figure 6.11', { sym: 'x' });
+      C.calc('h_ef', 'h - h_n', D.hef, 'mm', 'depth at the support', '6.5.2', { sym: 'h_ef' });
+      C.calc('alpha_n', 'h_ef/h', D.hef / D.h, '', '', '6.5.2', { sym: 'α' });
+      C.input('k_n', M.kind === 'solid' ? 5 : M.kind === 'glulam' ? 6.5 : 4.5, '', M.kind === 'solid' ? 'solid timber' : M.kind === 'glulam' ? 'glulam' : 'LVL', '6.5.2 (6.63)', { sym: 'k_n' });
+      C.calc('k_v', 'MIN(1, k_n/(SQRT(h[#mm])*(SQRT(alpha_n*(1 - alpha_n)) + 0.8*x_n/h*SQRT(1/alpha_n - alpha_n^2))))', D.kv, '', 'reduction for the notch (no taper, i = 0)', '6.5.2 (6.62)', { sym: 'k_v' });
+      C.calc('tau_d', '1.5*V_Ed/(k_cr*b*h_ef)', Sg.tau, 'N/mm2', 'shear stress at the notched end', '6.1.7 (6.13), 6.5.2 (6.60)', { sym: 'τ_d' });
+      C.check('U_v', 'tau_d/(k_v*f_vd)', Sg.uV, 'shear at the notched end', '6.5.2 (6.60)');
+    } else {
+      C.calc('tau_d', '1.5*V_Ed/(k_cr*b*h)', Sg.tau, 'N/mm2', 'shear stress', '6.1.7 (6.13a)', { sym: 'τ_d' });
+      C.check('U_v', 'tau_d/f_vd', Sg.uV, 'shear', '6.1.7 (6.13)');
+    }
+    return { key: 'shear', title: C.meta.title, sum: `k_mod ${c.kmod}`, util: Sg.uV, C };
+  }
+
+  // ---------- bearing ----------
+  function bearingZone(D) {
+    const Br = D.govern.Br, c = Br.c, C = pre(`Bearing at the supports, ${c.name}`), M = D.M, BRG = D.BRG;
+    S.material(C, M, ['fc90k']); section(C, D); span(C, D);
+    const keys = comboKeys(D, c), uni = allUniform(D);
+    C.head('Design reaction');
+    const g = S.combo(C, c, keys.filter(k => k !== 'G'));
+    keys.forEach(k => effect(C, D, k, 'R', uni));
+    if (uni) C.calc('R_Ed', `ABS(${S.sum(g, keys, k => `R_${k}k`)})`, Br.Rm / 1e3, 'kN', 'design reaction at each support', 'BS EN 1990 (6.10)', { sym: 'R_Ed' });
+    else C.calc('R_Ed', `MAX(ABS(${S.sum(g, keys, k => `R_${k}A`)}), ABS(${S.sum(g, keys, k => `R_${k}B`)}))`, Br.Rm / 1e3, 'kN', 'the larger design reaction', 'BS EN 1990 (6.10)', { sym: 'R_Ed' });
+    C.head('Bearing (6.1.5)');
+    C.input('l_add', 30, 'mm', 'the most the effective length extends past the bearing at each side', '6.1.5(1)', { sym: 'l_add' });
+    if (BRG.inOut > 0) { C.input('a_out', +D.inp.aOut, 'mm', 'length of the beam past the outer edge of the bearing', '', { sym: 'a' }); C.calc('l_efb', 'l_b + MIN(l_add, l_b, L/2) + MIN(l_add, a_out, l_b, L/2)', BRG.lef, 'mm', 'effective bearing length', '6.1.5(1)', { sym: 'l_ef' }); }
+    else C.calc('l_efb', 'l_b + MIN(l_add, l_b, L/2)', BRG.lef, 'mm', 'effective bearing length: extended on the span side only (the beam ends at the bearing)', '6.1.5(1)', { sym: 'l_ef' });
+    C.input('k_c90', BRG.k, '', BRG.why.replace(/:? ?k_c,90 = [\d.]+ ?/, '').replace(/^\(|\)$/g, '').trim() || 'factor for compression perpendicular to the grain', '6.1.5(4)', { sym: 'k_c,90' });
+    S.kmod(C, D.sc, c); S.ksys(C, D.ksys);
+    S.fd(C, 'f_c90d', 'f_c90k', { v: Br.fc90d, sym: 'f_c,90,d', desc: 'design compression strength perpendicular to the grain' });
+    C.calc('sig_c90d', 'R_Ed/(b*l_efb)', Br.sc90, 'N/mm2', 'bearing stress', '6.1.5 (6.4)', { sym: 'σ_c,90,d' });
+    C.check('U_c90', 'sig_c90d/(k_c90*f_c90d)', Br.uC, 'bearing at the supports', '6.1.5 (6.3)');
+    return { key: 'bearing', title: C.meta.title, sum: `k_mod ${c.kmod}`, util: Br.uC, C };
+  }
+
+  // ---------- deflection ----------
+  function deflZone(D) {
+    const C = pre('Deflection'), M = D.M, Dd = D.D, uni = allUniform(D), down = D.vars.filter(v => !v.up);
+    S.material(C, M, ['E0mean', 'Gmean']); section(C, D); span(C, D);
+    C.head('Deflection of each action, instantaneous (bending and shear)');
+    C.calc('kappa', '5/6', 5 / 6, '', 'shear coefficient of a rectangle', '', { sym: 'κ' });
+    const acts = ['G', ...down.map(v => v.key)];
+    if (D.vars.some(v => v.up)) C.note('Wind acting upward is left out of the deflection: it relieves the beam.');
+    for (const k of acts) {
+      const u = k === 'G' ? Dd.uG : Dd.uQ[k];
+      const w = loads(C, D, k);
+      if (w) { C.calc(`u_${k}`, `5*${w}*L^4/(384*E_0mean*I_y) + ${w}*L^2/(8*kappa*G_mean*A)`, u, 'mm', `${ACT[k]}: bending, then shear at mid-span`, '7.2', { sym: `u_inst,${k}` }); }
+      else C.given(`u_${k}`, u, 'mm', `${ACT[k]}: the largest deflection along the span`, 'the exact deflected shape (bending and shear) at 400 points', '7.2', { sym: `u_inst,${k}` });
+    }
+    C.head('Combinations (2.2.3, UK NA NA.2.5)');
+    S.kdef(C, D.sc, D.kdef);
+    down.forEach(v => { const p = EC5.ACTIONS[v.cat].psi; C.input(`psi_0${v.key}`, p[0], '', `combination factor, ${v.key}${v.key === 'Q' ? ` (${EC5.ACTIONS[v.cat].name})` : ''}`, 'BS EN 1990 Table NA.A1.1', { sym: `ψ_0,${v.key}` }); C.input(`psi_2${v.key}`, p[2], '', `quasi-permanent factor, ${v.key}`, 'BS EN 1990 Table NA.A1.1', { sym: `ψ_2,${v.key}` }); });
+    if (uni) {
+      const inst = down.length ? down.map(l => ['u_G', ...down.map(v => v === l ? `u_${v.key}` : `psi_0${v.key}*u_${v.key}`)].join(' + ')) : ['u_G'];
+      const fin = down.length ? down.map(l => ['u_G*(1 + k_def)', ...down.map(v => v === l ? `u_${v.key}*(1 + psi_2${v.key}*k_def)` : `u_${v.key}*(psi_0${v.key} + psi_2${v.key}*k_def)`)].join(' + ')) : ['u_G*(1 + k_def)'];
+      C.calc('w_inst', inst.length > 1 ? `MAX(${inst.join(', ')})` : inst[0], Dd.inst, 'mm', `instantaneous deflection, characteristic combination${down.length > 1 ? ' (the worse leading action)' : ''}`, '2.2.3(2)', { sym: 'w_inst' });
+      C.calc('w_fin', fin.length > 1 ? `MAX(${fin.join(', ')})` : fin[0], Dd.fin, 'mm', `net final deflection${down.length > 1 ? ' (the worse leading action)' : ''}`, '2.2.3(5), UK NA NA.2.5', { sym: 'w_net,fin' });
+    } else {
+      C.given('w_inst', Dd.inst, 'mm', 'instantaneous deflection, characteristic combination', 'the largest of the deflected shapes summed with the factors u_G + u_Q,1 + Σψ₀u_Q,i, each variable action leading in turn', '2.2.3(2)', { sym: 'w_inst' });
+      C.given('w_fin', Dd.fin, 'mm', 'net final deflection', 'the largest of the shapes u_G(1 + k_def) + u_Q,1(1 + ψ₂k_def) + Σu_Q,i(ψ₀ + ψ₂k_def), each variable action leading in turn', '2.2.3(5), UK NA NA.2.5', { sym: 'w_net,fin' });
+    }
+    C.head('Limits');
+    C.input('n_inst', Dd.instDiv, '', 'limit on w_inst as a fraction of the span: L/n', 'UK NA Table NA.5', { sym: 'n_inst' });
+    C.input('n_fin', Dd.finDiv, '', Dd.finDiv === 250 ? 'limit on w_net,fin: L/250 under a plasterboard ceiling' : 'limit on w_net,fin: L/150 without a ceiling', 'UK NA Table NA.5', { sym: 'n_fin' });
+    C.check('U_inst', 'w_inst/(L/n_inst)', D.checks.find(k => k.id === 'winst').util, 'instantaneous deflection', '7.2');
+    C.check('U_fin', 'w_fin/(L/n_fin)', D.checks.find(k => k.id === 'wfin').util, 'net final deflection', 'UK NA NA.2.5');
+    return { key: 'deflection', title: C.meta.title, sum: `w_inst ${r2(Dd.inst)}, w_net,fin ${r2(Dd.fin)} mm`, util: Math.max(...['winst', 'wfin'].map(id => D.checks.find(k => k.id === id).util)), C };
+  }
+
+  // ---------- floor vibration ----------
+  function vibZone(D) {
+    const V = D.V, v = D.inp.vib, C = pre('Floor vibration (7.3, UK NA NA.2.6)'), M = D.M;
+    S.material(C, M, ['E0mean']); section(C, D); span(C, D);
+    if (!C.has('s')) C.input('s', D.inp.spacing, 'mm', 'spacing of the joists', '');
+    C.head('The floor');
+    C.input('m_f', V.m, 'kg/m2', 'mass of the floor, permanent actions', '7.3.3', { sym: 'm' });
+    C.input('B_f', V.B, 'm', 'width of the floor', '', { sym: 'B' });
+    C.input('t_d', +v.tdeck, 'mm', 'thickness of the deck', ''); C.input('E_d', +v.Edeck, 'N/mm2', 'modulus of the deck across the joists', '', { sym: 'E_deck' });
+    C.calc('EI_L', 'E_0mean*I_y/s', V.EIl * 1e-6, 'N*m^2/m', 'bending stiffness along the joists, per metre width', 'NA.2.6', { sym: '(EI)_L' });
+    C.calc('EI_B', 'E_d*t_d^3/12', V.EIb * 1e-6, 'N*m^2/m', 'bending stiffness of the deck across the joists, per metre', 'NA.2.6', { sym: '(EI)_B' });
+    C.head('Fundamental frequency');
+    C.calc('f_1', 'PI()/(2*L[#m]^2)*SQRT(EI_L[#N*m^2/m]/m_f[#kg/m2])', V.f1, '', 'fundamental frequency, Hz', '7.3.3 (7.5)', { sym: 'f_1' });
+    C.check('U_f1', '8/f_1', D.checks.find(k => k.id === 'f1').util, 'f₁ more than 8 Hz', '7.3.1(3)');
+    C.head('Deflection under a 1 kN point load (UK NA NA.2.6.2)');
+    C.input('k_strut', v.strut ? 0.97 : 1, '', v.strut ? 'with strutting' : 'without strutting', 'NA.2.6.2', { sym: 'k_strut' });
+    C.calc('k_dist', 'MAX(k_strut*(0.38 - 0.08*LOG(14*EI_B[#N*mm^2/m]/s[#mm]^4)), 0.30)', V.kdist, '', 'share of the load one joist takes', 'NA.2.6.2 (NA.4)', { sym: 'k_dist' });
+    C.input('k_amp', V.kamp, '', 'amplification for shear deflection and joint slip', 'NA.2.6.2', { sym: 'k_amp' });
+    C.input('F_a', 1, 'kN', 'the point load', '', { sym: 'F' });
+    C.calc('a_F', 'k_dist*k_amp*F_a*L^3/(48*E_0mean*I_y)', V.a, 'mm', 'deflection under the 1 kN load', 'NA.2.6.2 (NA.3)', { sym: 'a' });
+    C.calc('a_lim', 'IF(L[#mm] <= 4000, 1.8, 16500/L[#mm]^1.1) [#mm]', V.alim, 'mm', 'its limit: 1.8 mm up to a 4 m span, 16 500/L^1.1 beyond', 'UK NA Table NA.6', { sym: 'a_lim' });
+    C.check('U_a', 'a_F/a_lim', D.checks.find(k => k.id === 'a').util, 'deflection under 1 kN', 'NA.2.6.2');
+    if (!D.checks.some(k => k.id === 'v')) {
+      C.note(`a is past 4 mm, where the UK NA's b (160 − 40a) reaches zero: the unit impulse velocity has no limit and is not checked; the floor fails on its deflection under 1 kN.`);
+      return { key: 'vibration', title: C.meta.title, sum: `f₁ ${r2(V.f1)} Hz`, util: Math.max(...['f1', 'a'].map(id => D.checks.find(k => k.id === id).util)), C };
+    }
+    C.head('Unit impulse velocity (7.3.3(4), NA.2.6.3)');
+    C.input('zeta', 0.02, '', 'modal damping ratio', '7.3.3', { sym: 'ζ' });
+    C.calc('b_v', 'IF(a_F[#mm] <= 1, 180 - 60*a_F[#mm], 160 - 40*a_F[#mm])', V.bb, '', 'the constant b from a (Figure NA.2)', 'UK NA NA.2.6.3', { sym: 'b' });
+    C.calc('v_lim', 'b_v^(f_1*zeta - 1)', V.vlim, '', 'limit on the velocity, m/(N s²)', '7.3.3 (7.4)', { sym: 'v_lim' });
+    C.calc('n_40', '(MAX(0, (40/f_1)^2 - 1)*(B_f[#m]/L[#m])^4*EI_L[#N*m^2/m]/EI_B[#N*m^2/m])^0.25', V.n40, '', 'number of first-order modes below 40 Hz', '7.3.3 (7.7)', { sym: 'n_40' });
+    C.calc('v_imp', '4*(0.4 + 0.6*n_40)/(m_f[#kg/m2]*B_f[#m]*L[#m] + 200)', V.vel, '', 'unit impulse velocity response, m/(N s²)', '7.3.3 (7.6)', { sym: 'v' });
+    C.check('U_vel', 'v_imp/v_lim', D.checks.find(k => k.id === 'v').util, 'unit impulse velocity', '7.3.3(4)');
+    return { key: 'vibration', title: C.meta.title, sum: `f₁ ${r2(V.f1)} Hz`, util: Math.max(...['f1', 'a', 'v'].map(id => D.checks.find(k => k.id === id).util)), C };
+  }
+
+  function zones(D) {
+    const Z = [beamZone(D), bendZone(D), shearZone(D), bearingZone(D), deflZone(D)];
+    if (D.V) Z.push(vibZone(D));
+    return Z;
+  }
+  return { zones };
+})();
+if (typeof module !== 'undefined') module.exports = { TimberBeamScript };
 
 </script>
 <script id="drawing-code">
@@ -1027,14 +1895,21 @@ function verdict(D) {
   return `<div class="verdict ${D.utilMax > 1 ? 'fail' : ''}"><div><div class="big">${D.utilMax > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(D.utilMax)}</div><div class="sub">Governs: ${esc(W.name.charAt(0).toLowerCase() + W.name.slice(1))}${W.combo ? `, ${esc(W.combo)}` : ''} (${esc(W.ref)})<br>${summary(D)}</div></div></div>`;
 }
 let last = null;
+// the full calculation, part by part; the drawings go with the first part to CalcPad (as pictures)
+document.head.insertAdjacentHTML('beforeend', `<style>${CalcScript.CSS}</style>`);
+const cpMeta = title => { const s = collect(); return { project: s.pName, job: s.pJob, by: s.pBy, sheet: s.pRef, title }; };
+const cpName = t => { const s = collect(); return [s.pJob, s.pRef, t].filter(Boolean).join(' '); };
+CalcScript.wire($('results'), () => last && last.Z, cpMeta, cpName, 'Timber beam calculations');
+const zonesFor = D => CalcScript.pictures(TimberBeamScript.zones(D), DrawTimberBeam.report(D), () => 'beam');
 function runIt() {
-  const inp = input(), D = TimberBeam.design(inp); last = { D, inp };
+  const inp = input(), D = TimberBeam.design(inp); last = { D, inp, Z: zonesFor(D) };
   $('results').innerHTML = verdict(D) + `<div id="drawings">${DrawTimberBeam.html(D)}</div>`
     + `<div class="dlabel">Checks</div><div class="checks">${D.checks.map(bar).join('')}</div>`
     + `<div class="dlabel">Each ULS combination, with its k<sub>mod</sub></div>${table(D)}`
     + `<div class="dlabel">Calculation</div>${stepsHTML(D.steps)}`
     + (D.warnings.length ? `<div class="note">${D.warnings.map(sub).join('<br>')}</div>` : '')
-    + `<div class="note">${notes().join(' ')}</div><button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+    + `<div class="note">${notes().join(' ')}</div>`
+    + `<div class="dlabel">Full calculation (open a part)</div>${CalcScript.zonesHTML(last.Z)}<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
   $('printBtn').onclick = () => { $('report').innerHTML = report(); window.print(); };
 }
 const notes = () => ['Each combination takes k<sub>mod</sub> from its shortest-duration action (3.1.3(2)), so a combination with less load can still govern. Shear takes k<sub>cr</sub> = 0.67 for solid timber and glulam; loads within h of a support are not reduced (6.1.7(3)). Not covered: continuous spans and cantilevers, tapered, curved or holed beams, fire, connections.'];
@@ -1060,6 +1935,7 @@ function report() {
   b += `<div class="rs"><h2>Calculation</h2>${D.steps.map(x => rl(sub(x.text), esc(x.ref), '')).join('')}${table(D)}</div>`;
   b += `<div class="rs"><h2>Checks</h2>${D.checks.map(c => rl(`${esc(c.name)}: ${sub(c.note)}`, esc(c.ref), okng(c.util))).join('')}` + rl(`<b>${D.utilMax > 1 ? 'FAIL' : 'PASS'}</b>, largest utilisation`, '', okng(D.utilMax)) + '</div>';
   if (D.warnings.length) b += `<div class="rs"><p class="rp">${D.warnings.map(sub).join(' ')}</p></div>`;
+  b += `<div class="rs"><h2>Full calculation</h2></div>` + CalcScript.sheetHTML(last.Z);
   b += `<div class="rs"><p class="rp">${notes().join(' ')}</p><p class="rp" style="color:#555">Generated by EngineeringTools &mdash; Timber Beam.</p></div>`;
   return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
 }

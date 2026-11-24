@@ -10,7 +10,9 @@ const ROOT = path.join(__dirname, '..', '..'), CP = path.join(__dirname, 'calcpa
 const STEEL = ['Steel Member Design.html', 'Steel Beam Analysis and Design.html', 'Steel Column Design.html', 'Steel Frame Design.html', 'Steel Member Fire Design.html',
   'Steel Beam Torsion.html', 'Hollowcore Support Beam.html', 'Composite Beam Design.html', 'Beam Web Openings.html', 'Base Plate Design.html', 'Bolt Group Analysis.html',
   'Floor Vibration.html', 'ConnectionCheck.html'];
-const tools = process.argv.slice(2).length ? process.argv.slice(2) : [...STEEL, 'RC Beam Analysis and Design.html', 'Pad Foundation.html'];
+const TIMBER = ['Timber Beam.html', 'Timber Member.html', 'Timber Stud Wall.html', 'Timber Racking Wall.html', 'Timber Connections.html', 'Glulam Beams.html', 'Flitch Beams.html',
+  'CLT Panels.html', 'Concealed Plate Glulam Connections.html', 'Timber 2D Frame Analysis and Design.html'];
+const tools = process.argv.slice(2).length ? process.argv.slice(2) : [...STEEL, ...TIMBER, 'RC Beam Analysis and Design.html', 'Pad Foundation.html'];
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'et-perega-'));
 let n = 0, bad = 0;
 const truth = (name, ok) => { n++; if (!ok) bad++; console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}`); };

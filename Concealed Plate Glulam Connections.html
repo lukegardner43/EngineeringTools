@@ -255,6 +255,431 @@ sub,sup{font-size:max(11px,.75em);line-height:0;}
 </div>
 <div id="report"></div>
 <script id="engine">
+/* ===== CALCULATION SCRIPT (EngineeringTools) =====
+   One record of a tool's calculation, written step by step, from which the tool shows its full calculation (on the page
+   and the A4 sheet) and writes it for CalcPad (text to paste, or a .perega file to open), so that the two cannot differ.
+   Every number the calculation reports is one of:
+   - an input, with its unit;
+   - a formula in CalcPad's syntax (names, + − * / ^, SQRT MIN MAX ABS IF LOG EXP ROUND PI(), x[#unit] for a value as a
+     plain number in a given unit, as the empirical Eurocode formulas need), shown as the symbols, then the numbers put
+     in, then the result, with its clause; CalcPad recalculates these itself;
+   - a value the formula language cannot reach (an iteration, a table read, an analysis), stated as such with how it
+     was found and, where it can be, an equation that confirms it;
+   - a utilisation, with its limit.
+   API: const C = CalcScript.create({ title, tool, standard });
+        C.head(text), C.note(text),
+        C.input(name, value, unit, desc, ref, { sym }), C.calc(name, expr, value, unit, desc, ref, { sym }),
+        C.given(name, value, unit, desc, how, ref, { sym }), C.check(name, expr, value, desc, ref, { limit, sym }),
+        C.img(svg, caption);
+        C.html() — the full calculation; C.calcpad() — CalcPad text; C.perega(meta) — a .perega document (object).
+        CalcScript.project([{ C, title }], meta, name) — a .peregaproj (one CalcPad check per script, for a tool with several
+        zones or members whose names repeat); copy(C, meta), download(C, meta, file), downloadProject(list, meta, file) for the buttons.
+   Units are CalcPad's: mm cm m km, N kN MN, Pa kPa MPa GPa (N/mm2 for stresses), kg g t, s, deg rad, combined with * / ^
+   or run together (kNm, kNm/m, mm2/m). Values are given in the unit stated.
+   Source: scratchpad/common/calcscript.js. */
+const CalcScript = (() => {
+  'use strict';
+  // CalcPad's unit table: the SI factor and the SI symbol of each unit
+  const CONV = { mm: 1e-3, cm: 1e-2, m: 1, km: 1e3, N: 1, kN: 1e3, MN: 1e6, g: 1e-3, kg: 1, t: 1e3, Pa: 1, kPa: 1e3, MPa: 1e6, GPa: 1e9, s: 1, ms: 1e-3, min: 60, hr: 3600, deg: Math.PI / 180, rad: 1 };
+  const SIB = { mm: 'm', cm: 'm', m: 'm', km: 'm', N: 'N', kN: 'N', MN: 'N', g: 'kg', kg: 'kg', t: 'kg', Pa: 'Pa', kPa: 'Pa', MPa: 'Pa', GPa: 'Pa', s: 's', ms: 's', min: 's', hr: 's', deg: 'rad', rad: 'rad' };
+  const ORDER = { N: 0, kN: 0, MN: 0, Pa: 1, kPa: 1, MPa: 1, GPa: 1, J: 2, W: 2, Hz: 2, kg: 4, g: 4, t: 4, m: 5, mm: 5, cm: 5, km: 5, s: 6, ms: 6, min: 6, hr: 6, rad: 7, deg: 7 };
+  // "kNm" → kN, m (longest known symbol first, as CalcPad reads run-together units)
+  function split(tok) {
+    if (CONV[tok] !== undefined) return [tok];
+    const go = s => { if (!s) return []; for (let n = Math.min(3, s.length); n >= 1; n--) { if (CONV[s.slice(0, n)] === undefined) continue; const r = go(s.slice(n)); if (r) return [s.slice(0, n), ...r]; } return null; };
+    return go(tok);
+  }
+  function terms(u) {
+    const s = String(u || '').replace(/²/g, '^2').replace(/³/g, '^3').replace(/⁴/g, '^4').replace(/·/g, '*'), out = [];
+    const add = (str, sign) => str.split('*').forEach(p => { const t = p.trim(); if (!t) return; const m = t.match(/^([a-zA-Z]+)(?:\^?(-?\d+))?$/); if (!m) throw new Error(`CalcScript: unit "${u}"`); const e = m[2] ? +m[2] : 1, sy = split(m[1]); if (!sy) throw new Error(`CalcScript: unknown unit "${m[1]}"`); sy.forEach((x, i) => out.push([x, sign * (i === sy.length - 1 ? e : 1)])); });
+    const parts = s.split('/'); add(parts[0], 1); for (let i = 1; i < parts.length; i++) add(parts[i], -1);
+    return out;
+  }
+  const factor = u => terms(u).reduce((f, [s, e]) => f * CONV[s] ** e, 1);
+  const toSI = (v, u) => (u ? v * factor(u) : v);
+  function siUnit(u) {   // the SI unit string CalcPad stores with a literal (as unitObjToStr(toSIUnitObj(...)))
+    const o = {}; for (const [s, e] of terms(u)) { const b = SIB[s]; o[b] = (o[b] || 0) + e; if (!o[b]) delete o[b]; }
+    const rank = s => (ORDER[s] !== undefined ? ORDER[s] : 3), cmp = ([a], [b]) => rank(a) - rank(b) || a.localeCompare(b);
+    const f = ([s, e]) => (Math.abs(e) === 1 ? s : s + '^' + Math.abs(e));
+    const pos = Object.entries(o).filter(([, e]) => e > 0).sort(cmp), neg = Object.entries(o).filter(([, e]) => e < 0).sort(cmp);
+    return pos.map(f).join('·') + (neg.length ? '/' + neg.map(f).join('·') : '');
+  }
+  // ---------- display ----------
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const GREEK = { alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', zeta: 'ζ', eta: 'η', theta: 'θ', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', rho: 'ρ', sigma: 'σ', tau: 'τ', phi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω', Delta: 'Δ', Sigma: 'Σ', Phi: 'Φ' };
+  // a name as a symbol: the part before the first _ as the base (Greek where it is a Greek letter's name), the rest subscript;
+  // sym overrides the text ("A_s,req")
+  function symHTML(name, sym) {
+    const s = sym || name, i = s.indexOf('_'), base = i < 0 ? s : s.slice(0, i), sub = i < 0 ? '' : s.slice(i + 1);
+    const g = x => GREEK[x] || x;
+    return `<i>${esc(g(base))}</i>${sub ? `<sub>${esc(sub.split(',').map(g).join(','))}</sub>` : ''}`;
+  }
+  const UNIT_SHOW = { 'N/mm2': 'N/mm²', MPa: 'N/mm²', mm2: 'mm²', mm3: 'mm³', mm4: 'mm⁴', 'mm2/m': 'mm²/m', kNm: 'kNm', 'kN*m': 'kNm', 'kNm/m': 'kNm/m', 'kN*m/m': 'kNm/m', 'kN/m2': 'kN/m²', 'kN/m3': 'kN/m³', m2: 'm²', m3: 'm³', m4: 'm⁴' };
+  const unitHTML = u => (u ? esc(UNIT_SHOW[u] || String(u).replace(/\^-(\d)(?![0-9])/g, (_, k) => '⁻' + '⁰¹²³⁴⁵⁶⁷⁸⁹'[k]).replace(/\^?2(?![0-9])/g, '²').replace(/\^?3(?![0-9])/g, '³').replace(/\*/g, '·')) : '');
+  // a number to about four significant figures, no exponent for the sizes met in design
+  function num(v) {
+    if (v === Infinity) return '∞'; if (v === -Infinity) return '−∞'; if (!Number.isFinite(v)) return '–';
+    if (v === 0) return '0';
+    const a = Math.abs(v);
+    let s = a >= 1e4 ? Math.round(v).toLocaleString('en-GB') : a >= 1000 ? Math.round(v).toString() : a >= 100 ? (Math.round(v * 10) / 10).toString() : a >= 1e-4 ? (+v.toPrecision(4)).toString() : v.toExponential(3);
+    return s.replace(/^-/, '−');
+  }
+  // CalcPad expression → tokens
+  function tokens(expr) {
+    const out = []; let i = 0; const s = String(expr);
+    while (i < s.length) {
+      const ch = s[i];
+      if (/\s/.test(ch)) { i++; continue; }
+      if (/\d/.test(ch) || (ch === '.' && /\d/.test(s[i + 1] || ''))) { let n = ''; while (i < s.length && /[\d.]/.test(s[i])) n += s[i++]; if (/[eE]/.test(s[i] || '') && /[-+\d]/.test(s[i + 1] || '')) { n += s[i++]; if (/[-+]/.test(s[i])) n += s[i++]; while (/\d/.test(s[i] || '')) n += s[i++]; } out.push({ t: 'n', v: n }); continue; }
+      if (/[A-Za-z]/.test(ch)) {
+        let n = ''; while (i < s.length && /[A-Za-z0-9_]/.test(s[i])) n += s[i++];
+        let unit = ''; if (s[i] === '[') { const j = s.indexOf(']', i); unit = s.slice(i + 1, j); i = j + 1; }
+        let k = i; while (/\s/.test(s[k] || '')) k++;
+        out.push(s[k] === '(' && /^[A-Z][A-Z0-9]*$/.test(n) ? { t: 'f', v: n } : { t: 'id', v: n, unit }); continue;
+      }
+      const two = s.slice(i, i + 2);
+      if (['<=', '>=', '==', '!=', '<>'].includes(two)) { out.push({ t: 'op', v: two }); i += 2; continue; }
+      out.push({ t: 'op', v: ch }); i++;
+    }
+    return out;
+  }
+  const FN = { SQRT: '√', ABS: 'abs', MIN: 'min', MAX: 'max', IF: 'if', LOG: 'log', EXP: 'exp', ROUND: 'round', SIN: 'sin', COS: 'cos', TAN: 'tan', ATAN: 'atan', ASIN: 'asin', ACOS: 'acos', PI: 'π' };
+  const OPS = { '*': '·', '<=': '≤', '>=': '≥', '!=': '≠', '<>': '≠', '==': '=', '-': '−' };
+  // the expression as HTML: symbols (sub = null) or with each name's value put in (sub = name → { v, unit })
+  function exprHTML(expr, syms, sub) {
+    const tk = tokens(expr); let h = '';
+    for (let i = 0; i < tk.length; i++) {
+      const t = tk[i], nx = tk[i + 1];
+      if (t.t === 'n') h += esc(t.v.replace(/^(\d+)\.?0*$/, '$1'));
+      else if (t.t === 'f') { if (t.v === 'PI') { h += 'π'; i += 2; continue; } h += FN[t.v] || t.v.toLowerCase(); }
+      else if (t.t === 'id') {
+        // a value put in: bracketed where it is negative, or carries a unit and is raised to a power
+        if (sub && sub[t.v]) { const q = sub[t.v], u = t.unit ? '' : unitHTML(q.unit), br = q.v < 0 || (u && nx && nx.v === '^'); h += `${br ? '(' : ''}${num(q.v)}${u ? '&#8239;' + u : ''}${br ? ')' : ''}`; }
+        else h += symHTML(t.v, syms[t.v]);
+      } else if (t.v === '^') {
+        // a power: the next token (or bracket group) raised
+        let j = i + 1, depth = 0, grp = '';
+        do { const q = tk[j]; grp += q.t === 'op' ? q.v : (q.unit ? `${q.v}[${q.unit}]` : q.v); if (q.v === '(') depth++; if (q.v === ')') depth--; j++; } while (depth > 0 && j < tk.length);
+        const inner = grp.replace(/^\((.*)\)$/, '$1');
+        h += `<sup>${exprHTML(inner, syms, null)}</sup>`; i = j - 1;
+      } else if (t.v === '*') h += sub ? ' × ' : '·';
+      else if (t.v === '/') h += ' / ';
+      else if (t.v === '-' && (i === 0 || (tk[i - 1].t === 'op' && ['(', ',', '+', '-', '*', '/', '^', '<', '>', '<=', '>='].includes(tk[i - 1].v)))) h += '−';   // unary minus
+      else if (['+', '-', '<=', '>=', '<', '>', '==', '!=', '<>'].includes(t.v)) h += ` ${OPS[t.v] || esc(t.v)} `;
+      else if (t.v === ',') h += ', ';
+      else h += esc(t.v);
+      void nx;
+    }
+    return h.replace(/\s+/g, ' ').trim();
+  }
+  // ---------- the script ----------
+  function create(meta = {}) {
+    const items = [], vals = {}, syms = {}, units = {}, names = new Set();
+    const name0 = (n, kind) => {
+      if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(n)) throw new Error(`CalcScript: "${n}" is not a CalcPad name`);
+      if (names.has(n)) throw new Error(`CalcScript: "${n}" is defined twice`);
+      names.add(n); void kind;
+    };
+    const keep = (name, v, unit, o) => { vals[name] = v; units[name] = unit || ''; if (o && o.sym) syms[name] = o.sym; };
+    // a formula and the unit CalcPad shows it in: [unit], [#unit] (an empirical formula's result) or [#] (a plain number)
+    const split = (expr, unit) => { const m = String(expr).match(/^(.*?)\s*\[([^\]]+)\]\s*$/); return m ? { core: m[1].trim(), spec: m[2].trim() } : { core: String(expr).trim(), spec: unit || '#' }; };
+    const C = {
+      meta, items,
+      head(text) { items.push({ t: 'h', text }); return C; },
+      note(text) { items.push({ t: 'p', text }); return C; },
+      input(name, v, unit, desc, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'in', name, v, unit: unit || '', desc, ref }); return v; },
+      calc(name, expr, v, unit, desc, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'calc', name, expr, ...split(expr, unit), v, unit: unit || '', desc, ref }); return v; },
+      given(name, v, unit, desc, how, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'val', name, v, unit: unit || '', desc, how, ref }); return v; },
+      check(name, expr, v, desc, ref, o = {}) { name0(name); keep(name, v, '', o); items.push({ t: 'chk', name, expr, ...split(expr, ''), v, desc, ref, limit: o.limit ?? 1 }); return v; },
+      img(svg, caption) { items.push({ t: 'img', svg, caption }); return C; },
+      // a CalcPad plot line (PLOT(...) or SECTION(...)): drawn live by CalcPad from the values; not on the page, which has its own drawings
+      plot(src) { items.push({ t: 'plot', src }); return C; },
+      value: n => vals[n], has: n => names.has(n), sym: n => syms[n],
+      // an item as it is (merge() renames items and puts them in a check of their own)
+      raw(it, sym) { if (it.name) { name0(it.name); keep(it.name, it.v, it.t === 'chk' ? '' : it.unit, sym ? { sym } : null); } items.push(it); return C; },
+      // ----- the full calculation, for the page and the A4 sheet -----
+      html(opts = {}) {
+        const sub = Object.fromEntries(Object.keys(vals).map(n => [n, { v: vals[n], unit: units[n] }]));
+        // opts.skip: headings whose sections are left out (the same materials in every zone of a sheet), said in a line
+        let h = `<div class="cs${opts.sheet ? ' cs-sheet' : ''}">`, skipping = false;
+        for (const it of items) {
+          if (it.t === 'h') { skipping = !!(opts.skip && opts.skip.includes(it.text)); h += skipping ? `<div class="cs-p">${esc(it.text)}: as above.</div>` : `<div class="cs-h">${esc(it.text)}</div>`; continue; }
+          if (skipping) continue;
+          if (it.t === 'p') { h += `<div class="cs-p">${esc(it.text)}</div>`; continue; }
+          if (it.t === 'plot') continue;
+          if (it.t === 'img') { if (!opts.noImg) h += `<div class="cs-img">${it.svg}${it.caption ? `<div class="cs-cap">${esc(it.caption)}</div>` : ''}</div>`; continue; }
+          const S = symHTML(it.name, syms[it.name]), res = `${num(it.v)}${it.unit ? '&#8239;' + unitHTML(it.unit) : ''}`;
+          let eq;
+          if (it.t === 'in') eq = `${S} = ${res}`;
+          else if (it.t === 'val') eq = `${S} = ${res}`;
+          else {
+            const sy = exprHTML(it.core, syms, null), nu = exprHTML(it.core, syms, sub);
+            eq = `${S} = ${sy}${nu !== sy ? ` = ${nu}` : ''} = <b>${res}</b>`;
+            if (it.t === 'chk') eq += ` ${it.v <= it.limit + 1e-9 ? `≤ ${num(it.limit)} <span class="cs-ok">OK</span>` : `> ${num(it.limit)} <span class="cs-ng">NOT OK</span>`}`;
+          }
+          const d = [it.desc, it.how].filter(Boolean).map(esc).join('; ');
+          h += `<div class="cs-r cs-${it.t}"><div class="cs-eq">${eq}${d ? `<div class="cs-d">${d}</div>` : ''}</div><div class="cs-ref">${esc(it.ref || '')}</div></div>`;
+        }
+        return h + '</div>';
+      },
+      // ----- CalcPad text: paste into a sheet and every line becomes a live chip -----
+      lines() {
+        const out = [];
+        // an "=" in the words would start a definition in CalcPad: "a = b" is written "a is b"
+        const clean = s => String(s || '').replace(/\s*=\s*/g, ' is ').replace(/\s+/g, ' ').trim();
+        const pre = it => { const d = clean([it.desc, it.t === 'val' && it.how ? `(${it.how})` : ''].filter(Boolean).join(' ')), r = clean(it.ref); return `${d}${r ? `${d ? ', ' : ''}${r}` : ''}${d || r ? ': ' : ''}`; };
+        for (const it of items) {
+          if (it.t === 'h') { out.push({ it, text: '' }, { it, text: clean(it.text) }); continue; }
+          if (it.t === 'p') { out.push({ it, text: clean(it.text) }); continue; }
+          if (it.t === 'img') continue;
+          if (it.t === 'plot') { out.push({ it, text: it.src }); continue; }
+          if (it.t === 'in' || it.t === 'val') out.push({ it, text: `${pre(it)}${it.name} = ${lit(it.v)}${it.unit ? ' ' + it.unit : ''}` });
+          else out.push({ it, text: `${pre(it)}${it.name} = ${it.core} [${it.spec}]` });
+        }
+        return out;
+      },
+      calcpad() { const L = C.lines().map(l => l.text); while (L.length && !L[0]) L.shift(); return L.join('\n'); },
+      // ----- a .perega document: the same lines as CalcPad's own chips, with the drawings as images -----
+      perega(m = {}, images = {}) {
+        let html = '';
+        const chip = it => {
+          if (it.t === 'in' || it.t === 'val') {
+            const si = toSI(it.v, it.unit), su = it.unit ? siUnit(it.unit) : '';
+            const a = { 'data-var-name': it.name, 'data-var-val': String(si), 'data-bare': '1' };   // data-bare: CalcPad draws it on opening
+            if (it.unit) { a['data-var-unit'] = it.unit; if (su && su !== it.unit) a['data-var-si-unit'] = su; if (lit(it.v) !== String(si)) a['data-var-orig-num'] = lit(it.v); }
+            return `<span contenteditable="false" class="var-def-chip" ${Object.entries(a).map(([k, v]) => `${k}="${esc(v)}"`).join(' ')}><span class="vdc-name">${esc(it.name)} = </span><span class="vdc-val">${esc(lit(it.v))}${it.unit ? ' ' + esc(it.unit) : ''}</span></span>`;
+          }
+          const a = { 'data-var-name': it.name, 'data-var-val': String(toSI(it.v, it.unit)), 'data-var-expr': it.core, 'data-var-display-unit': it.spec, 'data-bare': '1' };
+          return `<span contenteditable="false" class="var-def-chip" ${Object.entries(a).map(([k, v]) => `${k}="${esc(v)}"`).join(' ')}><span class="vdc-name">${esc(it.name)} = ${esc(it.core)}</span></span>`;
+        };
+        let first = true;
+        for (const it of items) {
+          const br = first ? '' : '<br>'; first = false;
+          if (it.t === 'h') { html += `${br}<br><b>${esc(it.text)}</b>`; continue; }
+          if (it.t === 'p') { html += `${br}${esc(it.text)}`; continue; }
+          if (it.t === 'plot') { html += `${br}<span contenteditable="false" class="plot-chip" data-plot="${esc(it.src)}"></span> `; continue; }
+          if (it.t === 'img') { const src = images[items.indexOf(it)]; if (src) html += `${br}<span contenteditable="false" class="calc-img-wrap"><img src="${src}" draggable="false" style="width:${Math.round(Math.min(images.width || 500, (images.nat && images.nat[items.indexOf(it)]) || Infinity))}px;height:auto"><span class="img-resize-handle"></span><span class="img-size-label"></span></span>${it.caption ? `<br><i>${esc(it.caption)}</i>` : ''}`; else first = !html; continue; }
+          const L = C.lines().find(l => l.it === it), text = L.text, k = text.lastIndexOf(`${it.name} = `);
+          html += `${br}${esc(text.slice(0, k))}${chip(it)} `;
+        }
+        const today = new Date().toISOString().slice(0, 10);
+        return { version: 2, meta: { 'm-project': m.project || '', 'm-projno': m.job || '', 'm-date': m.date || today, 'm-desc': m.title || meta.title || '', 'm-sheet': m.sheet || '', 'm-orig': m.by || '', 'm-deliv': '', 'm-checked': '', 'm-suit': '', 'm-rev': '' },
+          pages: [html], preferredUnits: {}, et: { tool: meta.tool || '', standard: meta.standard || '' } };
+      },
+    };
+    return C;
+  }
+  // a number as CalcPad reads it: full precision, no grouping
+  const lit = v => (Number.isFinite(v) ? String(+v.toPrecision(12)) : '0');
+  // the drawings as PNG data URLs (CalcPad's Word export takes PNG): resolves to { index: dataURL, width }
+  async function rasterise(C, width = 520) {
+    const out = { width, nat: {} };   // nat: each drawing's own width, so a small one is not blown up
+    const jobs = C.items.map((it, i) => it.t !== 'img' ? null : new Promise(res => {
+      try {
+        const doc = new DOMParser().parseFromString(it.svg, 'image/svg+xml'), sv = doc.documentElement;
+        if (!sv || sv.nodeName !== 'svg') return res();
+        if (!sv.getAttribute('xmlns')) sv.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        const vb = (sv.getAttribute('viewBox') || '').split(/[ ,]+/).map(Number), w = vb[2] || +sv.getAttribute('width') || 600, h = vb[3] || +sv.getAttribute('height') || 400;
+        sv.setAttribute('width', w); sv.setAttribute('height', h); out.nat[i] = w;
+        // the page's colours and fonts as the drawing uses them
+        const st = doc.createElementNS('http://www.w3.org/2000/svg', 'style'); st.textContent = 'text{font-family:Arial,Helvetica,sans-serif}'; sv.insertBefore(st, sv.firstChild);
+        const img = new Image(), url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(sv));
+        img.onload = () => { const k = 2, cv = document.createElement('canvas'); cv.width = w * k; cv.height = h * k; const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, cv.width, cv.height); out[i] = cv.toDataURL('image/png'); res(); };
+        img.onerror = () => res(); img.src = url;
+      } catch (e) { res(); }
+    }));
+    await Promise.all(jobs.filter(Boolean));
+    return out;
+  }
+  // the buttons' work: copy the CalcPad text (with the chips as HTML for a paste straight into CalcPad), download a .perega
+  async function copy(C, m) {
+    const text = C.calcpad();
+    try {
+      if (navigator.clipboard && window.ClipboardItem) {
+        const doc = C.perega(m), html = doc.pages[0];
+        await navigator.clipboard.write([new ClipboardItem({ 'text/plain': new Blob([text], { type: 'text/plain' }), 'text/html': new Blob([html], { type: 'text/html' }) })]);
+        return true;
+      }
+      await navigator.clipboard.writeText(text); return true;
+    } catch (e) {
+      const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+      let ok = false; try { ok = document.execCommand('copy'); } catch (e2) { ok = false; } ta.remove(); return ok;
+    }
+  }
+  const fileSafe = s => String(s || 'Calculation').replace(/×/g, 'x').replace(/\//g, '-').replace(/[^A-Za-z0-9 ._()-]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Calculation';
+  function save(text, fileName, ext) {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = fileSafe(fileName) + ext;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+  async function download(C, m, fileName) {
+    let images = {}; try { images = await rasterise(C); } catch (e) { images = {}; }
+    save(JSON.stringify({ ...C.perega(m, images), savedAt: new Date().toISOString() }, null, 2), fileName, '.perega');
+  }
+  // a CalcPad project (.peregaproj): one check per script, in order, each a whole document of its own (CalcPad keeps each
+  // check's names apart, so the zones of a beam can all use M_Ed, d, ...). list: [{ C, title }]
+  // Values several checks define alike (the same name, definition, unit, description and source: the materials, a section
+  // several zones share, ...) go once into a first check of shared values, which CalcPad (a pack's shared check, from CalcPad dd29f6a) gives
+  // to every other check of the pack; each check says, where they were, which of its values come from there. A value stays
+  // in a check unless everything it uses there is shared too, so a check with a different f_ck keeps its own f_cd.
+  // Returns the list with the shared check first ({ C, title, shared: true }), or the list as it was if nothing repeats.
+  const IDENT = /[A-Za-z][A-Za-z0-9_]*/g;
+  function shareOut(list) {
+    const defs = it => it.t === 'in' || it.t === 'val' || it.t === 'calc';
+    const key = it => JSON.stringify([it.t, it.name, it.t === 'calc' ? `${it.core} [${it.spec}]` : `${lit(it.v)} ${it.unit}`, it.desc || '', it.ref || '', it.how || '']);
+    const count = new Map();
+    list.forEach(({ C }) => { const seen = new Set(); C.items.forEach(it => { if (!defs(it)) return; const k = key(it); if (!seen.has(k)) { seen.add(k); count.set(k, (count.get(k) || 0) + 1); } }); });
+    const best = new Map();   // name → the definition most checks share (one per name)
+    for (const [k, c] of count) { if (c < 2) continue; const nm = JSON.parse(k)[1], b = best.get(nm); if (!b || c > count.get(b)) best.set(nm, k); }
+    if (!best.size) return list;
+    const shared = [], sharedKeys = new Set();
+    const out = list.map(({ C, title, ...rest }) => {
+      const local = new Set(C.items.filter(defs).map(it => it.name)), gone = new Set();
+      C.items.forEach(it => {
+        if (!defs(it) || best.get(it.name) !== key(it)) return;
+        const uses = it.t === 'calc' ? (it.core.match(IDENT) || []).filter(n => n !== it.name && local.has(n)) : [];
+        if (uses.every(n => gone.has(n))) gone.add(it.name);
+      });
+      if (!gone.size) return { C, title, ...rest };
+      const C2 = create({ ...C.meta }); let head = null, run = [];
+      const flush = () => { if (run.length) { C2.items.push({ t: 'p', text: `From the shared values: ${run.join(', ')}.` }); run = []; } };
+      for (const it of C.items) {
+        if (it.t === 'h') { flush(); head = it.text; C2.items.push(it); continue; }
+        if (defs(it) && gone.has(it.name)) { run.push(it.name); const k = key(it); if (!sharedKeys.has(k)) { sharedKeys.add(k); shared.push({ head, it }); } continue; }
+        flush(); C2.items.push(it);
+      }
+      flush();
+      return { C: C2, title, ...rest };
+    });
+    if (!shared.length) return list;
+    const S = create({ title: 'Shared values', tool: list[0].C.meta.tool, standard: list[0].C.meta.standard });
+    S.items.push({ t: 'p', text: 'The values several checks of this project use, defined once: CalcPad gives them to every other check. A check that needs a different value defines its own.' });
+    let h = null;
+    for (const { head, it } of shared) { if (head !== h) { h = head; if (head) S.items.push({ t: 'h', text: head }); } S.items.push(it); }
+    return [{ C: S, title: 'Shared values', shared: true }, ...out];
+  }
+  async function project(list, m = {}, name = 'Calculation', o = {}) {
+    const checks = [];
+    if (o.share !== false && list.length > 1) list = shareOut(list);
+    for (let k = 0; k < list.length; k++) {
+      const { C, title, shared } = list[k]; let images = {};
+      try { images = typeof document !== 'undefined' ? await rasterise(C) : {}; } catch (e) { images = {}; }
+      checks.push({ id: 'c' + (k + 1), name: title, doc: C.perega({ ...m, title }, images), ...(shared ? { shared: true } : {}) });
+    }
+    return { kind: 'calcpad-project', version: 1, name: fileSafe(name), activeId: checks.length ? checks[0].id : null, checks, savedAt: new Date().toISOString() };
+  }
+  // every part of a calculation as one CalcPad check (one .perega), each part under its own heading, in order. A value a
+  // later part defines just as an earlier part did (the same name and the same value, or the same formula of the same
+  // values: the materials, the section, a load) is written once, where it first comes, and the later part says so; a name
+  // a later part defines differently takes the part's number (M_Ed → M_Ed_3), in that part's formulas too, so every value
+  // is still the tool's. list: [{ C, title }]
+  // a unit in brackets, or a name (one followed by a colon is an option of a PLOT or SECTION line, not a name)
+  const TOK = /(\[[^\]]*\])|([A-Za-z][A-Za-z0-9_]*)(\s*:)?/g;
+  function merge(list, meta = {}) {
+    const M = create({ ...(list[0] ? list[0].C.meta : {}), ...meta }), byKey = new Map();
+    list.forEach(({ C, title }, zi) => {
+      const k = zi + 1, ren = new Map(), re = s => String(s).replace(TOK, (t, u, n, colon) => u || colon ? t : (ren.get(n) || n));
+      if (list.length > 1) M.items.push({ t: 'h', text: `Part ${k}: ${title}` });
+      let hIdx = -1, same = [];
+      const flush = () => {
+        if (hIdx < 0) return;
+        if (M.items.length === hIdx + 1 && !same.length) M.items.splice(hIdx, 1);
+        else if (same.length) M.items.splice(hIdx + 1, 0, { t: 'p', text: `As in an earlier part: ${same.join(', ')}.` });
+        hIdx = -1; same = [];
+      };
+      for (const it of C.items) {
+        if (it.t === 'h') { flush(); hIdx = M.items.length; M.items.push(it); continue; }
+        if (!it.name) { M.items.push(it.t === 'plot' ? { ...it, src: re(it.src) } : it); continue; }
+        const core = it.core != null ? re(it.core) : null;
+        const key = JSON.stringify([it.t === 'chk' ? 'chk' : 'def', it.name, core != null ? `${core} [${it.spec}]` : `${lit(it.v)} ${it.unit}`]);
+        if (byKey.has(key)) { ren.set(it.name, byKey.get(key)); same.push(byKey.get(key)); continue; }
+        let nm = it.name;
+        if (M.has(nm)) { nm = `${it.name}_${k}`; for (let j = 2; M.has(nm); j++) nm = `${it.name}_${k}_${j}`; }
+        ren.set(it.name, nm); byKey.set(key, nm);
+        M.raw(core != null ? { ...it, name: nm, core, expr: `${core} [${it.spec}]` } : { ...it, name: nm }, C.sym(it.name));
+      }
+      flush();
+    });
+    return M;
+  }
+  async function downloadProject(list, m, fileName) { save(JSON.stringify(await project(list, m, fileName), null, 2), fileName, '.peregaproj'); }
+  // a tool with several zones (Z: [{ key, title, sum, util, C }]): the project button, then each zone as a <details> with its
+  // own buttons and its full calculation; wire() answers the buttons (once per page, on a container that stays)
+  const uf = u => (Number.isFinite(u) ? u.toFixed(3) : '>99');
+  // The whole calculation downloads as one CalcPad check (.perega): its parts merged in order (merge()). Each part also
+  // downloads on its own. o.noProj: no buttons for the whole (a page that shows its parts in several places and has its
+  // own buttons for the whole, data-cp="all" and "copyall").
+  const allTools = (n, msg = '') => `<div class="cs-tools"><button class="btn2" type="button" data-cp="all">Download CalcPad check (.perega)</button><button class="btn2" type="button" data-cp="copyall">Copy for CalcPad</button><span class="aux" data-cpmsg="all">${msg || (n > 1 ? `The whole calculation as one check, its ${n} parts in order. Each part below also downloads on its own.` : '')}</span></div>`;
+  function zonesHTML(Z, o = {}) {
+    const many = Z.length > 1;
+    return (o.noProj ? '' : allTools(Z.length))
+      + Z.map(zn => `<details class="zone"><summary><span>${esc(zn.title)}${zn.sum ? `<small> · ${esc(zn.sum)}</small>` : ''}</span>${zn.util != null ? `<span class="u ${zn.util > 1 ? 'over' : ''}">${uf(zn.util)}</span>` : ''}</summary>`
+        + `<div class="zfull"><div class="cs-tools"><button class="btn2" type="button" data-cp="save" data-zone="${esc(zn.key)}">${many ? 'Download this part (.perega)' : 'Download CalcPad check (.perega)'}</button><button class="btn2" type="button" data-cp="copy" data-zone="${esc(zn.key)}">${many ? 'Copy this part' : 'Copy for CalcPad'}</button><span class="aux" data-cpmsg="${esc(zn.key)}"></span></div>${zn.C.html({ noImg: true })}</div></details>`).join('');
+  }
+  // getZ() → the zones shown; meta(title) → the project details; name(title) → a file name; proj: the project's title
+  function wire(root, getZ, meta, name, proj) {
+    root.addEventListener('click', async e => {
+      const b = e.target.closest('[data-cp]'), Z = getZ(); if (!b || !Z) return;
+      // the message goes beside the button pressed
+      const msg = k => (b.closest('.cs-tools') && b.closest('.cs-tools').querySelector('[data-cpmsg]')) || root.querySelector(`[data-cpmsg="${k}"]`) || { textContent: '' };
+      const all = () => Z.length === 1 ? Z[0].C : merge(Z.map(zn => ({ C: zn.C, title: zn.title })), { title: proj });
+      if (b.dataset.cp === 'all') { await download(all(), meta(proj), name(proj)); msg('all').textContent = 'Downloaded the check (.perega): open it in CalcPad with File ▸ Open.'; return; }
+      if (b.dataset.cp === 'copyall') { const ok = await copy(all(), meta(proj)); msg('all').textContent = ok ? 'Copied: paste it into a CalcPad sheet.' : 'Could not copy: use Download CalcPad check.'; return; }
+      if (b.dataset.cp === 'proj') { await downloadProject(Z.map(zn => ({ C: zn.C, title: zn.title })), meta(proj), name(proj)); msg('proj').textContent = 'Downloaded the project: open it in CalcPad with File ▸ Open project.'; return; }
+      const zn = Z.find(z => z.key === b.dataset.zone); if (!zn) return;
+      if (b.dataset.cp === 'copy') { const ok = await copy(zn.C, meta(zn.title)); msg(zn.key).textContent = ok ? 'Copied: paste it into a CalcPad sheet.' : 'Could not copy: use Download this check.'; }
+      else { await download(zn.C, meta(zn.title), name(zn.title)); msg(zn.key).textContent = 'Downloaded the check (.perega): open it in CalcPad with File ▸ Open.'; }
+    });
+  }
+  // the zones on the A4 sheet: every zone in full, the materials set out once and "as above" after
+  function sheetHTML(Z, h2 = t => `<h2>${t}</h2>`) {
+    let mat = false;
+    return Z.map(zn => { const s = `<div class="rs">${h2(`${esc(zn.title)}${zn.sum ? ` <span style="font-weight:400;color:#555">· ${esc(zn.sum)}</span>` : ''}`)}${zn.C.html({ sheet: true, noImg: true, skip: mat ? ['Materials'] : [] })}</div>`; if (zn.C.items.some(it => it.t === 'h' && it.text === 'Materials')) mat = true; return s; }).join('');
+  }
+  // the style of the full calculation (each tool's page and sheet include it)
+  const CSS = `.cs{font-size:13px;line-height:1.45}.cs-h{font-weight:600;font-size:14px;margin:14px 0 4px;padding-bottom:3px;border-bottom:1px solid var(--bdr,#e6e6e6)}
+.cs-p{color:var(--mut,#5f6368);margin:4px 0}.cs-r{display:grid;grid-template-columns:1fr 110px;gap:10px;padding:4px 0;border-bottom:1px solid #f0f0f0}
+.cs-eq{overflow-wrap:anywhere}.cs-eq i{font-style:italic}.cs-eq sub,.cs-eq sup{font-size:75%}.cs-d{color:var(--mut,#5f6368);font-size:12px}
+.cs-ref{color:var(--faint,#6b6b6b);font-size:12px;text-align:right}.cs-ok{color:var(--pass,#247b50);font-weight:600}.cs-ng{color:var(--fail,#c4242a);font-weight:600}
+.cs-val .cs-eq{color:#333}.cs-img{margin:8px 0}.cs-cap{font-size:12px;color:var(--mut,#5f6368)}
+.cs-sheet{font-size:9pt}.cs-sheet .cs-r{grid-template-columns:1fr 70pt;padding:1pt 0;break-inside:avoid}.cs-sheet .cs-h{font-size:10pt;margin:6pt 0 2pt}.cs-sheet .cs-d,.cs-sheet .cs-ref{font-size:8pt}.cs-sheet .cs-d{display:inline;margin-left:8pt}.cs-sheet .cs-p{margin:2pt 0}
+.zone .zfull{padding:0 10px 8px}.zone summary small{color:var(--faint,#6b6b6b);font-size:12px}.cs-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.cs-tools .btn2{width:auto;flex:0 0 auto;margin:0;padding:0 16px}
+@media print{.cs-tools{display:none}}`;
+  // The tool's drawings in its calculation, as pictures for CalcPad (and the page's full calculation). sheet: the drawing
+  // module's A4-sheet HTML (DK.sheet: a heading and the drawing for each), or a list of [title, svg]; where(title, i): the
+  // key of the zone a drawing goes in (the first zone when it names none; false leaves the drawing out). Each goes at the
+  // head of its zone, in the sheet's order, captioned with its heading. Returns Z.
+  const ENT = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', minus: '\u2212', ndash: '\u2013', mdash: '\u2014', times: '\u00d7', middot: '\u00b7', deg: '\u00b0', le: '\u2264', ge: '\u2265', radic: '\u221a', sup2: '\u00b2', sup3: '\u00b3', larr: '\u2190', rarr: '\u2192', alpha: '\u03b1', beta: '\u03b2', gamma: '\u03b3', delta: '\u03b4', Delta: '\u0394', epsilon: '\u03b5', zeta: '\u03b6', eta: '\u03b7', theta: '\u03b8', kappa: '\u03ba', lambda: '\u03bb', mu: '\u03bc', nu: '\u03bd', xi: '\u03be', pi: '\u03c0', rho: '\u03c1', sigma: '\u03c3', tau: '\u03c4', phi: '\u03c6', Phi: '\u03a6', chi: '\u03c7', psi: '\u03c8', omega: '\u03c9' };
+  const plainText = s => String(s).replace(/<[^>]*>/g, '').replace(/&#(x?)([0-9a-f]+);/gi, (m, x, n) => String.fromCodePoint(parseInt(n, x ? 16 : 10)))
+    .replace(/&([a-z]+[0-9]?);/gi, (m, n) => ENT[n] ?? m).replace(/\s+/g, ' ').trim();
+  // the outermost <svg> elements of a piece of HTML, whole (a drawing may hold another)
+  function svgsIn(html) {
+    const out = [], re = /<svg\b|<\/svg>/g; let depth = 0, start = -1, m;
+    while ((m = re.exec(html))) {
+      if (m[0] !== '</svg>') { if (depth++ === 0) start = m.index; }
+      else if (depth > 0 && --depth === 0) out.push(html.slice(start, m.index + 6));
+    }
+    return out;
+  }
+  function pictures(Z, sheet, where) {
+    if (!Z || !Z.length || !sheet) return Z;
+    const blocks = Array.isArray(sheet) ? sheet.map(([t, s]) => [plainText(t), svgsIn(String(s))])
+      : String(sheet).split('<div class="rfig"').slice(1).map(ch => { const t = ch.match(/<h3>([\s\S]*?)<\/h3>/); return [t ? plainText(t[1]) : '', svgsIn(ch)]; });
+    const at = new Map();
+    blocks.forEach(([title, svgs], i) => {
+      if (!svgs.length) return;
+      const key = where ? where(title, i) : undefined;
+      if (key === false) return;
+      const zn = Z.find(z => z.key === key) || Z[0];
+      if (!at.has(zn)) at.set(zn, []);
+      svgs.forEach((svg, j) => at.get(zn).push({ t: 'img', svg, caption: j === svgs.length - 1 ? title : '' }));
+    });
+    for (const [zn, list] of at) zn.C.items.unshift(...list);
+    return Z;
+  }
+  return { create, toSI, siUnit, factor, num, exprHTML, symHTML, unitHTML, tokens, rasterise, copy, download, merge, project, downloadProject, zonesHTML, allTools, wire, sheetHTML, pictures, CSS };
+})();
+if (typeof module !== 'undefined') module.exports = { CalcScript };
+
 /* ===== EC5 CORE (EngineeringTools) =====
    Timber to BS EN 1995-1-1:2004+A2:2014 with the UK National Annex (and BS EN 1990 + UK NA for actions). Shared by the
    timber tools.
@@ -441,51 +866,53 @@ const EC5F = (() => {
 
   // ---------- lateral capacity per shear plane (N) ----------
   const ropeAdd = (J, Fax, cap) => J + Math.min(Fax / 4, cap * J);
+  // each function keeps the Johansen part of every mode that takes the rope effect (J, by mode), for the full calculation
+  const roper = (Fax, cap, J0) => (k, J) => { J0[k] = J; return ropeAdd(J, Fax, cap); };
   /* timber or panel to timber, single shear (8.6): fh1, fh2, t1, t2, d, My, Fax, cap */
   function single(p) {
-    const { fh1, fh2, t1, t2, d, My: M, Fax = 0, cap = 0 } = p, b = fh2 / fh1, r = t2 / t1, R = J => ropeAdd(J, Fax, cap);
+    const { fh1, fh2, t1, t2, d, My: M, Fax = 0, cap = 0 } = p, b = fh2 / fh1, r = t2 / t1, J = {}, R = roper(Fax, cap, J);
     const m = {
       a: fh1 * t1 * d, b: fh2 * t2 * d,
-      c: R(fh1 * t1 * d / (1 + b) * (Math.sqrt(b + 2 * b * b * (1 + r + r * r) + b ** 3 * r * r) - b * (1 + r))),
-      d: R(1.05 * fh1 * t1 * d / (2 + b) * (Math.sqrt(2 * b * (1 + b) + 4 * b * (2 + b) * M / (fh1 * d * t1 * t1)) - b)),
-      e: R(1.05 * fh1 * t2 * d / (1 + 2 * b) * (Math.sqrt(2 * b * b * (1 + b) + 4 * b * (1 + 2 * b) * M / (fh1 * d * t2 * t2)) - b)),
-      f: R(1.15 * Math.sqrt(2 * b / (1 + b)) * Math.sqrt(2 * M * fh1 * d)),
+      c: R('c', fh1 * t1 * d / (1 + b) * (Math.sqrt(b + 2 * b * b * (1 + r + r * r) + b ** 3 * r * r) - b * (1 + r))),
+      d: R('d', 1.05 * fh1 * t1 * d / (2 + b) * (Math.sqrt(2 * b * (1 + b) + 4 * b * (2 + b) * M / (fh1 * d * t1 * t1)) - b)),
+      e: R('e', 1.05 * fh1 * t2 * d / (1 + 2 * b) * (Math.sqrt(2 * b * b * (1 + b) + 4 * b * (1 + 2 * b) * M / (fh1 * d * t2 * t2)) - b)),
+      f: R('f', 1.15 * Math.sqrt(2 * b / (1 + b)) * Math.sqrt(2 * M * fh1 * d)),
     };
-    return pick(m, b);
+    return { ...pick(m, b), J };
   }
   /* timber or panel, double shear (8.7): t1 the side members, t2 the central member */
   function double(p) {
-    const { fh1, fh2, t1, t2, d, My: M, Fax = 0, cap = 0 } = p, b = fh2 / fh1, R = J => ropeAdd(J, Fax, cap);
+    const { fh1, fh2, t1, t2, d, My: M, Fax = 0, cap = 0 } = p, b = fh2 / fh1, J = {}, R = roper(Fax, cap, J);
     const m = { g: fh1 * t1 * d, h: 0.5 * fh2 * t2 * d,
-      j: R(1.05 * fh1 * t1 * d / (2 + b) * (Math.sqrt(2 * b * (1 + b) + 4 * b * (2 + b) * M / (fh1 * d * t1 * t1)) - b)),
-      k: R(1.15 * Math.sqrt(2 * b / (1 + b)) * Math.sqrt(2 * M * fh1 * d)) };
-    return pick(m, b);
+      j: R('j', 1.05 * fh1 * t1 * d / (2 + b) * (Math.sqrt(2 * b * (1 + b) + 4 * b * (2 + b) * M / (fh1 * d * t1 * t1)) - b)),
+      k: R('k', 1.15 * Math.sqrt(2 * b / (1 + b)) * Math.sqrt(2 * M * fh1 * d)) };
+    return { ...pick(m, b), J };
   }
   /* steel plate to timber, single shear: thin (8.9) and thick (8.10), interpolated between t ≤ 0.5d and t ≥ d (and a hole
      clearance under 0.1d for thick); fh, t (timber), d, My, Fax, cap, ts (plate), thickOK */
   function steelSingle(p) {
-    const { fh: f, t, d, My: M, Fax = 0, cap = 0 } = p, R = J => ropeAdd(J, Fax, cap);
-    const thin = { a: 0.4 * f * t * d, b: R(1.15 * Math.sqrt(2 * M * f * d)) };
-    const thick = { c: R(f * t * d * (Math.sqrt(2 + 4 * M / (f * d * t * t)) - 1)), d: R(2.3 * Math.sqrt(M * f * d)), e: f * t * d };
-    return blend(thin, thick, p);
+    const { fh: f, t, d, My: M, Fax = 0, cap = 0 } = p, J = {}, R = roper(Fax, cap, J);
+    const thin = { a: 0.4 * f * t * d, b: R('b', 1.15 * Math.sqrt(2 * M * f * d)) };
+    const thick = { c: R('c', f * t * d * (Math.sqrt(2 + 4 * M / (f * d * t * t)) - 1)), d: R('d', 2.3 * Math.sqrt(M * f * d)), e: f * t * d };
+    return { ...blend(thin, thick, p), J };
   }
   /* steel plate in the middle, double shear (8.11): fh (side timber), t (side timber thickness) */
   function steelCentral(p) {
-    const { fh: f, t, d, My: M, Fax = 0, cap = 0 } = p, R = J => ropeAdd(J, Fax, cap);
-    return pick({ f: f * t * d, g: R(f * t * d * (Math.sqrt(2 + 4 * M / (f * d * t * t)) - 1)), h: R(2.3 * Math.sqrt(M * f * d)) });
+    const { fh: f, t, d, My: M, Fax = 0, cap = 0 } = p, J = {}, R = roper(Fax, cap, J);
+    return { ...pick({ f: f * t * d, g: R('g', f * t * d * (Math.sqrt(2 + 4 * M / (f * d * t * t)) - 1)), h: R('h', 2.3 * Math.sqrt(M * f * d)) }), J };
   }
   /* steel plates outside, double shear: thin (8.12) and thick (8.13), interpolated; fh and t of the central timber */
   function steelOuter(p) {
-    const { fh: f, t, d, My: M, Fax = 0, cap = 0 } = p, R = J => ropeAdd(J, Fax, cap);
-    return blend({ j: 0.5 * f * t * d, k: R(1.15 * Math.sqrt(2 * M * f * d)) }, { l: 0.5 * f * t * d, m: R(2.3 * Math.sqrt(M * f * d)) }, p);
+    const { fh: f, t, d, My: M, Fax = 0, cap = 0 } = p, J = {}, R = roper(Fax, cap, J);
+    return { ...blend({ j: 0.5 * f * t * d, k: R('k', 1.15 * Math.sqrt(2 * M * f * d)) }, { l: 0.5 * f * t * d, m: R('m', 2.3 * Math.sqrt(M * f * d)) }, p), J };
   }
   function pick(m, beta) { const k = Object.keys(m).reduce((a, b) => (m[b] < m[a] ? b : a)); return { modes: m, mode: k, F: m[k], beta }; }
   function blend(thin, thick, p) {
     const d = p.d, ts = p.ts, okThick = p.thickOK !== false, A = pick(thin), B = pick(thick);
-    if (!okThick || ts <= 0.5 * d) return { ...A, plate: 'thin', modes: { ...thin } };
-    if (ts >= d) return { ...B, plate: 'thick', modes: { ...thick } };
+    if (!okThick || ts <= 0.5 * d) return { ...A, plate: 'thin', modes: { ...thin }, thin: true };
+    if (ts >= d) return { ...B, plate: 'thick', modes: { ...thick }, thick: true };
     const w = (ts - 0.5 * d) / (0.5 * d), F = A.F + w * (B.F - A.F);
-    return { modes: { ...thin, ...thick }, mode: `${A.mode}/${B.mode}`, F, plate: `between (t = ${(ts / d).toFixed(2)}d, interpolated)`, w };
+    return { modes: { ...thin, ...thick }, mode: `${A.mode}/${B.mode}`, F, plate: `between (t = ${(ts / d).toFixed(2)}d, interpolated)`, w, Fthin: A.F, Fthick: B.F, thinKeys: Object.keys(thin), thickKeys: Object.keys(thick) };
   }
 
   // ---------- withdrawal (N) ----------
@@ -690,6 +1117,451 @@ const GlulamPlate = (() => {
   }
   return { design, FU, STEEL };
 })();
+
+/* ===== EC5 CALCULATION BLOCKS (EngineeringTools) =====
+   The steps of BS EN 1995-1-1:2004+A2:2014 (+ UK NA) that the timber tools share, written as CalcScript (one record for
+   the page, the A4 sheet and CalcPad): the timber and its characteristic values (BS EN 338, BS EN 14080 or a product's
+   declaration), γ_M, k_mod for a combination, k_sys, k_def, the size factor k_h, design strengths, k_crit (6.3.3) and k_c
+   (6.3.2), and a combination's partial factors. Each block writes a value once (a part that needs it again finds it there),
+   so a part of a calculation can be opened in CalcPad on its own.
+   Source: scratchpad/ec5/script.js. Needs CalcScript and EC5 (ec5/core.js). */
+const EC5Script = (() => {
+  'use strict';
+  const DUR = ['permanent', 'long-term', 'medium-term', 'short-term', 'instantaneous'];
+  const SYM = { fmk: ['f_mk', 'f_m,k', 'bending strength'], ft0k: ['f_t0k', 'f_t,0,k', 'tension strength parallel to the grain'], ft90k: ['f_t90k', 'f_t,90,k', 'tension strength perpendicular to the grain'],
+    fc0k: ['f_c0k', 'f_c,0,k', 'compression strength parallel to the grain'], fc90k: ['f_c90k', 'f_c,90,k', 'compression strength perpendicular to the grain'], fvk: ['f_vk', 'f_v,k', 'shear strength'],
+    E0mean: ['E_0mean', 'E_0,mean', 'mean modulus of elasticity parallel to the grain'], E005: ['E_005', 'E_0,05', 'fifth-percentile modulus of elasticity'], E90mean: ['E_90mean', 'E_90,mean', 'mean modulus perpendicular to the grain'],
+    Gmean: ['G_mean', 'G_mean', 'mean shear modulus'], rhok: ['rho_k', 'ρ_k', 'characteristic density'], rhomean: ['rho_mean', 'ρ_mean', 'mean density'] };
+  const nameOf = k => SYM[k][0];
+  const KIND = { solid: 'solid timber', glulam: 'glued laminated timber', lvl: 'a product (LVL or similar)' };
+
+  // the timber's characteristic values (only those asked for), each once
+  function material(C, M, keys) {
+    if (!C.has('gamma_M')) {
+      C.head('Timber');
+      C.note(`${M.name}: ${M.family === 'other' ? `${KIND[M.kind] || 'a product'}, its declared values` : `${M.family === 'hard' ? 'hardwood' : M.family === 'glulam' ? 'glued laminated timber' : 'softwood'}, ${M.src}`}.`);
+      C.input('gamma_M', M.gM, '', `partial factor for ${M.kind === 'solid' ? 'solid timber' : M.kind === 'glulam' ? 'glulam' : 'the product'}`, M.family === 'other' ? 'declared' : 'UK NA Table NA.3', { sym: 'γ_M' });
+    }
+    for (const k of keys) {
+      if (k === 'G005') {
+        if (C.has('G_005')) continue;
+        if (M.family === 'solid' || M.family === 'hard') { need(C, M, 'Gmean'); need(C, M, 'E005'); need(C, M, 'E0mean'); C.calc('G_005', 'G_mean*E_005/E_0mean', M.G005, 'N/mm2', 'fifth-percentile shear modulus, in the ratio of the moduli', '', { sym: 'G_0,05' }); }
+        else C.input('G_005', M.G005, 'N/mm2', 'fifth-percentile shear modulus', M.family === 'glulam' ? M.src : 'declared', { sym: 'G_0,05' });
+        continue;
+      }
+      need(C, M, k);
+    }
+  }
+  function need(C, M, k) {
+    const [n, sym, desc] = SYM[k];
+    if (C.has(n)) return;
+    const unit = k === 'rhok' || k === 'rhomean' ? 'kg/m3' : 'N/mm2', v = M[k];
+    if (!(v > 0) && k !== 'ft90k') throw new Error(`EC5Script: ${sym} is needed`);
+    C.input(n, v, unit, desc, M.family === 'other' ? 'declared' : M.src, { sym });
+  }
+
+  // k_mod of a combination: its shortest-duration action (3.1.3(2)); name: k_mod unless a part needs two
+  function kmod(C, sc, c, name = 'k_mod') {
+    if (C.has(name)) return;
+    C.input(name, c.kmod, '', `modification factor: service class ${sc}, ${DUR[c.dur]} (the combination's shortest-duration action, 3.1.3(2))`, 'Table 3.1', { sym: 'k_mod' });
+  }
+  function ksys(C, v) { if (!C.has('k_sys')) C.input('k_sys', v, '', v > 1 ? 'system strength factor: several members sharing the load (6.6)' : 'system strength factor (no load sharing)', '6.6', { sym: 'k_sys' }); }
+  function kdef(C, sc, v) { if (!C.has('k_def')) C.input('k_def', v, '', `deformation factor, service class ${sc}`, 'Table 3.2', { sym: 'k_def' }); }
+
+  /* the size factor k_h for a depth (or width) dep (a name already written, value h mm): solid timber with ρ_k ≤ 700 kg/m³
+     below 150 mm (3.2(3)), glulam below 600 mm (3.3(3)), a product below 300 mm with its exponent s (3.4(3)) */
+  function kh(C, M, name, dep, h, sym = 'k_h', what = '') {
+    if (C.has(name)) return;
+    const v = EC5.kh(M, h), tail = what ? ` (${what})` : '';
+    if (M.kind === 'solid' && M.rhok <= 700 && h < 150) C.calc(name, `MIN((150/${dep}[#mm])^0.2, 1.3)`, v, '', `size factor: ${M.family === 'hard' ? 'hardwood' : 'solid timber'} less than 150 mm deep${tail}`, '3.2(3) (3.1)', { sym });
+    else if (M.kind === 'glulam' && h < 600) C.calc(name, `MIN((600/${dep}[#mm])^0.1, 1.1)`, v, '', `size factor: glulam less than 600 mm deep${tail}`, '3.3(3) (3.2)', { sym });
+    else if (M.kind === 'lvl' && h < 300) { if (!C.has('s_h')) C.input('s_h', M.sExp || 0.12, '', 'size effect exponent of the product', '3.4(3), declared', { sym: 's' }); C.calc(name, `MIN((300/${dep}[#mm])^s_h, 1.2)`, v, '', `size factor: a product less than 300 mm deep${tail}`, '3.4(3) (3.3)', { sym }); }
+    else C.input(name, 1, '', `size factor${tail}: ${M.kind === 'solid' ? (M.rhok > 700 ? 'ρ_k over 700 kg/m³' : '150 mm or more') : M.kind === 'glulam' ? '600 mm or more' : '300 mm or more'}`, M.kind === 'solid' ? '3.2(3)' : M.kind === 'glulam' ? '3.3(3)' : '3.4(3)', { sym });
+  }
+
+  // a design strength: k_mod k_sys [k_h] f_k/γ_M (2.4.1 (2.14))
+  function fd(C, name, fk, o = {}) {
+    if (C.has(name)) return C.value(name);
+    const parts = [o.kmod || 'k_mod', ...(o.noSys ? [] : ['k_sys']), ...(o.kh ? [o.kh] : []), fk].join('*');
+    return C.calc(name, `${parts}/gamma_M`, o.v, 'N/mm2', o.desc || 'design strength', '2.4.1 (2.14)', { sym: o.sym });
+  }
+
+  /* lateral torsional buckling (6.3.3) of a rectangular section b × h over l_ef (names given, values in R = EC5.kcrit's
+     result): σ_m,crit by (6.32) for solid softwood, otherwise (6.31); λ_rel,m (6.30) and k_crit (6.34). sfx tells two
+     apart (sagging and hogging). */
+  function kcrit(C, M, R, o) {
+    const s = o.sfx || '', b = o.b || 'b', h = o.h || 'h', lef = o.lef;
+    if (M.kind === 'solid' && M.softwood) C.calc(`sig_mcrit${s}`, `0.78*${b}^2*E_005/(${h}*${lef})`, R.scrit, 'N/mm2', 'critical bending stress, solid softwood', '6.3.3(3) (6.32)', { sym: 'σ_m,crit' });
+    else {
+      material(C, M, ['E005', 'G005']);
+      C.calc(`I_z${s}`, `${h}*${b}^3/12`, o.h_v * o.b_v ** 3 / 12, 'mm4', 'second moment of area about the weak axis', '', { sym: 'I_z' });
+      C.calc(`I_tor${s}`, `${h}*${b}^3/3*(1 - 0.63*${b}/${h})`, o.h_v * o.b_v ** 3 / 3 * (1 - 0.63 * o.b_v / o.h_v), 'mm4', 'torsion constant of the rectangle', '', { sym: 'I_tor' });
+      C.calc(`W_yb${s}`, `${b}*${h}^2/6`, o.b_v * o.h_v * o.h_v / 6, 'mm3', 'section modulus about the strong axis', '', { sym: 'W_y' });
+      C.calc(`sig_mcrit${s}`, `PI()*SQRT(E_005*I_z${s}*G_005*I_tor${s})/(${lef}*W_yb${s})`, R.scrit, 'N/mm2', 'critical bending stress', '6.3.3(2) (6.31)', { sym: 'σ_m,crit' });
+    }
+    C.calc(`lam_relm${s}`, `SQRT(f_mk/sig_mcrit${s})`, R.lam, '', 'relative slenderness for bending', '6.3.3(2) (6.30)', { sym: 'λ_rel,m' });
+    return C.calc(`k_crit${s}`, `IF(lam_relm${s} <= 0.75, 1, IF(lam_relm${s} <= 1.4, 1.56 - 0.75*lam_relm${s}, 1/lam_relm${s}^2))`, R.k, '', 'reduction for lateral torsional buckling', '6.3.3(4) (6.34)', { sym: 'k_crit' });
+  }
+
+  /* flexural buckling (6.3.2) about one axis: lef and i are names written already; B = EC5.kc's result; ax 'y' or 'z' */
+  function kc(C, M, B, o) {
+    const ax = o.ax, l = `lam_${ax}`;
+    if (!C.has('beta_c')) C.input('beta_c', B.bc, '', M.kind === 'solid' ? 'straightness factor, solid timber' : 'straightness factor, glulam and LVL', '6.3.2(3) (6.29)', { sym: 'β_c' });
+    C.calc(l, `${o.lef}/${o.i}`, B.lam, '', `slenderness about ${ax}–${ax}`, '6.3.2', { sym: `λ_${ax}` });
+    C.calc(`lam_rel${ax}`, `${l}/PI()*SQRT(f_c0k/E_005)`, B.lr, '', `relative slenderness about ${ax}–${ax}`, '6.3.2(1) (6.21), (6.22)', { sym: `λ_rel,${ax}` });
+    C.calc(`k_${ax}`, `0.5*(1 + beta_c*(lam_rel${ax} - 0.3) + lam_rel${ax}^2)`, B.k, '', '', '6.3.2(3) (6.27), (6.28)', { sym: `k_${ax}` });
+    return C.calc(`k_c${ax}`, `IF(lam_rel${ax} <= 0.3, 1, 1/(k_${ax} + SQRT(k_${ax}^2 - lam_rel${ax}^2)))`, B.kc, '', `instability factor about ${ax}–${ax} (1 when λ_rel ≤ 0.3)`, '6.3.2(3) (6.25), (6.26)', { sym: `k_c,${ax}` });
+  }
+
+  /* a ULS combination's partial factors: γ_G and one γ for each variable action it takes (the accompanying ones already
+     times ψ₀); keys: the variable actions with the names they go by; returns { G: 'gamma_G', Q: 'gamma_Q', ... } */
+  function combo(C, c, keys) {
+    const out = {};
+    if (!C.has('gamma_G')) {
+      C.note(`Combination ${c.name}${c.fav ? ': the permanent action favourable' : ''}.`);
+      C.input('gamma_G', c.gG, '', c.gG === 1 ? 'factor on the permanent action, favourable' : `factor on the permanent action${/6\.10b/.test(c.name) ? ' (ξγ_G, 6.10b)' : ''}`, 'BS EN 1990 Table NA.A1.2(B)', { sym: 'γ_G' });
+    }
+    out.G = 'gamma_G';
+    for (const k of keys) {
+      const g = c.gQ[k] || 0; if (!g) continue;
+      const nm = `gamma_${k}`; out[k] = nm;
+      if (!C.has(nm)) C.input(nm, g, '', c.lead === k || g === 1.5 ? `factor on ${k}${c.lead === k ? ', leading' : ''}` : `factor on ${k}, accompanying (1.5ψ₀)`, 'BS EN 1990 Table NA.A1.2(B), NA.A1.1', { sym: `γ_${k}` });
+    }
+    return out;
+  }
+  // Σ γ × effect for the actions a combination takes: f(key) → the effect's name
+  const sum = (g, keys, f) => keys.filter(k => g[k]).map(k => `${g[k]}*${f(k)}`).join(' + ') || '0';
+
+  return { material, need, kmod, ksys, kdef, kh, fd, kcrit, kc, combo, sum, DUR };
+})();
+if (typeof module !== 'undefined') module.exports = { EC5Script };
+
+/* ===== EC5 FASTENER CALCULATION BLOCKS (EngineeringTools) =====
+   BS EN 1995-1-1 Section 8 as CalcScript, for the tools built on EC5F (ec5/fasteners.js): the yield moment (8.14, 8.30),
+   embedment strengths (8.15, 8.16, 8.20, 8.22, 8.31–8.33, 8.36, 8.37), withdrawal of nails (8.23–8.26 with the penetration
+   factors), screws (8.38–8.40, or declared) and bolts (the washer at 3 f_c,90,k), and the lateral capacity per shear plane
+   by the Johansen modes (8.6, 8.7, 8.9–8.13) with the rope effect (8.2.2(2)) and the interpolation between thin and thick
+   steel plates (8.2.3(1)). Each value is a formula of the ones before it.
+   Source: scratchpad/ec5/fastscript.js. Needs CalcScript and EC5F. */
+const EC5FastScript = (() => {
+  'use strict';
+  // the yield moment, d: the name of the diameter used (d or d_ef)
+  function myRk(C, fu, d, My, bolt) {
+    C.input('f_u', fu, 'N/mm2', `tensile strength of the ${bolt ? 'bolt or dowel' : 'wire'}`, bolt ? '8.5.1.1' : '8.3.1.1');
+    return C.calc('M_yRk', `0.3*f_u[#N/mm2]*${d}[#mm]^2.6 [#N*mm]`, My, 'N*mm', 'characteristic yield moment', bolt ? '8.5.1.1 (8.30)' : '8.3.1.1 (8.14)', { sym: 'M_y,Rk' });
+  }
+  /* an embedment strength: nm its name; m { kind: 'timber'|'ply'|'osb', hard, lvl } with names o.rho (ρ_k) and o.t (a
+     panel's thickness); f { dowel, predrilled }; R = EC5F.fh's result; o.d the diameter's name; o.alpha the angle's name
+     (dowel-type in timber); o.what for the words */
+  function fh(C, nm, m, f, R, o) {
+    const d = o.d, rho = o.rho, sym = o.sym || nm, w = o.what || '';
+    if (!f.dowel) {
+      if (m.kind === 'ply') return C.calc(nm, `0.11*${rho}[#kg/m3]*${d}[#mm]^-0.3 [#N/mm2]`, R.v, 'N/mm2', `embedment strength of the plywood${w}`, '8.3.1.3 (8.20)', { sym });
+      if (m.kind === 'osb') return C.calc(nm, `65*${d}[#mm]^-0.7*${o.t}[#mm]^0.1 [#N/mm2]`, R.v, 'N/mm2', `embedment strength of the OSB${w}`, '8.3.1.3 (8.22)', { sym });
+      if (f.predrilled) return C.calc(nm, `0.082*(1 - 0.01*${d}[#mm])*${rho}[#kg/m3] [#N/mm2]`, R.v, 'N/mm2', `embedment strength${w}, pre-drilled`, '8.3.1.1 (8.16)', { sym });
+      return C.calc(nm, `0.082*${rho}[#kg/m3]*${d}[#mm]^-0.3 [#N/mm2]`, R.v, 'N/mm2', `embedment strength${w}, not pre-drilled`, '8.3.1.1 (8.15)', { sym });
+    }
+    if (m.kind === 'ply') return C.calc(nm, `0.11*(1 - 0.01*${d}[#mm])*${rho}[#kg/m3] [#N/mm2]`, R.v, 'N/mm2', `embedment strength of the plywood${w}`, '8.5.1.2 (8.36)', { sym });
+    if (m.kind === 'osb') return C.calc(nm, `50*${d}[#mm]^-0.6*${o.t}[#mm]^0.2 [#N/mm2]`, R.v, 'N/mm2', `embedment strength of the OSB${w}`, '8.5.1.3 (8.37)', { sym });
+    C.calc(`${nm}0`, `0.082*(1 - 0.01*${d}[#mm])*${rho}[#kg/m3] [#N/mm2]`, R.f0, 'N/mm2', `embedment strength along the grain${w}`, '8.5.1.1 (8.32)', { sym: `${sym},0` });
+    C.calc(`k_90${o.sfx || ''}`, `0.015*${d}[#mm] + ${m.hard ? 0.9 : m.lvl ? 1.3 : 1.35}`, R.k90, '', m.hard ? 'hardwood' : m.lvl ? 'LVL' : 'softwood', '8.5.1.1 (8.33)', { sym: 'k_90' });
+    return C.calc(nm, `${nm}0/(k_90${o.sfx || ''}*SIN(${o.alpha})^2 + COS(${o.alpha})^2)`, R.v, 'N/mm2', `embedment strength at the angle to the grain${w}`, '8.5.1.1 (8.31)', { sym });
+  }
+  /* withdrawal of one nail (EC5F.nailAx result ax): o { ring, d, tp, th, rhoP, rhoH (names; th, rhoH unused under a steel
+     plate), dhV, rhoHV (values), wet, faxk, fheadk (declared values or undefined), steel } */
+  function nailAx(C, o, ax) {
+    const wet = o.wet ? 'k_wet*' : '', smooth = !o.ring;
+    if (o.wet) C.input('k_wet', 2 / 3, '', 'timber installed at or near saturation, drying under load', '8.3.2(7)', { sym: 'k' });
+    const dd = o.d;
+    if (o.faxk !== undefined) { C.input('f_axkd', o.faxk, 'N/mm2', 'withdrawal parameter, declared', '8.3.2(5)', { sym: 'f_ax,k' }); C.calc('f_axk', `${wet}f_axkd`, ax.faxP, 'N/mm2', 'withdrawal parameter on the point side', '8.3.2', { sym: 'f_ax,k' }); }
+    else C.calc('f_axk', `${wet}0.00002*${o.rhoP}[#kg/m3]^2 [#N/mm2]`, ax.faxP, 'N/mm2', 'withdrawal parameter on the point side, smooth nails', '8.3.2(7) (8.25)', { sym: 'f_ax,k' });
+    const pf = (n, t) => (smooth ? `IF(${t} < 8*${dd}, 0, IF(${t} < 12*${dd}, ${t}/(4*${dd}) - 2, 1))` : `IF(${t} < 6*${dd}, 0, IF(${t} < 8*${dd}, ${t}/(2*${dd}) - 3, 1))`);
+    C.calc('k_p', pf('k_p', o.tp), ax.kp, '', `penetration factor on the point side (${smooth ? '8d to 12d' : '6d to 8d'})`, smooth ? '8.3.2(7)' : '8.3.2(6)', { sym: 'k_pen' });
+    C.calc('F_axp', `f_axk*k_p*${dd}*${o.tp}`, ax.point, 'N', 'withdrawal of the point', smooth ? '8.3.2 (8.24)' : '8.3.2 (8.23)', { sym: 'F_ax,point' });
+    if (o.steel) { C.note('Under a steel plate the head cannot pull through: the point governs.'); return C.calc('F_axRk', 'F_axp', ax.F, 'N', 'characteristic withdrawal capacity of one nail', '8.3.2', { sym: 'F_ax,Rk' }); }
+    if (o.fheadk !== undefined) { C.input('f_headkd', o.fheadk, 'N/mm2', 'head pull-through parameter, declared', '8.3.2(5)', { sym: 'f_head,k' }); C.calc('f_headk', `${wet}f_headkd`, ax.fhead, 'N/mm2', 'head pull-through parameter', '8.3.2', { sym: 'f_head,k' }); }
+    else C.calc('f_headk', `${wet}0.00007*${o.rhoH}[#kg/m3]^2 [#N/mm2]`, ax.fhead, 'N/mm2', 'head pull-through parameter, smooth nails', '8.3.2(7) (8.26)', { sym: 'f_head,k' });
+    C.input('d_h', o.dhV, 'mm', 'head diameter', '', { sym: 'd_h' });
+    if (smooth) {
+      C.calc('f_axkh', `${wet}0.00002*${o.rhoH}[#kg/m3]^2 [#N/mm2]`, 20e-6 * o.rhoHV * o.rhoHV * (o.wet ? 2 / 3 : 1), 'N/mm2', 'withdrawal parameter of the shank on the head side', '8.3.2(7) (8.25)', { sym: 'f_ax,k,h' });
+      C.calc('k_h1', pf('k_h1', o.th), ax.kh, '', 'penetration factor of the shank on the head side', '8.3.2(7)', { sym: 'k_pen,h' });
+      C.calc('F_axh', `f_axkh*k_h1*${dd}*${o.th} + f_headk*d_h^2`, ax.head, 'N', 'withdrawal on the head side: the shank and the head', '8.3.2 (8.24)', { sym: 'F_ax,head' });
+    } else C.calc('F_axh', 'f_headk*d_h^2', ax.head, 'N', 'head pull-through', '8.3.2 (8.23)', { sym: 'F_ax,head' });
+    return C.calc('F_axRk', 'MIN(F_axp, F_axh)', ax.F, 'N', 'characteristic withdrawal capacity of one nail', o.ring ? '8.3.2 (8.23)' : '8.3.2 (8.24)', { sym: 'F_ax,Rk' });
+  }
+
+  // the Johansen modes of the lateral capacity per shear plane; kind: 'single' | 'double' | 'steelSingle' | 'steelCentral' |
+  // 'steelOuter'; L: EC5F's result; n: the names { fh1, fh2, t1, t2, d, My, Fax, ts } (fh and t of steel joints: fh2, t2);
+  // rope: the rope effect taken
+  function modes(C, kind, L, n, rope) {
+    const { fh1, fh2, t1, t2, d, My } = n, J = L.J || {};
+    const steel = kind.startsWith('steel');
+    if (!steel) C.calc('beta', `${fh2}/${fh1}`, L.beta, '', 'ratio of the embedment strengths', '8.2.2', { sym: 'β' });
+    const Jx = {
+      single: { a: `${fh1}*${t1}*${d}`, b: `${fh2}*${t2}*${d}`,
+        c: `${fh1}*${t1}*${d}/(1 + beta)*(SQRT(beta + 2*beta^2*(1 + ${t2}/${t1} + (${t2}/${t1})^2) + beta^3*(${t2}/${t1})^2) - beta*(1 + ${t2}/${t1}))`,
+        d: `1.05*${fh1}*${t1}*${d}/(2 + beta)*(SQRT(2*beta*(1 + beta) + 4*beta*(2 + beta)*${My}/(${fh1}*${d}*${t1}^2)) - beta)`,
+        e: `1.05*${fh1}*${t2}*${d}/(1 + 2*beta)*(SQRT(2*beta^2*(1 + beta) + 4*beta*(1 + 2*beta)*${My}/(${fh1}*${d}*${t2}^2)) - beta)`,
+        f: `1.15*SQRT(2*beta/(1 + beta))*SQRT(2*${My}*${fh1}*${d})` },
+      double: { g: `${fh1}*${t1}*${d}`, h: `0.5*${fh2}*${t2}*${d}`,
+        j: `1.05*${fh1}*${t1}*${d}/(2 + beta)*(SQRT(2*beta*(1 + beta) + 4*beta*(2 + beta)*${My}/(${fh1}*${d}*${t1}^2)) - beta)`,
+        k: `1.15*SQRT(2*beta/(1 + beta))*SQRT(2*${My}*${fh1}*${d})` },
+      steelSingle: { a: `0.4*${fh2}*${t2}*${d}`, b: `1.15*SQRT(2*${My}*${fh2}*${d})`, c: `${fh2}*${t2}*${d}*(SQRT(2 + 4*${My}/(${fh2}*${d}*${t2}^2)) - 1)`, d: `2.3*SQRT(${My}*${fh2}*${d})`, e: `${fh2}*${t2}*${d}` },
+      steelCentral: { f: `${fh2}*${t2}*${d}`, g: `${fh2}*${t2}*${d}*(SQRT(2 + 4*${My}/(${fh2}*${d}*${t2}^2)) - 1)`, h: `2.3*SQRT(${My}*${fh2}*${d})` },
+      steelOuter: { j: `0.5*${fh2}*${t2}*${d}`, k: `1.15*SQRT(2*${My}*${fh2}*${d})`, l: `0.5*${fh2}*${t2}*${d}`, m: `2.3*SQRT(${My}*${fh2}*${d})` },
+    }[kind];
+    const REF = { single: '8.2.2 (8.6)', double: '8.2.2 (8.7)', steelSingle: '8.2.3 (8.9), (8.10)', steelCentral: '8.2.3 (8.11)', steelOuter: '8.2.3 (8.12), (8.13)' }[kind];
+    const x = n.sfx || '', w = n.what ? `, ${n.what}` : '';
+    if (rope && !C.has('k_rope')) C.input('k_rope', n.cap, '', 'rope effect: no more than this share of the Johansen part', '8.2.2(2)', { sym: 'k_rope' });
+    for (const k of Object.keys(L.modes)) {
+      const v = L.modes[k], nm = `F_R${k}${x}`, sym = `F_v,Rk,${k}`;
+      if (rope && J[k] !== undefined) {
+        C.calc(`F_J${k}${x}`, Jx[k], J[k], 'N', `mode (${k})${w}, the Johansen part`, REF, { sym: `F_J,${k}` });
+        C.calc(nm, `F_J${k}${x} + MIN(${n.Fax}/4, k_rope*F_J${k}${x})`, v, 'N', `mode (${k}) with the rope effect`, '8.2.2(2)', { sym });
+      } else C.calc(nm, Jx[k], v, 'N', `mode (${k})${w}`, REF, { sym });
+    }
+    const mn = ks => `MIN(${ks.map(k => `F_R${k}${x}`).join(', ')})`;
+    if (L.thinKeys) {
+      C.calc(`F_thin${x}`, mn(L.thinKeys), L.Fthin, 'N', 'thin plate (t ≤ 0.5d)', '8.2.3(1)', { sym: 'F_v,Rk,thin' });
+      C.calc(`F_thick${x}`, mn(L.thickKeys), L.Fthick, 'N', 'thick plate (t ≥ d)', '8.2.3(1)', { sym: 'F_v,Rk,thick' });
+      return C.calc(`F_vRk${x}`, `F_thin${x} + (${n.ts} - 0.5*${d})/(0.5*${d})*(F_thick${x} - F_thin${x})`, L.F, 'N', `characteristic capacity per shear plane${w}: the plate between thin and thick, interpolated`, '8.2.3(1)', { sym: 'F_v,Rk' });
+    }
+    if (L.thin) C.note('The plate is thin (t ≤ 0.5d, or its holes too loose for the thick-plate rules, 8.2.3(1)): the thin-plate modes apply.');
+    if (L.thick) C.note('The plate is thick (t ≥ d): the thick-plate modes apply.');
+    return C.calc(`F_vRk${x}`, mn(Object.keys(L.modes)), L.F, 'N', `characteristic capacity per shear plane${w}, the least mode`, REF, { sym: 'F_v,Rk' });
+  }
+  return { myRk, fh, nailAx, modes };
+})();
+if (typeof module !== 'undefined') module.exports = { EC5FastScript };
+
+/* ===== CONCEALED PLATE GLULAM CONNECTIONS: FULL CALCULATION (EngineeringTools) =====
+   GlulamPlate.design written out, one CalcScript per part:
+   - the most loaded fastener: the group (its centroid and polar moment, given from the layout), the moment M = −V e + M_add,
+     the fastener's force by the elastic share (F = F_V/n + M r/Σr²), its angle to the grain, and its resistance at that
+     angle: f_h,α,k (8.31–8.33), the Johansen modes of each shear plane (8.11 for the outer pieces, 8.12/8.13 between
+     plates or with plates outside), the rope effect for bolts, F_v,α,Rd = k_mod ΣF_v,Rk/γ_M;
+   - each row along the grain against n_ef/n F_v,0,Rd (8.34);
+   - the timber at the connection: splitting (8.1.4), shear (6.1.7), block and plug shear (Annex A), the net section;
+   - the spacings and distances (Tables 8.4, 8.5) at the angles that occur;
+   - the plates (EN 1993-1-8 Table 3.4 bearing; EN 1993-1-1 6.2 at the timber's end face; the net section in tension).
+   Source: scratchpad/cpg/script.js. Needs CalcScript, EC5, EC5F, EC5Script, EC5FastScript, GlulamPlate. */
+const GlulamPlateScript = (() => {
+  'use strict';
+  const TOOL = 'Concealed Plate Glulam Connections', STD = 'BS EN 1995-1-1:2004+A2:2014 Section 8, Annex A, UK NA; BS EN 1993-1-1, 1-8';
+  const S = EC5Script, FS = EC5FastScript, r2 = v => (Math.round(v * 100) / 100).toFixed(2);
+  const pre = t => CalcScript.create({ title: t, tool: TOOL, standard: STD });
+
+  function geometry(C, D) {
+    if (C.has('b')) return;
+    const P = D.inp.plates || {};
+    C.head('The member and the plates');
+    C.input('b', D.b, 'mm', 'breadth of the member', ''); C.input('h', D.h, 'mm', 'depth of the member', '');
+    C.input('t_s', D.ts, 'mm', 'thickness of each plate', '', { sym: 't_s' });
+    if (D.inside) {
+      C.input('n_p', D.np, '', 'slotted-in plates', '', { sym: 'n_p' }); C.input('s_l', D.slot, 'mm', 'width of each slot', '', { sym: 't_slot' });
+      if (D.np === 1) C.calc('t_1', '(b - s_l)/2', D.t1, 'mm', 'each outer piece of timber', '', { sym: 't_1' });
+      else {
+        if (+P.t2 > 0) C.input('t_2', D.t2, 'mm', 'each inner piece, between the plates', '', { sym: 't_2' });
+        else C.calc('t_2', '2*(b - n_p*s_l)/(2 + 2*(n_p - 1))', D.t2, 'mm', 'each inner piece: the timber shared so that the inner pieces are twice the outer', '', { sym: 't_2' });
+        C.calc('t_1', '(b - n_p*s_l - (n_p - 1)*t_2)/2', D.t1, 'mm', 'each outer piece', '', { sym: 't_1' });
+      }
+      C.calc('b_t', 'b - n_p*s_l', D.bt, 'mm', 'net breadth of the timber', '', { sym: 'b_net' });
+    } else { C.note('A plate on each face of the member.'); C.calc('b_t', 'b', D.bt, 'mm', 'breadth of the timber', '', { sym: 'b_net' }); }
+  }
+  function fastener(C, D) {
+    if (C.has('d')) return;
+    S.material(C, D.M, ['rhok', ...(D.kind === 'bolt' ? ['fc90k'] : [])]); geometry(C, D);
+    C.head(`The ${D.kind === 'bolt' ? 'bolts' : 'dowels'}`);
+    C.input('d', D.d, 'mm', 'diameter', '');
+    FS.myRk(C, D.fu, 'd', D.My, true);
+    if (D.kind === 'bolt') {
+      C.input('d_w', +(D.inp.fast || {}).dw || 3 * D.d, 'mm', 'washer diameter', '', { sym: 'd_w' }); C.input('c_w', 1, 'mm', 'hole clearance taken under the washer', '', { sym: 'c' });
+      if (!D.inside) C.calc('d_wef', 'MIN(d_w, 12*t_s, 4*d)', D.Fax.dw, 'mm', 'under a steel plate: not more than 12t or 4d', '8.5.2(2)', { sym: 'd_w,ef' });
+      C.calc('A_w', `PI()/4*(${D.inside ? 'd_w' : 'd_wef'}^2 - (d + c_w)^2)`, D.Fax.A, 'mm2', 'bearing area of the washer', '8.5.2(2)', { sym: 'A_w' });
+      C.calc('F_axRk', '3*f_c90k*A_w', D.Fax.F, 'N', 'axial capacity: the washer at 3 f_c,90,k', '8.5.2(2)', { sym: 'F_ax,Rk' });
+    } else C.note('Dowels: no rope effect.');
+  }
+  // the resistance of one fastener at the angle a (a name), all its shear planes: returns the design value's name
+  function resist(C, D, R, a, x) {
+    S.kmod(C, D.sc, { kmod: D.kmod, dur: ['permanent', 'long', 'medium', 'short', 'instantaneous'].indexOf(D.inp.dur || 'medium') });
+    FS.fh(C, `f_hk${x}`, { kind: 'timber', lvl: D.M.kind === 'lvl' }, { dowel: true }, R.fh, { d: 'd', rho: 'rho_k', alpha: a, sfx: x, what: '', sym: 'f_h,α,k' });
+    const rope = D.kind === 'bolt' && D.Fax.F > 0, nm = { fh2: `f_hk${x}`, d: 'd', My: 'M_yRk', Fax: 'F_axRk', cap: 0.25, ts: 't_s' };
+    if (D.inside) {
+      FS.modes(C, 'steelCentral', R.planes[0], { ...nm, t2: 't_1', sfx: `o${x}`, what: 'an outer piece' }, rope);
+      if (D.np > 1) { if (!C.has('h_c')) C.note(`Between the plates (8.12, 8.13): ${R.planes[2].plate ? `the plate ${R.planes[2].plate}` : ''}.`); FS.modes(C, 'steelOuter', R.planes[2], { ...nm, t2: 't_2', sfx: `i${x}`, what: 'an inner piece' }, rope); }
+    } else FS.modes(C, 'steelOuter', R.planes[0], { ...nm, t2: 'b', sfx: `o${x}`, what: 'the timber between the plates' }, rope);
+    if (!C.has('gamma_Mc')) C.input('gamma_Mc', 1.3, '', 'partial factor for connections', 'UK NA Table NA.3', { sym: 'γ_M' });
+    return C.calc(`F_Rd${x}`, D.inside ? (D.np > 1 ? `k_mod*(2*F_vRko${x} + 2*(n_p - 1)*F_vRki${x})/gamma_Mc` : `k_mod*2*F_vRko${x}/gamma_Mc`) : `k_mod*2*F_vRko${x}/gamma_Mc`, R.Rd / 1e3, 'kN', 'design resistance of one fastener, all its shear planes', '2.4.3; 8.2.3', { sym: 'F_v,Rd' }) !== undefined ? `F_Rd${x}` : null;
+  }
+  // the group and the forces on it
+  function group(C, D) {
+    if (C.has('M_z')) return;
+    geometry(C, D);
+    const Lo = D.inp.layout || {}, A = D.inp.act || {};
+    C.head('The group of fasteners');
+    C.input('n_f', D.pts.length, '', `fasteners (${Lo.m} column${+Lo.m > 1 ? 's' : ''} along the grain × ${Lo.n} row${+Lo.n > 1 ? 's' : ''}${(Lo.omit || []).length ? `, ${Lo.omit.length} left out` : ''})`, '', { sym: 'n' });
+    C.given('x_c', D.xc, 'mm', 'centroid of the group from the end of the member', 'the mean of the fasteners’ positions', '', { sym: 'x_c' });
+    C.given('y_c', D.yc, 'mm', 'and above the bottom', 'the mean of the fasteners’ positions', '', { sym: 'y_c' });
+    if (D.Ip > 0) C.given('I_p', D.Ip, 'mm2', 'polar moment of the group, Σr²', 'summed over the fasteners', '', { sym: 'Σr²' });
+    C.head('Design forces (ULS)');
+    C.input('V_Ed', D.V / 1e3, 'kN', 'shear across the grain', ''); C.input('N_Ed', D.N / 1e3, 'kN', 'axial force along the grain, tension positive', '');
+    if (A.g != null && A.g !== '') { C.input('g_e', +A.g, 'mm', 'from the line of zero moment to the end of the member', '', { sym: 'g' }); C.calc('e_g', 'g_e + x_c', D.e, 'mm', 'to the centroid of the group', '', { sym: 'e' }); }
+    else C.input('e_g', D.e, 'mm', 'from the line of zero moment to the centroid of the group', '', { sym: 'e' });
+    C.input('M_add', +A.M || 0, 'kNm', 'added moment', '', { sym: 'M_add' });
+    C.calc('M_z', '-V_Ed*e_g + M_add', D.Mz / 1e6, 'kNm', 'moment on the group: its resultant through the line of zero moment', '', { sym: 'M' });
+  }
+  // the force on fastener p (x and y named with sfx)
+  function force(C, D, p, x) {
+    group(C, D);
+    C.given(`x_${x}`, p.x, 'mm', 'its distance from the end of the member', 'the layout', '', { sym: 'x' }); C.given(`y_${x}`, p.y, 'mm', 'and above the bottom', 'the layout', '', { sym: 'y' });
+    const mo = D.Ip > 0;
+    C.calc(`F_x${x}`, mo ? `-N_Ed/n_f - M_z*(y_${x} - y_c)/I_p` : '-N_Ed/n_f', p.Fx / 1e3, 'kN', 'component along the grain', '', { sym: 'F_x' });
+    C.calc(`F_y${x}`, mo ? `V_Ed/n_f + M_z*(x_${x} - x_c)/I_p` : 'V_Ed/n_f', p.Fy / 1e3, 'kN', 'component across the grain', '', { sym: 'F_y' });
+  }
+
+  function fastZone(D) {
+    const W = D.W, ck = D.checks.find(k => k.id === 'f'), C = pre('The most loaded fastener');
+    fastener(C, D);
+    C.head(`The fastener in row ${W.i + 1}, column ${W.j + 1}`);
+    force(C, D, W, 'w');
+    C.calc('F_w', 'SQRT(F_xw^2 + F_yw^2)', W.F / 1e3, 'kN', 'its force', '', { sym: 'F' });
+    C.calc('alpha_w', 'IF(ABS(F_xw) > 0, ATAN(ABS(F_yw)/ABS(F_xw)), PI()/2)*180/PI() [#deg]', W.alpha, 'deg', 'its angle to the grain', '', { sym: 'α' });
+    C.head('Its resistance at that angle');
+    resist(C, D, W.R, 'alpha_w', 'w');
+    C.check('U_f', 'F_w/F_Rdw', ck.util, 'the most loaded fastener', '8.2.3, 8.31');
+    return { key: 'f', title: C.meta.title, sum: `F ${r2(W.F / 1e3)} kN at ${r2(W.alpha)}°`, util: ck.util, C };
+  }
+  function rowZone(D) {
+    const rw = D.rowW, ck = D.checks.find(k => k.id === 'row'), C = pre('Each row along the grain (8.34)'), m = +(D.inp.layout || {}).m;
+    fastener(C, D); group(C, D);
+    C.head(`Row ${rw.i + 1}`);
+    C.input('n_r', rw.n, '', 'fasteners in the row', '', { sym: 'n' });
+    if (m > 1) C.input('a_1', +(D.inp.layout || {}).a1, 'mm', 'spacing along the grain', '', { sym: 'a_1' }); else C.calc('a_1', '13*d', 13 * D.d, 'mm', 'one in the row: a₁ taken as 13d', '', { sym: 'a_1' });
+    C.calc('n_ef', 'MIN(n_r, n_r^0.9*(a_1/(13*d))^0.25)', rw.nef, '', 'effective number', '8.5.1.1(4) (8.34)', { sym: 'n_ef' });
+    C.given('F_xr', rw.Fx / 1e3, 'kN', 'the largest component along the grain in the row', 'the group’s forces, fastener by fastener', '', { sym: 'F_x' });
+    C.head('Resistance along the grain');
+    C.input('alpha_0', 0, 'deg', 'along the grain', '', { sym: 'α' });
+    resist(C, D, D.R0, 'alpha_0', '0');
+    C.check('U_row', 'F_xr/(n_ef/n_r*F_Rd0)', ck.util, 'each row along the grain', '8.1.2(4), 8.34');
+    return { key: 'row', title: C.meta.title, util: ck.util, C };
+  }
+  function timberZone(D) {
+    const ids = ['split', 'shear', 'bs', 'tn'].filter(id => D.checks.some(k => k.id === id)), ck = id => D.checks.find(k => k.id === id), M = D.M;
+    const C = pre('The timber at the connection');
+    S.material(C, M, [...(ids.includes('shear') ? ['fvk'] : []), ...(ids.includes('bs') || ids.includes('tn') ? ['ft0k', 'fvk'] : [])]); geometry(C, D); group(C, D);
+    S.kmod(C, D.sc, { kmod: D.kmod, dur: ['permanent', 'long', 'medium', 'short', 'instantaneous'].indexOf(D.inp.dur || 'medium') });
+    const ys = D.pts.map(p => p.y);
+    if (ids.includes('split')) {
+      C.head('Splitting (8.1.4)');
+      if (D.V > 0) { C.given('y_lo', Math.min(...ys), 'mm', 'the lowest fastener above the bottom', 'the layout', '', { sym: 'y_min' }); C.calc('h_e', 'h - y_lo', D.h - Math.min(...ys), 'mm', 'from the loaded (top) edge to the lowest fastener', '8.1.4', { sym: 'h_e' }); }
+      else C.given('h_e', Math.max(...ys), 'mm', 'from the loaded (bottom) edge to the highest fastener', 'the layout', '8.1.4', { sym: 'h_e' });
+      const F90 = 14 * D.bt * Math.sqrt((D.V > 0 ? D.h - Math.min(...ys) : Math.max(...ys)) / (1 - (D.V > 0 ? D.h - Math.min(...ys) : Math.max(...ys)) / D.h));
+      C.calc('F_90Rk', '14*b_t[#mm]*SQRT(h_e[#mm]/(1 - h_e/h)) [#N]', F90, 'N', 'splitting capacity', '8.1.4 (8.4)', { sym: 'F_90,Rk' });
+      C.check('U_split', 'ABS(V_Ed)/(k_mod*F_90Rk/gamma_M)', ck('split').util, 'splitting', '8.1.4');
+    }
+    if (ids.includes('shear')) {
+      C.head('Shear of the timber (6.1.7)');
+      C.input('k_cr', M.kcr, '', 'crack factor', '6.1.7(2)', { sym: 'k_cr' });
+      C.calc('tau_d', '1.5*ABS(V_Ed)/(k_cr*b_t*h)', 1.5 * Math.abs(D.V) / (M.kcr * D.bt * D.h), 'N/mm2', 'shear stress, net of the slots', '6.1.7', { sym: 'τ_d' });
+      C.check('U_shear', 'tau_d/(k_mod*f_vk/gamma_M)', ck('shear').util, 'shear of the timber at the connection', '6.1.7');
+    }
+    if (ids.includes('bs')) {
+      const Lo = D.inp.layout || {}, m = +Lo.m, n = +Lo.n;
+      C.head('Block and plug shear (Annex A)');
+      fastener(C, D);
+      C.input('m_c', m, '', 'columns along the grain', '', { sym: 'm' }); C.input('n_rw', n, '', 'rows', '', { sym: 'n' });
+      C.input('a_1b', m > 1 ? +Lo.a1 : 0, 'mm', 'spacing along the grain', '', { sym: 'a_1' }); C.input('a_2b', n > 1 ? +Lo.a2 : 0, 'mm', 'spacing across', '', { sym: 'a_2' }); C.input('a_3', +Lo.a3, 'mm', 'end distance', '', { sym: 'a_3' });
+      C.calc('L_t', '(n_rw - 1)*MAX(0, a_2b - d)', (n - 1) * Math.max(0, (n > 1 ? +Lo.a2 : 0) - D.d), 'mm', 'net length of the tension face', 'Annex A', { sym: 'L_net,t' });
+      C.calc('L_v', '2*MAX(0, a_3 + (m_c - 1)*a_1b - (m_c - 0.5)*d)', 2 * Math.max(0, +Lo.a3 + (m - 1) * (m > 1 ? +Lo.a1 : 0) - (m - 0.5) * D.d), 'mm', 'net length of the shear faces', 'Annex A', { sym: 'L_net,v' });
+      C.input('alpha_0', 0, 'deg', 'along the grain', '', { sym: 'α' });
+      FS.fh(C, 'f_hk0', { kind: 'timber', lvl: D.M.kind === 'lvl' }, { dowel: true }, D.R0.fh, { d: 'd', rho: 'rho_k', alpha: 'alpha_0', sfx: '0', what: ' along the grain', sym: 'f_h,0,k' });
+      const pieces = D.inside ? [['o', 't_1', D.t1, D.R0.planes[0].mode, true, 2], ...(D.np > 1 ? [['i', 't_2', D.t2, D.R0.planes[2].mode, false, D.np - 1]] : [])] : [['o', 'b', D.b, D.R0.planes[0].mode, false, 1]];
+      const terms = [];
+      let Fbs = 0;
+      for (const [k, t, tv, mode, outer, count] of pieces) {
+        const L = (n - 1) * Math.max(0, (n > 1 ? +Lo.a2 : 0) - D.d), Lv = 2 * Math.max(0, +Lo.a3 + (m - 1) * (m > 1 ? +Lo.a1 : 0) - (m - 0.5) * D.d), fh = D.R0.fh.v;
+        let tef = tv, full = true;
+        if (outer && mode === 'g') { tef = tv * (Math.sqrt(2 + D.My / (fh * D.d * tv * tv)) - 1); full = false; C.calc(`t_ef${k}`, `${t}*(SQRT(2 + M_yRk/(f_hk0*d*${t}^2)) - 1)`, tef, 'mm', `effective thickness, the outer piece failing in mode g`, 'A.4 (A.3)', { sym: 't_ef' }); }
+        else if (outer && mode === 'h') { tef = 2 * Math.sqrt(D.My / (fh * D.d)); full = false; C.calc(`t_ef${k}`, '2*SQRT(M_yRk/(f_hk0*d))', tef, 'mm', 'effective thickness, the outer piece failing in mode h', 'A.4', { sym: 't_ef' }); }
+        const Anv = full ? Lv * tv : Lv / 2 * (L + 2 * tef), Fp = Math.max(1.5 * L * tv * M.ft0k, 0.7 * Anv * M.fvk);
+        C.calc(`A_v${k}`, full ? `L_v*${t}` : `L_v/2*(L_t + 2*t_ef${k})`, Anv, 'mm2', `net shear area of ${outer ? 'an outer' : D.inside ? 'an inner' : 'the'} piece${full ? ' (its full thickness, mode ' + mode + ')' : ''}`, 'A.3', { sym: 'A_net,v' });
+        C.calc(`F_bs${k}`, `MAX(1.5*L_t*${t}*f_t0k, 0.7*A_v${k}*f_vk)`, Fp / 1e3, 'kN', 'its block shear capacity', 'Annex A (A.1)', { sym: 'F_bs,Rk' });
+        terms.push(count > 1 ? (k === 'i' ? '(n_p - 1)*' : '2*') + `F_bs${k}` : `F_bs${k}`); Fbs += count * Fp;
+      }
+      C.calc('F_bsk', terms.join(' + '), Fbs / 1e3, 'kN', 'the pieces together', 'Annex A', { sym: 'F_bs,Rk' });
+      C.check('U_bs', 'N_Ed/(k_mod*F_bsk/gamma_M)', ck('bs').util, 'block and plug shear', 'Annex A');
+    }
+    if (ids.includes('tn')) {
+      C.head('Net section in tension (6.1.2)');
+      if (!C.has('n_rw')) C.input('n_rw', +(D.inp.layout || {}).n, '', 'rows', '', { sym: 'n' });
+      if (!C.has('d')) C.input('d', D.d, 'mm', 'fastener diameter', '');
+      C.calc('A_net', 'b_t*h - n_rw*d*b_t', D.bt * D.h - +(D.inp.layout || {}).n * D.d * D.bt, 'mm2', 'net area', '6.1.2', { sym: 'A_net' });
+      S.kh(C, M, 'k_ht', D.b > D.h ? 'b' : 'h', Math.max(D.b, D.h), 'k_h', 'on the larger dimension');
+      if (D.b > D.h) C.note('k_h is taken on the breadth, the larger dimension.');
+      C.check('U_tn', 'N_Ed/A_net/(k_ht*k_mod*f_t0k/gamma_M)', ck('tn').util, 'timber net section in tension', '6.1.2');
+    }
+    return { key: 'timber', title: C.meta.title, util: Math.max(...ids.map(id => ck(id).util)), C };
+  }
+  function spacingZone(D) {
+    const ck = D.checks.find(k => k.id === 'sp'), C = pre('Spacings and distances in the timber'), Lo = D.inp.layout || {}, m = +Lo.m, n = +Lo.n;
+    const req = { a1: 0, a2: 0, a3: 0, a4t: 0, a4c: 0 }, sk = D.kind === 'bolt' ? 'bolt' : 'dowel';
+    for (const p of D.pts) { const s = EC5F.spacing(sk, D.d, D.M.rhok, { alpha: p.alpha }); req.a1 = Math.max(req.a1, s.a1); req.a2 = Math.max(req.a2, s.a2); req.a3 = Math.max(req.a3, D.N > 0 || p.Fx < -1e-9 ? s.a3t : s.a3c); req.a4t = Math.max(req.a4t, s.a4t); req.a4c = Math.max(req.a4c, s.a4c); }
+    const src = EC5F.spacing(sk, D.d, D.M.rhok).src, top = +Lo.a4 + (n - 1) * (n > 1 ? +Lo.a2 : 0), eT = D.V >= 0 ? D.h - top : +Lo.a4, eC = D.V >= 0 ? +Lo.a4 : D.h - top;
+    C.head(`Required at the angles that occur (${src})`);
+    const parts = [];
+    const pair = (k, nm, g, r) => { C.input(`g_${k}`, g, 'mm', nm, '', { sym: `${nm.split(' ')[0]}` }); C.given(`r_${k}`, r, 'mm', 'the least', `${src}, the largest over the fasteners’ angles`, src, { sym: `${nm.split(' ')[0]},min` }); parts.push(`r_${k}/g_${k}`); };
+    if (m > 1) pair('a1', 'a₁ along the grain', +Lo.a1, req.a1);
+    if (n > 1) pair('a2', 'a₂ across the grain', +Lo.a2, req.a2);
+    pair('a3', 'a₃ to the end', +Lo.a3, req.a3); pair('a4t', 'a₄,t to the loaded edge', eT, req.a4t); pair('a4c', 'a₄,c to the unloaded edge', eC, req.a4c);
+    C.check('U_sp', `MAX(${parts.join(', ')})`, ck.util, 'spacings and distances in the timber', src);
+    return { key: 'sp', title: C.meta.title, util: ck.util, C };
+  }
+  function platesZone(D) {
+    const ids = ['pb', 'pf', 'pn'].filter(id => D.checks.some(k => k.id === id)), ck = id => D.checks.find(k => k.id === id), C = pre('The plates (EN 1993-1-8, 1-1)'), Lo = D.inp.layout || {}, m = +Lo.m, n = +Lo.n, P = D.inp.plates || {};
+    geometry(C, D); group(C, D);
+    C.head('Plates');
+    C.input('f_yp', D.fyp, 'N/mm2', `yield strength, ${P.grade || 'S275'}`, 'BS EN 10025-2', { sym: 'f_y' }); C.input('f_up', D.fup, 'N/mm2', 'ultimate strength', 'BS EN 10025-2', { sym: 'f_u' });
+    C.input('h_p', D.hp, 'mm', 'depth of the plates', '', { sym: 'h_p' }); C.input('n_s', D.inside ? D.np : 2, '', 'plates sharing each fastener’s force', '', { sym: 'n_plates' });
+    C.input('gamma_M0', 1.0, '', '', 'UK NA to EN 1993-1-1', { sym: 'γ_M0' }); C.input('gamma_M2', 1.25, '', '', 'UK NA to EN 1993-1-8', { sym: 'γ_M2' });
+    if (!C.has('d')) C.input('d', D.d, 'mm', 'fastener diameter', '');
+    C.input('c_h', D.d0 - D.d, 'mm', `hole clearance (${D.kind === 'bolt' ? 'bolts' : 'dowels'})`, 'EN 1993-1-8', { sym: 'c' }); C.calc('d_0', 'd + c_h', D.d0, 'mm', 'hole diameter', '', { sym: 'd_0' });
+    if (ids.includes('pb')) {
+      C.head('Bearing of the fasteners on the plates (Table 3.4)');
+      C.input('e_1', D.e1p, 'mm', 'end distance in the plate', '', { sym: 'e_1' }); C.input('e_2', D.e2p, 'mm', 'edge distance', '', { sym: 'e_2' });
+      if (m > 1) C.input('p_1', +Lo.a1, 'mm', 'pitch along the force', '', { sym: 'p_1' }); if (n > 1) C.input('p_2', +Lo.a2, 'mm', 'pitch across', '', { sym: 'p_2' });
+      C.input('f_ub', D.kind === 'bolt' ? +(D.inp.fast || {}).fu : D.fu, 'N/mm2', 'ultimate strength of the fastener', '', { sym: 'f_ub' });
+      C.calc('alpha_b', `MIN(e_1/(3*d_0), ${m > 1 ? 'p_1/(3*d_0) - 0.25' : '1'}, f_ub/f_up, 1)`, Math.min(D.e1p / (3 * D.d0), m > 1 ? +Lo.a1 / (3 * D.d0) - 0.25 : 1, (D.kind === 'bolt' ? +(D.inp.fast || {}).fu : D.fu) / D.fup, 1), '', '', 'EN 1993-1-8 Table 3.4', { sym: 'α_b' });
+      C.calc('k_1', `MIN(2.8*e_2/d_0 - 1.7, ${n > 1 ? '1.4*p_2/d_0 - 1.7' : '2.5'}, 2.5)`, Math.min(2.8 * D.e2p / D.d0 - 1.7, n > 1 ? 1.4 * +Lo.a2 / D.d0 - 1.7 : 2.5, 2.5), '', '', 'EN 1993-1-8 Table 3.4', { sym: 'k_1' });
+      C.calc('F_bRd', 'k_1*alpha_b*f_up*d*t_s/gamma_M2', (Math.min(2.8 * D.e2p / D.d0 - 1.7, n > 1 ? 1.4 * +Lo.a2 / D.d0 - 1.7 : 2.5, 2.5)) * Math.min(D.e1p / (3 * D.d0), m > 1 ? +Lo.a1 / (3 * D.d0) - 0.25 : 1, (D.kind === 'bolt' ? +(D.inp.fast || {}).fu : D.fu) / D.fup, 1) * D.fup * D.d * D.ts / 1.25 / 1e3, 'kN', 'bearing resistance in one plate', 'EN 1993-1-8 Table 3.4', { sym: 'F_b,Rd' });
+      C.given('F_max', Math.max(...D.pts.map(p => p.F)) / 1e3, 'kN', 'the largest force on a fastener', 'the group’s forces, fastener by fastener', '', { sym: 'F_max' });
+      C.check('U_pb', 'F_max/n_s/F_bRd', ck('pb').util, 'bearing on the plates', 'EN 1993-1-8 Table 3.4');
+    }
+    if (ids.includes('pf')) {
+      C.head('The plates at the end face of the timber (EN 1993-1-1 6.2)');
+      C.calc('M_f', 'ABS(-V_Ed*(e_g - x_c) + M_add)', Math.abs(-D.V * (D.e - D.xc) + (+(D.inp.act || {}).M || 0) * 1e6) / 1e6, 'kNm', 'moment at the end face', '', { sym: 'M_f' });
+      C.calc('A_g', 'n_s*t_s*h_p', (D.inside ? D.np : 2) * D.ts * D.hp, 'mm2', 'area of the plates', '', { sym: 'A' });
+      C.calc('W_g', 'n_s*t_s*h_p^2/6', (D.inside ? D.np : 2) * D.ts * D.hp * D.hp / 6, 'mm3', 'their elastic modulus', '', { sym: 'W_el' });
+      C.check('U_pf', 'MAX(ABS(N_Ed)/(A_g*f_yp/gamma_M0) + M_f/(W_g*f_yp/gamma_M0), ABS(V_Ed)/(A_g*f_yp/SQRT(3)/gamma_M0))', ck('pf').util, 'the plates at the end face: N/N_pl + M/M_el, and V/V_pl', 'EN 1993-1-1 6.2');
+    }
+    if (ids.includes('pn')) {
+      C.head('Net section of the plates in tension (6.2.3)');
+      if (!C.has('n_rw')) C.input('n_rw', n, '', 'rows', '', { sym: 'n' });
+      C.calc('A_np', 'n_s*t_s*(h_p - n_rw*d_0)', (D.inside ? D.np : 2) * D.ts * (D.hp - n * D.d0), 'mm2', 'net area', 'EN 1993-1-1 6.2.3', { sym: 'A_net' });
+      C.check('U_pn', 'N_Ed/(0.9*A_np*f_up/gamma_M2)', ck('pn').util, 'plate net section in tension', 'EN 1993-1-1 6.2.3');
+    }
+    return { key: 'plates', title: C.meta.title, util: Math.max(...ids.map(id => ck(id).util)), C };
+  }
+  const ZONE = { f: 'f', row: 'row', split: 'timber', shear: 'timber', bs: 'timber', tn: 'timber', sp: 'sp', pb: 'plates', pf: 'plates', pn: 'plates' };
+  function zones(D) {
+    const has = id => D.checks.some(k => k.id === id), Z = [fastZone(D)];
+    if (has('row')) Z.push(rowZone(D));
+    if (['split', 'shear', 'bs', 'tn'].some(has)) Z.push(timberZone(D));
+    Z.push(spacingZone(D), platesZone(D));
+    return Z;
+  }
+  return { zones, ZONE };
+})();
+if (typeof module !== 'undefined') module.exports = { GlulamPlateScript };
 
 </script>
 <script id="drawing-code">
@@ -1079,14 +1951,21 @@ function verdict(D) {
   return `<div class="verdict ${D.utilMax > 1 ? 'fail' : ''}"><div><div class="big">${D.utilMax > 1 ? 'FAIL' : 'PASS'} &nbsp;${ufmt(D.utilMax)}</div><div class="sub">Governs: ${esc(W.name.charAt(0).toLowerCase() + W.name.slice(1))} (${esc(W.ref)})<br>${summary(D)}</div></div></div>`;
 }
 let last = null;
+// the full calculation, part by part; the drawings go with the first part to CalcPad (as pictures)
+document.head.insertAdjacentHTML('beforeend', `<style>${CalcScript.CSS}</style>`);
+const cpMeta = title => { const s = collect(); return { project: s.pName, job: s.pJob, by: s.pBy, sheet: s.pRef, title }; };
+const cpName = t => { const s = collect(); return [s.pJob, s.pRef, t].filter(Boolean).join(' '); };
+CalcScript.wire($('results'), () => last && last.Z, cpMeta, cpName, 'Concealed plate connection calculations');
+const zonesFor = D => CalcScript.pictures(GlulamPlateScript.zones(D), DrawCPG.report(D), () => 'f');
 function runIt() {
-  const inp = input(), D = GlulamPlate.design(inp); last = { D, inp };
+  const inp = input(), D = GlulamPlate.design(inp); last = { D, inp, Z: zonesFor(D) };
   $('results').innerHTML = verdict(D) + `<div id="drawings">${DrawCPG.html(D)}</div>`
     + `<div class="dlabel">Checks</div><div class="checks">${D.checks.map(bar).join('')}</div>`
     + `<div class="dlabel">Each fastener, most loaded first</div>${table(D)}`
     + `<div class="dlabel">Calculation</div>${stepsHTML(D.steps)}`
     + (D.warnings.length ? `<div class="note">${D.warnings.map(sub).join('<br>')}</div>` : '')
-    + `<div class="note">${notes().join(' ')}</div><button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
+    + `<div class="note">${notes().join(' ')}</div>`
+    + `<div class="dlabel">Full calculation (open a part)</div>${CalcScript.zonesHTML(last.Z)}<button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
   $('printBtn').onclick = () => { $('report').innerHTML = report(); window.print(); };
 }
 const notes = () => ['The group shares V, N and M elastically about its centroid (every fastener equally stiff); each fastener is checked at the angle of its own force to the grain, and each row along the grain against n<sub>ef</sub> (8.34) for its components along the grain. The shear planes add: the outer pieces each side of a slotted plate by 8.11, pieces between two plates by 8.12/8.13. Block shear (Annex A) for tension toward the end; splitting (8.1.4) for the shear across the grain.',
@@ -1108,6 +1987,7 @@ function report() {
   b += `<div class="rs"><h2>Calculation</h2>${D.steps.map(x => rl(sub(x.text), esc(x.ref), '')).join('')}${table(D)}</div>`;
   b += `<div class="rs"><h2>Checks</h2>${D.checks.map(c => rl(`${esc(c.name)}: ${sub(c.note)}`, esc(c.ref), okng(c.util))).join('')}` + rl(`<b>${D.utilMax > 1 ? 'FAIL' : 'PASS'}</b>, largest utilisation`, '', okng(D.utilMax)) + '</div>';
   if (D.warnings.length) b += `<div class="rs"><p class="rp">${D.warnings.map(sub).join(' ')}</p></div>`;
+  b += `<div class="rs"><h2>Full calculation</h2></div>` + CalcScript.sheetHTML(last.Z);
   b += `<div class="rs"><p class="rp">${notes().join(' ')}</p><p class="rp" style="color:#555">Generated by EngineeringTools &mdash; Concealed Plate Glulam Connections.</p></div>`;
   return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
 }

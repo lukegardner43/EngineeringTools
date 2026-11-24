@@ -1,9 +1,9 @@
-// Loads the EC5 core and the member engine out of "Timber Member.html" (tests run against the shipped page).
+// Loads the EC5 core, the member engine and its full calculation out of "Timber Member.html" (tests run against the shipped page).
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const html = fs.readFileSync(path.join(__dirname, '..', '..', 'Timber Member.html'), 'utf8');
 const m = html.match(/<script id="engine">([\s\S]*?)<\/script>/);
 if (!m) throw new Error('engine block not found');
-const sandbox = { console, Math, Array, Object, Number, Error, JSON, Infinity, String, Set };
+const sandbox = { console, Math, Array, Object, Number, Error, JSON, Infinity, String, Set, Map, Promise, isFinite, parseFloat };
 vm.createContext(sandbox);
-vm.runInContext(m[1] + '\n;this.EC5 = EC5; this.TimberMember = TimberMember;', sandbox);
-module.exports = { EC5: sandbox.EC5, TimberMember: sandbox.TimberMember };
+vm.runInContext(m[1] + '\n;this.EC5 = EC5; this.TimberMember = TimberMember; this.CalcScript = CalcScript; this.TimberMemberScript = TimberMemberScript;', sandbox);
+module.exports = { EC5: sandbox.EC5, TimberMember: sandbox.TimberMember, CalcScript: sandbox.CalcScript, TimberMemberScript: sandbox.TimberMemberScript };
