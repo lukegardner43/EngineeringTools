@@ -101,6 +101,93 @@ const block = (h, id) => h.match(new RegExp(`<script id="${id}">([\\s\\S]*?)</sc
     const w2 = page(BEAM, { 'et-steel-beam-v1': JSON.stringify(old) }), d2 = w2.document;
     truth('a state saved with a cantilever length opens as a free end', d2.getElementById('endL').value === 'free' && [...d2.querySelectorAll('#spanRows .L')].map(e => e.value).join(',') === '1.5,6');
     truth('no script errors (supports)', w.errs.length === 0 && w2.errs.length === 0); }
+  // the Blue Book series added: bearing piles (UKBP) and the channels British Steel no longer lists (Corus 2005 tables)
+  { const w = page(MEM), d = w.document, $ = id => d.getElementById(id), sel = (id, v) => { $(id).value = v; $(id).onchange(); };
+    const opt = v => [...$('series').options].find(o => o.value === v);
+    truth('series: UKBP offered after UKC', !!opt('UKBP') && opt('UKBP').previousElementSibling.value === 'UKC');
+    sel('series', 'UKBP');
+    truth('UKBP: the 17 bearing piles listed', $('section').options.length === 17 && [...$('section').options].every(o => / UKBP$/.test(o.value)) && /British Steel/.test($('secInfo').textContent));
+    $('section').value = '356×368×109 UKBP'; $('section').onchange();
+    const set = (id, v) => { $(id).value = v; $(id).dispatchEvent(new w.Event('input', { bubbles: true })); };
+    set('bN', '2000'); set('bMyB', '0'); set('bMyT', '150'); set('bMzB', '0'); set('bMzT', '0');
+    await calc(w); const r = $('results').textContent;
+    truth('UKBP: a Class 4 flange in S355 designed with A_eff and W_eff, no error', !$('results').querySelector('.err') && /Class 4/.test(r) && w.eval('lastZ').some(z => z.C.items.some(it => it.name === 'A_eff')));
+    $('printBtn').click(); truth('UKBP: the A4 sheet names the bearing piles datasheet', /universal bearing piles \(UBP\) datasheet/.test($('report').textContent));
+    sel('series', 'PFC');
+    truth('PFC: 16 channels, the Corus 2005 sizes among them, the default kept (230×75×26)', $('section').options.length === 16 && $('section').options[0].value === '100×50×10 PFC' && $('section').options[15].value === '430×100×64 PFC' && $('section').value === '230×75×26 PFC');
+    $('section').value = '430×100×64 PFC'; $('section').onchange();
+    truth('PFC 430×100×64: the summary names the Corus tables', /Corus section tables \(2005\)/.test($('secInfo').textContent));
+    set('bN', '0'); set('bMyB', '60'); set('bMyT', '60'); await calc(w);
+    truth('PFC 430×100×64: designed', !$('results').querySelector('.err') && /PASS|FAIL/.test($('results').textContent));
+    $('printBtn').click(); truth('PFC 430×100×64: the A4 sheet cites the Corus tables', /Corus Construction &? ?Industrial|Corus Construction/.test($('report').textContent) && /British Steel no longer lists/.test($('report').textContent));
+    truth('no script errors (UKBP, PFC)', w.errs.length === 0); }
+  // angles, single and back to back, in axial force
+  { const w = page(MEM), d = w.document, $ = id => d.getElementById(id), sel = (id, v) => { $(id).value = v; $(id).onchange ? $(id).onchange() : $(id).dispatchEvent(new w.Event('change', { bubbles: true })); };
+    const set = (id, v) => { $(id).value = v; $(id).dispatchEvent(new w.Event('input', { bubbles: true })); $(id).dispatchEvent(new w.Event('change', { bubbles: true })); };
+    const hid = id => $(id).classList.contains('hidden') || !!$(id).closest('.hidden');
+    truth('angles: the four series offered', ['EA', 'UA', '2EA', '2UA'].every(v => [...$('series').options].some(o => o.value === v)));
+    truth('angles: not on the Steel Beam page', !/<option value="EA">/.test(BEAM) && /<option value="EA">/.test(MEM));
+    sel('series', 'EA');
+    truth('EA: 20 equal angles, 100×100×10 picked', $('section').options.length === 20 && $('section').value === '100×100×10 EA' && /Corus section tables/.test($('secInfo').textContent));
+    truth('EA: the moments, buckling lengths and interaction factors hidden, the angle inputs shown', hid('bIbox') && hid('annexBox') && !hid('angBox') && hid('aPairBox') && !hid('aMethodBox') && hid('aLegBox') && !hid('aK3Box'));
+    set('bL', '3'); set('bN', '150');
+    await calc(w); let r = $('results').textContent;
+    truth('EA strut by BB.1.2: designed, Class 4 in S355, buckling about v-v governs', !$('results').querySelector('.err') && /PASS|FAIL/.test(r) && /Class 4/.test(r) && /v-v \(BB\.1\.2\)/.test(r));
+    truth('EA: the section and the member drawn', /Section, axes and shear centre/.test(r) && /Member, axial force and end connection/.test(r) && $('results').querySelectorAll('svg').length >= 2);
+    truth('EA: the calculation in two parts', w.eval('lastZ').map(z => z.key).join() === 'section,flexural');
+    $('printBtn').click(); const rep = $('report').textContent;
+    truth('EA: the A4 sheet: basis, summary and the full calculation', /BS EN 1993-1-8/.test(rep) && /Summary/.test(rep) && /Full calculation/.test(rep) && /Corus Construction/.test(rep));
+    sel('aMethod', 'Lcr');
+    truth('EA by buckling lengths: L_cr,u and L_cr,v only', hid('aK3Box') && /cr,u/.test($('aK1L').textContent));
+    await calc(w); r = $('results').textContent;
+    truth('EA by buckling lengths: torsional-flexural listed', /torsional-flexural/.test(r) && !$('results').querySelector('.err'));
+    sel('aMethod', 'BB'); set('aN', '1'); await calc(w);
+    truth('EA: one bolt in compression by BB.1.2 refused (6.2.9)', /6\.2\.9/.test(($('results').querySelector('.err') || {}).textContent || ''));
+    set('bN', '-200'); await calc(w); r = $('results').textContent;
+    truth('EA in tension, one bolt: (3.11), net section and block tearing', !$('results').querySelector('.err') && /Net section/.test(r) && /Block tearing/.test(r) && /1 bolt/.test(r));
+    sel('aConn', 'welded'); truth('welded: the bolt inputs hidden', hid('aBoltBox'));
+    await calc(w); truth('EA welded in tension: no block tearing', !/Block tearing/.test($('results').textContent) && /4\.13/.test($('results').textContent));
+    sel('series', 'UA'); truth('UA: 21 unequal angles, the connected leg asked', $('section').options.length === 21 && !hid('aLegBox'));
+    sel('aLeg', 'short'); await calc(w);
+    truth('UA by its short leg: the equal angle of that leg', /short leg: taken as a 90×90×10 equal angle/.test($('results').textContent));
+    sel('series', '2UA'); sel('aConn', 'bolts'); set('aN', '2');
+    truth('2UA: the gap and packs asked, no method or leg', !hid('aPairBox') && hid('aMethodBox') && hid('aLegBox') && hid('aK3Box') && /cr,y/.test($('aK1L').textContent));
+    set('bN', '300'); set('aPack', '0.25'); await calc(w); r = $('results').textContent;
+    truth('2UA strut: torsional-flexural about z-z, curve c, the packs checked', !$('results').querySelector('.err') && /torsional-flexural/.test(r) && /curve c/.test(r) && /Interconnections of the pair/.test(r) && w.eval('lastZ').some(z => z.key === 'packs'));
+    truth('2UA: the summary gives both radii of gyration', /i[yz]? ?\d/.test($('secInfo').textContent) && /s = 10 mm/.test($('secInfo').textContent));
+    set('aGap', '15'); truth('2UA: the gap updates the summary', /s = 15 mm/.test($('secInfo').textContent));
+    const st = w.eval('collect()'); truth('angles: the inputs saved', st.Ang && st.Ang.gap === 15 && st.Ang.conn === 'bolts' && st.series === '2UA');
+    st.Ang.e2 = 45; w.eval('applyState')(st); truth('angles: the inputs restored', $('aE2').value === '45' && $('series').value === '2UA' && !hid('angBox'));
+    sel('series', 'UKC'); truth('back to UKC: the member inputs return', !hid('bIbox') && hid('angBox') && !hid('annexBox'));
+    truth('no script errors (angles)', w.errs.length === 0); }
+  // elliptical hollow sections and asymmetric beams (ASB)
+  { const w = page(MEM), d = w.document, $ = id => d.getElementById(id), sel = (id, v) => { $(id).value = v; $(id).onchange(); };
+    const set = (id, v) => { $(id).value = v; $(id).dispatchEvent(new w.Event('input', { bubbles: true })); };
+    const opt = v => [...$('series').options].find(o => o.value === v);
+    truth('EHS: offered with the hot-finished hollow sections', !!opt('EHS-H') && opt('EHS-H').previousElementSibling.value === 'CHS-H');
+    sel('series', 'EHS-H');
+    truth('EHS: the eleven Celsius sizes', $('section').options.length === 11 && /Tata Steel|BS EN 10210-2/.test($('secInfo').textContent));
+    $('section').value = '500×250×10'; $('section').onchange();
+    set('bN', '800'); set('bMyB', '0'); set('bMyT', '150'); set('bMzB', '0'); set('bMzT', '0'); await calc(w);
+    truth('EHS 500×250×10 in compression and bending: Class 4, the reduced strength A x, no error', !$('results').querySelector('.err') && /Class 4/.test($('results').textContent) && w.eval('lastZ').some(z => z.C.items.some(it => it.name === 'xe_s')));
+    truth('EHS: the section drawn as an ellipse', /a[\d.]+ [\d.]+ 0 1 0/.test($('results').innerHTML));
+    $('printBtn').click(); truth('EHS: the A4 sheet names the source', /BS EN 10210-2/.test($('report').textContent));
+    truth('ASB: offered on the member page, after the tees; not on the beam page', !!opt('ASB') && opt('ASB').previousElementSibling.value === 'T-UKC' && !/<option value="ASB">/.test(BEAM));
+    sel('series', 'ASB');
+    truth('ASB: the ten British Steel sizes, 280 ASB 74 first', $('section').options.length === 10 && $('section').value === '280 ASB 74' && /British Steel/.test($('secInfo').textContent) && /z<sub>j<\/sub>|zj|z j/.test($('secInfo').innerHTML));
+    set('bN', '0'); set('bMyB', '-120'); set('bMyT', '40'); await calc(w);
+    const r = $('results').textContent;
+    truth('ASB hogging and sagging: each sign its class, Annex A not needed, no error', !$('results').querySelector('.err') && /Class 2 hogging/.test(r) && /Class 1 sagging/.test(r));
+    const Z = w.eval('lastZ');
+    truth('ASB: the calculation works out z_j and the shear centre, and checks LTB with them', Z.some(z => z.C.items.some(it => it.name === 'z_j')) && Z.some(z => z.C.items.some(it => it.name === 'M_cr0')) && Z.some(z => z.key === 'ltb'));
+    truth('ASB: the section drawn with two flanges', (h => (h.match(/ A[\d.]+ [\d.]+ 0 0 0 /g) || []).length >= 4)($('results').innerHTML));
+    set('bN', '600'); await calc(w);
+    truth('ASB with compression: Annex A, torsional-flexural buckling', !$('results').querySelector('.err') && w.eval('lastZ').some(z => z.key === 'interaction' && /Annex A/.test(z.title)) && w.eval('lastZ').some(z => z.C.items.some(it => it.name === 'N_crTF')));
+    $('printBtn').click(); const rep = $('report').textContent;
+    truth('ASB: the A4 sheet gives both flanges, the source and the scope', /ASB/.test(rep) && /asymmetric beams \(ASB\) datasheet/.test(rep) && /Slimflor composite and fire design are not covered/.test(rep) && /Top flange outstand/.test(rep) && /Bottom flange outstand/.test(rep));
+    const st = w.localStorage.getItem('et-steel-member-v1'), w2 = page(MEM, { 'et-steel-member-v1': st });
+    truth('ASB: restored', w2.document.getElementById('series').value === 'ASB' && w2.document.getElementById('section').value === '280 ASB 74');
+    truth('no script errors (EHS, ASB)', w.errs.length === 0 && w2.errs.length === 0); }
   // historic sections and the steel's strength
   { const w = page(MEM), d = w.document, $ = id => d.getElementById(id), res = () => $('results').textContent, sel = (id, v) => { $(id).value = v; $(id).onchange(); };
     const og = [...$('series').querySelectorAll('optgroup')].find(o => /Historic/.test(o.label));

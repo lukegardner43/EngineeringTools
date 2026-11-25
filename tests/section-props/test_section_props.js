@@ -35,12 +35,13 @@ for (const [h, b, t, cold] of [[100, 100, 5, false], [300, 200, 10, false], [200
     cnt++;
   }
   console.log(`UKB/UKC ${cnt} sections vs British Steel table: worst ${Object.entries(worst).map(([k, v]) => k + ' ' + (v * 100).toFixed(2) + '%').join(', ')}`); }
-// channels against the British Steel PFC table
+// channels against the British Steel PFC table (and the four sizes from the Corus 2005 tables, which give I_w to 0.0001 dm⁶:
+// the tolerance then covers half that unit)
 { let worst = {};
   for (const row of PFC_DATA) {
     const [name, mass, h, b, tw, tf, rr, A, Iy, Iz, Wely, Welz, Wply, Wplz, It, Iw, cy] = row;
     const r = P('channel', { h, b, tf, tw, r: rr });
-    for (const [k, g, x, tol] of [['A', r.A / 1e2, A, 0.01], ['Iy', r.Iy / 1e4, Iy, 0.01], ['Iz', r.Iz / 1e4, Iz, 0.01], ['Welz', r.Welz / 1e3, Welz, 0.01], ['Wply', r.Wply / 1e3, Wply, 0.01], ['Wplz', r.Wplz / 1e3, Wplz, 0.01], ['cy', r.yc / 10, cy, 0.01], ['Iw', r.Iw / 1e12, Iw, 0.06]]) {
+    for (const [k, g, x, tol] of [['A', r.A / 1e2, A, 0.01], ['Iy', r.Iy / 1e4, Iy, 0.01], ['Iz', r.Iz / 1e4, Iz, 0.01], ['Welz', r.Welz / 1e3, Welz, 0.01], ['Wply', r.Wply / 1e3, Wply, 0.01], ['Wplz', r.Wplz / 1e3, Wplz, 0.01], ['cy', r.yc / 10, cy, 0.01], ['Iw', r.Iw / 1e12, Iw, Math.max(0.06, 0.00005 / Iw)]]) {
       near(`${name} ${k}`, g, x, tol, true); worst[k] = Math.max(worst[k] || 0, Math.abs(g / x - 1)); } }
   console.log(`PFC ${PFC_DATA.length} sections vs British Steel table: worst ${Object.entries(worst).map(([k, v]) => k + ' ' + (v * 100).toFixed(2) + '%').join(', ')}`); }
 // equal angle: principal axes at 45 degrees; Iu + Iv = Iy + Iz

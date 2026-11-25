@@ -3,7 +3,7 @@
 // governs: Table 5.2 there, shear with shear buckling, tension or compression, bending with shear and axial force about
 // both axes, EN 1993-1-5 7.1; flexural, torsional and torsional-flexural buckling; lateral-torsional buckling of the
 // governing segment; the interaction of 6.3.3 by Annex B or Annex A) is pasted into CalcPad (headless, tests/calcpad)
-// and every value CalcPad works out must be the engine's own: set members of every shape (UKB, UKC, PFC, RHS, SHS, CHS,
+// and every value CalcPad works out must be the engine's own: set members of every shape (UKB, UKC, UKBP, PFC, RHS, SHS, CHS, EHS, ASB,
 // welded plate girders, historic sections), every class, tension and compression, biaxial bending, high shear, webs that
 // buckle in shear, given buckling lengths (positions along the member, longer than the member), sway modes, Annex A and B,
 // and random members. Every check of the tool must be in a part with its utilisation; no chip may show an error or a unit
@@ -13,8 +13,8 @@ const html = fs.readFileSync(path.join(__dirname, '..', '..', 'Steel Member Desi
 const block = id => html.match(new RegExp(`<script id="${id}">([\\s\\S]*?)</script>`))[1];
 const sb = { console, Math, Float64Array, Int32Array, Uint8Array, Array, Set, Map, Object, Number, Error, JSON, Infinity, String, parseFloat, isFinite, Promise };
 vm.createContext(sb);
-vm.runInContext(block('sections') + '\n' + block('engine') + '\n;this.EC3=EC3;this.Design=Design;this.SECTION_DATA=SECTION_DATA;this.PFC_DATA=PFC_DATA;this.HIST_SERIES=HIST_SERIES;this.CalcScript=CalcScript;this.SteelMemberScript=SteelMemberScript;', sb);
-const { EC3, Design, SECTION_DATA, PFC_DATA, HIST_SERIES, CalcScript, SteelMemberScript } = sb;
+vm.runInContext(block('sections') + '\n' + block('engine') + '\n;this.EC3=EC3;this.Design=Design;this.SECTION_DATA=SECTION_DATA;this.PFC_DATA=PFC_DATA;this.HIST_SERIES=HIST_SERIES;this.UKBP_DATA=UKBP_DATA;this.EHS_DATA=EHS_DATA;this.ASB_DATA=ASB_DATA;this.CalcScript=CalcScript;this.SteelMemberScript=SteelMemberScript;', sb);
+const { EC3, Design, SECTION_DATA, PFC_DATA, HIST_SERIES, UKBP_DATA, EHS_DATA, ASB_DATA, CalcScript, SteelMemberScript } = sb;
 const H = require('../calcpad/harness.js').open();
 let n = 0, bad = 0, zones = 0, members = 0;
 const kinds = new Set();
@@ -73,6 +73,12 @@ member('historic channel, f_y given', { sec: hist('H-BSC1932', 20), grade: 'GIVE
 member('axial only, UKC tie', { sec: uc, grade: 'S355', L: 5000, N: -1500e3, MyB: 0, MyT: 0, MzB: 0, MzT: 0, ky: 1, kz: 1, nLT: 1 });
 member('axial only, UKC strut', { sec: uc, grade: 'S355', L: 7000, N: 1500e3, MyB: 0, MyT: 0, MzB: 0, MzT: 0, ky: 1, kz: 1, nLT: 1 });
 member('minor-axis bending only', { sec: uc, grade: 'S275', L: 4000, N: 0, MyB: 0, MyT: 0, MzB: 30e6, MzT: -20e6, ky: 1, kz: 1, nLT: 1 });
+// ---------- bearing piles (a Class 4 flange in S355) and the channels from the Corus 2005 tables ----------
+const P = nm => EC3.fromRow(UKBP_DATA.find(r => r[0] === nm));
+member('UKBP: Class 4 flange, compression and bending', { sec: P('356×368×109 UKBP'), grade: 'S355', L: 6000, N: 2000e3, MyB: 0, MyT: 150e6, MzB: 0, MzT: 0, ky: 1, kz: 1, nLT: 1 });
+member('UKBP strut, Annex A', { sec: P('305×305×110 UKBP'), grade: 'S355', L: 8000, N: 2500e3, MyB: 20e6, MyT: -20e6, MzB: 0, MzT: 0, ky: 1, kz: 1, nLT: 1, annex: 'A' });
+member('PFC 430×100×64 (Corus 2005) beam', { sec: U('430×100×64 PFC'), grade: 'S275', L: 5000, N: 0, MyB: 0, MyT: 0, MzB: 0, MzT: 0, Myf: x => 120e6 * 4 * x / 5000 * (1 - x / 5000), Vzf: x => 120e6 * 4 / 5000 * (1 - 2 * x / 5000), ky: 1, kz: 1, nLT: 2, hasUdl: true });
+member('PFC 100×50×10 (Corus 2005) strut', { sec: U('100×50×10 PFC'), grade: 'S355', L: 1500, N: 80e3, MyB: 0, MyT: 2e6, MzB: 0, MzT: 0, ky: 1, kz: 1, nLT: 1 });
 // ---------- tees cut from UKB and UKC ----------
 const T = nm => EC3.tee(EC3.fromRow(row(nm)));
 const tb = T('457×191×67 UKB'), tc = T('254×254×89 UKC'), tdeep = T('914×305×253 UKB');
@@ -99,15 +105,36 @@ for (let t = 0; t < 40; t++) {
   if (given) inp.Lcr = { y: L * p2([0.7, 1, 2]), z: L * p2([0.5, 1]), LT: L * p2([0.3, 0.5, 1, 1.5]) };
   member(`random tee ${t} ${sec.name}`, inp);
 }
+// ---------- elliptical hollow sections (Class 4 in compression alone, with bending, and in bending) ----------
+const E = (h, b, t) => EC3.ehs({ h, b, t, name: `${h}×${b}×${t} EHS hot-finished` });
+member('EHS strut: Class 4, A√x', { sec: E(500, 250, 10), grade: 'S355', L: 6000, N: 2000e3, MyB: 0, MyT: 0, MzB: 0, MzT: 0, ky: 1, kz: 1, nLT: 1 });
+member('EHS beam-column: Class 4 with bending, A x', { sec: E(500, 250, 10), grade: 'S355', L: 5000, N: 800e3, MyB: 0, MyT: 150e6, MzB: 0, MzT: 0, ky: 1, kz: 1, nLT: 1 });
+member('EHS beam: LTB curve d', { sec: E(400, 200, 8), grade: 'S355', L: 8000, N: 0, MyB: 0, MyT: 0, MzB: 0, MzT: 0, Myf: x => 150e6 * 4 * x / 8000 * (1 - x / 8000), Vzf: x => 150e6 * 4 / 8000 * (1 - 2 * x / 8000), ky: 1, kz: 1, nLT: 1, hasUdl: true });
+member('EHS biaxial, Class 1, Annex A', { sec: E(300, 150, 16), grade: 'S355', L: 4000, N: 600e3, MyB: 20e6, MyT: 60e6, MzB: 5e6, MzT: 10e6, ky: 1, kz: 1, nLT: 1, annex: 'A' });
+member('EHS tie with bending', { sec: E(300, 150, 10), grade: 'S275', L: 4000, N: -400e3, MyB: 40e6, MyT: 40e6, MzB: 0, MzT: 0, ky: 1, kz: 1, nLT: 1 });
+member('EHS: minor-axis bending, short and high shear', { sec: E(400, 200, 12.5), grade: 'S355', L: 400, N: 0, MyB: 0, MyT: 0, MzB: -90e6, MzT: 90e6, ky: 1, kz: 1, nLT: 1 });
+// ---------- asymmetric beams (ASB) ----------
+const B = nm => EC3.fromRowASB(ASB_DATA.find(r => r[0] === nm));
+member('ASB beam, sagging: the narrower flange in compression', { sec: B('280 ASB 74'), grade: 'S355', L: 6000, N: 0, MyB: 0, MyT: 0, MzB: 0, MzT: 0, Myf: x => 150e6 * 4 * x / 6000 * (1 - x / 6000), Vzf: x => 150e6 * 4 / 6000 * (1 - 2 * x / 6000), ky: 1, kz: 1, nLT: 2, hasUdl: true });
+member('ASB, hogging: the bottom flange Class 2', { sec: B('280 ASB 74'), grade: 'S355', L: 3000, N: 0, MyB: -120e6, MyT: 40e6, MzB: 0, MzT: 0, ky: 1, kz: 1, nLT: 1 });
+member('ASB strut with biaxial moments', { sec: B('300 ASB 153'), grade: 'S355', L: 4000, N: 900e3, MyB: 30e6, MyT: -60e6, MzB: 0, MzT: 10e6, ky: 1, kz: 1, nLT: 1 });
+member('ASB S460: Class 3 in hogging', { sec: B('280 ASB 74'), grade: 'S460', L: 5000, N: 200e3, MyB: -80e6, MyT: 80e6, MzB: 5e6, MzT: 0, ky: 1, kz: 1, nLT: 1 });
+member('ASB in tension and bending', { sec: B('300 ASB 249'), grade: 'S275', L: 5000, N: -500e3, MyB: 100e6, MyT: 100e6, MzB: 5e6, MzT: 5e6, ky: 1, kz: 1, nLT: 1 });
+member('ASB, given lengths', { sec: B('300 ASB 196'), grade: 'S355', L: 6000, N: 400e3, MyB: 100e6, MyT: 150e6, MzB: 0, MzT: 0, Lcr: { y: 6000, z: 3000, LT: 2500 } });
+member('ASB, L_LT beyond the member', { sec: B('280 ASB 105'), grade: 'S355', L: 4000, N: 300e3, MyB: 50e6, MyT: 100e6, MzB: 0, MzT: 0, Lcr: { y: 4000, z: 4000, LT: 6000 } });
+member('ASB, high shear', { sec: B('280 ASB 100'), grade: 'S355', L: 500, N: 0, MyB: -200e6, MyT: 200e6, MzB: 0, MzT: 0, ky: 1, kz: 1, nLT: 1 });
+member('ASB strut', { sec: B('300 ASB 185'), grade: 'S355', L: 5000, N: 2500e3, MyB: 0, MyT: 0, MzB: 0, MzT: 0, ky: 1, kz: 1, nLT: 1 });
 // ---------- random members ----------
 let seed = 1993; const rnd = () => (seed = seed * 16807 % 2147483647) / 2147483647, pick = a => a[Math.floor(rnd() * a.length)], between = (a, b) => a + (b - a) * rnd();
 for (let t = 0; t < 70; t++) {
-  const kind = pick(['UKB', 'UKC', 'UKC', 'PFC', 'RHS', 'CHS', 'welded', 'hist']);
+  const kind = pick(['UKB', 'UKC', 'UKC', 'PFC', 'RHS', 'CHS', 'welded', 'hist', 'EHS', 'ASB']);
   let sec;
   if (kind === 'UKB' || kind === 'UKC') sec = EC3.fromRow(pick(SECTION_DATA.filter(r => r[0].endsWith(kind))));
   else if (kind === 'PFC') sec = EC3.fromRowPFC(pick(PFC_DATA));
   else if (kind === 'RHS') { const h = pick([100, 150, 200, 250, 300]); sec = EC3.rhs({ h, b: pick([h, h / 2, 100]), t: pick([4, 5, 6.3, 8, 10]), cold: rnd() < 0.3 }); }
   else if (kind === 'CHS') sec = EC3.chs({ d: pick([88.9, 114.3, 168.3, 219.1, 323.9]), t: pick([3.2, 5, 6.3, 8, 10]), cold: rnd() < 0.3 });
+  else if (kind === 'EHS') { const r = pick(EHS_DATA); sec = E(r[0], r[1], r[2]); }
+  else if (kind === 'ASB') sec = EC3.fromRowASB(pick(ASB_DATA));
   else if (kind === 'welded') sec = EC3.customI({ name: 'WI', h: pick([400, 600, 900, 1200]), b: pick([200, 300, 400]), tw: pick([6, 8, 10, 12]), tf: pick([12, 16, 20, 25]) });
   else { const s = pick(HIST_SERIES.filter(x => x.kind === 'I')); sec = EC3.fromHist(pick(s.rows), s.kind, s); }
   const grade = kind === 'hist' ? pick(['BS15', 'BS548', 'GIVEN']) : pick(['S275', 'S355', 'S355', 'S460']), L = pick([1000, 3000, 5000, 8000]);
