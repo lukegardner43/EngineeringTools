@@ -316,6 +316,439 @@ tr.base td{font-weight:600;}
 </div>
 <div id="report"></div>
 <script id="engine">
+/* ===== CALCULATION SCRIPT (EngineeringTools) =====
+   One record of a tool's calculation, written step by step, from which the tool shows its full calculation (on the page
+   and the A4 sheet) and writes it for CalcPad (text to paste, or a .perega file to open), so that the two cannot differ.
+   Every number the calculation reports is one of:
+   - an input, with its unit;
+   - a formula in CalcPad's syntax (names, + − * / ^, SQRT MIN MAX ABS IF LOG EXP ROUND PI(), x[#unit] for a value as a
+     plain number in a given unit, as the empirical Eurocode formulas need), shown as the symbols, then the numbers put
+     in, then the result, with its clause; CalcPad recalculates these itself;
+   - a value the formula language cannot reach (an iteration, a table read, an analysis), stated as such with how it
+     was found and, where it can be, an equation that confirms it;
+   - a utilisation, with its limit.
+   API: const C = CalcScript.create({ title, tool, standard });
+        C.head(text), C.note(text),
+        C.input(name, value, unit, desc, ref, { sym }), C.calc(name, expr, value, unit, desc, ref, { sym }),
+        C.given(name, value, unit, desc, how, ref, { sym }), C.check(name, expr, value, desc, ref, { limit, sym }),
+        C.img(svg, caption);
+        C.html() — the full calculation; C.calcpad() — CalcPad text; C.perega(meta) — a .perega document (object).
+        CalcScript.project([{ C, title }], meta, name) — a .peregaproj (one CalcPad check per script, for a tool with several
+        zones or members whose names repeat); copy(C, meta), download(C, meta, file), downloadProject(list, meta, file) for the buttons.
+   Units are CalcPad's: mm cm m km, N kN MN, Pa kPa MPa GPa (N/mm2 for stresses), kg g t, s, deg rad, combined with * / ^
+   or run together (kNm, kNm/m, mm2/m). Values are given in the unit stated.
+   Source: scratchpad/common/calcscript.js. */
+const CalcScript = (() => {
+  'use strict';
+  // CalcPad's unit table: the SI factor and the SI symbol of each unit
+  const CONV = { mm: 1e-3, cm: 1e-2, m: 1, km: 1e3, N: 1, kN: 1e3, MN: 1e6, g: 1e-3, kg: 1, t: 1e3, Pa: 1, kPa: 1e3, MPa: 1e6, GPa: 1e9, s: 1, ms: 1e-3, min: 60, hr: 3600, deg: Math.PI / 180, rad: 1 };
+  const SIB = { mm: 'm', cm: 'm', m: 'm', km: 'm', N: 'N', kN: 'N', MN: 'N', g: 'kg', kg: 'kg', t: 'kg', Pa: 'Pa', kPa: 'Pa', MPa: 'Pa', GPa: 'Pa', s: 's', ms: 's', min: 's', hr: 's', deg: 'rad', rad: 'rad' };
+  const ORDER = { N: 0, kN: 0, MN: 0, Pa: 1, kPa: 1, MPa: 1, GPa: 1, J: 2, W: 2, Hz: 2, kg: 4, g: 4, t: 4, m: 5, mm: 5, cm: 5, km: 5, s: 6, ms: 6, min: 6, hr: 6, rad: 7, deg: 7 };
+  // "kNm" → kN, m (longest known symbol first, as CalcPad reads run-together units)
+  function split(tok) {
+    if (CONV[tok] !== undefined) return [tok];
+    const go = s => { if (!s) return []; for (let n = Math.min(3, s.length); n >= 1; n--) { if (CONV[s.slice(0, n)] === undefined) continue; const r = go(s.slice(n)); if (r) return [s.slice(0, n), ...r]; } return null; };
+    return go(tok);
+  }
+  function terms(u) {
+    const s = String(u || '').replace(/²/g, '^2').replace(/³/g, '^3').replace(/⁴/g, '^4').replace(/·/g, '*'), out = [];
+    const add = (str, sign) => str.split('*').forEach(p => { const t = p.trim(); if (!t) return; const m = t.match(/^([a-zA-Z]+)(?:\^?(-?\d+))?$/); if (!m) throw new Error(`CalcScript: unit "${u}"`); const e = m[2] ? +m[2] : 1, sy = split(m[1]); if (!sy) throw new Error(`CalcScript: unknown unit "${m[1]}"`); sy.forEach((x, i) => out.push([x, sign * (i === sy.length - 1 ? e : 1)])); });
+    const parts = s.split('/'); add(parts[0], 1); for (let i = 1; i < parts.length; i++) add(parts[i], -1);
+    return out;
+  }
+  const factor = u => terms(u).reduce((f, [s, e]) => f * CONV[s] ** e, 1);
+  const toSI = (v, u) => (u ? v * factor(u) : v);
+  function siUnit(u) {   // the SI unit string CalcPad stores with a literal (as unitObjToStr(toSIUnitObj(...)))
+    const o = {}; for (const [s, e] of terms(u)) { const b = SIB[s]; o[b] = (o[b] || 0) + e; if (!o[b]) delete o[b]; }
+    const rank = s => (ORDER[s] !== undefined ? ORDER[s] : 3), cmp = ([a], [b]) => rank(a) - rank(b) || a.localeCompare(b);
+    const f = ([s, e]) => (Math.abs(e) === 1 ? s : s + '^' + Math.abs(e));
+    const pos = Object.entries(o).filter(([, e]) => e > 0).sort(cmp), neg = Object.entries(o).filter(([, e]) => e < 0).sort(cmp);
+    return pos.map(f).join('·') + (neg.length ? '/' + neg.map(f).join('·') : '');
+  }
+  // ---------- display ----------
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const GREEK = { alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', zeta: 'ζ', eta: 'η', theta: 'θ', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', rho: 'ρ', sigma: 'σ', tau: 'τ', phi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω', Delta: 'Δ', Sigma: 'Σ', Phi: 'Φ' };
+  // a name as a symbol: the part before the first _ as the base (Greek where it is a Greek letter's name), the rest subscript;
+  // sym overrides the text ("A_s,req")
+  function symHTML(name, sym) {
+    const s = sym || name, i = s.indexOf('_'), base = i < 0 ? s : s.slice(0, i), sub = i < 0 ? '' : s.slice(i + 1);
+    const g = x => GREEK[x] || x;
+    return `<i>${esc(g(base))}</i>${sub ? `<sub>${esc(sub.split(',').map(g).join(','))}</sub>` : ''}`;
+  }
+  const UNIT_SHOW = { 'N/mm2': 'N/mm²', MPa: 'N/mm²', mm2: 'mm²', mm3: 'mm³', mm4: 'mm⁴', 'mm2/m': 'mm²/m', kNm: 'kNm', 'kN*m': 'kNm', 'kNm/m': 'kNm/m', 'kN*m/m': 'kNm/m', 'kN/m2': 'kN/m²', 'kN/m3': 'kN/m³', m2: 'm²', m3: 'm³', m4: 'm⁴' };
+  const unitHTML = u => (u ? esc(UNIT_SHOW[u] || String(u).replace(/\^-(\d)(?![0-9])/g, (_, k) => '⁻' + '⁰¹²³⁴⁵⁶⁷⁸⁹'[k]).replace(/\^?2(?![0-9])/g, '²').replace(/\^?3(?![0-9])/g, '³').replace(/\*/g, '·')) : '');
+  // a number to about four significant figures, no exponent for the sizes met in design
+  function num(v) {
+    if (v === Infinity) return '∞'; if (v === -Infinity) return '−∞'; if (!Number.isFinite(v)) return '–';
+    if (v === 0) return '0';
+    const a = Math.abs(v);
+    let s = a >= 1e4 ? Math.round(v).toLocaleString('en-GB') : a >= 1000 ? Math.round(v).toString() : a >= 100 ? (Math.round(v * 10) / 10).toString() : a >= 1e-4 ? (+v.toPrecision(4)).toString() : v.toExponential(3);
+    return s.replace(/^-/, '−');
+  }
+  // CalcPad expression → tokens
+  function tokens(expr) {
+    const out = []; let i = 0; const s = String(expr);
+    while (i < s.length) {
+      const ch = s[i];
+      if (/\s/.test(ch)) { i++; continue; }
+      if (/\d/.test(ch) || (ch === '.' && /\d/.test(s[i + 1] || ''))) { let n = ''; while (i < s.length && /[\d.]/.test(s[i])) n += s[i++]; if (/[eE]/.test(s[i] || '') && /[-+\d]/.test(s[i + 1] || '')) { n += s[i++]; if (/[-+]/.test(s[i])) n += s[i++]; while (/\d/.test(s[i] || '')) n += s[i++]; } out.push({ t: 'n', v: n }); continue; }
+      if (/[A-Za-z]/.test(ch)) {
+        let n = ''; while (i < s.length && /[A-Za-z0-9_]/.test(s[i])) n += s[i++];
+        let unit = ''; if (s[i] === '[') { const j = s.indexOf(']', i); unit = s.slice(i + 1, j); i = j + 1; }
+        let k = i; while (/\s/.test(s[k] || '')) k++;
+        out.push(s[k] === '(' && /^[A-Z][A-Z0-9]*$/.test(n) ? { t: 'f', v: n } : { t: 'id', v: n, unit }); continue;
+      }
+      const two = s.slice(i, i + 2);
+      if (['<=', '>=', '==', '!=', '<>'].includes(two)) { out.push({ t: 'op', v: two }); i += 2; continue; }
+      out.push({ t: 'op', v: ch }); i++;
+    }
+    return out;
+  }
+  const FN = { SQRT: '√', ABS: 'abs', MIN: 'min', MAX: 'max', IF: 'if', LOG: 'log', EXP: 'exp', ROUND: 'round', SIN: 'sin', COS: 'cos', TAN: 'tan', ATAN: 'atan', ASIN: 'asin', ACOS: 'acos', PI: 'π' };
+  const OPS = { '*': '·', '<=': '≤', '>=': '≥', '!=': '≠', '<>': '≠', '==': '=', '-': '−' };
+  // the expression as HTML: symbols (sub = null) or with each name's value put in (sub = name → { v, unit })
+  function exprHTML(expr, syms, sub) {
+    const tk = tokens(expr); let h = '';
+    for (let i = 0; i < tk.length; i++) {
+      const t = tk[i], nx = tk[i + 1];
+      if (t.t === 'n') h += esc(t.v.replace(/^(\d+)\.?0*$/, '$1'));
+      else if (t.t === 'f') { if (t.v === 'PI') { h += 'π'; i += 2; continue; } h += FN[t.v] || t.v.toLowerCase(); }
+      else if (t.t === 'id') {
+        // a value put in: bracketed where it is negative, or carries a unit and is raised to a power
+        if (sub && sub[t.v]) { const q = sub[t.v], u = t.unit ? '' : unitHTML(q.unit), br = q.v < 0 || (u && nx && nx.v === '^'); h += `${br ? '(' : ''}${num(q.v)}${u ? '&#8239;' + u : ''}${br ? ')' : ''}`; }
+        else h += symHTML(t.v, syms[t.v]);
+      } else if (t.v === '^') {
+        // a power: the next token (or bracket group) raised
+        let j = i + 1, depth = 0, grp = '';
+        do { const q = tk[j]; grp += q.t === 'op' ? q.v : (q.unit ? `${q.v}[${q.unit}]` : q.v); if (q.v === '(') depth++; if (q.v === ')') depth--; j++; } while (depth > 0 && j < tk.length);
+        const inner = grp.replace(/^\((.*)\)$/, '$1');
+        h += `<sup>${exprHTML(inner, syms, null)}</sup>`; i = j - 1;
+      } else if (t.v === '*') h += sub ? ' × ' : '·';
+      else if (t.v === '/') h += ' / ';
+      else if (t.v === '-' && (i === 0 || (tk[i - 1].t === 'op' && ['(', ',', '+', '-', '*', '/', '^', '<', '>', '<=', '>='].includes(tk[i - 1].v)))) h += '−';   // unary minus
+      else if (['+', '-', '<=', '>=', '<', '>', '==', '!=', '<>'].includes(t.v)) h += ` ${OPS[t.v] || esc(t.v)} `;
+      else if (t.v === ',') h += ', ';
+      else h += esc(t.v);
+      void nx;
+    }
+    return h.replace(/\s+/g, ' ').trim();
+  }
+  // ---------- the script ----------
+  function create(meta = {}) {
+    const items = [], vals = {}, syms = {}, units = {}, names = new Set();
+    const name0 = (n, kind) => {
+      if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(n)) throw new Error(`CalcScript: "${n}" is not a CalcPad name`);
+      if (names.has(n)) throw new Error(`CalcScript: "${n}" is defined twice`);
+      names.add(n); void kind;
+    };
+    const keep = (name, v, unit, o) => { vals[name] = v; units[name] = unit || ''; if (o && o.sym) syms[name] = o.sym; };
+    // a formula and the unit CalcPad shows it in: [unit], [#unit] (an empirical formula's result) or [#] (a plain number)
+    const split = (expr, unit) => { const m = String(expr).match(/^(.*?)\s*\[([^\]]+)\]\s*$/); return m ? { core: m[1].trim(), spec: m[2].trim() } : { core: String(expr).trim(), spec: unit || '#' }; };
+    const C = {
+      meta, items,
+      head(text) { items.push({ t: 'h', text }); return C; },
+      note(text) { items.push({ t: 'p', text }); return C; },
+      input(name, v, unit, desc, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'in', name, v, unit: unit || '', desc, ref }); return v; },
+      calc(name, expr, v, unit, desc, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'calc', name, expr, ...split(expr, unit), v, unit: unit || '', desc, ref }); return v; },
+      given(name, v, unit, desc, how, ref, o) { name0(name); keep(name, v, unit, o); items.push({ t: 'val', name, v, unit: unit || '', desc, how, ref }); return v; },
+      check(name, expr, v, desc, ref, o = {}) { name0(name); keep(name, v, '', o); items.push({ t: 'chk', name, expr, ...split(expr, ''), v, desc, ref, limit: o.limit ?? 1 }); return v; },
+      img(svg, caption) { items.push({ t: 'img', svg, caption }); return C; },
+      // a CalcPad plot line (PLOT(...) or SECTION(...)): drawn live by CalcPad from the values; not on the page, which has its own drawings
+      plot(src) { items.push({ t: 'plot', src }); return C; },
+      value: n => vals[n], has: n => names.has(n), sym: n => syms[n],
+      // an item as it is (merge() renames items and puts them in a check of their own)
+      raw(it, sym) { if (it.name) { name0(it.name); keep(it.name, it.v, it.t === 'chk' ? '' : it.unit, sym ? { sym } : null); } items.push(it); return C; },
+      // ----- the full calculation, for the page and the A4 sheet -----
+      html(opts = {}) {
+        const sub = Object.fromEntries(Object.keys(vals).map(n => [n, { v: vals[n], unit: units[n] }]));
+        // opts.skip: headings whose sections are left out (the same materials in every zone of a sheet), said in a line
+        let h = `<div class="cs${opts.sheet ? ' cs-sheet' : ''}">`, skipping = false;
+        for (const it of items) {
+          if (it.t === 'h') { skipping = !!(opts.skip && opts.skip.includes(it.text)); h += skipping ? `<div class="cs-p">${esc(it.text)}: as above.</div>` : `<div class="cs-h">${esc(it.text)}</div>`; continue; }
+          if (skipping) continue;
+          if (it.t === 'p') { h += `<div class="cs-p">${esc(it.text)}</div>`; continue; }
+          if (it.t === 'plot') continue;
+          if (it.t === 'img') { if (!opts.noImg) h += `<div class="cs-img">${it.svg}${it.caption ? `<div class="cs-cap">${esc(it.caption)}</div>` : ''}</div>`; continue; }
+          const S = symHTML(it.name, syms[it.name]), res = `${num(it.v)}${it.unit ? '&#8239;' + unitHTML(it.unit) : ''}`;
+          let eq;
+          if (it.t === 'in') eq = `${S} = ${res}`;
+          else if (it.t === 'val') eq = `${S} = ${res}`;
+          else {
+            const sy = exprHTML(it.core, syms, null), nu = exprHTML(it.core, syms, sub);
+            eq = `${S} = ${sy}${nu !== sy ? ` = ${nu}` : ''} = <b>${res}</b>`;
+            if (it.t === 'chk') eq += ` ${it.v <= it.limit + 1e-9 ? `≤ ${num(it.limit)} <span class="cs-ok">OK</span>` : `> ${num(it.limit)} <span class="cs-ng">NOT OK</span>`}`;
+          }
+          const d = [it.desc, it.how].filter(Boolean).map(esc).join('; ');
+          h += `<div class="cs-r cs-${it.t}"><div class="cs-eq">${eq}${d ? `<div class="cs-d">${d}</div>` : ''}</div><div class="cs-ref">${esc(it.ref || '')}</div></div>`;
+        }
+        return h + '</div>';
+      },
+      // ----- CalcPad text: paste into a sheet and every line becomes a live chip -----
+      lines() {
+        const out = [];
+        // an "=" in the words would start a definition in CalcPad: "a = b" is written "a is b"
+        const clean = s => String(s || '').replace(/\s*=\s*/g, ' is ').replace(/\s+/g, ' ').trim();
+        const pre = it => { const d = clean([it.desc, it.t === 'val' && it.how ? `(${it.how})` : ''].filter(Boolean).join(' ')), r = clean(it.ref); return `${d}${r ? `${d ? ', ' : ''}${r}` : ''}${d || r ? ': ' : ''}`; };
+        for (const it of items) {
+          if (it.t === 'h') { out.push({ it, text: '' }, { it, text: clean(it.text) }); continue; }
+          if (it.t === 'p') { out.push({ it, text: clean(it.text) }); continue; }
+          if (it.t === 'img') continue;
+          if (it.t === 'plot') { out.push({ it, text: it.src }); continue; }
+          if (it.t === 'in' || it.t === 'val') out.push({ it, text: `${pre(it)}${it.name} = ${lit(it.v)}${it.unit ? ' ' + it.unit : ''}` });
+          else out.push({ it, text: `${pre(it)}${it.name} = ${it.core} [${it.spec}]` });
+        }
+        return out;
+      },
+      calcpad() { const L = C.lines().map(l => l.text); while (L.length && !L[0]) L.shift(); return L.join('\n'); },
+      // ----- a .perega document: the same lines as CalcPad's own chips, with the drawings as images -----
+      perega(m = {}, images = {}) {
+        let html = '';
+        const chip = it => {
+          if (it.t === 'in' || it.t === 'val') {
+            const si = toSI(it.v, it.unit), su = it.unit ? siUnit(it.unit) : '';
+            const a = { 'data-var-name': it.name, 'data-var-val': String(si), 'data-bare': '1' };   // data-bare: CalcPad draws it on opening
+            if (it.unit) { a['data-var-unit'] = it.unit; if (su && su !== it.unit) a['data-var-si-unit'] = su; if (lit(it.v) !== String(si)) a['data-var-orig-num'] = lit(it.v); }
+            return `<span contenteditable="false" class="var-def-chip" ${Object.entries(a).map(([k, v]) => `${k}="${esc(v)}"`).join(' ')}><span class="vdc-name">${esc(it.name)} = </span><span class="vdc-val">${esc(lit(it.v))}${it.unit ? ' ' + esc(it.unit) : ''}</span></span>`;
+          }
+          const a = { 'data-var-name': it.name, 'data-var-val': String(toSI(it.v, it.unit)), 'data-var-expr': it.core, 'data-var-display-unit': it.spec, 'data-bare': '1' };
+          return `<span contenteditable="false" class="var-def-chip" ${Object.entries(a).map(([k, v]) => `${k}="${esc(v)}"`).join(' ')}><span class="vdc-name">${esc(it.name)} = ${esc(it.core)}</span></span>`;
+        };
+        let first = true;
+        for (const it of items) {
+          const br = first ? '' : '<br>'; first = false;
+          if (it.t === 'h') { html += `${br}<br><b>${esc(it.text)}</b>`; continue; }
+          if (it.t === 'p') { html += `${br}${esc(it.text)}`; continue; }
+          if (it.t === 'plot') { html += `${br}<span contenteditable="false" class="plot-chip" data-plot="${esc(it.src)}"></span> `; continue; }
+          if (it.t === 'img') { const src = images[items.indexOf(it)]; if (src) html += `${br}<span contenteditable="false" class="calc-img-wrap"><img src="${src}" draggable="false" style="width:${Math.round(Math.min(images.width || 500, (images.nat && images.nat[items.indexOf(it)]) || Infinity))}px;height:auto"><span class="img-resize-handle"></span><span class="img-size-label"></span></span>${it.caption ? `<br><i>${esc(it.caption)}</i>` : ''}`; else first = !html; continue; }
+          const L = C.lines().find(l => l.it === it), text = L.text, k = text.lastIndexOf(`${it.name} = `);
+          html += `${br}${esc(text.slice(0, k))}${chip(it)} `;
+        }
+        const today = new Date().toISOString().slice(0, 10);
+        return { version: 2, meta: { 'm-project': m.project || '', 'm-projno': m.job || '', 'm-date': m.date || today, 'm-desc': m.title || meta.title || '', 'm-sheet': m.sheet || '', 'm-orig': m.by || '', 'm-deliv': '', 'm-checked': '', 'm-suit': '', 'm-rev': '' },
+          pages: [html], preferredUnits: {}, et: { tool: meta.tool || '', standard: meta.standard || '' } };
+      },
+    };
+    return C;
+  }
+  // a number as CalcPad reads it: full precision, no grouping
+  const lit = v => (Number.isFinite(v) ? String(+v.toPrecision(12)) : '0');
+  // the drawings as PNG data URLs (CalcPad's Word export takes PNG): resolves to { index: dataURL, width }
+  async function rasterise(C, width = 520) {
+    const out = { width, nat: {} };   // nat: each drawing's own width, so a small one is not blown up
+    const jobs = C.items.map((it, i) => it.t !== 'img' ? null : new Promise(res => {
+      try {
+        const doc = new DOMParser().parseFromString(it.svg, 'image/svg+xml'), sv = doc.documentElement;
+        if (!sv || sv.nodeName !== 'svg') return res();
+        if (!sv.getAttribute('xmlns')) sv.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        const vb = (sv.getAttribute('viewBox') || '').split(/[ ,]+/).map(Number), w = vb[2] || +sv.getAttribute('width') || 600, h = vb[3] || +sv.getAttribute('height') || 400;
+        sv.setAttribute('width', w); sv.setAttribute('height', h); out.nat[i] = w;
+        // the page's colours and fonts as the drawing uses them
+        const st = doc.createElementNS('http://www.w3.org/2000/svg', 'style'); st.textContent = 'text{font-family:Arial,Helvetica,sans-serif}'; sv.insertBefore(st, sv.firstChild);
+        const img = new Image(), url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(sv));
+        img.onload = () => { const k = 2, cv = document.createElement('canvas'); cv.width = w * k; cv.height = h * k; const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, cv.width, cv.height); out[i] = cv.toDataURL('image/png'); res(); };
+        img.onerror = () => res(); img.src = url;
+      } catch (e) { res(); }
+    }));
+    await Promise.all(jobs.filter(Boolean));
+    return out;
+  }
+  // the buttons' work: copy the CalcPad text (with the chips as HTML for a paste straight into CalcPad), download a .perega
+  async function copy(C, m) {
+    const text = C.calcpad();
+    try {
+      if (navigator.clipboard && window.ClipboardItem) {
+        const doc = C.perega(m), html = doc.pages[0];
+        await navigator.clipboard.write([new ClipboardItem({ 'text/plain': new Blob([text], { type: 'text/plain' }), 'text/html': new Blob([html], { type: 'text/html' }) })]);
+        return true;
+      }
+      await navigator.clipboard.writeText(text); return true;
+    } catch (e) {
+      const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+      let ok = false; try { ok = document.execCommand('copy'); } catch (e2) { ok = false; } ta.remove(); return ok;
+    }
+  }
+  const fileSafe = s => String(s || 'Calculation').replace(/×/g, 'x').replace(/\//g, '-').replace(/[^A-Za-z0-9 ._()-]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Calculation';
+  function save(text, fileName, ext) {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = fileSafe(fileName) + ext;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+  async function download(C, m, fileName) {
+    let images = {}; try { images = await rasterise(C); } catch (e) { images = {}; }
+    save(JSON.stringify({ ...C.perega(m, images), savedAt: new Date().toISOString() }, null, 2), fileName, '.perega');
+  }
+  // a CalcPad project (.peregaproj): one check per script, in order, each a whole document of its own (CalcPad keeps each
+  // check's names apart, so the zones of a beam can all use M_Ed, d, ...). list: [{ C, title }]
+  // Values several checks define alike (the same name, definition, unit, description and source: the materials, a section
+  // several zones share, ...) go once into a first check of shared values, which CalcPad (a pack's shared check, from CalcPad dd29f6a) gives
+  // to every other check of the pack; each check says, where they were, which of its values come from there. A value stays
+  // in a check unless everything it uses there is shared too, so a check with a different f_ck keeps its own f_cd.
+  // Returns the list with the shared check first ({ C, title, shared: true }), or the list as it was if nothing repeats.
+  const IDENT = /[A-Za-z][A-Za-z0-9_]*/g;
+  function shareOut(list) {
+    const defs = it => it.t === 'in' || it.t === 'val' || it.t === 'calc';
+    const key = it => JSON.stringify([it.t, it.name, it.t === 'calc' ? `${it.core} [${it.spec}]` : `${lit(it.v)} ${it.unit}`, it.desc || '', it.ref || '', it.how || '']);
+    const count = new Map();
+    list.forEach(({ C }) => { const seen = new Set(); C.items.forEach(it => { if (!defs(it)) return; const k = key(it); if (!seen.has(k)) { seen.add(k); count.set(k, (count.get(k) || 0) + 1); } }); });
+    const best = new Map();   // name → the definition most checks share (one per name)
+    for (const [k, c] of count) { if (c < 2) continue; const nm = JSON.parse(k)[1], b = best.get(nm); if (!b || c > count.get(b)) best.set(nm, k); }
+    if (!best.size) return list;
+    const shared = [], sharedKeys = new Set();
+    const out = list.map(({ C, title, ...rest }) => {
+      const local = new Set(C.items.filter(defs).map(it => it.name)), gone = new Set();
+      C.items.forEach(it => {
+        if (!defs(it) || best.get(it.name) !== key(it)) return;
+        const uses = it.t === 'calc' ? (it.core.match(IDENT) || []).filter(n => n !== it.name && local.has(n)) : [];
+        if (uses.every(n => gone.has(n))) gone.add(it.name);
+      });
+      if (!gone.size) return { C, title, ...rest };
+      const C2 = create({ ...C.meta }); let head = null, run = [];
+      const flush = () => { if (run.length) { C2.items.push({ t: 'p', text: `From the shared values: ${run.join(', ')}.` }); run = []; } };
+      for (const it of C.items) {
+        if (it.t === 'h') { flush(); head = it.text; C2.items.push(it); continue; }
+        if (defs(it) && gone.has(it.name)) { run.push(it.name); const k = key(it); if (!sharedKeys.has(k)) { sharedKeys.add(k); shared.push({ head, it }); } continue; }
+        flush(); C2.items.push(it);
+      }
+      flush();
+      return { C: C2, title, ...rest };
+    });
+    if (!shared.length) return list;
+    const S = create({ title: 'Shared values', tool: list[0].C.meta.tool, standard: list[0].C.meta.standard });
+    S.items.push({ t: 'p', text: 'The values several checks of this project use, defined once: CalcPad gives them to every other check. A check that needs a different value defines its own.' });
+    let h = null;
+    for (const { head, it } of shared) { if (head !== h) { h = head; if (head) S.items.push({ t: 'h', text: head }); } S.items.push(it); }
+    return [{ C: S, title: 'Shared values', shared: true }, ...out];
+  }
+  async function project(list, m = {}, name = 'Calculation', o = {}) {
+    const checks = [];
+    if (o.share !== false && list.length > 1) list = shareOut(list);
+    for (let k = 0; k < list.length; k++) {
+      const { C, title, shared } = list[k]; let images = {};
+      try { images = typeof document !== 'undefined' ? await rasterise(C) : {}; } catch (e) { images = {}; }
+      checks.push({ id: 'c' + (k + 1), name: title, doc: C.perega({ ...m, title }, images), ...(shared ? { shared: true } : {}) });
+    }
+    return { kind: 'calcpad-project', version: 1, name: fileSafe(name), activeId: checks.length ? checks[0].id : null, checks, savedAt: new Date().toISOString() };
+  }
+  // every part of a calculation as one CalcPad check (one .perega), each part under its own heading, in order. A value a
+  // later part defines just as an earlier part did (the same name and the same value, or the same formula of the same
+  // values: the materials, the section, a load) is written once, where it first comes, and the later part says so; a name
+  // a later part defines differently takes the part's number (M_Ed → M_Ed_3), in that part's formulas too, so every value
+  // is still the tool's. list: [{ C, title }]
+  // a unit in brackets, or a name (one followed by a colon is an option of a PLOT or SECTION line, not a name)
+  const TOK = /(\[[^\]]*\])|([A-Za-z][A-Za-z0-9_]*)(\s*:)?/g;
+  // a plot line's names renamed as its part's, but not a STEEL line's kind (I, L, T, …) or its axis (y, z): words, not names
+  const rePlot = (src, re) => { const m = /^(\s*STEEL\s*\(\s*[A-Za-z]+)([\s\S]*)$/i.exec(src), body = m ? m[2] : src;
+    const out = body.split(/(axis\s*:\s*[yz]\b)/).map((p, i) => i % 2 ? p : re(p)).join('');
+    return m ? m[1] + out : out; };
+  function merge(list, meta = {}) {
+    const M = create({ ...(list[0] ? list[0].C.meta : {}), ...meta }), byKey = new Map(), plotted = new Set();
+    list.forEach(({ C, title }, zi) => {
+      const k = zi + 1, ren = new Map(), re = s => String(s).replace(TOK, (t, u, n, colon) => u || colon ? t : (ren.get(n) || n));
+      if (list.length > 1) M.items.push({ t: 'h', text: `Part ${k}: ${title}` });
+      let hIdx = -1, same = [];
+      const flush = () => {
+        if (hIdx < 0) return;
+        if (M.items.length === hIdx + 1 && !same.length) M.items.splice(hIdx, 1);
+        else if (same.length) M.items.splice(hIdx + 1, 0, { t: 'p', text: `As in an earlier part: ${same.join(', ')}.` });
+        hIdx = -1; same = [];
+      };
+      for (const it of C.items) {
+        if (it.t === 'h') { flush(); hIdx = M.items.length; M.items.push(it); continue; }
+        if (!it.name) {
+          if (it.t !== 'plot') { M.items.push(it); continue; }
+          const src = rePlot(it.src, re); if (plotted.has(src)) continue;     // a drawing an earlier part already has, once
+          plotted.add(src); M.items.push({ ...it, src }); continue;
+        }
+        const core = it.core != null ? re(it.core) : null;
+        const key = JSON.stringify([it.t === 'chk' ? 'chk' : 'def', it.name, core != null ? `${core} [${it.spec}]` : `${lit(it.v)} ${it.unit}`]);
+        if (byKey.has(key)) { ren.set(it.name, byKey.get(key)); same.push(byKey.get(key)); continue; }
+        let nm = it.name;
+        if (M.has(nm)) { nm = `${it.name}_${k}`; for (let j = 2; M.has(nm); j++) nm = `${it.name}_${k}_${j}`; }
+        ren.set(it.name, nm); byKey.set(key, nm);
+        M.raw(core != null ? { ...it, name: nm, core, expr: `${core} [${it.spec}]` } : { ...it, name: nm }, C.sym(it.name));
+      }
+      flush();
+    });
+    return M;
+  }
+  async function downloadProject(list, m, fileName) { save(JSON.stringify(await project(list, m, fileName), null, 2), fileName, '.peregaproj'); }
+  // a tool with several zones (Z: [{ key, title, sum, util, C }]): the project button, then each zone as a <details> with its
+  // own buttons and its full calculation; wire() answers the buttons (once per page, on a container that stays)
+  const uf = u => (Number.isFinite(u) ? u.toFixed(3) : '>99');
+  // The whole calculation downloads as one CalcPad check (.perega): its parts merged in order (merge()). Each part also
+  // downloads on its own. o.noProj: no buttons for the whole (a page that shows its parts in several places and has its
+  // own buttons for the whole, data-cp="all" and "copyall").
+  const allTools = (n, msg = '') => `<div class="cs-tools"><button class="btn2" type="button" data-cp="all">Download CalcPad check (.perega)</button><button class="btn2" type="button" data-cp="copyall">Copy for CalcPad</button><span class="aux" data-cpmsg="all">${msg || (n > 1 ? `The whole calculation as one check, its ${n} parts in order. Each part below also downloads on its own.` : '')}</span></div>`;
+  function zonesHTML(Z, o = {}) {
+    const many = Z.length > 1;
+    return (o.noProj ? '' : allTools(Z.length))
+      + Z.map(zn => `<details class="zone"><summary><span>${esc(zn.title)}${zn.sum ? `<small> · ${esc(zn.sum)}</small>` : ''}</span>${zn.util != null ? `<span class="u ${zn.util > 1 ? 'over' : ''}">${uf(zn.util)}</span>` : ''}</summary>`
+        + `<div class="zfull"><div class="cs-tools"><button class="btn2" type="button" data-cp="save" data-zone="${esc(zn.key)}">${many ? 'Download this part (.perega)' : 'Download CalcPad check (.perega)'}</button><button class="btn2" type="button" data-cp="copy" data-zone="${esc(zn.key)}">${many ? 'Copy this part' : 'Copy for CalcPad'}</button><span class="aux" data-cpmsg="${esc(zn.key)}"></span></div>${zn.C.html({ noImg: true })}</div></details>`).join('');
+  }
+  // getZ() → the zones shown; meta(title) → the project details; name(title) → a file name; proj: the project's title
+  function wire(root, getZ, meta, name, proj) {
+    root.addEventListener('click', async e => {
+      const b = e.target.closest('[data-cp]'), Z = getZ(); if (!b || !Z) return;
+      // the message goes beside the button pressed
+      const msg = k => (b.closest('.cs-tools') && b.closest('.cs-tools').querySelector('[data-cpmsg]')) || root.querySelector(`[data-cpmsg="${k}"]`) || { textContent: '' };
+      const all = () => Z.length === 1 ? Z[0].C : merge(Z.map(zn => ({ C: zn.C, title: zn.title })), { title: proj });
+      if (b.dataset.cp === 'all') { await download(all(), meta(proj), name(proj)); msg('all').textContent = 'Downloaded the check (.perega): open it in CalcPad with File ▸ Open.'; return; }
+      if (b.dataset.cp === 'copyall') { const ok = await copy(all(), meta(proj)); msg('all').textContent = ok ? 'Copied: paste it into a CalcPad sheet.' : 'Could not copy: use Download CalcPad check.'; return; }
+      if (b.dataset.cp === 'proj') { await downloadProject(Z.map(zn => ({ C: zn.C, title: zn.title })), meta(proj), name(proj)); msg('proj').textContent = 'Downloaded the project: open it in CalcPad with File ▸ Open project.'; return; }
+      const zn = Z.find(z => z.key === b.dataset.zone); if (!zn) return;
+      if (b.dataset.cp === 'copy') { const ok = await copy(zn.C, meta(zn.title)); msg(zn.key).textContent = ok ? 'Copied: paste it into a CalcPad sheet.' : 'Could not copy: use Download this check.'; }
+      else { await download(zn.C, meta(zn.title), name(zn.title)); msg(zn.key).textContent = 'Downloaded the check (.perega): open it in CalcPad with File ▸ Open.'; }
+    });
+  }
+  // the zones on the A4 sheet: every zone in full, the materials set out once and "as above" after
+  function sheetHTML(Z, h2 = t => `<h2>${t}</h2>`) {
+    let mat = false;
+    return Z.map(zn => { const s = `<div class="rs">${h2(`${esc(zn.title)}${zn.sum ? ` <span style="font-weight:400;color:#555">· ${esc(zn.sum)}</span>` : ''}`)}${zn.C.html({ sheet: true, noImg: true, skip: mat ? ['Materials'] : [] })}</div>`; if (zn.C.items.some(it => it.t === 'h' && it.text === 'Materials')) mat = true; return s; }).join('');
+  }
+  // the style of the full calculation (each tool's page and sheet include it)
+  const CSS = `.cs{font-size:13px;line-height:1.45}.cs-h{font-weight:600;font-size:14px;margin:14px 0 4px;padding-bottom:3px;border-bottom:1px solid var(--bdr,#e6e6e6)}
+.cs-p{color:var(--mut,#5f6368);margin:4px 0}.cs-r{display:grid;grid-template-columns:1fr 110px;gap:10px;padding:4px 0;border-bottom:1px solid #f0f0f0}
+.cs-eq{overflow-wrap:anywhere}.cs-eq i{font-style:italic}.cs-eq sub,.cs-eq sup{font-size:75%}.cs-d{color:var(--mut,#5f6368);font-size:12px}
+.cs-ref{color:var(--faint,#6b6b6b);font-size:12px;text-align:right}.cs-ok{color:var(--pass,#247b50);font-weight:600}.cs-ng{color:var(--fail,#c4242a);font-weight:600}
+.cs-val .cs-eq{color:#333}.cs-img{margin:8px 0}.cs-cap{font-size:12px;color:var(--mut,#5f6368)}
+.cs-sheet{font-size:9pt}.cs-sheet .cs-r{grid-template-columns:1fr 70pt;padding:1pt 0;break-inside:avoid}.cs-sheet .cs-h{font-size:10pt;margin:6pt 0 2pt}.cs-sheet .cs-d,.cs-sheet .cs-ref{font-size:8pt}.cs-sheet .cs-d{display:inline;margin-left:8pt}.cs-sheet .cs-p{margin:2pt 0}
+.zone .zfull{padding:0 10px 8px}.zone summary small{color:var(--faint,#6b6b6b);font-size:12px}.cs-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.cs-tools .btn2{width:auto;flex:0 0 auto;margin:0;padding:0 16px}
+@media print{.cs-tools{display:none}}`;
+  // The tool's drawings in its calculation, as pictures for CalcPad (and the page's full calculation). sheet: the drawing
+  // module's A4-sheet HTML (DK.sheet: a heading and the drawing for each), or a list of [title, svg]; where(title, i): the
+  // key of the zone a drawing goes in (the first zone when it names none; false leaves the drawing out). Each goes at the
+  // head of its zone, in the sheet's order, captioned with its heading. Returns Z.
+  const ENT = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', minus: '\u2212', ndash: '\u2013', mdash: '\u2014', times: '\u00d7', middot: '\u00b7', deg: '\u00b0', le: '\u2264', ge: '\u2265', radic: '\u221a', sup2: '\u00b2', sup3: '\u00b3', larr: '\u2190', rarr: '\u2192', alpha: '\u03b1', beta: '\u03b2', gamma: '\u03b3', delta: '\u03b4', Delta: '\u0394', epsilon: '\u03b5', zeta: '\u03b6', eta: '\u03b7', theta: '\u03b8', kappa: '\u03ba', lambda: '\u03bb', mu: '\u03bc', nu: '\u03bd', xi: '\u03be', pi: '\u03c0', rho: '\u03c1', sigma: '\u03c3', tau: '\u03c4', phi: '\u03c6', Phi: '\u03a6', chi: '\u03c7', psi: '\u03c8', omega: '\u03c9' };
+  const plainText = s => String(s).replace(/<[^>]*>/g, '').replace(/&#(x?)([0-9a-f]+);/gi, (m, x, n) => String.fromCodePoint(parseInt(n, x ? 16 : 10)))
+    .replace(/&([a-z]+[0-9]?);/gi, (m, n) => ENT[n] ?? m).replace(/\s+/g, ' ').trim();
+  // the outermost <svg> elements of a piece of HTML, whole (a drawing may hold another)
+  function svgsIn(html) {
+    const out = [], re = /<svg\b|<\/svg>/g; let depth = 0, start = -1, m;
+    while ((m = re.exec(html))) {
+      if (m[0] !== '</svg>') { if (depth++ === 0) start = m.index; }
+      else if (depth > 0 && --depth === 0) out.push(html.slice(start, m.index + 6));
+    }
+    return out;
+  }
+  function pictures(Z, sheet, where) {
+    if (!Z || !Z.length || !sheet) return Z;
+    const blocks = Array.isArray(sheet) ? sheet.map(([t, s]) => [plainText(t), svgsIn(String(s))])
+      : String(sheet).split('<div class="rfig"').slice(1).map(ch => { const t = ch.match(/<h3>([\s\S]*?)<\/h3>/); return [t ? plainText(t[1]) : '', svgsIn(ch)]; });
+    const at = new Map();
+    blocks.forEach(([title, svgs], i) => {
+      if (!svgs.length) return;
+      const key = where ? where(title, i) : undefined;
+      if (key === false) return;
+      const zn = Z.find(z => z.key === key) || Z[0];
+      if (!at.has(zn)) at.set(zn, []);
+      svgs.forEach((svg, j) => at.get(zn).push({ t: 'img', svg, caption: j === svgs.length - 1 ? title : '' }));
+    });
+    for (const [zn, list] of at) zn.C.items.unshift(...list);
+    return Z;
+  }
+  return { create, toSI, siUnit, factor, num, exprHTML, symHTML, unitHTML, tokens, rasterise, copy, download, merge, project, downloadProject, zonesHTML, allTools, wire, sheetHTML, pictures, CSS };
+})();
+if (typeof module !== 'undefined') module.exports = { CalcScript };
+
 /* ===== LOAD TAKE-DOWN ENGINE (EngineeringTools) =====
    Vertical loads carried down a wall (per metre run) or a column, from the roof to the foundation, laid out as a take-down
    table: one row per level or item, each with
@@ -674,6 +1107,261 @@ const LoadTakedown = (() => {
   return { design, evalx, fromV1, FIELDS, CATS, PSI0, qH, alphaN, alphaA, buildup, KINDS, guessKind, span };
 })();
 if (typeof module !== 'undefined') module.exports = LoadTakedown;
+
+/* ===== LOAD TAKE-DOWN: FULL CALCULATION (EngineeringTools) =====
+   LoadTakedown.design written out as CalcScript, so CalcPad works every value out again from the cells of the table:
+   - the take-down, row by row from the roof down: each row's area, line and point loads (a wall per metre run: ÷ the
+     metre run), the facades on its storey (DL and SIDL per m² of elevation × the height × the width carried), its totals
+     in DL, SIDL and LL, and the running totals in the element below it; the floors whose imposed load is reduced (the
+     count n and, for a column, the area), α_n (BS EN 1991-1-1 6.3.1.2(11), UK NA) and α_A (6.3.1.2(10)) where asked,
+     and the element's SLS (6.14b) and ULS ((6.10), or the worse of (6.10a) and (6.10b)) below each row; at a transfer
+     beam the share of the element above reaching the support followed (× (L − x)/L or x/L, × the wall's length on the
+     beam, ÷ the spread below) and the beam's own reaction there from its loads; at the base the sum, SLS and ULS and a
+     strip or pad for an allowable bearing pressure;
+   - each transfer beam on its own: the element above on it and the beam's loads, the reactions by statics on two supports
+     in DL, SIDL and LL, at SLS and ULS, and the bending moments and shear the tool finds along the beam (given);
+   - a hipped roof onto its walls: each face to its eaves wall, the side walls' load between the hips and the end walls'
+     triangle.
+   Source: scratchpad/takedown/script.js. Needs CalcScript and LoadTakedown. */
+const TakedownScript = (() => {
+  'use strict';
+  const TOOL = 'Load Take-down', STD = 'BS EN 1991-1-1:2002, BS EN 1990:2002+A1:2005, UK NAs';
+  // the names' symbols: gA_2 → g_A,2 (DL per m², row 2), qF_1_2 → q_F,1.2 (row 1's second facade), Lt_3 → L_t,3
+  const symOf = n => { let m = n.match(/^([A-Za-z])([A-Za-z]{1,2})_(\d+)(?:_(\d+))?$/); return m ? `${m[1]}_${m[2]},${m[3]}${m[4] ? '.' + m[4] : ''}` : null; };
+  const pre = title => {
+    const C = CalcScript.create({ title, tool: TOOL, standard: STD });
+    [['input', 5], ['calc', 6], ['given', 6]].forEach(([f, i]) => { const g = C[f]; C[f] = (...a) => { const s = symOf(a[0]); if (s && !(a[i] && a[i].sym)) a[i] = { ...(a[i] || {}), sym: s }; return g(...a); }; });
+    return C;
+  };
+  const KINDS = { roof: 'roof', floor: 'floor', wall: 'wall or facade', point: 'point load', other: 'other load', transfer: 'transfer beam' };
+
+  // the combination factors, once at the top of a check
+  function factors(C, comb) {
+    C.head('Combinations of actions, BS EN 1990 with the UK NA (Table NA.A1.2(B))');
+    C.input('gamma_G', 1.35, '', 'partial factor, permanent actions (DL and SIDL)', 'Table NA.A1.2(B)', { sym: 'γ_G' });
+    C.input('gamma_Q', 1.5, '', 'partial factor, imposed load', 'Table NA.A1.2(B)', { sym: 'γ_Q' });
+    if (comb !== '6.10') {
+      C.input('psi_0', 0.7, '', 'combination factor of the imposed load (categories A to D, roofs)', 'Table NA.A1.1', { sym: 'ψ_0' });
+      C.input('xi', 0.925, '', 'reduction factor of the permanent actions in (6.10b)', 'Table NA.A1.2(B)', { sym: 'ξ' });
+    }
+  }
+  // the ULS of a permanent part G and an imposed part Q (formulas)
+  const uls = (comb, G, Q) => comb === '6.10' ? `gamma_G*(${G}) + gamma_Q*${Q}` : `MAX(gamma_G*(${G}) + gamma_Q*psi_0*${Q}, xi*gamma_G*(${G}) + gamma_Q*${Q})`;
+  const ulsRef = comb => comb === '6.10' ? 'BS EN 1990 (6.10)' : 'BS EN 1990 (6.10a), (6.10b)';
+
+  // ---------- the take-down ----------
+  function takedown(D) {
+    const C = pre('Load take-down'), wallTop = D.top === 'wall', red = D.red, comb = D.comb;
+    C.head(`The element: ${wallTop ? 'a wall, per metre run' : 'a column'}`);
+    C.note(`Rows from the roof down. Each row's loads: area × load per m² (DL, SIDL, LL), length × load per metre, and point loads${D.rows.some(r => r.fac && r.fac.parts && r.fac.parts.length) ? ', and the facades on its storey: load per m² of elevation × the height × the width carried' : ''}; below each row the running totals in the element under it.`);
+    const needRun = D.rows.some(r => r.el === 'wall' && r.kind !== 'transfer' && r.v && ['A', 'L', 'pD', 'pS', 'pL'].some(k => r.v[k])) || D.transfers.some(T => T.elA === 'wall' || T.elB === 'wall');
+    if (needRun) C.input('b_run', 1, 'm', 'the metre run of wall the loads are worked out for', '');
+    factors(C, comb);
+    if (red !== 'none') {
+      C.note(`Imposed load reduction, BS EN 1991-1-1 6.3.1.2 with the UK NA: the floors of categories A to D marked as such, × α_n = 1.1 − n/10 for n ≤ 5, 0.6 for 5 < n ≤ 10, 0.5 above (n the floors carried)${red === 'best' ? '; for a column, α_A = 1 − A/1000 m² ≥ 0.75 on the area carried where smaller (not combined)' : ''}; other loads not reduced.`);
+    }
+    const cur = { DL: null, SDL: null, LL: null, LLr: null, LLn: null, n: null, Ar: null };
+    // the floors' area is tracked for α_A where a column carries them (a wall's per metre run × its length on a beam)
+    const trackA = red === 'best' && D.rows.some(r => r.el === 'column');
+    if (trackA) C.input('A_0', 1000, 'm2', 'the area in α_A = 1 − A/A_0 ≥ 0.75', '6.3.1.2(10), UK NA', { sym: 'A_0' });
+    const aU = el => el === 'wall' ? 'm' : 'm2';   // a wall's area carried is per metre run (m²/m)
+    const plus = (a, b) => a ? `${a} + ${b}` : b;
+    const fname = { DL: 'DL', SDL: 'SIDL', LL: 'LL' };
+    D.rows.forEach((r, i) => {
+      const k = i + 1, U = r.U, wall = r.el === 'wall', T = r.kind === 'transfer' ? D.transfers.find(t => t.row === r.i) : null;
+      if (T && T.follow === 'none') return;   // the take-down stops on the beam (its own check)
+      C.head(`${k} ${r.name} (${T ? 'a transfer beam' : KINDS[r.kind] || 'load'})`);
+      // the facades on this row's storey: DL (and SIDL) × height × width (a wall: per metre run, ÷ nothing)
+      const facT = { DL: [], SDL: [] };
+      const facades = parts => parts.forEach((p, m) => {
+        const s = `${k}_${m + 1}`, colW = r.el === 'column';
+        C.input(`qF_${s}`, p.q, 'kN/m2', `${p.name}: DL per m² of elevation${p.from === -1 ? ' (a parapet above the top)' : p.from !== r.src && p.from != null && !T ? ' (the storey below the level above, bearing here)' : ''}${p.base ? ' (the lowest storey, bearing on the base)' : ''}`, '');
+        if (p.qs) C.input(`sF_${s}`, p.qs, 'kN/m2', 'and its SIDL', '');
+        C.input(`hF_${s}`, p.h, 'm', 'its height', '');
+        if (colW) C.input(`wF_${s}`, p.w, 'm', 'the width of facade the column carries', '');
+        const w = colW ? `*wF_${s}` : '';
+        facT.DL.push(`qF_${s}*hF_${s}${w}`); if (p.qs) facT.SDL.push(`sF_${s}*hF_${s}${w}`);
+      });
+      if (!T) {
+        // ---- a row: its area, line and point loads ----
+        const v = r.v, t = { DL: [], SDL: [], LL: [] };
+        const area = v.A && (v.aD || v.aS || v.aL), line = v.L && (v.lD || v.lS || v.lL);
+        if (area || (trackA && r.floor && v.A)) C.input(`A_${k}`, v.A, 'm2', `area carried${wall ? ' (per metre run)' : ''}`, '');
+        if (area) [['aD', 'gA', 'DL', 'DL'], ['aS', 'sA', 'SDL', 'SIDL'], ['aL', 'qA', 'LL', 'LL']].forEach(([f, nm, c, w]) => { if (v[f]) { C.input(`${nm}_${k}`, v[f], 'kN/m2', `${w} per m²`, ''); t[c].push(`A_${k}*${nm}_${k}`); } });
+        if (line) {
+          C.input(`L_${k}`, v.L, 'm', `length carried${wall ? ' (per metre run)' : ''}`, '');
+          [['lD', 'gL', 'DL', 'DL'], ['lS', 'sL', 'SDL', 'SIDL'], ['lL', 'qL', 'LL', 'LL']].forEach(([f, nm, c, w]) => { if (v[f]) { C.input(`${nm}_${k}`, v[f], 'kN/m', `${w} per metre`, ''); t[c].push(`L_${k}*${nm}_${k}`); } });
+        }
+        [['pD', 'gP', 'DL', 'DL'], ['pS', 'sP', 'SDL', 'SIDL'], ['pL', 'qP', 'LL', 'LL']].forEach(([f, nm, c, w]) => { if (v[f]) { C.input(`${nm}_${k}`, v[f], 'kN', `point load, ${w}${wall ? ' (per metre run)' : ''}`, ''); t[c].push(`${nm}_${k}`); } });
+        facades((r.fac && r.fac.parts) || []);
+        for (const [c, val] of [['DL', r.DL], ['SDL', r.SIDL], ['LL', r.LL]]) {
+          const own = t[c].length ? (wall ? `(${t[c].join(' + ')})/b_run` : t[c].join(' + ')) : '', all = [own, ...(facT[c] || [])].filter(Boolean);
+          if (all.length) C.calc(`${c}_${k}`, all.join(' + '), val, U, `the row's ${fname[c]}`, '', { sym: `${fname[c]}_${k}` });
+          else C.input(`${c}_${k}`, 0, U, `no ${fname[c]} on this row`, '', { sym: `${fname[c]}_${k}` });
+        }
+        // the running totals in the element below this row
+        C.calc(`DLs_${k}`, plus(cur.DL, `DL_${k}`), r.cum.DL, U, 'in the element below it: ΣDL', '', { sym: `ΣDL_${k}` }); cur.DL = `DLs_${k}`;
+        C.calc(`SDLs_${k}`, plus(cur.SDL, `SDL_${k}`), r.cum.SIDL, U, 'ΣSIDL', '', { sym: `ΣSIDL_${k}` }); cur.SDL = `SDLs_${k}`;
+        if (red !== 'none') {
+          if (r.floor) {
+            C.calc(`LLr_${k}`, plus(cur.LLr, `LL_${k}`), r.cum.LLr, U, 'ΣLL on the floors whose imposed load is reduced (this row one of them)', '', { sym: `ΣLL_r,${k}` }); cur.LLr = `LLr_${k}`;
+            if (cur.n) C.calc(`n_${k}`, `${cur.n} + 1`, r.cum.n, '', 'floors carried', '6.3.1.2(11)'); else C.input(`n_${k}`, 1, '', 'floors carried', '6.3.1.2(11)');
+            cur.n = `n_${k}`;
+            if (trackA && v.A) { C.calc(`Ar_${k}`, plus(cur.Ar, wall ? `A_${k}/b_run` : `A_${k}`), r.cum.A, aU(r.el), `their area carried${wall ? ' (m² per metre run)' : ''}`, '6.3.1.2(10)', { sym: `A_r,${k}` }); cur.Ar = `Ar_${k}`; }
+          } else if (r.LL) { C.calc(`LLn_${k}`, plus(cur.LLn, `LL_${k}`), r.cum.LLn, U, 'ΣLL not reduced (roofs, given loads)', '', { sym: `ΣLL_n,${k}` }); cur.LLn = `LLn_${k}`; }
+        }
+        C.calc(`LLs_${k}`, plus(cur.LL, `LL_${k}`), r.cum.LL, U, 'ΣLL', '', { sym: `ΣLL_${k}` }); cur.LL = `LLs_${k}`;
+      } else {
+        // ---- a transfer beam: the share of the element above reaching the support followed, and the beam's own reaction ----
+        const s = `${k}`, sup = T.follow;
+        C.note(T.mode === 'support' ? `The ${T.elA} carries straight on at the beam's ${sup} support, the beam framing into it: its load goes on in full, with the beam's reaction there.`
+          : `The ${T.elA} above stands on the beam (${T.elA === 'column' ? `at ${+T.on.a.toFixed(3)} m` : `from ${+T.on.a.toFixed(3)} to ${+T.on.b.toFixed(3)} m`}); the take-down carries on down its ${sup} support, a ${T.elB}: the share reaching it by statics on two supports.`);
+        const own = T.items.filter(q => !q.element);
+        const needL = T.mode === 'beam' || own.some(q => q.DL || q.SIDL || q.LL);
+        if (needL) C.input(`Lt_${s}`, T.L, 'm', 'span of the beam, between its supports', '');
+        let share = x => x;
+        if (T.mode === 'beam') {
+          C.input(`at_${s}`, T.on.a, 'm', `where the ${T.elA} above ${T.elA === 'column' ? 'stands' : 'starts'}, from the left support`, '');
+          if (T.elA === 'wall') { C.input(`bt_${s}`, T.on.b, 'm', 'where it ends', ''); C.calc(`xc_${s}`, `(at_${s} + bt_${s})/2`, (T.on.a + T.on.b) / 2, 'm', 'the centre of the wall on the beam', ''); }
+          const xc = T.elA === 'wall' ? `xc_${s}` : `at_${s}`;
+          C.calc(`f_${s}`, sup === 'left' ? `(Lt_${s} - ${xc})/Lt_${s}` : `${xc}/Lt_${s}`, T.f, '', `the share reaching the ${sup} support`, 'statics', { sym: `f_${s}` });
+          if (T.elB === 'wall') C.input(`sp_${s}`, T.spread, 'm', 'the length of wall below that the reaction spreads over', '');
+          share = x => `f_${s}*${x}${T.elA === 'wall' ? `*(bt_${s} - at_${s})` : ''}${T.elB === 'wall' ? `/sp_${s}` : ''}`;
+        } else if (T.elB === 'wall' && own.some(q => q.DL || q.SIDL || q.LL)) C.input(`sp_${s}`, T.spread, 'm', 'the length of wall below that the beam\'s reaction spreads over', '');
+        // the beam's own weight and other loads: the reaction at the support followed, Σ W (L − x)/L or Σ W x/L
+        const R = {};
+        own.forEach((q, m) => {
+          const p = `${s}_${m + 1}`;
+          if (q.type === 'point') C.input(`xP_${p}`, q.a, 'm', `${q.own ? 'own weight' : 'a point load on the beam'}: from the left support`, '');
+          else { C.input(`aW_${p}`, q.a, 'm', `${q.own ? 'the beam\'s own weight' : 'a UDL on the beam'}: from`, ''); C.input(`bW_${p}`, q.b, 'm', 'to', ''); }
+          for (const [c, nm, w] of [['DL', 'D', 'DL'], ['SIDL', 'S', 'SIDL'], ['LL', 'L', 'LL']]) if (q[c]) C.input(`${q.type === 'point' ? 'P' : 'w'}${nm}_${p}`, q[c], q.type === 'point' ? 'kN' : 'kN/m', w, '');
+        });
+        for (const [c, nm] of [['DL', 'D'], ['SIDL', 'S'], ['LL', 'L']]) {
+          const terms = own.map((q, m) => {
+            if (!q[c]) return null;
+            const p = `${s}_${m + 1}`, W = q.type === 'point' ? `P${nm}_${p}` : `w${nm}_${p}*(bW_${p} - aW_${p})`, x = q.type === 'point' ? `xP_${p}` : `(aW_${p} + bW_${p})/2`;
+            return `${W}*${sup === 'left' ? `(Lt_${s} - ${x})` : x}`;
+          }).filter(Boolean);
+          if (!terms.length) continue;
+          R[c] = `R${nm}_${s}`;
+          C.calc(R[c], `(${terms.join(' + ')})/Lt_${s}${T.elB === 'wall' ? `/sp_${s}` : ''}`, T.Ro[c], r.U, `the beam's own ${c} reaching the ${sup} support${T.elB === 'wall' ? ', spread along the wall' : ''}`, 'statics', { sym: `R_${c},${s}` });
+        }
+        // the storey under the beam (its facade goes on in the element below)
+        if (r.fac && r.fac.parts && r.fac.parts.length) facades(r.fac.parts);
+        const carry = (cn, key, Rk, fac) => { const e = [cn ? share(cn) : null, Rk, ...(fac || [])].filter(Boolean); return e.length ? e.join(' + ') : null; };
+        const def = (nm, expr, val, desc, sym) => { if (expr) C.calc(nm, expr, val, r.U, desc, '', { sym }); else C.input(nm, 0, r.U, desc, '', { sym }); return nm; };
+        cur.DL = def(`DLs_${k}`, carry(cur.DL, 'DL', R.DL, facT.DL), r.cum.DL, `in the ${T.elB} below: ΣDL`, `ΣDL_${k}`);
+        cur.SDL = def(`SDLs_${k}`, carry(cur.SDL, 'SIDL', R.SIDL, facT.SDL), r.cum.SIDL, 'ΣSIDL', `ΣSIDL_${k}`);
+        if (red !== 'none') {
+          if (cur.LLr) { C.calc(`LLr_${k}`, share(cur.LLr), r.cum.LLr, r.U, 'ΣLL of the floors carried, reduced', '', { sym: `ΣLL_r,${k}` }); cur.LLr = `LLr_${k}`; }
+          if (cur.LLn || R.LL) { C.calc(`LLn_${k}`, carry(cur.LLn, 'LL', R.LL), r.cum.LLn, r.U, 'ΣLL not reduced', '', { sym: `ΣLL_n,${k}` }); cur.LLn = `LLn_${k}`; }
+          if (cur.Ar) { C.calc(`Ar_${k}`, share(cur.Ar), r.cum.A, aU(r.el), `the floors' area carried${r.el === 'wall' ? ' (m² per metre run)' : ''}`, '6.3.1.2(10)', { sym: `A_r,${k}` }); cur.Ar = `Ar_${k}`; }
+        }
+        cur.LL = def(`LLs_${k}`, carry(cur.LL, 'LL', R.LL), r.cum.LL, 'ΣLL', `ΣLL_${k}`);
+      }
+      // the element below the row: the imposed load (reduced), SLS and ULS
+      let Q = cur.LL;
+      if (red !== 'none' && r.cum.n >= 1 && cur.n) {
+        C.calc(`an_${k}`, `IF(${cur.n} <= 1, 1, IF(${cur.n} <= 5, 1.1 - ${cur.n}/10, IF(${cur.n} <= 10, 0.6, 0.5)))`, r.an, '', `α_n for ${r.cum.n} floor${r.cum.n > 1 ? 's' : ''} carried`, '6.3.1.2(11), UK NA', { sym: `α_n,${k}` });
+        let a = `an_${k}`;
+        if (red === 'best' && r.el === 'column' && cur.Ar) {
+          C.calc(`aA_${k}`, `MAX(0.75, 1 - ${cur.Ar}/A_0)`, r.aA, '', 'α_A on their area', '6.3.1.2(10), UK NA', { sym: `α_A,${k}` });
+          C.calc(`alpha_${k}`, `MIN(an_${k}, aA_${k})`, r.alpha, '', 'the smaller (not combined)', '6.3.1.2(11), UK NA', { sym: `α_${k}` }); a = `alpha_${k}`;
+        }
+        C.calc(`Qd_${k}`, `${a}*${cur.LLr}${cur.LLn ? ` + ${cur.LLn}` : ''}`, r.Q, r.U, 'the imposed load, reduced', '6.3.1.2(11)', { sym: `Q_${k}` });
+        Q = `Qd_${k}`;
+      }
+      C.calc(`SLS_${k}`, `${cur.DL} + ${cur.SDL} + ${Q}`, r.sls, r.U, `SLS in the ${r.el} below (characteristic)`, 'BS EN 1990 (6.14b)', { sym: `N_SLS,${k}` });
+      C.calc(`ULS_${k}`, uls(comb, `${cur.DL} + ${cur.SDL}`, Q), r.uls, r.U, `ULS in the ${r.el} below`, ulsRef(comb), { sym: `N_ULS,${k}` });
+    });
+    // at the base, or on the beam the take-down stops on
+    const kb = D.rows.indexOf(D.base) + 1, none = D.stopped && D.base.kind === 'transfer' && D.base.transfer === D.stopped.j;
+    C.head(D.stopped ? `On ${D.stopped.name}` : 'At the foundation');
+    if (none) C.note(`${D.stopped.name} is at the top: nothing above it.`);
+    const N = (n, s, v, d, ref) => none ? C.input(n, 0, D.U, d, ref, { sym: n }) : C.calc(n, s, v, D.U, d, ref, { sym: n });
+    N('N_SLS', `SLS_${kb}`, D.base.sls, `the load ${D.stopped ? `on ${D.stopped.name}` : 'at the foundation'}, SLS`, 'BS EN 1990 (6.14b)');
+    N('N_ULS', `ULS_${kb}`, D.base.uls, 'and ULS', ulsRef(comb));
+    if (D.foot) {
+      C.head(D.type === 'wall' ? 'A strip footing' : 'A pad footing');
+      C.input('q_a', D.foot.qa, 'kN/m2', 'allowable bearing pressure', '');
+      const net = D.foot.wsw ? '(q_a - w_f)' : 'q_a';
+      if (D.foot.wsw) C.input('w_f', D.foot.wsw, 'kN/m2', 'the footing\'s own weight (and soil over it) per m²', '');
+      if (D.type === 'wall') C.calc('b_f', `N_SLS/${net}`, D.foot.b, 'm', 'width of the strip', '');
+      else { C.calc('A_f', `N_SLS/${net}`, D.foot.A, 'm2', 'area of the pad', ''); C.calc('s_f', 'SQRT(A_f)', D.foot.s, 'm', 'side of a square pad', ''); }
+    }
+    return { key: 'takedown', title: 'Load take-down, roof to base', sum: `SLS ${(+D.base.sls.toFixed(1))} ${D.U}, ULS ${(+D.base.uls.toFixed(1))} ${D.U}`, C, util: null };
+  }
+
+  // ---------- a transfer beam ----------
+  function transfer(D, T, j) {
+    const C = pre(T.name), comb = D.comb;
+    C.head(`${T.name}: a beam on two supports`);
+    C.input('L', T.L, 'm', 'span, between the supports', '');
+    if (T.x0 < -1e-9 || T.x1 > T.L + 1e-9) C.note('A load beyond a support is carried as a cantilever.');
+    factors(C, comb);
+    C.head('The loads on it (from the left support)');
+    const W = { DL: [], SIDL: [], LL: [] }, Wx = { DL: [], SIDL: [], LL: [] };
+    T.items.forEach((q, m) => {
+      const i = m + 1, el = q.element, pt = q.type === 'point', U = pt ? 'kN' : 'kN/m';
+      const what = el ? `the ${T.elA} above${T.elA === 'column' ? '' : ', per metre'} (the take-down's totals at this level, its imposed load as reduced there)` : q.own ? 'the beam\'s own weight' : pt ? 'a point load' : 'a UDL';
+      if (pt) C.input(`x_${i}`, q.a, 'm', `${what}: at`, ''); else { C.input(`a_${i}`, q.a, 'm', `${what}: from`, ''); C.input(`b_${i}`, q.b, 'm', 'to', ''); }
+      for (const [c, nm] of [['DL', 'D'], ['SIDL', 'S'], ['LL', 'L']]) {
+        if (!q[c]) continue;
+        const n = `${pt ? 'P' : 'w'}${nm}_${i}`;
+        if (el) C.given(n, q[c], U, c, 'the take-down above', ''); else C.input(n, q[c], U, c, '');
+        const F = pt ? n : `${n}*(b_${i} - a_${i})`, x = pt ? `x_${i}` : `(a_${i} + b_${i})/2`;
+        W[c].push(F); Wx[c].push(`${F}*${x}`);
+      }
+    });
+    C.head('Reactions, by statics');
+    const R = {};
+    for (const [c, nm] of [['DL', 'D'], ['SIDL', 'S'], ['LL', 'L']]) {
+      if (!W[c].length) { C.input(`R_B${nm}`, 0, 'kN', `right reaction, ${c}: none`, ''); C.input(`R_A${nm}`, 0, 'kN', `left reaction, ${c}: none`, ''); continue; }
+      C.calc(`R_B${nm}`, `(${Wx[c].join(' + ')})/L`, T.RB[c], 'kN', `right reaction, ${c}: Σ W x/L`, 'statics', { sym: `R_B,${c}` });
+      C.calc(`R_A${nm}`, `${W[c].join(' + ')} - R_B${nm}`, T.RA[c], 'kN', `left reaction, ${c}: Σ W − R_B`, 'statics', { sym: `R_A,${c}` });
+    }
+    for (const [sd, R0] of [['A', T.RA], ['B', T.RB]]) {
+      C.calc(`R_${sd}SLS`, `R_${sd}D + R_${sd}S + R_${sd}L`, R0.sls, 'kN', `${sd === 'A' ? 'left' : 'right'} reaction, SLS`, 'BS EN 1990 (6.14b)', { sym: `R_${sd},SLS` });
+      C.calc(`R_${sd}ULS`, uls(comb, `R_${sd}D + R_${sd}S`, `MAX(0*R_${sd}L, R_${sd}L)`), R0.uls, 'kN', `${sd === 'A' ? 'left' : 'right'} reaction, ULS (the imposed load only where it adds)`, ulsRef(comb), { sym: `R_${sd},ULS` });
+    }
+    C.head('Bending and shear along the beam (ULS)');
+    const how = 'found along the beam: at the loads\' ends, the supports and where each combination\'s shear passes through zero';
+    C.given('M_sag', T.Msag, 'kNm', `largest sagging moment, at ${+T.xS.toFixed(3)} m`, how, '', { sym: 'M_Ed,sag' });
+    if (T.Mhog < 0) C.given('M_hog', -T.Mhog, 'kNm', `largest hogging moment, at ${+T.xH.toFixed(3)} m`, how, '', { sym: 'M_Ed,hog' });
+    C.given('V_Ed', T.Vmax, 'kN', 'largest shear', how, '', { sym: 'V_Ed' });
+    C.note('The beam\'s own design (bending, shear, deflection, bearing) is for the beam tools.');
+    return { key: `transfer${j}`, title: T.name, sum: `reactions ULS ${(+T.RA.uls.toFixed(1))} kN, ${(+T.RB.uls.toFixed(1))} kN`, C, util: null };
+  }
+
+  // ---------- a hipped roof onto its walls ----------
+  function hip(D) {
+    const H = D.hip, C = pre('Hipped roof onto its walls');
+    C.head('A hipped roof on a rectangular plan, one pitch');
+    C.input('B_h', H.B, 'm', 'width of the plan (the end walls)', ''); C.input('L_h', H.L, 'm', 'length of the plan (the side walls)', '');
+    C.calc('w_h', 'B_h/2', H.w, 'm', 'roof carried per metre of eaves (hips at 45° on plan)', '');
+    C.calc('r_h', 'L_h - B_h', H.ridge, 'm', 'length of the ridge', '');
+    C.calc('A_side', '(L_h - w_h)*w_h', H.areaSide, 'm2', 'plan area onto each side wall', ''); C.calc('A_end', 'B_h*w_h/2', H.areaEnd, 'm2', 'plan area onto each end wall', '');
+    if (H.f !== 1) C.input('f_h', H.f, '', 'the share taken by the wall plates', '');
+    const f = H.f !== 1 ? '*f_h' : '';
+    for (const [c, nm, sy] of [['DL', 'g', 'DL'], ['SIDL', 's', 'SIDL'], ['LL', 'q', 'LL']]) {
+      if (!H.q[c]) continue;
+      C.head(`${c}`);
+      C.input(`${nm}_h`, H.q[c], 'kN/m2', `${sy} on plan`, '');
+      C.calc(`${nm}_side`, `${nm}_h*w_h${f}`, H[c].side, 'kN/m', 'on the side walls, between the hips', '', { sym: `${sy}_side` });
+      C.calc(`${nm}_end`, `${nm}_h*w_h${f}`, H[c].endPeak, 'kN/m', 'on the end walls: the peak at mid-length', '', { sym: `${sy}_end,peak` });
+      C.calc(`${nm}_avg`, `${nm}_h*w_h/2${f}`, H[c].endAvg, 'kN/m', 'and the average', '', { sym: `${sy}_end,avg` });
+    }
+    return { key: 'hip', title: 'Hipped roof onto its walls', sum: `${+H.B.toFixed(2)} × ${+H.L.toFixed(2)} m`, C, util: null };
+  }
+
+  function zones(D) {
+    const Z = [takedown(D)];
+    D.transfers.forEach((T, j) => Z.push(transfer(D, T, j)));
+    if (D.hip) Z.push(hip(D));
+    return Z;
+  }
+  return { zones };
+})();
 
 </script>
 <script id="drawing-code">
@@ -1238,7 +1926,7 @@ const DrawTakedown = (() => {
   const blocks = D => [['The load path', elevation(D)],
     ...D.transfers.flatMap(T => [[T.name, beamView(D, T)], [`${T.name}: ULS bending moment and shear`, diagram(T, 'M', 'Bending moment, ULS (kNm)', 'kNm') + diagram(T, 'V', 'Shear, ULS (kN)', 'kN')]]),
     ...(D.hip ? [['Hipped roof', hipPlan(D)]] : [])];
-  return { html: D => page(blocks(D)), report: D => sheet(blocks(D)), elevation, hipPlan, beamView };
+  return { html: D => page(blocks(D)), report: D => sheet(blocks(D)), blocks, elevation, hipPlan, beamView };
 })();
 
 </script>
@@ -1505,13 +2193,27 @@ function sheetTable(D) {
   return `<table class="rt ltdp"><thead>${head}</thead><tbody>${body}${foot}</tbody></table>${D.rows.some(r => r.floor) ? '<p class="rp">* a floor whose imposed load is reduced</p>' : ''}`;
 }
 let last = null;
+// the full calculation, check by check; each drawing goes to CalcPad with its check (as pictures)
+document.head.insertAdjacentHTML('beforeend', `<style>${CalcScript.CSS}</style>`);
+const cpMeta = title => { const s = collect(); return { project: s.pName, job: s.pJob, by: s.pBy, sheet: s.pRef, title }; };
+const cpName = t => { const s = collect(); return [s.pJob, s.pRef, t].filter(Boolean).join(' '); };
+CalcScript.wire($('results'), () => last && last.Z, cpMeta, cpName, 'Load take-down');
+function zonesFor(D) {
+  const Z = TakedownScript.zones(D), B = DrawTakedown.blocks(D), pics = s => (s.match(/<svg[\s\S]*?<\/svg>/g) || []).map(svg => ({ t: 'img', svg, caption: '' }));
+  const put = (key, s) => { const z = Z.find(x => x.key === key); if (z) z.C.items.unshift(...pics(s)); };
+  put('takedown', B[0][1]);   // the load path; then each beam and its diagrams; then the hipped roof
+  D.transfers.forEach((T, j) => put(`transfer${j}`, B[1 + 2 * j][1] + B[2 + 2 * j][1]));
+  if (D.hip) put('hip', B[B.length - 1][1]);
+  return Z;
+}
 function runIt() {
-  const D = LT.design(input()); last = { D };
+  const D = LT.design(input()); last = { D, Z: zonesFor(D) };
   $('results').innerHTML = verdict(D) + `<div id="drawings">${DrawTakedown.html(D)}</div>`
     + `<div class="dlabel">Down the building (${D.U}; Σ the totals in the ${D.type} below each row)</div>${downTable(D, 't')}`
     + (D.hip ? `<div class="dlabel">Hipped roof onto its walls</div>${hipTable(D, 't')}` : '')
     + (D.transfers.length ? `<div class="dlabel">Transfer beams</div>${transferTable(D, 't')}` : '')
     + `<div class="dlabel">Calculation</div>${stepsHTML(D.steps)}`
+    + `<div class="dlabel">Full calculation (open a check)</div>${CalcScript.zonesHTML(last.Z)}`
     + (D.limits.length ? `<div class="err">${D.limits.map(sub).join('<br>')}</div>` : '') + (D.warnings.length ? `<div class="note">${D.warnings.map(sub).join('<br>')}</div>` : '')
     + `<div class="note">${notes(D).join(' ')}</div><button class="btn2" id="printBtn">Print A4 calculation sheet</button>`;
   $('printBtn').onclick = () => { $('report').innerHTML = report(); window.print(); };
@@ -1536,7 +2238,8 @@ function report() {
   let sn = 4;
   if (D.transfers.length) b += `<div class="rs"><h2>${sn++} Transfer beams</h2>${transferTable(D, 'rt')}</div>`;
   b += `<div class="rs"><h2>${sn++} Calculation</h2>${rl('Actions to BS EN 1991-1-1 and BS EN 1990 with the UK National Annexes; ' + (D.comb === '6.10' ? 'ULS (6.10)' : 'ULS the worse of (6.10a) and (6.10b)') + ', SLS (6.14b)' + (D.red !== 'none' ? '; imposed load reduction 6.3.1.2(11)' : ''), '', '')}${D.steps.map(x => rl(sub(x.text), esc(x.ref), '')).join('')}</div>`;
-  b += `<div class="rs"><h2>${sn} Result</h2>${rl(D.stopped ? `On ${esc(D.stopped.name)}, ULS` : 'At the foundation, ULS', D.comb === '6.10' ? '(6.10)' : '(6.10a,b)', `<b>${f1(D.base.uls)} ${D.U}</b>`)}${rl('SLS (characteristic)', '(6.14b)', `<b>${f1(D.base.sls)} ${D.U}</b>`)}${D.transfers.map(T => rl(`${esc(T.name)}: bending moment${T.Mhog < 0 ? ' (sagging, hogging)' : ''} and shear; reactions left and right`, 'ULS', `<b>${f1(T.Msag)}${T.Mhog < 0 ? `, ${f1(-T.Mhog)}` : ''} kNm, ${f1(T.Vmax)} kN; ${f1(T.RA.uls)}, ${f1(T.RB.uls)} kN</b>`)).join('')}${D.foot ? rl(D.type === 'wall' ? 'Strip footing width' : 'Pad size', `${f1(D.foot.qa)} kN/m²`, `<b>${D.type === 'wall' ? f2(D.foot.b) + ' m' : f2(D.foot.s) + ' m square'}</b>`) : ''}</div>`;
+  b += `<div class="rs"><h2>${sn++} Result</h2>${rl(D.stopped ? `On ${esc(D.stopped.name)}, ULS` : 'At the foundation, ULS', D.comb === '6.10' ? '(6.10)' : '(6.10a,b)', `<b>${f1(D.base.uls)} ${D.U}</b>`)}${rl('SLS (characteristic)', '(6.14b)', `<b>${f1(D.base.sls)} ${D.U}</b>`)}${D.transfers.map(T => rl(`${esc(T.name)}: bending moment${T.Mhog < 0 ? ' (sagging, hogging)' : ''} and shear; reactions left and right`, 'ULS', `<b>${f1(T.Msag)}${T.Mhog < 0 ? `, ${f1(-T.Mhog)}` : ''} kNm, ${f1(T.Vmax)} kN; ${f1(T.RA.uls)}, ${f1(T.RB.uls)} kN</b>`)).join('')}${D.foot ? rl(D.type === 'wall' ? 'Strip footing width' : 'Pad size', `${f1(D.foot.qa)} kN/m²`, `<b>${D.type === 'wall' ? f2(D.foot.b) + ' m' : f2(D.foot.s) + ' m square'}</b>`) : ''}</div>`;
+  b += `<div class="rs"><h2>${sn} Full calculation</h2></div>` + CalcScript.sheetHTML(last.Z);
   b += `<div class="rs"><p class="rp">${notes(D).join(' ')}</p><p class="rp" style="color:#555">Generated by EngineeringTools &mdash; Load Take-down.</p></div>`;
   return `<table class="wrap"><thead><tr><td>${head}</td></tr></thead><tbody><tr><td>${b}</td></tr></tbody></table>`;
 }

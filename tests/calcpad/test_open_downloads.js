@@ -16,7 +16,7 @@ const TIMBER = ['Timber Beam.html', 'Timber Member.html', 'Timber Stud Wall.html
 // the steel tools whose calculation draws the section live in CalcPad (its STEEL line, after the classification)
 const LIVE = ['Steel Member Design.html', 'Steel Beam Analysis and Design.html', 'Steel Column Design.html', 'Steel Frame Design.html', 'Steel Member Fire Design.html',
   'Steel Beam Torsion.html', 'Hollowcore Support Beam.html', 'Composite Beam Design.html', 'Beam Web Openings.html'];
-const tools = process.argv.slice(2).length ? process.argv.slice(2) : [...STEEL, ...TIMBER, 'RC Beam Analysis and Design.html', 'Pad Foundation.html'];
+const tools = process.argv.slice(2).length ? process.argv.slice(2) : [...STEEL, ...TIMBER, 'RC Beam Analysis and Design.html', 'Pad Foundation.html', 'Load Take-down.html'];
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'et-perega-'));
 let n = 0, bad = 0;
 const truth = (name, ok) => { n++; if (!ok) bad++; console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}`); };

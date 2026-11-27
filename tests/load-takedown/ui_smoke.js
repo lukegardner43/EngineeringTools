@@ -23,6 +23,10 @@ truth('load path drawn before Calculate', /ULS 97\.7 kN\/m/.test($('drawings').t
 $('calc').click();
 truth('calculated: ULS 97.7 kN/m, SLS 70.0', /ULS 97\.7 kN\/m/.test(res()) && /SLS 70\.0 kN\/m/.test(res()));
 truth('results: the totals down the building and the calculation', d.querySelectorAll('#results table.t tbody tr').length === 3 && /ULS \(6\.10\)/.test(res()) && /1\.35 × \(35\.00 \+ 14\.00\) \+ 1\.5 × 21\.00 = 97\.65/.test(res()));
+const zones = () => [...$('results').querySelectorAll('details.zone')], zt = z => z.querySelector('summary').textContent;
+{ const z = zones(), t = z.length ? z[0].textContent.replace(/\s/g, '') : '';
+  truth('the full calculation: the take-down as one check from the roof down, with the CalcPad buttons and one download of the whole', z.length === 1 && /^Load take-down, roof to base/.test(zt(z[0])) && !!z[0].querySelector('[data-cp="save"]') && $('results').querySelectorAll('[data-cp="all"]').length === 1
+    && /1Roof\(roof\)/.test(t) && /\(6\.14b\)/.test(t) && /\(6\.10\)/.test(t) && /Blockwork/.test(t)); }
 // typing updates the totals at once
 cell(0, 'pL', '5'); truth('a point load typed into the roof row: LL 8.50, ULS 105.15 at once', rows()[0].querySelector('.tLL').textContent === '8.50' && /105\.15/.test($('tULS').textContent));
 const bad = cell(0, 'pL', '5+'); truth('a bad cell is marked and the totals wait', bad.classList.contains('bad') && rows()[0].querySelector('.tLL').textContent === '–' && $('tULS').textContent === '–');
@@ -76,6 +80,7 @@ truth('… carried on down the left support: (6 − 4)/6 × 4 m of wall = × 1.3
 tv(0, 'follow', 'right'); tv(0, 'below', 'column'); truth('… down the right support, a column: the totals in kN, the spread hidden', / kN$/.test($('tULS').textContent) && !shown(tq(0, 'spread')));
 $('calc').click();
 truth('… calculated: the element steps to the support, the beam drawn, its own drawing, M and V', /Transfer beam 1, span 6\.00 m/.test($('drawings').textContent) && /carries on down the right support, a column/.test($('drawings').textContent) && /left support: ULS/.test($('drawings').textContent) && /Bending moment, ULS/.test(res()) && /Design actions on the beam/.test(res()));
+truth('… the full calculation: the take-down, the beam and the hipped roof, each its own check', zones().length === 3 && /^Load take-down/.test(zt(zones()[0])) && /^Transfer beam 1/.test(zt(zones()[1])) && /^Hipped roof/.test(zt(zones()[2])) && zones().every(z => !!z.querySelector('[data-cp="save"]')) && /statics/.test(zones()[1].textContent));
 truth('… the steps say how much goes on down', /down the right support, a column: 0\.667 of the wall’s load × 4\.00 m = × 2\.667/i.test(res()));
 tv(0, 'on', 'support'); truth('carrying straight on at a support: no position, no choice of element below', !shown(tq(0, 'a')) && !shown(tq(0, 'below')) && /carries straight on at its right support/.test(d.querySelector('#tdRows tr.trow').textContent));
 tv(0, 'on', 'beam'); tv(0, 'below', 'wall');
@@ -83,7 +88,7 @@ tq(0, 'addld').click(); const lb = tq(0, 'lds').querySelector('tr'); lb.querySel
 $('calc').click(); truth('a load beyond the support: carried as a cantilever, warned', /cantilever/.test(res()) && /hogging/.test(res()));
 tv(0, 'after', '3'); tv(0, 'follow', 'none'); $('calc').click();
 truth('stopping on a beam under the last row: the result on the beam, no footing', /on Transfer beam 1/.test(d.querySelector('#results .verdict').textContent) && /stops on Transfer beam 1/.test(res()) && !/strip .* m wide/.test($('drawings').textContent));
-$('printBtn').click(); truth('… on the sheet: the transfer beams section and the result', /Transfer beams/.test($('report').textContent) && /Transfer beam 1: bending moment/.test($('report').textContent) && $('report').querySelectorAll('svg').length === 5);   // the load path, the beam, M, V and the hip
+$('printBtn').click(); truth('… on the sheet: the transfer beams section and the result', /Transfer beams/.test($('report').textContent) && /Transfer beam 1: bending moment/.test($('report').textContent) && $('report').querySelectorAll('svg').length === 5 && /\d Full calculation/.test($('report').textContent) && /Reactions, by statics/.test($('report').textContent));   // the load path, the beam, M, V and the hip
 tv(0, 'after', '2'); $('calc').click(); truth('… with rows below it: an error naming them', /stops on Transfer beam 1 above it/.test(err()));
 tv(0, 'after', '3'); $('calc').click();
 const w2 = page(w.localStorage.getItem('et-load-takedown-v1'));
