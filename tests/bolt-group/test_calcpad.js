@@ -23,6 +23,9 @@ function check(tag, C, P) {
   }
   const er = P.chips.filter(c => c.err || c.dup); if (er.length) { bad++; console.log('CHIP', tag, er.slice(0, 3).map(c => c.text)); }
   if (P.warn) { bad++; console.log('BAD UNIT', tag, P.chips.filter(c => c.bad).slice(0, 5).map(c => c.name + ' [' + c.bad + ']')); }
+  // the drawings CalcPad draws live (STEEL, PLOT): every one drawn, none showing an error
+  const pe = (P.plots || []).filter(p => p.err), np = C.items.filter(it => it.t === 'plot').length; if (pe.length || (P.plots || []).length !== np) { bad++; console.log('PLOT', tag, (P.plots || []).length, np, pe.slice(0, 2)); }
+  globalThis.__plots = (globalThis.__plots || 0) + (P.plots || []).length;
 }
 // as the page's analyse(): the layout, the plies and the actions (kN, kNm)
 function group(tag, { layout, d = 20, cls = '8.8', thr = true, planes = 1, plies = [{ t: 10, fu: 430 }], act }) {

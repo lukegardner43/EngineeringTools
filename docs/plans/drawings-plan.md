@@ -31,10 +31,10 @@ stair shows the main bars only (the tool has no input for distribution bars).
 The steel tools' full calculations (all thirteen, November 2026) carry the tools' drawings into CalcPad as pictures
 (`CalcScript.pictures`, 18 November 2026), right only for the values they were made with: edit the section in CalcPad and
 the picture stays as it was. Concrete sections already draw themselves live in CalcPad
-from their own names (`SECTION(...)`, CalcPad ecee29e); steel should do the same. Two stages, the first now and the
+from their own names (`SECTION(...)`, CalcPad ecee29e); steel should do the same. Two stages: the first is done (November 2026), the
 second later.
 
-**Stage 1: a live steel section (next).**
+**Stage 1: a live steel section (done, November 2026; see the ROADMAP).**
 
 | Part | What it does |
 |------|--------------|
@@ -46,6 +46,12 @@ second later.
 
 Stage 1 changes no value: the section's properties (A, I_y, W_pl,y and the rest) are still the table's, so editing h
 in CalcPad redraws the section but does not change A. CalcPad says so under the drawing.
+
+As built: the kinds also take EHS, tees and angles (single, with their principal axes, or a pair back to back), and the
+section of every part that classifies it is drawn once there; the buckling curves mark λ̄_y and, about z-z, the larger of
+λ̄_z and λ̄_T; the class options name each part's class (`cf:`, `cw:`, `cb:`) rather than one `class:` key alone; the
+Class 4 holes take the tool's reduction factors as numbers (`rhof:`, `rhow:`, `psi:`), as the effective section is not
+yet formulas in the calculation.
 
 **Stage 2: changing the section, and anything else the tool has to decide (later).**
 

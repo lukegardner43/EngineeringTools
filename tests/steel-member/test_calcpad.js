@@ -27,6 +27,9 @@ function check(tag, C, P) {
   }
   const er = P.chips.filter(c => c.err || c.dup); if (er.length) { bad++; console.log('CHIP', tag, er.slice(0, 3).map(c => c.text)); }
   if (P.warn) { bad++; console.log('BAD UNIT', tag, P.chips.filter(c => c.bad).slice(0, 5).map(c => c.name + ' [' + c.bad + ']')); }
+  // the drawings CalcPad draws live (STEEL, PLOT): every one drawn, none showing an error
+  const pe = (P.plots || []).filter(p => p.err), np = C.items.filter(it => it.t === 'plot').length; if (pe.length || (P.plots || []).length !== np) { bad++; console.log('PLOT', tag, (P.plots || []).length, np, pe.slice(0, 2)); }
+  globalThis.__plots = (globalThis.__plots || 0) + (P.plots || []).length;
 }
 const keyOf = (Z, k) => ['bending', 'shear', 'axial'].includes(k) ? Z.find(z => z.checks && z.checks.includes(k)) : Z.find(z => z.key === k);
 function member(tag, inp) {
@@ -148,5 +151,5 @@ for (let t = 0; t < 70; t++) {
 // ---------- the whole calculation as one CalcPad check ----------
 { const M = CalcScript.merge(Z0.map(zn => ({ C: zn.C, title: zn.title })), { title: 'Whole' }); check('one check', M, H.text(M.calcpad())); check('one check, opened', M, H.doc(M.perega({}))); }
 console.log(`${zones} parts of ${members} members; ${[...kinds].sort().join('; ')}`);
-console.log(`\n${n - bad}/${n} Steel Member values reproduced by CalcPad`);
+console.log(`\n${n - bad}/${n} Steel Member values reproduced by CalcPad; ${globalThis.__plots} drawings (STEEL and PLOT lines) drawn`);
 process.exit(bad ? 1 : 0);

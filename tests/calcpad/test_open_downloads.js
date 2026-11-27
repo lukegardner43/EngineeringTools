@@ -3,7 +3,8 @@
 // downloaded as the page's button does (one .perega), and the file opened in CalcPad (tests/calcpad/calcpad.html) through
 // File > Open. Every page must hold no more than fits (an opened calculation is split into pages, CalcPad dc5ec86), every
 // chip of the file must be on the pages with no error and CalcPad's value the file's, and every drawing the calculation
-// carries must arrive as a picture that loads and is not blank.
+// carries must arrive as a picture that loads and is not blank, and every line CalcPad draws itself (STEEL, PLOT,
+// SECTION, PUNCH) must draw, a steel section among them for the steel tools that classify one.
 const path = require('path'), fs = require('fs'), os = require('os');
 let chromium; try { ({ chromium } = require('playwright')); } catch (e) { console.log('Playwright is not installed: skipped'); process.exit(0); }
 const ROOT = path.join(__dirname, '..', '..'), CP = path.join(__dirname, 'calcpad.html');
@@ -12,6 +13,9 @@ const STEEL = ['Steel Member Design.html', 'Steel Beam Analysis and Design.html'
   'Floor Vibration.html', 'ConnectionCheck.html'];
 const TIMBER = ['Timber Beam.html', 'Timber Member.html', 'Timber Stud Wall.html', 'Timber Racking Wall.html', 'Timber Connections.html', 'Glulam Beams.html', 'Flitch Beams.html',
   'CLT Panels.html', 'Concealed Plate Glulam Connections.html', 'Timber 2D Frame Analysis and Design.html'];
+// the steel tools whose calculation draws the section live in CalcPad (its STEEL line, after the classification)
+const LIVE = ['Steel Member Design.html', 'Steel Beam Analysis and Design.html', 'Steel Column Design.html', 'Steel Frame Design.html', 'Steel Member Fire Design.html',
+  'Steel Beam Torsion.html', 'Hollowcore Support Beam.html', 'Composite Beam Design.html', 'Beam Web Openings.html'];
 const tools = process.argv.slice(2).length ? process.argv.slice(2) : [...STEEL, ...TIMBER, 'RC Beam Analysis and Design.html', 'Pad Foundation.html'];
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'et-perega-'));
 let n = 0, bad = 0;
@@ -47,7 +51,8 @@ const truth = (name, ok) => { n++; if (!ok) bad++; console.log(`${ok ? 'ok  ' : 
         return { pages: eds.length, over: eds.map((e, i) => [i + 1, Math.round(low(e)), e.closest('.pg-content').clientHeight]).filter(([, a, h]) => a > h + 1),
           vals: chips.map(c => [c.dataset.varName, +c.dataset.varVal]),
           err: chips.filter(c => /mismatch|unknown unit|left over|Error/i.test(c.textContent) || c.classList.contains('dup-name')).length + document.querySelectorAll('.page-wrap .var-error-chip, .page-wrap .formula-chip.error, .page-wrap .plot-chip.error').length,
-          imgs: Array.from(document.querySelectorAll('.page-wrap img')).map(i => i.complete && i.naturalWidth > 0) };
+          imgs: Array.from(document.querySelectorAll('.page-wrap img')).map(i => i.complete && i.naturalWidth > 0),
+          plots: Array.from(document.querySelectorAll('.page-wrap .plot-chip')).map(c => (c.classList.contains('error') ? 'ERR ' : '') + (c.dataset.plot || '').slice(0, 6)) };
       });
       const key = JSON.stringify(s); if (key === prev) break; prev = key;
     }
@@ -56,6 +61,8 @@ const truth = (name, ok) => { n++; if (!ok) bad++; console.log(`${ok ? 'ok  ' : 
     truth(`${tool}: opens on ${s.pages} pages, none holding more than fits${s.over.length ? ' (over: ' + JSON.stringify(s.over.slice(0, 3)) + ')' : ''}`, s.pages > 1 && !s.over.length);
     truth(`${tool}: all ${fileVals.length} values on the pages, none in error, CalcPad's the file's`, s.vals.length === fileVals.length && !s.err && !diff);
     truth(`${tool}: every drawing in the calculation (${want}) a picture in CalcPad that loads and is not blank`, want > 0 && pics.length === want && s.imgs.length === want && s.imgs.every(Boolean) && pics.every(u => u.length > 3000));
+    const live = s.plots.filter(t => !/^ERR/.test(t)), steel = live.filter(t => /^STEEL/.test(t)).length;
+    truth(`${tool}: the drawings CalcPad draws live (${live.length}, ${steel} of them steel sections) all drawn${LIVE.includes(tool) ? ', the section among them' : ''}`, live.length === s.plots.length && (!LIVE.includes(tool) || steel > 0));
     truth(`${tool}: no script errors`, !errs.length || (console.log(errs.slice(0, 2)), false));
   }
   await b.close(); fs.rmSync(dir, { recursive: true, force: true });

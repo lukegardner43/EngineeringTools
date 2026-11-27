@@ -3814,8 +3814,12 @@ const CalcScript = (() => {
   // is still the tool's. list: [{ C, title }]
   // a unit in brackets, or a name (one followed by a colon is an option of a PLOT or SECTION line, not a name)
   const TOK = /(\[[^\]]*\])|([A-Za-z][A-Za-z0-9_]*)(\s*:)?/g;
+  // a plot line's names renamed as its part's, but not a STEEL line's kind (I, L, T, …) or its axis (y, z): words, not names
+  const rePlot = (src, re) => { const m = /^(\s*STEEL\s*\(\s*[A-Za-z]+)([\s\S]*)$/i.exec(src), body = m ? m[2] : src;
+    const out = body.split(/(axis\s*:\s*[yz]\b)/).map((p, i) => i % 2 ? p : re(p)).join('');
+    return m ? m[1] + out : out; };
   function merge(list, meta = {}) {
-    const M = create({ ...(list[0] ? list[0].C.meta : {}), ...meta }), byKey = new Map();
+    const M = create({ ...(list[0] ? list[0].C.meta : {}), ...meta }), byKey = new Map(), plotted = new Set();
     list.forEach(({ C, title }, zi) => {
       const k = zi + 1, ren = new Map(), re = s => String(s).replace(TOK, (t, u, n, colon) => u || colon ? t : (ren.get(n) || n));
       if (list.length > 1) M.items.push({ t: 'h', text: `Part ${k}: ${title}` });
@@ -3828,7 +3832,11 @@ const CalcScript = (() => {
       };
       for (const it of C.items) {
         if (it.t === 'h') { flush(); hIdx = M.items.length; M.items.push(it); continue; }
-        if (!it.name) { M.items.push(it.t === 'plot' ? { ...it, src: re(it.src) } : it); continue; }
+        if (!it.name) {
+          if (it.t !== 'plot') { M.items.push(it); continue; }
+          const src = rePlot(it.src, re); if (plotted.has(src)) continue;     // a drawing an earlier part already has, once
+          plotted.add(src); M.items.push({ ...it, src }); continue;
+        }
         const core = it.core != null ? re(it.core) : null;
         const key = JSON.stringify([it.t === 'chk' ? 'chk' : 'def', it.name, core != null ? `${core} [${it.spec}]` : `${lit(it.v)} ${it.unit}`]);
         if (byKey.has(key)) { ren.set(it.name, byKey.get(key)); same.push(byKey.get(key)); continue; }
@@ -4090,6 +4098,52 @@ const EC3Script = (() => {
   // N in N (+ compression), the name of the axial force already defined (or null: no axial force); sfx keeps two
   // classifications apart in one calculation
   function classify(C, s, fy, N, bending, biax, nName, sfx = '', title, fyn = 'f_y', sgn = 0) {
+    const cl = classifyParts(C, s, fy, N, bending, biax, nName, sfx, title, fyn, sgn);
+    steelLine(C, s, fy, N, bending, cl, sfx, sgn);
+    return cl;
+  }
+  // the section drawn live in CalcPad (its STEEL line) from the calculation's own names, once in a part, after its first
+  // classification: the axis of bending (the bottom in compression for a hogging moment), the plastic neutral axis, each
+  // part's class, a Class 4 section's ineffective parts (the tool's reduction factors) and the shear centre of a channel,
+  // a tee or an ASB. It changes no value: the properties stay the section's own.
+  function steelLine(C, s, fy, N, bending, cl, x, sgn) {
+    if (C.items.some(it => it.t === 'plot' && /^STEEL\(/.test(it.src))) return;
+    const dims = { I: 'h, b, t_w, t_f, r', PFC: 'h, b, t_w, t_f, r', RHS: 'h, b, t', CHS: 'd, t', EHS: 'h, b, t', T: 'h, b, t_w, t_f, r', ASB: 'h, b_t, b_b, t_w, t_f, r' }[s.shape];
+    if (!dims || !C.has('h') && !C.has('d')) return;
+    const o = [], has = n => C.has(n);
+    if (bending) { o.push('axis: y'); if (sgn < 0) o.push('hog: 1'); } else if (N > 0) o.push('comp: 1');
+    if (bending && has(`z_N${x}`)) o.push(`x: z_N${x}`);
+    else if (bending && (s.shape === 'I' || s.shape === 'PFC' || s.shape === 'RHS') && has(`alpha${x}`) && cl.web.alpha > 0 && cl.web.alpha < 1) {
+      const top = s.shape === 'RHS' ? '1.5*t' : 't_f + r';
+      o.push(sgn < 0 ? `x: h - (${top}) - alpha${x}*c_w${x}` : `x: ${top} + alpha${x}*c_w${x}`);
+    }
+    if (has(`cls${x}`)) o.push(`class: cls${x}`);
+    if (s.shape === 'ASB') { if (has(`cls_ft${x}`)) o.push(`cf: cls_ft${x}`); if (has(`cls_fb${x}`)) o.push(`cb: cls_fb${x}`); }
+    else if (has(`cls_f${x}`)) o.push(`cf: cls_f${x}`);
+    if (has(`cls_w${x}`)) o.push(`cw: cls_w${x}`);
+    if (cl.cls === 4 && s.shape !== 'EHS' && s.shape !== 'CHS') {
+      const r4 = v => +(+v).toFixed(4);
+      try {
+        const n0 = o.length;
+        if (bending) {   // W_eff in bending (from the section in bending alone, as the tool works it out)
+          const wb = s.shape === 'T' ? EC3.weffTee(s, fy, sgn || 1) : EC3.weffBending(s, fy, sgn || 1);
+          if (wb.flange && wb.flange.rho < 1) o.push(`rhof: ${r4(wb.flange.rho)}`);
+          if (wb.rho != null && wb.rho < 1) o.push(`rhow: ${r4(wb.rho)}`, `psi: ${r4(wb.psi)}`);
+        }
+        if (o.length === n0 && N > 0) {   // otherwise A_eff in compression
+          const a = EC3.aeffCompression(s, fy);
+          if (a.rhoF < 1) o.push(`rhof: ${r4(a.rhoF)}`);
+          if (a.rhoW < 1) o.push(`rhow: ${r4(a.rhoW)}`);
+        }
+      } catch (e) { /* a section the tool does not reduce: no holes drawn */ }
+    }
+    if (s.shape === 'T' || s.shape === 'ASB') { if (has('z_0')) o.push('sc: z_0'); }
+    else if (s.shape === 'PFC' && s.eSC != null) o.push(`sc: ${+s.eSC.toFixed(2)} mm`);
+    if (s.shape === 'RHS' && s.ro) o.push(`ro: ${+s.ro.toFixed(2)} mm`);
+    const kind = s.shape === 'I' ? (/ UKBP$/.test(s.name) ? 'UKBP' : / UKB$/.test(s.name) ? 'UKB' : / UKC$/.test(s.name) ? 'UKC' : 'I') : s.shape;
+    C.plot(`STEEL(${kind}, ${dims}${o.length ? ', ' + o.join(', ') : ''})`);
+  }
+  function classifyParts(C, s, fy, N, bending, biax, nName, sfx, title, fyn, sgn) {
     const cl = EC3.classify(s, fy, N, bending, biax, sgn), x = sfx;
     C.head(title || 'Classification, Table 5.2');
     const clsExpr = (r, l1, l2, l3) => `IF(${r} <= ${l1}, 1, IF(${r} <= ${l2}, 2, IF(${r} <= ${l3}, 3, 4)))`;
@@ -4439,7 +4493,7 @@ const EC3Script = (() => {
     if (s.shape === 'EHS') return crossEHS(C, s, fy, act, n);
     const sc = EC3.sectionCheck(s, fy, act.N, act.My, act.V, act.Mz, act.Vz), sh = sc.shear, shz = sc.shearZ, u = [];
     const bending = Math.abs(act.My) > 1e-6 || Math.abs(act.Mz) > 1e-6, biax = Math.abs(act.Mz) > 1e-6;
-    classify(C, s, fy, act.N, bending, biax, n.N, '_s', 'Classification at this station, Table 5.2');
+    classify(C, s, fy, act.N, bending, biax, n.N, '_s', 'Classification at this station, Table 5.2', 'f_y', Math.abs(act.My) > 1e-6 ? Math.sign(act.My) : 0);
     const cls = sc.cls.cls, I = !hollow(s), tw = I ? 't_w' : 't', tf = I ? 't_f' : 't';
     // shear
     C.head('Shear, 6.2.6');
@@ -4619,6 +4673,10 @@ const EC3Script = (() => {
       chi = 'MIN(chi_y, chi_z, chi_T)';
     } else C.note('A closed hollow section: not susceptible to torsional buckling.');
     C.calc('chi_min', chi, Math.min(ab.y.chi, ab.z.chi, ab.T.chi), '', 'the least', '6.3.1.1', { sym: 'χ' });
+    // the buckling curves, drawn live by CalcPad, the member's slenderness marked on each (about z-z the larger of λ̄_z, λ̄_T)
+    const tor = ab.torsionalMode !== 'none', curve = a => `MIN(1, 1/(0.5*(1 + ${a}*(l - 0.2) + l^2) + SQRT((0.5*(1 + ${a}*(l - 0.2) + l^2))^2 - l^2)))`;
+    const mz = tor ? 'MAX(lam_z, lam_T)' : 'lam_z', top = `MAX(2, 1.2*lam_y, 1.2*${mz})`;
+    C.plot(`PLOT(${curve('alpha_y')}; ${curve('alpha_z')}, l, 0, ${top}, mark: lam_y; ${mz}, names: χ_y (curve ${cv.y}); χ_z${tor ? ' and χ_T' : ''} (curve ${cv.z}))`);
     C.calc('N_bRd', 'chi_min*N_Rk/gamma_M1', ab.NbRd / 1e3, 'kN', 'buckling resistance', '6.3.1.1 (6.47)', { sym: 'N_b,Rd' });
     if (nName) C.check('U_b', `${nName}/N_bRd`, ab.util, 'flexural and torsional buckling', '6.3.1.1 (6.46)');
     return ab.util;
@@ -4878,6 +4936,9 @@ const SteelMemberScript = (() => {
     const C = create('Section, steel and class');
     EC3Script.section(C, R.sec); EC3Script.steel(C, R.sec, inp.grade, R.fy);
     actions(C, R, inp);
+    // the moments along the member, drawn live by CalcPad from the end moments (and the uniform load)
+    const hasMz = Math.abs(inp.MzB) + Math.abs(inp.MzT) > 0;
+    if (!inp.Myf || inp.wUdl != null) C.plot(`PLOT(M_yB + (M_yT - M_yB)*x/L${inp.wUdl != null ? ' + w_Ed*x*(L - x)/2' : ''}${hasMz ? '; M_zB + (M_zT - M_zB)*x/L' : ''}, x, 0, L${hasMz ? ', names: M_y; M_z' : ''}) [kNm]`);
     if (mono(R.sec)) {
       const sg = teeSigns(inp), hasMz = Math.abs(inp.MzB) + Math.abs(inp.MzT) > 0, cl = {};
       if (!sg.length) cl[0] = EC3Script.classify(C, R.sec, R.fy, inp.N || 0, false, hasMz, 'N_Ed', '', 'Class of the member, Table 5.2', 'f_y', 1).cls;
@@ -5362,6 +5423,8 @@ const AngleScript = (() => {
     section(C, R.sec); steel(C, R); axial(C, R);
     if (R.N > 0) classify(C, R);
     else C.note('In tension the section is effective throughout (Class 1).');
+    // the angle (or the pair) drawn live in CalcPad, its principal axes, the class in compression
+    C.plot(`STEEL(L, h, b, t, r_1, r_2${R.sec.single ? ', pair: s' : ''}${R.N > 0 ? ', comp: 1, class: cls' : ''})`);
     return { key: 'section', title: C.meta.title, sum: `${R.sec.name}, f_y ${R.fy} N/mm², ${R.N > 0 ? `Class ${R.cls}` : 'in tension'}`, util: null, C, checks: [] };
   }
   function tensionZone(R, inp) {
@@ -6708,7 +6771,7 @@ function run() {
     // the drawings go with the calculation to CalcPad, as pictures: the beam and the envelopes with the analysis, the deflected shape with the deflection, the section with the section
         CalcScript.pictures(lastZ, [['ULS bending moment envelope (kNm, sagging plotted below)', svgEnv(R.lay, R.res.st, R.envelope.Mmax, R.envelope.Mmin, 'kNm', 1e6, true, true)], ['ULS shear force envelope (kN)', svgEnv(R.lay, R.res.st, R.envelope.Vmax, R.envelope.Vmin, 'kN', 1e3, true, false)]]
           .concat(R.hasH ? [['ULS minor-axis moment envelope Mz (kNm)', svgEnv(R.lay, R.res.st, R.envelopeH.Mmax, R.envelopeH.Mmin, 'kNm', 1e6, true, false)]] : []), () => 'loads');
-        if (typeof DrawSteelBeam !== 'undefined') CalcScript.pictures(lastZ, DrawSteelBeam.report(inp, R), t => /^Deflected/.test(t) ? 'deflection' : /^Section/.test(t) ? 'section' : 'loads');
+        if (typeof DrawSteelBeam !== 'undefined') CalcScript.pictures(lastZ, DrawSteelBeam.report(inp, R), t => /^Deflected/.test(t) ? 'deflection' : /^Section/.test(t) ? false : 'loads');   // the section: CalcPad draws it live (its STEEL line)
         html = renderA(R, inp, Math.round(performance.now() - t0));
       } else if (isAngle(s.series)) {
         inp = angleInput(s, sec);

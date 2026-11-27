@@ -599,8 +599,12 @@ const CalcScript = (() => {
   // is still the tool's. list: [{ C, title }]
   // a unit in brackets, or a name (one followed by a colon is an option of a PLOT or SECTION line, not a name)
   const TOK = /(\[[^\]]*\])|([A-Za-z][A-Za-z0-9_]*)(\s*:)?/g;
+  // a plot line's names renamed as its part's, but not a STEEL line's kind (I, L, T, …) or its axis (y, z): words, not names
+  const rePlot = (src, re) => { const m = /^(\s*STEEL\s*\(\s*[A-Za-z]+)([\s\S]*)$/i.exec(src), body = m ? m[2] : src;
+    const out = body.split(/(axis\s*:\s*[yz]\b)/).map((p, i) => i % 2 ? p : re(p)).join('');
+    return m ? m[1] + out : out; };
   function merge(list, meta = {}) {
-    const M = create({ ...(list[0] ? list[0].C.meta : {}), ...meta }), byKey = new Map();
+    const M = create({ ...(list[0] ? list[0].C.meta : {}), ...meta }), byKey = new Map(), plotted = new Set();
     list.forEach(({ C, title }, zi) => {
       const k = zi + 1, ren = new Map(), re = s => String(s).replace(TOK, (t, u, n, colon) => u || colon ? t : (ren.get(n) || n));
       if (list.length > 1) M.items.push({ t: 'h', text: `Part ${k}: ${title}` });
@@ -613,7 +617,11 @@ const CalcScript = (() => {
       };
       for (const it of C.items) {
         if (it.t === 'h') { flush(); hIdx = M.items.length; M.items.push(it); continue; }
-        if (!it.name) { M.items.push(it.t === 'plot' ? { ...it, src: re(it.src) } : it); continue; }
+        if (!it.name) {
+          if (it.t !== 'plot') { M.items.push(it); continue; }
+          const src = rePlot(it.src, re); if (plotted.has(src)) continue;     // a drawing an earlier part already has, once
+          plotted.add(src); M.items.push({ ...it, src }); continue;
+        }
         const core = it.core != null ? re(it.core) : null;
         const key = JSON.stringify([it.t === 'chk' ? 'chk' : 'def', it.name, core != null ? `${core} [${it.spec}]` : `${lit(it.v)} ${it.unit}`]);
         if (byKey.has(key)) { ren.set(it.name, byKey.get(key)); same.push(byKey.get(key)); continue; }

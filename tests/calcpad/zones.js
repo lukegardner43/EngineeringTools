@@ -13,6 +13,7 @@ function checker(CalcScript, toolName) {
     }
     const er = P.chips.filter(c => c.err || c.dup); if (er.length) { st.bad++; console.log('CHIP', tag, er.slice(0, 3).map(c => c.text)); }
     if (P.warn) { st.bad++; console.log('BAD UNIT', tag, P.chips.filter(c => c.bad).slice(0, 5).map(c => c.name + ' [' + c.bad + ']')); }
+    const pe = (P.plots || []).filter(p => p.err), np = C.items.filter(it => it.t === 'plot').length; if (pe.length || (P.plots || []).length !== np) { st.bad++; console.log('PLOT', tag, (P.plots || []).length, np, pe.slice(0, 2)); }
   }
   // Z: the tool's parts; checks: [{ id, util }]; zoneOf(id) → the part's key; utilMax: the tool's largest utilisation
   function run(tag, Z, checks, zoneOf, utilMax) {
